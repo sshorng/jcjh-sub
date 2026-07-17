@@ -1,0 +1,846 @@
+/* =========================================================
+   手機版樣式（mobile.css）
+   - 僅在 max-width: 768px 生效
+   - 請勿把桌機專用規則寫在此檔以外又加 !important 改共用 class 基礎值
+   - 桌機主樣式：style.css
+   ========================================================= */
+
+@media (max-width: 768px) {
+  /* 待辦／歷史表：可橫滑，但欄位緊湊、少空白 */
+  .table-responsive {
+    margin-top: 6px;
+    border-radius: 10px;
+  }
+  .table-responsive .custom-table,
+  .table-responsive .custom-table.history-table,
+  .table-responsive .custom-table.req-table-aligned,
+  .table-responsive .billing-table,
+  .report-table-container .custom-table,
+  .report-table-container .billing-table {
+    min-width: 560px; /* 原 720 太寬 → 空白感重 */
+    width: max-content;
+    max-width: none;
+    table-layout: auto !important;
+  }
+  .table-responsive .custom-table th,
+  .table-responsive .custom-table td {
+    white-space: nowrap;
+    word-break: normal;
+    padding: 7px 8px !important;
+    font-size: 0.78rem !important;
+    line-height: 1.3 !important;
+    vertical-align: middle !important;
+  }
+  .table-responsive .custom-table th {
+    padding: 6px 8px !important;
+    font-size: 0.72rem !important;
+  }
+  .table-responsive .custom-table .req-note-cell {
+    white-space: normal;
+    max-width: 120px;
+    font-size: 0.72rem !important;
+    line-height: 1.25 !important;
+  }
+  .table-responsive .custom-table.history-table col {
+    width: auto !important;
+  }
+  /* 狀態／類型 badge 縮小 */
+  .table-responsive .status-badge,
+  .table-responsive .risk-tag {
+    font-size: 0.68rem !important;
+    padding: 1px 5px !important;
+    line-height: 1.25 !important;
+  }
+  /* 操作鈕更緊 */
+  .table-responsive .btn,
+  .table-responsive .hist-actions .btn,
+  .table-responsive .action-buttons .btn {
+    padding: 4px 8px !important;
+    font-size: 0.72rem !important;
+    min-height: 32px !important;
+    line-height: 1.2 !important;
+  }
+  .table-responsive .hist-actions {
+    gap: 4px !important;
+    min-width: 64px;
+  }
+  .table-responsive .action-buttons {
+    gap: 4px !important;
+  }
+  /* 單號列 */
+  .table-responsive .hist-serial-text,
+  .table-responsive .custom-table strong {
+    font-size: 0.78rem !important;
+  }
+  /* 卡片標題／篩選列也略收 */
+  .card .card-title {
+    margin-bottom: 6px !important;
+    gap: 6px !important;
+  }
+  .history-filter-bar {
+    gap: 6px !important;
+    margin-bottom: 6px !important;
+  }
+  .history-filter-bar .filter-date,
+  .history-filter-bar .filter-search {
+    min-width: 100px !important;
+    max-width: 130px !important;
+    padding: 4px 6px !important;
+    font-size: 0.75rem !important;
+  }
+  /* 媒合表：不要橫向捲、列寬 100% */
+  .match-list-container {
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+  }
+  .match-list-container .match-table {
+    min-width: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    table-layout: fixed !important;
+  }
+  .summary-list-container .summary-table {
+    min-width: 0;
+    width: 100%;
+  }
+
+  /* 導航：上列品牌／身分，下列分頁可橫滑 */
+  .navbar {
+    padding: 8px 12px 0;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 6px;
+    min-height: auto;
+  }
+  
+  .nav-brand {
+    font-size: 0.9rem;
+    gap: 6px;
+    max-width: 55%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .nav-brand span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  
+  .nav-logo-icon {
+    width: 26px;
+    height: 26px;
+    font-size: 0.72rem;
+    flex-shrink: 0;
+  }
+
+  /* 隱藏使用者姓名以騰出空間，僅顯示頭像、學期與角色 */
+  .user-name {
+    display: none;
+  }
+
+  .user-profile {
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .user-info {
+    gap: 4px;
+  }
+
+  .badge-admin, .badge-teacher {
+    font-size: 0.65rem;
+    padding: 2px 4px;
+  }
+
+  .user-profile select.form-select {
+    max-width: 90px;
+    padding: 2px 4px;
+    font-size: 0.75rem;
+  }
+  .btn-logout, .btn-help {
+    padding: 4px 8px;
+    font-size: 0.72rem;
+  }
+
+  /* 導航選單：可左右滑，避免字被壓扁 */
+  .nav-menu {
+    width: 100%;
+    display: flex;
+    justify-content: flex-start;
+    border-top: 1px solid var(--border-color);
+    margin-top: 4px;
+    padding: 6px 0 8px;
+    gap: 4px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+
+  .nav-item {
+    flex: 0 0 auto;
+    text-align: center;
+    padding: 8px 10px;
+    min-height: 36px;
+    font-size: 0.8rem;
+    white-space: nowrap;
+    background: transparent;
+    border-bottom-width: 2px;
+  }
+
+  .main-content {
+    padding: 10px 10px 20px;
+  }
+
+  .card {
+    padding: 12px;
+    border-radius: 12px;
+    margin-bottom: 10px;
+  }
+
+  /* 確保週選擇列在手機上呈水平單列顯示，不凌亂堆疊 */
+  .week-picker-bar {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    padding: 8px 10px !important;
+    gap: 6px !important;
+  }
+  
+  .week-picker-bar .btn {
+    width: 28px !important;
+    height: 28px !important;
+    font-size: 0.75rem !important;
+    flex-shrink: 0 !important;
+  }
+  
+  .week-picker-bar div {
+    font-size: 0.75rem !important;
+    min-width: unset !important;
+    flex: 1 !important;
+    text-align: center !important;
+  }
+
+  /* 手機：日期選擇器易溢出且佔寬，拿掉（改用 ◀ ▶ 切週） */
+  .week-picker-bar input[type="date"] {
+    display: none !important;
+  }
+  .week-picker-bar {
+    gap: 8px !important;
+  }
+  .week-picker-bar div {
+    min-width: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  /* 首頁課表＋摘要：禁止橫向溢出、欄位吃滿寬度 */
+  .two-column-layout {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 10px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+  .two-column-layout > * {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+  }
+  .timetable-wrapper {
+    overflow-x: hidden !important;
+    overflow-y: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  .tt-teacher-list {
+    width: 100% !important;
+    max-width: 100% !important;
+    gap: 10px !important;
+  }
+  .tt-teacher-block {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    padding: 10px 8px 12px !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+  }
+  .tt-teacher-head {
+    font-size: 0.9rem !important;
+    margin-bottom: 8px !important;
+    min-width: 0 !important;
+  }
+  .tt-teacher-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+  }
+  /* 6 欄：節次 + 五天，全部 minmax(0,1fr) 絕不撐破 */
+  .timetable-grid {
+    display: grid !important;
+    grid-template-columns: 28px repeat(5, minmax(0, 1fr)) !important;
+    gap: 2px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+  }
+  .grid-header,
+  .grid-cell-class,
+  .grid-cell-time {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+  }
+  .grid-header {
+    font-size: 0.72rem !important;
+    padding: 6px 1px !important;
+    line-height: 1.2 !important;
+  }
+  .grid-header .date-sub {
+    font-size: 0.6rem !important;
+  }
+  /* 課格：拉滿列高 + 上 main / 下 badges */
+  .timetable-grid {
+    align-items: stretch !important;
+  }
+  .grid-cell-class {
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: flex-start !important;
+    align-items: stretch !important;
+    align-self: stretch !important;
+    padding: 4px 3px 3px !important;
+    min-height: 70px !important;
+    height: auto !important;
+    border-radius: 6px !important;
+    gap: 0 !important;
+  }
+  .grid-cell-class .cell-main {
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    width: 100% !important;
+  }
+  .grid-cell-class .cell-class-name,
+  .grid-cell-class .cell-subject {
+    flex: 0 0 auto !important;
+    width: 100% !important;
+  }
+  .grid-cell-class .cell-badges {
+    flex: 0 0 auto !important;
+    margin-top: auto !important;
+    margin-bottom: 0 !important;
+    width: 100% !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 2px !important;
+    align-items: center !important;
+  }
+  .grid-cell-class .cell-badges:empty {
+    display: none !important;
+    margin: 0 !important;
+  }
+  .grid-cell-class .cell-sub-text {
+    display: none !important;
+  }
+  .grid-cell-time {
+    padding: 2px 0 !important;
+    min-height: 58px !important;
+    height: auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    align-items: center !important;
+  }
+  .grid-cell-time .period {
+    font-size: 0.78rem !important;
+    font-weight: 700 !important;
+  }
+  .grid-cell-time .time-span {
+    display: none !important; /* 手機省寬度 */
+  }
+  /* 班名／科目：完整呈現、不省略；橫向 keep-all 避免 804 被拆成直排 */
+  .cell-class-name {
+    font-size: 0.76rem !important;
+    font-weight: 700 !important;
+    line-height: 1.25 !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: unset !important;
+    word-break: keep-all !important;
+    overflow-wrap: normal !important;
+    max-width: 100% !important;
+    writing-mode: horizontal-tb !important;
+    text-orientation: mixed !important;
+  }
+  .cell-subject {
+    font-size: 0.64rem !important;
+    margin-top: 2px !important;
+    line-height: 1.25 !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: unset !important;
+    word-break: keep-all !important;
+    overflow-wrap: normal !important;
+    max-width: 100% !important;
+    writing-mode: horizontal-tb !important;
+  }
+  /* 格高隨內容長高，避免裁切完整班名 */
+  .grid-cell-class {
+    overflow: visible !important;
+    min-height: 70px !important;
+    height: auto !important;
+  }
+  /* 關鍵：桌機 .cell-badge 是 absolute 右上；手機必須取消絕對定位才會沉底 */
+  .grid-cell-class .cell-badge,
+  .cell-badges .cell-badge,
+  .cell-badge {
+    position: static !important;
+    top: auto !important;
+    right: auto !important;
+    left: auto !important;
+    bottom: auto !important;
+    font-size: 0.55rem !important;
+    padding: 1px 3px !important;
+    display: inline-block !important;
+    max-width: 100% !important;
+    white-space: nowrap !important;
+    line-height: 1.2 !important;
+  }
+  /* 副標隱藏，避免插在班科與標籤中間 */
+  .cell-sub-text,
+  .grid-cell-class .cell-pending-text,
+  .grid-cell-class .away-class-label,
+  .grid-cell-class .mutual-draft-label {
+    display: none !important;
+  }
+
+  /* 右側摘要／快速待辦：全寬、不橫溢 */
+  .side-panel,
+  .summary-list-container,
+  .away-side-compact {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+    overflow-x: hidden !important;
+  }
+  .summary-list-container {
+    max-height: 260px !important;
+    overflow-y: auto !important;
+  }
+  .summary-table {
+    width: 100% !important;
+    min-width: 0 !important;
+    table-layout: fixed !important;
+  }
+  .summary-table th,
+  .summary-table td {
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: anywhere !important;
+    font-size: 0.78rem !important;
+    padding: 8px 6px !important;
+  }
+  .quick-todo-row {
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+  .quick-todo-actions {
+    max-width: 100% !important;
+  }
+
+  /* 工具列：橫向換行，按鈕不撐滿整列 */
+  .toolbar, .report-toolbar {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .input-group, .form-group {
+    width: 100% !important;
+  }
+
+  /* 表單控件可撐滿；一般按鈕維持內容寬度 */
+  .form-input, .form-select, .form-control {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  .btn {
+    width: auto !important;
+    max-width: 100%;
+    box-sizing: border-box;
+    flex-shrink: 0;
+  }
+  /* 僅 Modal 主操作、登入等需要全寬時再指定 */
+  .modal-footer .btn.btn-block,
+  .login-card .btn {
+    width: 100% !important;
+  }
+
+  /* 歷史紀錄篩選列 */
+  .toolbar .btn {
+    width: auto !important;
+    padding: 5px 10px !important;
+    font-size: 0.75rem !important;
+  }
+  .toolbar input.form-control,
+  .toolbar input[type="date"],
+  .toolbar input[type="search"] {
+    width: auto !important;
+    flex: 1 1 120px;
+    min-width: 110px;
+    max-width: 100%;
+  }
+
+  /* 班級選擇 chip：不撐滿 */
+  .class-pick-btn,
+  .class-pick-btn.btn {
+    width: auto !important;
+    padding: 5px 12px !important;
+    font-size: 0.78rem !important;
+  }
+
+  /* 卡片標題右側操作列 */
+  .card-title {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .card-title .action-buttons,
+  .card-title .batch-bar {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .card-title .action-buttons .btn,
+  .card-title .batch-bar .btn {
+    width: auto !important;
+    flex: 0 0 auto;
+  }
+
+  /* 週列內「本週」等文字按鈕 */
+  .week-picker-bar .btn {
+    width: auto !important;
+    min-width: 28px;
+    height: 28px !important;
+    padding: 0 8px !important;
+    font-size: 0.75rem !important;
+  }
+
+  /* 頁籤導航優化：橫向捲動防止折行 */
+  .tabs-nav {
+    display: flex;
+    overflow-x: auto;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+    gap: 8px;
+    padding-bottom: 6px;
+    margin-bottom: 12px;
+  }
+
+  .tab-btn {
+    padding: 8px 14px;
+    font-size: 0.85rem;
+    flex-shrink: 0;
+  }
+
+  /* 對照對彈窗 mini-grid 橫向捲動 */
+  .mini-schedule-container {
+    grid-template-columns: 1fr; /* 改為上下排列方便對照 */
+    gap: 14px;
+  }
+
+  .mini-grid {
+    grid-template-columns: 24px repeat(5, 1fr) !important;
+    min-width: 100% !important;
+    gap: 2px !important;
+  }
+
+  .mini-grid-cell {
+    padding: 3px 1px !important;
+    font-size: 0.6rem !important;
+  }
+
+  /* 彈窗：近全寬、可捲、按鈕可換行 */
+  .modal-overlay {
+    padding: 10px !important;
+    align-items: flex-end !important;
+  }
+  .modal-card {
+    max-width: 100% !important;
+    width: 100% !important;
+    max-height: 92vh;
+    border-radius: 14px 14px 10px 10px !important;
+  }
+  .modal-header {
+    padding: 12px 14px !important;
+  }
+  .modal-header h3 {
+    font-size: 0.95rem !important;
+  }
+  .modal-body {
+    padding: 14px !important;
+    max-height: 68vh;
+  }
+  .modal-footer {
+    padding: 10px 12px !important;
+    gap: 6px !important;
+    flex-wrap: wrap !important;
+  }
+  .modal-footer .btn {
+    flex: 1 1 auto;
+    min-width: 72px;
+  }
+
+  /* 媒合抽屜：手機改為底部半屏 */
+  .match-drawer {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100% !important;
+    min-width: 0;
+    max-height: 62vh;
+    border-left: none;
+    border-top: 1px solid var(--border-color);
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -8px 32px rgba(15, 23, 42, 0.15);
+    animation: matchDrawerUp 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  @keyframes matchDrawerUp {
+    from { transform: translateY(100%); opacity: 0.6; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+  .match-drawer-body {
+    padding: 12px 14px 18px !important;
+  }
+
+
+  /* 行政後台子頁籤導航 */
+  .admin-tabs {
+    display: flex;
+    overflow-x: auto;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+    gap: 6px;
+    padding-bottom: 4px;
+  }
+
+  .admin-tab-btn {
+    padding: 6px 12px;
+    font-size: 0.8rem;
+    flex-shrink: 0;
+  }
+
+  /* 卡片標題：標題＋操作可折行 */
+  .card-title {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 8px !important;
+    font-size: 0.98rem !important;
+  }
+
+  .card-title .action-buttons {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .card-title .action-buttons .btn {
+    flex: 1 1 calc(50% - 6px);
+    padding: 7px 8px !important;
+    font-size: 0.75rem !important;
+    white-space: nowrap;
+    text-align: center;
+  }
+
+  /* 歷史篩選列：可橫滑 chip */
+  .history-filter-bar {
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    gap: 8px !important;
+    padding-bottom: 2px;
+  }
+  .history-filter-bar .filter-chip-group {
+    flex-shrink: 0;
+  }
+  .history-filter-bar .filter-date,
+  .history-filter-bar .filter-search {
+    flex: 0 0 auto !important;
+    min-width: 120px !important;
+    max-width: 150px !important;
+  }
+  .history-filter-bar .filter-count {
+    flex-shrink: 0;
+    margin-left: 0 !important;
+  }
+
+  /* 快速待辦：按鈕不擠爆 */
+  .quick-todo-row {
+    align-items: flex-start !important;
+    gap: 6px !important;
+  }
+  .quick-todo-actions {
+    flex-wrap: wrap;
+    max-width: 48%;
+    justify-content: flex-end;
+  }
+  .quick-todo-actions .btn {
+    padding: 4px 7px !important;
+    font-size: 0.68rem !important;
+  }
+  .hist-actions {
+    flex-direction: column;
+    align-items: stretch;
+    min-width: 72px;
+  }
+  .hist-actions .btn {
+    width: 100%;
+  }
+  .empty-state-title { font-size: 0.88rem; }
+  .empty-state-hint { font-size: 0.74rem; }
+  .side-panel-head { font-size: 0.82rem !important; padding: 9px 12px !important; }
+
+  /* 側欄在單欄時改全寬 */
+  .two-column-layout {
+    gap: 10px !important;
+  }
+
+  /* toast 不超出螢幕 */
+  #toast-container {
+    left: 10px !important;
+    right: 10px !important;
+    bottom: 12px !important;
+    max-width: none !important;
+  }
+  .toast {
+    max-width: 100% !important;
+  }
+
+  /* tt-teacher 細節已在上方課表區處理 */
+  /* ========== 全寬防護 + 媒合列不橫捲、少空白 ========== */
+  html, body, #app {
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+  .main-content,
+  .app-container,
+  .card,
+  .two-column-layout,
+  .timetable-wrapper,
+  .tt-teacher-block,
+  .match-drawer,
+  .match-drawer-body,
+  .match-list-container {
+    max-width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+  }
+  .modal-overlay {
+    max-width: 100vw !important;
+    overflow-x: hidden !important;
+  }
+  .modal-card,
+  .modal-card[style],
+  #confirm-box {
+    max-width: 100% !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+  }
+  .modal-body,
+  .modal-header,
+  .modal-footer {
+    max-width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+  }
+  .timetable-grid,
+  .class-timetable {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  /* 媒合列表：固定欄寬，模擬鈕永遠在視窗內 */
+  .match-drawer {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100vw !important;
+  }
+  .match-drawer-body {
+    overflow-x: hidden !important;
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+  .match-list-container {
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    max-height: none !important;
+  }
+  .match-list-container .match-table,
+  .match-table {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    table-layout: fixed !important;
+    border-collapse: collapse !important;
+  }
+  .match-table col,
+  .match-table th,
+  .match-table td {
+    box-sizing: border-box !important;
+  }
+  .match-table thead th:nth-child(1) { width: 34% !important; }
+  .match-table thead th:nth-child(2) { width: 42% !important; }
+  .match-table thead th:nth-child(3) { width: 24% !important; }
+  .match-table th,
+  .match-table td {
+    padding: 8px 6px !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: anywhere !important;
+    vertical-align: middle !important;
+  }
+  .match-table th:last-child,
+  .match-table td:last-child {
+    text-align: right !important;
+    white-space: nowrap !important;
+    padding-left: 4px !important;
+    padding-right: 4px !important;
+  }
+  .match-table td:last-child .btn {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    min-height: 40px !important;
+    padding: 8px 10px !important;
+    font-size: 0.8rem !important;
+    white-space: nowrap !important;
+    max-width: 100%;
+  }
+  /* 減少列內多餘空白感 */
+  .match-table tr.match-row td {
+    line-height: 1.35;
+  }
+  .match-filter-area {
+    padding: 10px 12px !important;
+  }
+  .match-mode-btn {
+    padding: 10px 8px !important;
+  }
+}
