@@ -3049,33 +3049,16 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
 
     // 準備模擬對比 Modal（ui-request.js → UiSubmitHelpers.prepCompare）
     const prepCompare = async (mode, targetEmail, periodIdVal = '', subjectVal = '', classVal = '') => {
-      try {
-        if (!window.UiSubmitHelpers || !window.UiSubmitHelpers.prepCompare) {
-          showToast('申請模組尚未載入，請重新整理後再試', 'error');
-          return;
-        }
-        if (!targetEmail) {
-          showToast('請先選擇代課／對調教師', 'warning');
-          return;
-        }
-        if (!activeCell.value || !activeCell.value.teacherEmail) {
-          showToast('請先從課表點選要請假的課堂', 'warning');
-          return;
-        }
-        const result = await window.UiSubmitHelpers.prepCompare({
-          activeCell, inputRequestDate, allSchedules, showConfirm, getScheduleForDate,
-          formatDateMMDD, getWeekDayText, exchangePeriodId, exchangeWeekOffset, exchangeTargetDate,
-          consecAlertsA, consecAlertsB, isMutualCover, assignMutualDraftFromMatch, PERIOD8_FEE,
-          pendingRequestData, showMatchModal, showCompareModal
-        }, mode, targetEmail, periodIdVal, subjectVal, classVal);
-        if (result === 'cancelled') return result;
-        // 若模組已設 true 但仍未顯示，再強制一次
-        if (!showCompareModal.value) showCompareModal.value = true;
-        return result;
-      } catch (e) {
-        console.error('prepCompare failed', e);
-        showToast('無法開啟模擬畫面：' + (e && e.message ? e.message : e), 'error');
+      if (!window.UiSubmitHelpers || !window.UiSubmitHelpers.prepCompare) {
+        showToast('申請模組未載入', 'error');
+        return;
       }
+      return window.UiSubmitHelpers.prepCompare({
+        activeCell, inputRequestDate, allSchedules, showConfirm, getScheduleForDate,
+        formatDateMMDD, getWeekDayText, exchangePeriodId, exchangeWeekOffset, exchangeTargetDate,
+        consecAlertsA, consecAlertsB, isMutualCover, assignMutualDraftFromMatch, PERIOD8_FEE,
+        pendingRequestData, showMatchModal, showCompareModal
+      }, mode, targetEmail, periodIdVal, subjectVal, classVal);
     };
 
     // 批次：該日該節是否在選定清單
