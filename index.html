@@ -5,7 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>建成國中線上調代課系統</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📅</text></svg>">
-  <link rel="stylesheet" href="style.css?v=20260717-mobile-full">
+  <link rel="stylesheet" href="style.css?v=20260718-cell-main">
+  <!-- 手機版獨立樣式：不影響桌機 -->
+  <link rel="stylesheet" href="mobile.css?v=20260718-class-full" media="(max-width: 768px)">
   
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 
@@ -503,57 +505,61 @@
                                 <span class="cell-empty-label">巡堂</span>
                               </template>
                               <template v-else>
-                                <div class="cell-class-name">{{ cell.className }}</div>
-                                <div class="cell-subject">{{ cell.subject }}</div>
-                                <div
-                                  v-if="isMutualCover && isAwayClassCell(cell.className, currentWeekDates[day-1]) && !getMutualDraftAt(teacher.email, currentWeekDates[day-1], period)"
-                                  class="cell-sub-text away-class-label"
-                                >班外出</div>
-                                <div
-                                  v-if="isMutualCover && getMutualDraftAt(teacher.email, currentWeekDates[day-1], period)"
-                                  class="cell-sub-text mutual-draft-label"
-                                >暫定：{{ getMutualDraftAt(teacher.email, currentWeekDates[day-1], period).subName }}
-                                  <span style="opacity:0.85;">（{{
-                                    (getMutualDraftAt(teacher.email, currentWeekDates[day-1], period).fee === '扣額度' || getMutualDraftAt(teacher.email, currentWeekDates[day-1], period).fee === '互代不結') ? '互代'
-                                    : (getMutualDraftAt(teacher.email, currentWeekDates[day-1], period).fee === '第8節代課' ? '第8節' : '公費')
-                                  }}）</span>
+                                <!-- 上：班科；下：標籤（.cell-badges 手機沉底） -->
+                                <div class="cell-main">
+                                  <div class="cell-class-name">{{ cell.className }}</div>
+                                  <div class="cell-subject">{{ cell.subject }}</div>
+                                  <div
+                                    v-if="isMutualCover && isAwayClassCell(cell.className, currentWeekDates[day-1]) && !getMutualDraftAt(teacher.email, currentWeekDates[day-1], period)"
+                                    class="cell-sub-text away-class-label"
+                                  >班外出</div>
+                                  <div
+                                    v-if="isMutualCover && getMutualDraftAt(teacher.email, currentWeekDates[day-1], period)"
+                                    class="cell-sub-text mutual-draft-label"
+                                  >暫定：{{ getMutualDraftAt(teacher.email, currentWeekDates[day-1], period).subName }}
+                                    <span style="opacity:0.85;">（{{
+                                      (getMutualDraftAt(teacher.email, currentWeekDates[day-1], period).fee === '扣額度' || getMutualDraftAt(teacher.email, currentWeekDates[day-1], period).fee === '互代不結') ? '互代'
+                                      : (getMutualDraftAt(teacher.email, currentWeekDates[day-1], period).fee === '第8節代課' ? '第8節' : '公費')
+                                    }}）</span>
+                                  </div>
+                                  <div 
+                                    v-if="!isMobile && cell.subText"
+                                    class="cell-sub-text"
+                                    style="font-size: 0.62rem; color: var(--text-muted); margin-top: 4px; border-top: 1px dotted rgba(0,0,0,0.08); padding-top: 3px; font-weight: 500; line-height: 1.2;"
+                                  >{{ cell.subText }}</div>
+                                  <div 
+                                    v-if="!isMobile && cell.pendingText"
+                                    class="cell-sub-text"
+                                    style="font-size: 0.62rem; color: #b45309; margin-top: 4px; border-top: 1px dashed rgba(245,158,11,0.25); padding-top: 3px; font-weight: 600; line-height: 1.2;"
+                                  >{{ cell.pendingText }}</div>
                                 </div>
-                                <div 
-                                  v-if="!isMobile && cell.subText"
-                                  class="cell-sub-text"
-                                  style="font-size: 0.62rem; color: var(--text-muted); margin-top: 4px; border-top: 1px dotted rgba(0,0,0,0.08); padding-top: 3px; font-weight: 500; line-height: 1.2;"
-                                >{{ cell.subText }}</div>
-                                <div 
-                                  v-if="!isMobile && cell.pendingText"
-                                  class="cell-sub-text"
-                                  style="font-size: 0.62rem; color: #b45309; margin-top: 4px; border-top: 1px dashed rgba(245,158,11,0.25); padding-top: 3px; font-weight: 600; line-height: 1.2;"
-                                >{{ cell.pendingText }}</div>
-                                <span 
-                                  v-if="cell.isSubstituted"
-                                  class="cell-badge"
-                                  :class="cell.subType === 'exchange' ? 'tag-warning' : (cell.isMutualCover ? 'tag-purple' : 'tag-red')"
-                                >{{ cell.subType === 'exchange' ? '調出' : (cell.isMutualCover ? '互代/外出' : '請假') }}</span>
-                                <span v-if="cell.isSubstitutionDuty" class="cell-badge" :class="cell.isMutualCover ? 'tag-purple' : 'tag-green'">
-                                  {{ cell.subType === 'exchange' ? '調入' : (cell.isMutualCover ? '互代' : '代課') }}
-                                </span>
-                                <span 
-                                  v-if="cell.isElastic"
-                                  class="cell-badge tag-green"
-                                  style="border-style: dashed; background: none; border-width: 1.5px;"
-                                >實支</span>
-                                <span v-if="cell.attr === '單週'" class="cell-badge tag-week">單週</span>
-                                <span v-if="cell.attr === '雙週'" class="cell-badge tag-week">雙週</span>
-                                <!-- 第8節「輔導」：僅無異動時顯示，避免蓋住請假／代課／調入／申請標籤 -->
-                                <span
-                                  v-if="period === 8 && cell.attr !== '單週' && cell.attr !== '雙週' && !cell.isSubstituted && !cell.isSubstitutionDuty && !cell.isPending && !(cell.isPatrol || cell.attr === '巡堂')"
-                                  class="cell-badge tag-blue"
-                                >輔導</span>
-                                <span v-if="cell.restriction === 'restricted'" class="cell-badge tag-restricted">綁課</span>
-                                <span 
-                                  v-if="cell.isPending"
-                                  class="cell-badge"
-                                  :style="{ background: cell.pendingRecord && cell.pendingRecord.status === 'pending_admin' ? '#3b82f6' : '#d97706', color: 'white' }"
-                                >{{ cell.pendingRecord && cell.pendingRecord.status === 'pending_admin' ? '審核' : '申請' }}</span>
+                                <div class="cell-badges">
+                                  <span 
+                                    v-if="cell.isSubstituted"
+                                    class="cell-badge"
+                                    :class="cell.subType === 'exchange' ? 'tag-warning' : (cell.isMutualCover ? 'tag-purple' : 'tag-red')"
+                                  >{{ cell.subType === 'exchange' ? '調出' : (cell.isMutualCover ? '互代/外出' : '請假') }}</span>
+                                  <span v-if="cell.isSubstitutionDuty" class="cell-badge" :class="cell.isMutualCover ? 'tag-purple' : 'tag-green'">
+                                    {{ cell.subType === 'exchange' ? '調入' : (cell.isMutualCover ? '互代' : '代課') }}
+                                  </span>
+                                  <span 
+                                    v-if="cell.isElastic"
+                                    class="cell-badge tag-green"
+                                    style="border-style: dashed; background: none; border-width: 1.5px;"
+                                  >實支</span>
+                                  <span v-if="cell.attr === '單週'" class="cell-badge tag-week">單週</span>
+                                  <span v-if="cell.attr === '雙週'" class="cell-badge tag-week">雙週</span>
+                                  <span
+                                    v-if="period === 8 && cell.attr !== '單週' && cell.attr !== '雙週' && !cell.isSubstituted && !cell.isSubstitutionDuty && !cell.isPending && !(cell.isPatrol || cell.attr === '巡堂')"
+                                    class="cell-badge tag-blue"
+                                  >輔導</span>
+                                  <span v-if="cell.restriction === 'restricted'" class="cell-badge tag-restricted">綁課</span>
+                                  <span 
+                                    v-if="cell.isPending"
+                                    class="cell-badge"
+                                    :style="{ background: cell.pendingRecord && cell.pendingRecord.status === 'pending_admin' ? '#3b82f6' : '#d97706', color: 'white' }"
+                                  >{{ cell.pendingRecord && cell.pendingRecord.status === 'pending_admin' ? '審核' : '申請' }}</span>
+                                </div>
                               </template>
                             </template>
                           </template>
@@ -1989,27 +1995,22 @@
               <span v-if="isAdmin" style="font-weight:400; color:#b91c1c;">（管理員可強制送出）</span>
             </div>
 
-            <!-- 管理員直接核准核取方塊（置頂顯眼版） -->
-            <div v-if="isAdmin" style="background: var(--color-primary-glow); border: 2px solid var(--color-primary); border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.05);">
-              <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; margin: 0;">
-                <input type="checkbox" v-model="directApproveMode" style="width: 20px; height: 20px; cursor: pointer; margin: 0;">
-                <div style="flex:1;min-width:0;">
-                  <span style="font-weight: 700; color: var(--color-primary); font-size: 0.95rem; display: block;">⚡ 行政直接核准生效 (免受邀教師線上確認)</span>
-                  <span style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-top: 2px; font-weight: normal; line-height: 1.4;">
-                    勾選後，此單送出即「直接核准並生效」，自動更新課表；未勾選則需受邀教師收到邀請信並同意後，再送行政審核。
-                  </span>
+            <!-- 管理員直接核准（結構 class，桌機／手機皆可；手機樣式在 mobile.css） -->
+            <div v-if="isAdmin" class="direct-approve-box">
+              <label class="direct-approve-main">
+                <input type="checkbox" class="direct-approve-check" v-model="directApproveMode">
+                <div class="direct-approve-text">
+                  <div class="direct-approve-title">⚡ 行政直接核准</div>
+                  <div class="direct-approve-desc">勾選後送出即生效並更新課表；未勾選則需對方同意後再送行政審核。</div>
                 </div>
               </label>
-              <label
-                v-if="directApproveMode"
-                style="display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;margin:10px 0 0 30px;font-size:0.82rem;color:#475569;"
-              >
-                <input type="checkbox" v-model="directApproveSkipNotify" style="width:16px;height:16px;margin:0;cursor:pointer;">
-                <span>不寄通知信（課表仍立即生效，稍後可用 LINE／批次發通知）</span>
+              <label v-if="directApproveMode" class="direct-approve-sub">
+                <input type="checkbox" class="direct-approve-check-sm" v-model="directApproveSkipNotify">
+                <span>不寄通知信（稍後可用 LINE／批次通知）</span>
               </label>
             </div>
 
-            <!-- 課表模擬對比（手機：可收合以先填表） -->
+            <!-- 課表模擬對比（手機可收合） -->
             <details class="compare-grids-details" open>
               <summary class="compare-grids-summary">📅 雙方課表對照（點可收合）</summary>
             <div class="mini-schedule-container" data-tour="compare-grids" style="margin-bottom: 16px; margin-top: 10px;">
@@ -2121,7 +2122,7 @@
 
             <!-- 請假事由、鐘點費及審核選項 -->
             <div class="card" style="background: #f8fafc; padding: 16px; margin: 0; border: 1px solid var(--border-color);">
-              <div class="compare-form-grid" data-tour="compare-form" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+              <div data-tour="compare-form" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
                 
                 <!-- 原因假別 -->
                 <div class="form-group" data-tour="compare-reason">
