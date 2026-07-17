@@ -1,0 +1,125 @@
+/* Spotlight 新手導覽（懶載入；z-index 高於媒合抽屜 1050） */
+.ot-root {
+  position: fixed;
+  inset: 0;
+  z-index: 11000;
+  pointer-events: none;
+  font-family: inherit;
+}
+.ot-root.ot-active {
+  pointer-events: auto;
+}
+/* 點擊遮罩用，不鋪暗色（暗色只靠 ot-hole 的外側 box-shadow） */
+.ot-backdrop {
+  position: fixed;
+  inset: 0;
+  background: transparent;
+  pointer-events: auto;
+}
+.ot-hole {
+  position: fixed;
+  border-radius: 10px;
+  /* 框內透明＝目標區不變暗；框外一圈才半透明 */
+  background: transparent;
+  box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.38);
+  border: 2px solid #38bdf8;
+  pointer-events: none;
+  transition: top 0.18s ease, left 0.18s ease, width 0.18s ease, height 0.18s ease;
+  z-index: 11001;
+}
+.ot-bubble {
+  position: fixed;
+  z-index: 11002;
+  max-width: min(360px, calc(100vw - 24px));
+  background: #fff;
+  border-radius: 14px;
+  padding: 14px 16px 12px;
+  box-shadow: 0 16px 48px rgba(15, 23, 42, 0.22);
+  border: 1px solid #e2e8f0;
+  pointer-events: auto;
+  color: #0f172a;
+}
+.ot-bubble.ot-center {
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  max-width: min(400px, calc(100vw - 32px));
+}
+.ot-step-meta {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #64748b;
+  margin-bottom: 6px;
+}
+.ot-title {
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0 0 6px;
+  letter-spacing: -0.02em;
+}
+.ot-body {
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: #334155;
+  margin: 0 0 12px;
+  white-space: pre-wrap;
+}
+.ot-bubble.ot-loading .ot-title {
+  color: #2563eb;
+}
+.ot-bubble.ot-loading .ot-body {
+  color: #64748b;
+}
+.ot-actions .ot-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.ot-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  align-items: center;
+}
+.ot-actions .ot-btn {
+  padding: 7px 14px;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1.5px solid #e2e8f0;
+  background: #fff;
+  color: #475569;
+}
+.ot-actions .ot-btn:hover {
+  background: #f8fafc;
+}
+.ot-actions .ot-btn-primary {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+.ot-actions .ot-btn-primary:hover {
+  background: #1d4ed8;
+}
+.ot-actions .ot-btn-ghost {
+  border: none;
+  color: #94a3b8;
+  background: transparent;
+}
+.ot-target-pulse {
+  outline: 2px solid #38bdf8 !important;
+  outline-offset: 2px;
+}
+@media (max-width: 640px) {
+  .ot-bubble {
+    max-width: calc(100vw - 16px);
+    left: 8px !important;
+    right: 8px;
+    width: auto;
+  }
+  .ot-bubble.ot-center {
+    left: 50% !important;
+    right: auto;
+  }
+}
