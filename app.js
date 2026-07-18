@@ -680,7 +680,7 @@ createApp({
 
     // 新手引導 UI（簡潔版：置中卡牌，無 spotlight，手機友善）
     // ── 新手 Spotlight 導覽（懶載入 onboarding-tour.js）──
-    const ONBOARDING_SCRIPT = 'onboarding-tour.js?v=20260717-tour30';
+    const ONBOARDING_SCRIPT = 'onboarding-tour.js';
     /** 導覽用虛擬「收到的邀請」（不寫入後端） */
     const tourDemoInvite = ref(null);
     let _onboardingLoadP = null;
