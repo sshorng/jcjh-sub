@@ -123,6 +123,7 @@ window.DomainActivityCover = (function () {
 
   /**
    * 活動期間內，某師因外出班「釋出」的節數（基礎課表 × 期間平日）
+   * opts._schedByTeacher：可傳預建索引 email → 課表列[]，避免每人掃全校課表
    */
   function countReleasedSlotsForTeacher(teacherEmail, opts) {
     opts = opts || {};
@@ -134,17 +135,30 @@ window.DomainActivityCover = (function () {
     var endDate = normalizeDate(opts.endDate);
     var rangeDates = listDatesInRange(startDate, endDate);
     if (!rangeDates.length) rangeDates = (opts.weekDates || []).filter(Boolean);
-    var n = 0;
+    // 期間內出現的星期（1–5）次數
+    var dowCount = {};
     rangeDates.forEach(function (dateStr) {
       var dow = dayOfWeekMon1(dateStr);
       if (!dow) return;
+      dowCount[dow] = (dowCount[dow] || 0) + 1;
+    });
+    var slots = null;
+    if (opts._schedByTeacher && opts._schedByTeacher[em]) {
+      slots = opts._schedByTeacher[em];
+    } else {
+      slots = [];
       (opts.allSchedules || []).forEach(function (s) {
-        if (!s || emailKey(s.teacherEmail) !== em) return;
-        if (!away[normalizeClass(s.className)]) return;
-        if (parseInt(s.dayOfWeek, 10) !== dow) return;
-        if (parseInt(s.period, 10) > 7) return;
-        n++;
+        if (s && emailKey(s.teacherEmail) === em) slots.push(s);
       });
+    }
+    var n = 0;
+    slots.forEach(function (s) {
+      if (!s || !away[normalizeClass(s.className)]) return;
+      var p = parseInt(s.period, 10);
+      if (p > 7) return;
+      var d = parseInt(s.dayOfWeek, 10);
+      var c = dowCount[d] || 0;
+      if (c) n += c;
     });
     return n;
   }
@@ -261,6 +275,19 @@ window.DomainActivityCover = (function () {
       var k = emailKey(e);
       if (k) exclude[k] = true;
     });
+    // 一次建 email → 課表列，避免每人掃全校
+    var schedBy = opts._schedByTeacher;
+    if (!schedBy) {
+      schedBy = {};
+      (opts.allSchedules || []).forEach(function (s) {
+        if (!s || !s.teacherEmail) return;
+        var k = emailKey(s.teacherEmail);
+        if (!k) return;
+        if (!schedBy[k]) schedBy[k] = [];
+        schedBy[k].push(s);
+      });
+      opts = Object.assign({}, opts, { _schedByTeacher: schedBy });
+    }
     var rows = [];
     teachers.forEach(function (t) {
       if (!t || !t.email) return;
@@ -275,7 +302,7 @@ window.DomainActivityCover = (function () {
       if (isLeader) {
         skipped = true;
         skipReason = '帶隊外出';
-        next = prev; // 維持原額度，不因本次釋出改寫
+        next = prev;
       } else {
         next = mode === 'add' ? (prev + released) : released;
         if (next < 0) next = 0;
@@ -673,21 +700,52 @@ window.DomainActivityCover = (function () {
     var arranged = mutualDone + publicDone + period8DoneAll;
 
     /**
-     * 需求＝期間內「應找人代」的總節數（累計口徑，不因已代而變少）
-     * 1) 基礎課表：有班、非抽離、非外出班（即使已 isSubstituted 仍算需求，已送出另欄扣）
-     * 2) 加：調入（isSubstitutionDuty）且非外出班（本來不在基礎課表的節）
-     * 3) 純調出到他處、本地無班 → 本來就不算（基礎無此節）
-     * 這樣第二次補排時：需求 4、已送出 3、尚缺 1；不會出現需求 1／已送出 3
+     * 需求＝期間內帶隊老師「應找人代」的節數（累計口徑）
+     * 與課表同一套 getScheduleForDate：含單雙週／已代仍算；排除巡堂、抽離、外出班、空堂事件班。
+     * 尚缺＝需求−已送出−暫定（已找人代的仍留在需求裡，避免補排時需求變小）
      */
+    function isDemandCell_(cell) {
+      if (!cell) return false;
+      if (window.DomainSchedule && window.DomainSchedule.isPatrolCell
+          && window.DomainSchedule.isPatrolCell(cell)) return false;
+      var attr = String(cell.attr || '');
+      if (attr === '抽離' || attr === '巡堂') return false;
+      // 純調出：本地已無課，不算需求
+      if (cell.isSubstituted && !cell.isSubstitutionDuty) return false;
+      var cn = normalizeClass(cell.className);
+      if (!cn) return false;
+      if (cn === '巡堂') return false;
+      if (awayCount && away[cn]) return false;
+      if (cell.isClassAway) return false;
+      return true;
+    }
+
     function countDemandForLeader(em) {
       if (!rangeDates.length) return 0;
       var getSched = opts.getScheduleForDate;
       var slotKeys = {}; // date|period
+      var isSingleWeek = typeof opts.isSingleWeek === 'function' ? opts.isSingleWeek : null;
 
-      // A) 基礎課表應代節
+      // 優先：與畫面課表相同的解析結果（正確處理單雙週／疊代）
+      if (typeof getSched === 'function') {
+        rangeDates.forEach(function (dateStr) {
+          var dow = dayOfWeekMon1(dateStr);
+          if (!dow) return;
+          for (var p = 1; p <= 8; p++) {
+            var cell = null;
+            try { cell = getSched(em, dateStr, p, dow); } catch (eG) { cell = null; }
+            if (!isDemandCell_(cell)) continue;
+            slotKeys[dateStr + '|' + p] = true;
+          }
+        });
+        return Object.keys(slotKeys).length;
+      }
+
+      // 後備：掃基礎課表（無 getSchedule 時）
       rangeDates.forEach(function (dateStr) {
         var dow = dayOfWeekMon1(dateStr);
         if (!dow) return;
+        var single = isSingleWeek ? !!isSingleWeek(dateStr) : null;
         (opts.allSchedules || []).forEach(function (s) {
           if (!s) return;
           if (emailKey(s.teacherEmail) !== em) return;
@@ -695,34 +753,19 @@ window.DomainActivityCover = (function () {
           var per = parseInt(s.period, 10);
           if (!per || per < 1 || per > 8) return;
           var attr = String(s.attr || '');
-          if (attr === '抽離') return;
+          if (attr === '抽離' || attr === '巡堂') return;
+          if (window.DomainSchedule && window.DomainSchedule.isPatrolAttr
+              && window.DomainSchedule.isPatrolAttr(attr)) return;
+          if (single !== null) {
+            if (attr === '單週' && !single) return;
+            if (attr === '雙週' && single) return;
+          }
           var cn = normalizeClass(s.className);
-          if (!cn) return;
+          if (!cn || cn === '巡堂') return;
           if (awayCount && away[cn]) return;
           slotKeys[dateStr + '|' + per] = true;
         });
       });
-
-      // B) 調入：期間內本人要上、基礎可能沒有的節
-      if (typeof getSched === 'function') {
-        rangeDates.forEach(function (dateStr) {
-          var dow = dayOfWeekMon1(dateStr);
-          if (!dow) return;
-          for (var p = 1; p <= 8; p++) {
-            var cell = null;
-            try { cell = getSched(em, dateStr, p, dow); } catch (e) { cell = null; }
-            if (!cell || !cell.isSubstitutionDuty) continue;
-            // 調出不另加（基礎已處理；若僅調出則基礎無課不算）
-            if (cell.isSubstituted && !cell.isSubstitutionDuty) continue;
-            var attr = String(cell.attr || '');
-            if (attr === '抽離') continue;
-            var cn = normalizeClass(cell.className);
-            if (!cn) continue;
-            if (awayCount && away[cn]) continue;
-            slotKeys[dateStr + '|' + p] = true;
-          }
-        });
-      }
 
       return Object.keys(slotKeys).length;
     }
