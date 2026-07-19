@@ -882,6 +882,9 @@ window.UiMutualSubmit = (function () {
       successModalTitle.value = '🎉 暫定已全部送出';
       successModalMessage.value = '共 ' + allRows.length + ' 節已寫入（' + feeTip + '）。'
         + (mutualSkipNotify.value ? ' 尚未寄系統信，請用下方 LINE 手動通知。' : '');
+      if (deps.successFlowMode) {
+        deps.successFlowMode.value = (isAdmin.value && directApproveMode.value) ? 'direct' : 'normal';
+      }
       hasLineTemplate.value = !!mutualSkipNotify.value;
       if (hasLineTemplate.value) {
         var currentUrl = window.location.origin + window.location.pathname;
@@ -1155,6 +1158,9 @@ window.UiBatchSubmit = (function () {
       successModalMessage.value = groupList.length === 1
         ? '共 ' + n + ' 節已送出' + mutualTip + '，代課：' + groupList[0].name + ' 老師。' + notifyTip
         : '共 ' + n + ' 節已送出' + mutualTip + '，由 ' + groupList.length + ' 位老師分代：' + subSummary + '。' + notifyTip;
+      if (deps.successFlowMode) {
+        deps.successFlowMode.value = (isAdmin.value && directApproveMode.value) ? 'direct' : 'normal';
+      }
       hasLineTemplate.value = skipNotify || !(isAdmin.value && directApproveMode.value);
       if (hasLineTemplate.value) {
         var currentUrl = window.location.origin + window.location.pathname;
@@ -1244,6 +1250,7 @@ window.UiBatchPanel = (function () {
     var matchSearchQuery = deps.matchSearchQuery;
     var matchDisplayCount = deps.matchDisplayCount;
     var matchShowNoTeacherWarning = deps.matchShowNoTeacherWarning;
+    var matchEmptyReasons = deps.matchEmptyReasons;
     var consecAlertsA = deps.consecAlertsA;
     var consecAlertsB = deps.consecAlertsB;
     var directApproveMode = deps.directApproveMode;
@@ -1378,6 +1385,7 @@ window.UiBatchPanel = (function () {
         } else {
           recommendedTeachers.value = [];
           matchShowNoTeacherWarning.value = false;
+          if (matchEmptyReasons) matchEmptyReasons.value = null;
         }
       }
     };
@@ -1443,7 +1451,7 @@ window.UiBatchPanel = (function () {
       if (!a) return;
       a.fetchSingleSlotRecommendations({
         teachersList, getTeacherSubjectByEmail, activityBalanceCtx, recommendationLoading, matchMode,
-        matchSearchQuery, matchDisplayCount, matchShowNoTeacherWarning, recommendedTeachers,
+        matchSearchQuery, matchDisplayCount, matchShowNoTeacherWarning, matchEmptyReasons, recommendedTeachers,
         QUOTA_DEDUCT_FEE, ACTIVITY_PUBLIC_FEE
       }, slot);
     };
@@ -1455,7 +1463,7 @@ window.UiBatchPanel = (function () {
       a.fetchBatchRecommendations({
         batchSlots, batchAssignMode, batchActiveSlot, batchActiveSlotKey, activeCell, inputRequestDate,
         teachersList, getTeacherSubjectByEmail, activityBalanceCtx, recommendationLoading, matchMode,
-        matchSearchQuery, matchDisplayCount, matchShowNoTeacherWarning, recommendedTeachers,
+        matchSearchQuery, matchDisplayCount, matchShowNoTeacherWarning, matchEmptyReasons, recommendedTeachers,
         QUOTA_DEDUCT_FEE, ACTIVITY_PUBLIC_FEE
       });
     };
@@ -1657,6 +1665,7 @@ window.UiBatchPanel = (function () {
       } else {
         recommendedTeachers.value = [];
         matchShowNoTeacherWarning.value = false;
+        if (matchEmptyReasons) matchEmptyReasons.value = null;
         showToast('全部節次已指定代課老師，可按「確認申請」', 'info');
       }
     };
