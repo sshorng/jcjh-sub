@@ -328,7 +328,7 @@
                   </label>
                 </div>
                 <div v-else class="mutual-hint-soft">
-                  尚無可進互代的空堂事件（後台「班級空堂事件」請勾可進互代）
+                  尚無可進互代的空堂事件（後台「空堂事件」請勾可進互代）
                 </div>
                 <div class="form-group mb-8">
                   <label class="form-label mutual-note-label">統一備註（寫入本批每筆申請）</label>
@@ -346,8 +346,8 @@
                     <button type="button" class="btn btn-secondary btn-xs" @click="selectAwayGrade('8')">八年級</button>
                     <button type="button" class="btn btn-secondary btn-xs" @click="selectAwayGrade('9')">九年級</button>
                     <button type="button" class="btn btn-secondary btn-xs" @click="mutualAwayClasses = []; persistMutualPanelDraft()">清空班級</button>
-                    <button type="button" class="btn btn-primary btn-xs" @click="recalculateMutualQuotasFromActivity()" title="依期間與外出班，將可累加節數寫入教師「互代額度」（排除帶隊老師）">
-                      ＋累加額度寫回
+                    <button type="button" class="btn btn-primary btn-xs" @click="recalculateMutualQuotasFromActivity()" title="依期間與外出班寫入「額度帳本」發放紀錄（同活動不重複；排除帶隊）">
+                      ＋發放額度
                     </button>
                     <span class="text-mutual-hint">已選 {{ mutualAwayClasses.length }} 班</span>
                   </div>
@@ -404,7 +404,12 @@
                       :key="'ld-'+L.email"
                       class="mutual-leader-row"
                     >
-                      <button type="button" class="btn btn-secondary btn-xs" @click="jumpToTeacherTimetable(L.email)" :title="'跳到 '+L.name+' 課表'">
+                      <button
+                        type="button"
+                        class="btn btn-secondary btn-xs"
+                        @click="jumpToTeacherTimetable(L.email, { useActivityWeek: true })"
+                        :title="'跳到 '+L.name+' 課表，並切到活動期間週次'+(mutualActivityStart ? '（'+mutualActivityStart+'）' : '')"
+                      >
                         {{ L.name }}
                       </button>
                       <span>需求 <strong>{{ L.demand }}</strong></span>
@@ -416,10 +421,10 @@
                     </div>
                   </div>
                   <div v-else class="mutual-hint-soft mutual-hint-mt">
-                    請先勾選「帶隊老師」。需求＝期間應代總節數；尚缺＝需求−已送出−暫定。
+                    請先勾選「帶隊老師」。需求＝期間內課表應代節（不含巡堂／外出班）；尚缺＝需求−已送出−暫定。
                   </div>
                   <div class="mutual-quota-note">
-                    ＊額度只會累加。帶隊不寫入額度。1–7節：額度&gt;0→扣額度並扣 1；＝0→活動公費。第8節：計畫經費（第8節代課），不吃額度、一律給代課老師。
+                    ＊額度寫在「教師名單」；明細在試算表「額度帳本」。同活動不重複發放；扣額度 FIFO。帶隊不發放。1–7節：餘額&gt;0→扣額度；不足→活動公費。第8節不吃額度。
                   </div>
                   <label class="mutual-skip-label">
                     <input type="checkbox" v-model="mutualSkipNotify" class="chk-md">
@@ -443,6 +448,12 @@
                         <span class="text-muted">{{ formatDateMMDD(d.dateStr) }} 第{{ d.period }}節 {{ d.className }}</span>
                         <span>→ <strong class="text-draft-on">{{ d.subName }}</strong></span>
                         <span :class="(d.fee==='扣額度' || d.fee==='互代不結') ? 'text-draft-on' : (d.fee==='第8節代課' ? 'text-period8' : 'text-amber')">{{ d.fee === '互代不結' ? '扣額度' : d.fee }}</span>
+                        <button
+                          type="button"
+                          class="btn btn-secondary mutual-btn-x"
+                          title="模擬對方課表"
+                          @click="previewMutualDraft(d)"
+                        >模擬</button>
                         <button type="button" class="btn btn-secondary mutual-btn-x" @click="removeMutualDraft(d.key)">清除</button>
                       </div>
                     </div>
@@ -1529,7 +1540,7 @@
                     <th>Email (帳號)</th>
                     <th>科目</th>
                     <th>基本鐘點 (基鐘)</th>
-                    <th title="活動互代可用餘額；送出扣額度會扣 1">互代額度</th>
+                    <th title="可用餘額；點數字可看額度帳本歷程">互代額度</th>
                     <th>系統角色</th>
                     <th style="width: 130px;">操作</th>
                   </tr>
@@ -1546,10 +1557,18 @@
                         style="padding: 4px 6px; width: 65px; text-align: center; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.85rem; color: var(--text-primary); font-family: var(--font-sans);"
                         v-model.number="t.baseHours"
                         @change="updateTeacherBaseHours(t.email, t.baseHours)"
+                        @click.stop
+                        @dblclick.stop
                       > 節
                     </td>
-                    <td>
-                      <strong :style="{ color: (t.mutualQuota || 0) > 0 ? '#6b21a8' : 'var(--text-muted)' }">{{ t.mutualQuota || 0 }}</strong>
+                    <td @click.stop @dblclick.stop>
+                      <button
+                        type="button"
+                        class="quota-balance-btn"
+                        :class="{ 'has-quota': (t.mutualQuota || 0) > 0 }"
+                        :title="'點擊查看 ' + (t.name || '') + ' 的額度歷程'"
+                        @click="openQuotaLedger(t)"
+                      >{{ t.mutualQuota || 0 }}</button>
                     </td>
                     <td>
                       <span class="status-badge" :class="t.role === 'admin' ? 'status-pending-teacher' : 'status-approved'" style="font-size: 0.75rem; padding: 2px 6px;">
@@ -1651,10 +1670,10 @@
 
           <!-- 子分頁 4：系統設定（空堂事件 → 學期 → 連線唯讀置底） -->
           <div v-if="adminSubTab === 'settings'">
-            <!-- 班級空堂事件（畢旅／畢業）置頂 -->
-            <div class="card mb-16">
+            <!-- 空堂事件（畢旅／畢業）置頂 -->
+            <div class="card">
               <div class="card-title">
-                <span>📭 班級空堂事件</span>
+                <span>📭 空堂事件</span>
                 <button class="btn btn-primary btn-sm-pad" @click="openAddClassAwayModal">＋ 新增事件</button>
               </div>
               <p style="font-size:0.8rem;color:var(--text-secondary);line-height:1.5;margin:0 0 12px 0;">
@@ -1929,7 +1948,7 @@
                   <table class="match-table w-100-collapse">
                     <thead>
                       <tr class="tr-match-head">
-                        <th class="th-match">教師</th>
+                        <th class="th-match th-match-teacher">教師</th>
                         <th class="th-match">授課/空堂狀態</th>
                         <th class="th-match-op">操作</th>
                       </tr>
@@ -1972,12 +1991,20 @@
                           </template>
                         </td>
                         <td class="td-match-op">
-                          <button
-                            v-if="isMutualCover && !isBatchMatchFlow"
-                            class="btn btn-primary"
-                            style="padding: 4px 8px; font-size: 0.75rem; background:#7c3aed;border-color:#6d28d9;"
-                            @click.stop="assignMutualDraftFromMatch(t.email)"
-                          >暫定此人</button>
+                          <div v-if="isMutualCover && !isBatchMatchFlow" class="match-op-pair">
+                            <button
+                              type="button"
+                              class="btn btn-secondary match-op-btn"
+                              title="對照雙方課表（不寫入暫定）"
+                              @click.stop="prepCompare('substitution', t.email)"
+                            >模擬</button>
+                            <button
+                              type="button"
+                              class="btn btn-primary match-op-btn match-op-btn-draft"
+                              title="加入暫定安排"
+                              @click.stop="assignMutualDraftFromMatch(t.email)"
+                            >暫定</button>
+                          </div>
                           <button
                             v-else-if="isBatchMatchFlow && isBatchPerSlotMode"
                             class="btn btn-primary btn-sm-compact"
@@ -2004,9 +2031,6 @@
                     <button class="btn btn-secondary btn-sm-20" @click="loadMoreMatches">
                       載入更多（{{ displayedRecommendedTeachers.length }} / {{ filteredRecommendedTeachers.length }}）
                     </button>
-                    <div v-if="!matchSearchQuery.trim() && displayedRecommendedTeachers.length >= 30" style="font-size:0.72rem;color:var(--text-muted);margin-top:6px;">
-                      無搜尋時最多顯示 30 人，請輸入姓名／科目
-                    </div>
                   </div>
                 </template>
 
@@ -2015,7 +2039,7 @@
                   <table class="match-table w-100-collapse">
                     <thead>
                       <tr class="tr-match-head">
-                        <th class="th-match">教師</th>
+                        <th class="th-match th-match-teacher">教師</th>
                         <th class="th-match">授課/空堂狀態</th>
                         <th class="th-match-op">操作</th>
                       </tr>
@@ -2242,7 +2266,7 @@
                     </template>
                   </select>
                   <span v-if="isMutualCover && !isPeriod8FeeLocked" style="font-size:0.72rem; color:#5b21b6; display:block; margin-top:4px;">
-                    ＊1–7節：額度&gt;0→扣額度；否則活動公費。第8節固定「第8節代課」。
+                    ＊1–7節：額度&gt;0→扣額度；不足自動改活動公費。第8節固定「第8節代課」。
                   </span>
                   <div
                     v-if="quotaDeductPreview && quotaDeductPreview.length"
@@ -2253,16 +2277,27 @@
                       {{ q.name }}：目前 <strong>{{ q.before }}</strong>
                       → 扣 <strong>{{ q.deduct }}</strong>
                       → 剩 <strong :style="{color: q.short ? '#b91c1c' : '#5b21b6'}">{{ q.short ? '不足' : q.after }}</strong>
-                      <span v-if="q.short" class="text-danger-deep">（不可送出）</span>
+                      <span v-if="q.short" class="text-danger-deep">{{ isMutualCover ? '（將改活動公費）' : '（不可送出）' }}</span>
                     </div>
                     <div v-if="quotaDeductInsufficient" style="margin-top:8px;padding-top:8px;border-top:1px dashed #c4b5fd;color:#b91c1c;">
-                      額度不足，不可用「扣額度」。請改自費排代，或另選有額度的老師。
-                      <button
-                        type="button"
-                        class="btn btn-secondary"
-                        style="margin-left:8px;padding:2px 10px;font-size:0.72rem;"
-                        @click="switchQuotaDeductToSelfPay"
-                      >改為自費代課</button>
+                      <template v-if="isMutualCover">
+                        額度不足：送出時會<strong>自動改為活動公費</strong>。
+                        <button
+                          type="button"
+                          class="btn btn-secondary"
+                          style="margin-left:8px;padding:2px 10px;font-size:0.72rem;"
+                          @click="switchQuotaDeductToSelfPay"
+                        >改為活動公費</button>
+                      </template>
+                      <template v-else>
+                        額度不足，不可用「扣額度」。請改自費排代，或另選有額度的老師。
+                        <button
+                          type="button"
+                          class="btn btn-secondary"
+                          style="margin-left:8px;padding:2px 10px;font-size:0.72rem;"
+                          @click="switchQuotaDeductToSelfPay"
+                        >改為自費代課</button>
+                      </template>
                     </div>
                   </div>
                 </div>
@@ -2286,19 +2321,32 @@
           </div>
           
           <div class="modal-footer" data-tour="compare-submit">
-            <button
-              class="btn btn-success"
-              :disabled="quotaDeductInsufficient || isSubmitting || loading"
-              :title="quotaDeductInsufficient ? '額度不足，請改自費排代' : (isSubmitting || loading ? '送出中，請稍候' : '')"
-              @click="pendingRequestData.isBatch ? executeBatchSubmit() : executeSubmitRequest()"
-            >
-              {{ (isSubmitting || loading)
-                ? '送出中…'
-                : (pendingRequestData.isBatch
-                  ? ('確認批次送出（' + (pendingRequestData.batchCount || batchSlots.length) + ' 節）')
-                  : '確認送出，通知相關人員') }}
-            </button>
-            <button class="btn btn-secondary" :disabled="isSubmitting || loading" @click="showCompareModal = false">取消</button>
+            <!-- 活動互代模擬：只對照課表，確認後寫入暫定（不直接送出申請） -->
+            <template v-if="isMutualCover && pendingRequestData.mutualPreview && !pendingRequestData.isBatch">
+              <button
+                type="button"
+                class="btn btn-primary"
+                style="background:#7c3aed;border-color:#6d28d9;"
+                :disabled="isSubmitting || loading"
+                @click="assignMutualDraftFromMatch(pendingRequestData.subTeacher); showCompareModal = false"
+              >暫定此人</button>
+              <button type="button" class="btn btn-secondary" :disabled="isSubmitting || loading" @click="showCompareModal = false">關閉</button>
+            </template>
+            <template v-else>
+              <button
+                class="btn btn-success"
+                :disabled="(!isMutualCover && quotaDeductInsufficient) || isSubmitting || loading"
+                :title="(!isMutualCover && quotaDeductInsufficient) ? '額度不足，請改自費排代' : (isMutualCover && quotaDeductInsufficient ? '額度不足將改活動公費後送出' : (isSubmitting || loading ? '送出中，請稍候' : ''))"
+                @click="pendingRequestData.isBatch ? executeBatchSubmit() : executeSubmitRequest()"
+              >
+                {{ (isSubmitting || loading)
+                  ? '送出中…'
+                  : (pendingRequestData.isBatch
+                    ? ('確認批次送出（' + (pendingRequestData.batchCount || batchSlots.length) + ' 節）')
+                    : '確認送出，通知相關人員') }}
+              </button>
+              <button class="btn btn-secondary" :disabled="isSubmitting || loading" @click="showCompareModal = false">取消</button>
+            </template>
           </div>
         </div>
       </div>
@@ -2577,9 +2625,9 @@
               <input type="number" class="form-input" placeholder="導師為12節、專任為16節" v-model.number="teacherForm.baseHours">
             </div>
             <div class="form-group">
-              <label class="form-label">互代額度（剩餘）</label>
+              <label class="form-label">互代額度（可用餘額）</label>
               <input type="number" class="form-input" min="0" placeholder="0" v-model.number="teacherForm.mutualQuota">
-              <span style="font-size:0.72rem;color:var(--text-muted);display:block;margin-top:4px;">活動釋出可重算寫入；送出「扣額度」會自動扣 1。</span>
+              <span style="font-size:0.72rem;color:var(--text-muted);display:block;margin-top:4px;">此欄為可用餘額（快取）。建議用活動面板「＋發放額度」；手動改會寫入帳本調整列。</span>
             </div>
           </div>
           <div class="modal-footer">
@@ -2614,7 +2662,7 @@
               <label class="form-label">學期結束日期</label>
               <input type="date" class="form-input" v-model="semesterForm.endDate">
             </div>
-            <p style="font-size:0.75rem;color:var(--text-muted);margin:0;">九年級畢業／畢旅請至「班級空堂事件」設定。</p>
+            <p style="font-size:0.75rem;color:var(--text-muted);margin:0;">九年級畢業／畢旅請至「空堂事件」設定。</p>
           </div>
           <div class="modal-footer">
             <button class="btn btn-primary" @click="saveSemester">{{ semesterModalMode === 'add' ? '建立學期' : '儲存修改' }}</button>
@@ -2623,7 +2671,7 @@
         </div>
       </div>
 
-      <!-- 班級空堂事件 Modal -->
+      <!-- 空堂事件 Modal -->
       <div v-if="showClassAwayModal" class="modal-overlay" @click.self="showClassAwayModal = false">
         <div class="modal-card" style="max-width:560px;">
           <div class="modal-header">
@@ -3078,6 +3126,61 @@
             >
               🗑️ 清空此筆課堂{{ scheduleForm._entries && scheduleForm._entries.length > 1 ? '（目前選取）' : '（設為空堂）' }}
             </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 互代額度歷程 Modal（後台教師管理） -->
+      <div v-if="showQuotaLedgerModal" class="modal-overlay" @click.self="closeQuotaLedger">
+        <div class="modal-card quota-ledger-modal" role="dialog" aria-modal="true" aria-label="額度歷程">
+          <div class="modal-header">
+            <h3>📒 額度歷程
+              <span v-if="quotaLedgerTeacher" class="quota-ledger-who">
+                — {{ quotaLedgerTeacher.name }}
+                <span class="quota-ledger-bal">餘額 {{ quotaLedgerTeacher.sheetQuota != null ? quotaLedgerTeacher.sheetQuota : quotaLedgerTeacher.balance }}</span>
+              </span>
+            </h3>
+            <button type="button" class="btn-close" @click="closeQuotaLedger" aria-label="關閉">&times;</button>
+          </div>
+          <div class="modal-body">
+            <p class="quota-ledger-hint">資料來自試算表「額度帳本」（發放／扣用／還原／手動調整）。</p>
+            <div v-if="quotaLedgerLoading" class="quota-ledger-loading">載入中…</div>
+            <div v-else-if="!quotaLedgerRows.length" class="quota-ledger-empty">尚無歷程列</div>
+            <div v-else class="table-responsive quota-ledger-table-wrap">
+              <table class="custom-table quota-ledger-table">
+                <thead>
+                  <tr>
+                    <th>時間</th>
+                    <th>類型</th>
+                    <th>異動</th>
+                    <th>餘額後</th>
+                    <th>事件</th>
+                    <th>備註</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="row in quotaLedgerRows" :key="row.id || (row.time + row.delta + row.type)">
+                    <td class="quota-ledger-time">{{ row.time }}</td>
+                    <td><span class="quota-type-tag" :class="quotaTypeClass(row.type)">{{ row.typeLabel || row.type || '—' }}</span></td>
+                    <td>
+                      <strong :class="row.delta > 0 ? 'text-ok-green' : (row.delta < 0 ? 'text-danger-deep' : '')">
+                        {{ row.delta > 0 ? ('+' + row.delta) : row.delta }}
+                      </strong>
+                    </td>
+                    <td>{{ row.balanceAfter }}</td>
+                    <td>
+                      <span v-if="row.eventName">{{ row.eventName }}</span>
+                      <span v-else class="text-muted">—</span>
+                      <span v-if="row.startDate" class="quota-ledger-range"> {{ row.startDate }}{{ row.endDate && row.endDate !== row.startDate ? ('～' + row.endDate) : '' }}</span>
+                    </td>
+                    <td class="quota-ledger-note">{{ row.note || (row.operator ? ('操作：' + row.operator) : '—') }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="closeQuotaLedger">關閉</button>
           </div>
         </div>
       </div>
