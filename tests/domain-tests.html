@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <title>domain-* 單元測試</title>
+  <style>
+    body { font-family: system-ui, sans-serif; padding: 24px; background: #f8fafc; }
+    h1 { font-size: 1.2rem; }
+    .pass { color: #15803d; }
+    .fail { color: #b91c1c; font-weight: 700; }
+    pre { background: #fff; border: 1px solid #e2e8f0; padding: 12px; border-radius: 8px; max-height: 50vh; overflow: auto; }
+  </style>
+</head>
+<body>
+  <h1>domain-match / domain-schedule / domain-class-away 單元測試</h1>
+  <p id="summary"></p>
+  <pre id="log"></pre>
+  <script src="../domain-match.js"></script>
+  <script src="../domain-schedule.js"></script>
+  <script src="../domain-class-away.js"></script>
+  <script src="../domain-activity-cover.js"></script>
+  <script src="../domain-billing.js"></script>
+  <script src="../fee-utils.js"></script>
+  <script>
+    (function () {
+      var log = [];
+      var passed = 0;
+      var failed = 0;
+
+      function assert(name, cond, detail) {
+        if (cond) {
+          passed++;
+          log.push('✓ ' + name);
+        } else {
+          failed++;
+          log.push('✗ ' + name + (detail ? ' — ' + detail : ''));
+        }
+      }
+
+      // ── parseSubjects ──
+      var ps = window.DomainMatch.parseSubjects;
+      assert('parseSubjects 頓號', JSON.stringify(ps('國文、輔導')) === JSON.stringify(['國文', '輔導']));
+      assert('parseSubjects 逗號', JSON.stringify(ps('國文,歷史')) === JSON.stringify(['國文', '歷史']));
+      assert('parseSubjects 空', ps('').length === 0);
+
+      // ── rankSubstitutionCandidates ──
+      var teachers = [
+        { email: 'a@x', name: '甲', subject: '國文' },
+        { email: 'b@x', name: '乙', subject: '國文、輔導' },
+        { email: 'c@x', name: '丙', subject: '數學' },
+        { email: 'd@x', name: '丁', subject: '輔導' }
+      ];
+      var schedules = [
+        { teacherEmail: 'a@x', dayOfWeek: 1, period: 2, className: '701', subject: '國文' },
+        { teacherEmail: 'b@x', dayOfWeek: 1, period: 3, className: '702', subject: '輔導' },
+        { teacherEmail: 'd@x', dayOfWeek: 2, period: 1, className: '701', subject: '輔導' }
+      ];
+      // 簡易 getScheduleForDate：只看基礎課表，不管異動
+      function mockGet(email, dateStr, period, day) {
+        var hit = schedules.find(function (s) {
+          return s.teacherEmail === email && parseInt(s.dayOfWeek) === parseInt(day) && parseInt(s.period) === parseInt(period);
+        });
+        return hit || null;
+      }
+      // 請假：甲 週一第1節「輔導」—— 需求科應為輔導（格子是標準科）
+      var ranked = window.DomainMatch.rankSubstitutionCandidates({
+        teachers: teachers,
+        allSchedules: schedules,
+        leaveEmail: 'a@x',
+        dateStr: '2026-07-13',
+        targetDay: 1,
+        targetPeriod: 1,
+        myCourse: '輔導',
+        myDomain: '國文、輔導',
+        myClass: '701',
+        getScheduleForDate: mockGet
+      });
+      var d = ranked.find(function (t) { return t.email === 'd@x'; });
+      var c = ranked.find(function (t) { return t.email === 'c@x'; });
+      var b = ranked.find(function (t) { return t.email === 'b@x'; });
+      assert('輔導代課：丁同科', d && d.isSameSubject === true);
+      assert('輔導代課：丙不同科', c && c.isSameSubject === false);
+      assert('輔導代課：乙同科（名單含輔導）', b && b.isSameSubject === true);
+      assert('請假人自己不在名單', !ranked.find(function (t) { return t.email === 'a@x'; }));
+
+      // 走讀：需求科回退名單第一科「國文」
+      var ranked2 = window.DomainMatch.rankSubstitutionCandidates({
+        teachers: teachers,
+        allSchedules: schedules,
+        leaveEmail: 'b@x',
+        dateStr: '2026-07-13',
+        targetDay: 1,
+        targetPeriod: 1,
+        myCourse: '走讀',
+        myDomain: '國文、輔導',
+        myClass: '702',
+        getScheduleForDate: mockGet
+      });
+      var a2 = ranked2.find(function (t) { return t.email === 'a@x'; });
+      var d2 = ranked2.find(function (t) { return t.email === 'd@x'; });
+      assert('走讀：甲同科（回退國文）', a2 && a2.isSameSubject === true, a2 && 'demand=' + a2.demandDomain);
+      assert('走讀：丁不同科（只有輔導）', d2 && d2.isSameSubject === false, d2 && 'demand=' + d2.demandDomain);
+
+      // ── schedule index + resolve ──
+      var idx = window.DomainSchedule.buildScheduleIndex(schedules);
+      assert('index 有 a|1|2', !!(idx.byTeacherSlot['a@x|1|2'] && idx.byTeacherSlot['a@x|1|2'].length));
+      var base = window.DomainSchedule.resolveApprovedSchedule({
+        teacherEmail: 'a@x',
+        dateStr: '2026-07-13',
+        period: 2,
+        dayOfWeek: 1,
+        allSchedules: schedules,
+        scheduleIndex: idx,
+        periodSubs: [],
+        allSubs: [],
+        helpers: {
+          getTeacherNameByEmail: function () { return 'X'; },
+          getTeacherSubjectByEmail: function () { return ''; },
+          formatDateMMDD: function (d) { return d; },
+          isSingleWeek: function () { return true; },
+          isClassAway: function () { return false; }
+        }
+      });
+      assert('resolve 基礎課', base && base.subject === '國文' && base.className === '701');
+
+      // 代課出：a 的課由 d 代
+      var subRec = {
+        originalTeacherEmail: 'a@x',
+        actualTeacherEmail: 'd@x',
+        type: 'substitution',
+        requestId: 'r1',
+        subject: '國文',
+        className: '701',
+        date: '2026-07-13',
+        period: 2,
+        subFee: '自費代課'
+      };
+      var outCell = window.DomainSchedule.resolveApprovedSchedule({
+        teacherEmail: 'a@x',
+        dateStr: '2026-07-13',
+        period: 2,
+        dayOfWeek: 1,
+        allSchedules: schedules,
+        scheduleIndex: idx,
+        periodSubs: [subRec],
+        allSubs: [subRec],
+        helpers: {
+          getTeacherNameByEmail: function (e) { return e === 'd@x' ? '丁' : '甲'; },
+          getTeacherSubjectByEmail: function () { return ''; },
+          formatDateMMDD: function (d) { return d; },
+          isSingleWeek: function () { return true; },
+          isClassAway: function () { return false; }
+        }
+      });
+      assert('代課調出 isSubstituted', outCell && outCell.isSubstituted === true);
+
+      var inCell = window.DomainSchedule.resolveApprovedSchedule({
+        teacherEmail: 'd@x',
+        dateStr: '2026-07-13',
+        period: 2,
+        dayOfWeek: 1,
+        allSchedules: schedules,
+        scheduleIndex: idx,
+        periodSubs: [subRec],
+        allSubs: [subRec],
+        helpers: {
+          getTeacherNameByEmail: function (e) { return e === 'a@x' ? '甲' : '丁'; },
+          getTeacherSubjectByEmail: function () { return ''; },
+          formatDateMMDD: function (d) { return d; },
+          isSingleWeek: function () { return true; },
+          isClassAway: function () { return false; }
+        }
+      });
+      assert('代課調入 isSubstitutionDuty', inCell && inCell.isSubstitutionDuty === true);
+      assert('代課調入班科', inCell && inCell.className === '701' && inCell.subject === '國文');
+
+      // 對調：班科以紀錄為準（對方課），非僅原師基礎課
+      var exA = {
+        id: 'ex1', requestId: 'rex', type: 'exchange',
+        originalTeacherEmail: 'a@x', actualTeacherEmail: 'd@x',
+        date: '2026-07-13', period: 2, className: '701', subject: '國文', subFee: '無'
+      };
+      var exB = {
+        id: 'ex2', requestId: 'rex', type: 'exchange',
+        originalTeacherEmail: 'd@x', actualTeacherEmail: 'a@x',
+        date: '2026-07-14', period: 3, className: '702', subject: '輔導', subFee: '無'
+      };
+      var schedulesEx = schedules.concat([
+        { teacherEmail: 'd@x', dayOfWeek: 2, period: 3, className: '702', subject: '輔導' }
+      ]);
+      var idxEx = window.DomainSchedule.buildScheduleIndex(schedulesEx);
+      var helpersEx = {
+        getTeacherNameByEmail: function (e) { return e; },
+        getTeacherSubjectByEmail: function () { return ''; },
+        formatDateMMDD: function (d) { return String(d).slice(5); },
+        isSingleWeek: function () { return true; },
+        isClassAway: function () { return false; }
+      };
+      var aOut = window.DomainSchedule.resolveApprovedSchedule({
+        teacherEmail: 'a@x', dateStr: '2026-07-13', period: 2, dayOfWeek: 1,
+        allSchedules: schedulesEx, scheduleIndex: idxEx,
+        periodSubs: [exA], allSubs: [exA, exB], helpers: helpersEx
+      });
+      // 調出：主標仍是本節離開的課（國文），副標才寫調至對方
+      assert('對調調出主標仍是本課', aOut && aOut.isSubstituted && aOut.subject === '國文' && aOut.className === '701',
+        aOut && (aOut.className + '/' + aOut.subject));
+      assert('對調調出副標有對方時間', aOut && aOut.subText && aOut.subText.indexOf('調至') >= 0);
+      var aIn = window.DomainSchedule.resolveApprovedSchedule({
+        teacherEmail: 'a@x', dateStr: '2026-07-14', period: 3, dayOfWeek: 2,
+        allSchedules: schedulesEx, scheduleIndex: idxEx,
+        periodSubs: [exB], allSubs: [exA, exB], helpers: helpersEx
+      });
+      // 調入：主標＝自己的科目（A 專長），helpers 給 a@x 國文
+      helpersEx.getTeacherSubjectByEmail = function (e) {
+        if (e === 'a@x') return '國文';
+        if (e === 'd@x') return '輔導';
+        return '';
+      };
+      aIn = window.DomainSchedule.resolveApprovedSchedule({
+        teacherEmail: 'a@x', dateStr: '2026-07-14', period: 3, dayOfWeek: 2,
+        allSchedules: schedulesEx, scheduleIndex: idxEx,
+        periodSubs: [exB], allSubs: [exA, exB], helpers: helpersEx
+      });
+      assert('對調調入主標是自己科目', aIn && aIn.isSubstitutionDuty && aIn.subject === '國文',
+        aIn && (aIn.className + '/' + aIn.subject));
+
+      // A理化 B國文 C數學：AB 後 BC — 課表上 B 異動格主標永遠國文
+      var schedulesABC = [
+        { teacherEmail: 'a@x', dayOfWeek: 1, period: 1, className: '801', subject: '理化' },
+        { teacherEmail: 'b@x', dayOfWeek: 1, period: 2, className: '802', subject: '國文' },
+        { teacherEmail: 'c@x', dayOfWeek: 1, period: 3, className: '803', subject: '數學' }
+      ];
+      var idxABC = window.DomainSchedule.buildScheduleIndex(schedulesABC);
+      var ab1 = { id: 'ab1', requestId: 'ab', type: 'exchange', originalTeacherEmail: 'a@x', actualTeacherEmail: 'b@x',
+        date: '2026-07-13', period: 1, className: '801', subject: '理化', subFee: '無' };
+      var ab2 = { id: 'ab2', requestId: 'ab', type: 'exchange', originalTeacherEmail: 'b@x', actualTeacherEmail: 'a@x',
+        date: '2026-07-13', period: 2, className: '802', subject: '國文', subFee: '無' };
+      // BC：B 再調（紀錄寫國文＝自己的課）
+      var bc1 = { id: 'bc1', requestId: 'bc', type: 'exchange', originalTeacherEmail: 'b@x', actualTeacherEmail: 'c@x',
+        date: '2026-07-13', period: 1, className: '802', subject: '國文', subFee: '無' };
+      var bc2 = { id: 'bc2', requestId: 'bc', type: 'exchange', originalTeacherEmail: 'c@x', actualTeacherEmail: 'b@x',
+        date: '2026-07-13', period: 3, className: '803', subject: '數學', subFee: '無' };
+      var hABC = {
+        getTeacherNameByEmail: function (e) { return e; },
+        getTeacherSubjectByEmail: function (e) {
+          if (e === 'a@x') return '理化';
+          if (e === 'b@x') return '國文';
+          if (e === 'c@x') return '數學';
+          return '';
+        },
+        formatDateMMDD: function (d) { return d; },
+        isSingleWeek: function () { return true; },
+        isClassAway: function () { return false; }
+      };
+      var bP1 = window.DomainSchedule.resolveApprovedSchedule({
+        teacherEmail: 'b@x', dateStr: '2026-07-13', period: 1, dayOfWeek: 1,
+        allSchedules: schedulesABC, scheduleIndex: idxABC,
+        periodSubs: [ab1, bc1], allSubs: [ab1, ab2, bc1, bc2], helpers: hABC
+      });
+      assert('B 再調出主標仍是國文', bP1 && bP1.isSubstituted && bP1.subject === '國文',
+        bP1 && (bP1.subject + '/' + (bP1.isSubstituted ? 'out' : '')));
+      var cP1 = window.DomainSchedule.resolveApprovedSchedule({
+        teacherEmail: 'c@x', dateStr: '2026-07-13', period: 1, dayOfWeek: 1,
+        allSchedules: schedulesABC, scheduleIndex: idxABC,
+        periodSubs: [ab1, bc1], allSubs: [ab1, ab2, bc1, bc2], helpers: hABC
+      });
+      assert('C 調入主標是數學（自己）', cP1 && cP1.isSubstitutionDuty && cP1.subject === '數學',
+        cP1 && (cP1.className + '/' + cP1.subject));
+      var bP3 = window.DomainSchedule.resolveApprovedSchedule({
+        teacherEmail: 'b@x', dateStr: '2026-07-13', period: 3, dayOfWeek: 1,
+        allSchedules: schedulesABC, scheduleIndex: idxABC,
+        periodSubs: [bc2], allSubs: [ab1, ab2, bc1, bc2], helpers: hABC
+      });
+      assert('B 調入主標仍是國文', bP3 && bP3.isSubstitutionDuty && bP3.subject === '國文',
+        bP3 && (bP3.className + '/' + bP3.subject));
+      var bP2 = window.DomainSchedule.resolveApprovedSchedule({
+        teacherEmail: 'b@x', dateStr: '2026-07-13', period: 2, dayOfWeek: 1,
+        allSchedules: schedulesABC, scheduleIndex: idxABC,
+        periodSubs: [ab2], allSubs: [ab1, ab2, bc1, bc2], helpers: hABC
+      });
+      assert('B AB調出主標是國文', bP2 && bP2.isSubstituted && bP2.subject === '國文',
+        bP2 && (bP2.subject + ''));
+
+      // 多段鏈：a→d 後，d 再轉給 e（同節）— e 應仍見 701 國文
+      var subRec2 = {
+        originalTeacherEmail: 'd@x',
+        actualTeacherEmail: 'e@x',
+        type: 'exchange',
+        requestId: 'r2',
+        subject: '國文',
+        className: '701',
+        date: '2026-07-13',
+        period: 2,
+        subFee: '無'
+      };
+      var chainIn = window.DomainSchedule.resolveApprovedSchedule({
+        teacherEmail: 'e@x',
+        dateStr: '2026-07-13',
+        period: 2,
+        dayOfWeek: 1,
+        allSchedules: schedules,
+        scheduleIndex: idx,
+        periodSubs: [subRec, subRec2],
+        allSubs: [subRec, subRec2],
+        helpers: {
+          getTeacherNameByEmail: function (e) { return e; },
+          getTeacherSubjectByEmail: function () { return ''; },
+          formatDateMMDD: function (d) { return d; },
+          isSingleWeek: function () { return true; },
+          isClassAway: function () { return false; }
+        }
+      });
+      assert('多段鏈末端 isSubstitutionDuty', chainIn && chainIn.isSubstitutionDuty === true);
+      assert('多段鏈末端班科仍為 701 國文',
+        chainIn && chainIn.className === '701' && chainIn.subject === '國文',
+        chainIn && (chainIn.className + '/' + chainIn.subject));
+
+      // pending 疊加
+      var pendingOut = window.DomainSchedule.applyPendingOverlay({
+        cell: { className: '701', subject: '國文', teacherEmail: 'a@x' },
+        teacherEmail: 'a@x',
+        dateStr: '2026-07-13',
+        period: 2,
+        pendingRequests: [{
+          type: 'substitution',
+          requesterEmail: 'a@x',
+          targetTeacherEmail: 'd@x',
+          targetTeacherName: '丁',
+          requestDate: '2026-07-13',
+          requestPeriod: 2,
+          className: '701',
+          subject: '國文'
+        }],
+        getWeekDayText: function (d) { return d; }
+      });
+      assert('pending 調出', pendingOut && pendingOut.isPending && pendingOut.pendingType === 'substitution_out');
+
+      // ── domain-class-away ──
+      var DCA = window.DomainClassAway;
+      assert('DomainClassAway 載入', !!DCA);
+      if (DCA) {
+        var trip = {
+          name: '畢旅', startDate: '2026-04-21', endDate: '2026-04-22',
+          classes: ['901', '902'], billingRule: 'keep', forMutual: true, enabled: true
+        };
+        var grad = {
+          name: '畢業', startDate: '2026-06-10', endDate: '',
+          classes: ['901', '902', '903'], billingRule: 'reduce', forMutual: false, enabled: true
+        };
+        assert('畢旅當日 901 空堂', DCA.isClassAwayOnDate('901', '2026-04-21', [trip], '2026-06-30') === true);
+        assert('畢旅隔日 901 不空', DCA.isClassAwayOnDate('901', '2026-04-23', [trip], '2026-06-30') === false);
+        assert('畢業迄日空白到學期結束', DCA.isClassAwayOnDate('901', '2026-06-20', [grad], '2026-06-30') === true);
+        assert('畢業後學期外不空', DCA.isClassAwayOnDate('901', '2026-07-01', [grad], '2026-06-30') === false);
+        assert('可進互代篩選班', DCA.getAwayClassesInRange('2026-04-20', '2026-04-25', [trip, grad], '2026-06-30', { forMutualOnly: true }).join() === '901,902');
+        var ded = DCA.computeReduceDeduction({
+          teacherEmail: 't@x',
+          allSchedules: [
+            { teacherEmail: 't@x', period: 1, attr: '基本', className: '901' },
+            { teacherEmail: 't@x', period: 2, attr: '基本', className: '701' },
+            { teacherEmail: 't@x', period: 3, attr: '基本', className: '902' }
+          ],
+          events: [grad],
+          semesterEndDate: '2026-06-30',
+          reportMonth: '2026-06',
+          reportWeeksCount: 4
+        });
+        // 6/10 起 reduce：6 月週一 6/1 不扣，6/8 若 < 6/10 不扣，6/15、6/22、6/29 扣；901+902=2 節/週
+        assert('reduce 扣節 > 0', ded > 0, 'ded=' + ded);
+        assert('keep 不進 reduce', DCA.computeReduceDeduction({
+          teacherEmail: 't@x',
+          allSchedules: [{ teacherEmail: 't@x', period: 1, attr: '基本', className: '901' }],
+          events: [trip],
+          semesterEndDate: '2026-06-30',
+          reportMonth: '2026-04',
+          reportWeeksCount: 4
+        }) === 0);
+        assert('班級淨化 000', DCA.parseClassList('0,701,000,902').join() === '701,902');
+        assert('數字 901', DCA.parseClassList(901).join() === '901');
+      }
+
+      // ── 活動互代進度／空堂邏輯 ──
+      var DAC = window.DomainActivityCover;
+      assert('DomainActivityCover 載入', !!DAC);
+      if (DAC) {
+        var cellAway = { className: '901', isClassAway: true };
+        assert('isClassAway 可代', DAC.isFreeForActivity(cellAway, []).free === true);
+        assert('isClassAway 不衝堂', DAC.isConflictCell(cellAway, true, []) === false);
+        assert('isQuota 含舊別名', DAC.isQuotaDeductFee('互代不結') === true);
+        assert('isQuota 扣額度', DAC.isQuotaDeductFee('扣額度') === true);
+
+        var schedules = [
+          { teacherEmail: 'a@x', dayOfWeek: 1, period: 1, className: '701', attr: '基本' },
+          { teacherEmail: 'a@x', dayOfWeek: 1, period: 2, className: '702', attr: '基本' },
+          { teacherEmail: 'a@x', dayOfWeek: 1, period: 3, className: '703', attr: '基本' }
+        ];
+        var reqs = [
+          { type: 'substitution', requesterEmail: 'a@x', requestDate: '2026-07-13', subFee: '扣額度', status: 'approved' },
+          { type: 'substitution', requesterEmail: 'a@x', requestDate: '2026-07-13', subFee: '扣額度', status: 'approved' },
+          { type: 'substitution', requesterEmail: 'b@x', requestDate: '2026-07-13', subFee: '扣額度', status: 'approved' }
+        ];
+        function mockGet(em, d, p) {
+          if (p === 1) return { className: '701', isSubstituted: true };
+          if (p === 2) return { className: '702', isSubstituted: true };
+          if (p === 3) return { className: '703' };
+          return null;
+        }
+        var st = DAC.buildStats({
+          active: true,
+          awayClasses: [],
+          startDate: '2026-07-13',
+          endDate: '2026-07-13',
+          allSchedules: schedules,
+          requests: reqs,
+          weekDates: ['2026-07-13'],
+          leaderEmails: [{ email: 'a@x', name: '甲' }],
+          teachers: [{ email: 'a@x', name: '甲' }],
+          getScheduleForDate: mockGet
+        });
+        assert('需求含已代（3）', st.demand === 3, 'demand=' + st.demand);
+        assert('已送出只算帶隊（2）', st.arranged === 2, 'arranged=' + st.arranged);
+        assert('尚缺 1', st.remaining === 1, 'remaining=' + st.remaining);
+        var st0 = DAC.buildStats({
+          active: true, awayClasses: [], startDate: '2026-07-13', endDate: '2026-07-13',
+          allSchedules: schedules, requests: reqs, weekDates: ['2026-07-13'],
+          leaderEmails: [], teachers: []
+        });
+        assert('未勾帶隊需求0', st0.demand === 0 && st0.arranged === 0);
+      }
+
+      // ── 巡堂 ──
+      if (window.DomainSchedule) {
+        assert('isPatrolAttr', window.DomainSchedule.isPatrolAttr('巡堂') === true);
+        assert('isPatrolCell', window.DomainSchedule.isPatrolCell({ attr: '巡堂', subject: '巡堂' }) === true);
+        assert('非巡堂', window.DomainSchedule.isPatrolCell({ attr: '基本', className: '701' }) === false);
+      }
+      if (DAC) {
+        var cellPatrol = { attr: '巡堂', subject: '巡堂', className: '巡堂' };
+        assert('巡堂可代', DAC.isFreeForActivity(cellPatrol, []).free === true);
+        assert('巡堂不衝堂', DAC.isConflictCell(cellPatrol, false, []) === false);
+      }
+      if (window.DomainBilling) {
+        var bill = window.DomainBilling.buildMonthlyReportRows({
+          teachers: [{ email: 'p@x', name: '巡', baseHours: 16 }],
+          allSchedules: [
+            { teacherEmail: 'p@x', period: 1, attr: '基本' },
+            { teacherEmail: 'p@x', period: 2, attr: '巡堂' },
+            { teacherEmail: 'p@x', period: 3, attr: '巡堂' }
+          ],
+          substitutionRecords: [],
+          reportMonth: '2026-07',
+          reportWeeksCount: 4,
+          getTeacherNameByEmail: function () { return '巡'; }
+        });
+        assert('巡堂不計週鐘點', bill[0] && bill[0].weeklyPeriods === 1, 'weekly=' + (bill[0] && bill[0].weeklyPeriods));
+
+        // 第8節：誰上誰拿；空堂日不發
+        var p8 = window.DomainBilling.buildPeriod8Payout({
+          reportMonth: '2026-07',
+          allSchedules: [
+            { teacherEmail: 'a@x', dayOfWeek: 1, period: 8, className: '701', subject: '輔導', attr: '輔導' }
+          ],
+          substitutionRecords: [],
+          classAwayEvents: [{
+            name: '颱風', startDate: '2026-07-13', endDate: '2026-07-13',
+            classes: ['701'], billingRule: 'keep', enabled: true
+          }],
+          semesterEndDate: '2026-12-31',
+          getTeacherNameByEmail: function (e) { return e === 'a@x' ? '甲' : e; },
+          isSingleWeek: function () { return true; }
+        });
+        var mon13 = (p8.details || []).filter(function (r) { return r.date === '2026-07-13'; });
+        assert('颱風日第8標 away', mon13.length && mon13[0].source === 'away' && mon13[0].fee === 0);
+        var paid = (p8.byEmail['a@x'] && p8.byEmail['a@x'].count) || 0;
+        // 2026-07 有多個週一；至少有一節非 7/13 應發
+        assert('非空堂日第8有發', paid >= 1, 'paid=' + paid);
+      }
+
+      if (window.FeeUtils) {
+        assert('FeeUtils 顯示互代不結→扣額度', window.FeeUtils.displayFeeLabel('互代不結') === '扣額度');
+      }
+
+      // ── pending 索引 ──
+      if (window.DomainSchedule && window.DomainSchedule.buildPendingIndex) {
+        var pIdx = window.DomainSchedule.buildPendingIndex([
+          {
+            type: 'substitution', requesterEmail: 'a@x', targetTeacherEmail: 'd@x',
+            requestDate: '2026-07-13', requestPeriod: 2, targetTeacherName: '丁', requesterName: '甲',
+            className: '701', subject: '國文'
+          },
+          {
+            type: 'exchange', requesterEmail: 'a@x', targetTeacherEmail: 'b@x',
+            requestDate: '2026-07-14', requestPeriod: 3, targetDate: '2026-07-15', targetPeriod: 4,
+            requestPeriodDay: 2, targetDayOfWeek: 3,
+            targetTeacherName: '乙', requesterName: '甲', className: '701', subject: '國文'
+          }
+        ]);
+        assert('pending 代出索引', !!(pIdx['a@x|2026-07-13|2'] && pIdx['a@x|2026-07-13|2'].outReq));
+        assert('pending 代入索引', !!(pIdx['d@x|2026-07-13|2'] && pIdx['d@x|2026-07-13|2'].subIn));
+        var ov = window.DomainSchedule.applyPendingOverlay({
+          cell: { className: '701', subject: '國文' },
+          teacherEmail: 'a@x', dateStr: '2026-07-13', period: 2,
+          pendingRequests: [], pendingIndex: pIdx,
+          getWeekDayText: function () { return '一'; }
+        });
+        assert('pending 索引疊加代出', ov && ov.isPending && ov.pendingType === 'substitution_out');
+      }
+
+      // ── 媒合：外出班當空堂；僅活動互代往上排 ──
+      if (window.DomainMatch && window.DomainMatch.isSlotFreeForMatch) {
+        assert('空堂事件當空', window.DomainMatch.isSlotFreeForMatch({ className: '901', isClassAway: true }, {}) === true);
+        assert('一般有課不空', window.DomainMatch.isSlotFreeForMatch({ className: '701' }, {}) === false);
+        assert('面板外出班當空', window.DomainMatch.isSlotFreeForMatch({ className: '701' }, { '701': true }) === true);
+        var teachers2 = [
+          { email: 'a@x', name: '甲', subject: '國文' },
+          { email: 'b@x', name: '乙', subject: '數學' }
+        ];
+        function get2(em, d, p) {
+          if (em === 'a@x' && p === 1) return { className: '901', isClassAway: true };
+          if (em === 'b@x' && p === 1) return null;
+          return { className: '701' };
+        }
+        var actRank = window.DomainMatch.rankSubstitutionCandidates({
+          teachers: teachers2, allSchedules: [], leaveEmail: 'z@x', dateStr: '2026-07-13',
+          targetDay: 1, targetPeriod: 1, myCourse: '國', myDomain: '數學', myClass: '701',
+          getScheduleForDate: get2, awayClasses: [], activityMode: true, preferReleasedByAway: true
+        });
+        assert('活動互代釋出置頂', actRank[0] && actRank[0].email === 'a@x' && actRank[0].score >= 100);
+        var normRank = window.DomainMatch.rankSubstitutionCandidates({
+          teachers: teachers2, allSchedules: [], leaveEmail: 'z@x', dateStr: '2026-07-13',
+          targetDay: 1, targetPeriod: 1, myCourse: '國', myDomain: '數學', myClass: '701',
+          getScheduleForDate: get2, awayClasses: [], activityMode: false, preferReleasedByAway: false
+        });
+        assert('一般代課釋出不加100', normRank.find(function (t) { return t.email === 'a@x'; }).score < 100);
+      }
+
+      document.getElementById('summary').innerHTML =
+        failed === 0
+          ? '<span class="pass">全部通過 ' + passed + ' 項</span>'
+          : '<span class="fail">失敗 ' + failed + ' / 通過 ' + passed + '</span>';
+      document.getElementById('log').textContent = log.join('\n');
+      document.title = (failed === 0 ? 'PASS' : 'FAIL') + ' — domain tests';
+    })();
+  </script>
+</body>
+</html>

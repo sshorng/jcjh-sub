@@ -260,16 +260,6 @@ window.DomainMatch = (function () {
         });
       }
     });
-    // 綁課／特殊課程往後排（仍可選，但優先推一般課）
-    res.sort(function (a, b) {
-      var ra = (a.restriction === 'restricted' || a.restriction === '限制') ? 1 : 0;
-      var rb = (b.restriction === 'restricted' || b.restriction === '限制') ? 1 : 0;
-      if (ra !== rb) return ra - rb;
-      var da = parseInt(a.dayOfWeek, 10) || 0;
-      var db = parseInt(b.dayOfWeek, 10) || 0;
-      if (da !== db) return da - db;
-      return (parseInt(a.period, 10) || 0) - (parseInt(b.period, 10) || 0);
-    });
     return res;
   }
 

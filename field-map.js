@@ -262,7 +262,6 @@ window.FieldMap = (function () {
       adminApproveBatch: '批次行政核准',
       adminRejectBatch: '批次行政駁回',
       getMatchCandidates: '智慧媒合',
-      getMutualQuotaLedger: '額度歷程',
       adminReject: '行政駁回',
       cancelRequest: '撤回申請',
       deleteSubstitutionRecord: '撤銷異動',
