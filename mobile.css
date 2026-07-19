@@ -118,14 +118,17 @@
   .nav-brand {
     font-size: 0.9rem;
     gap: 6px;
-    max-width: 55%;
+    max-width: 50%;
+    overflow: hidden;
+  }
+  .nav-title-full { display: none !important; }
+  .nav-title-short {
+    display: inline !important;
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .nav-brand span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
+  .nav-label-full { display: none !important; }
+  .nav-label-short { display: inline !important; }
   
   .nav-logo-icon {
     width: 26px;
@@ -158,9 +161,18 @@
     padding: 2px 4px;
     font-size: 0.75rem;
   }
-  .btn-logout, .btn-help {
+  .btn-logout {
     padding: 4px 8px;
     font-size: 0.72rem;
+    min-height: 28px;
+  }
+  .btn-nav-icon,
+  .btn-data-refresh,
+  .btn-help {
+    min-width: 28px;
+    min-height: 28px;
+    font-size: 0.9rem;
+    padding: 0;
   }
 
   /* 導航選單：可左右滑，避免字被壓扁 */
@@ -180,9 +192,9 @@
   .nav-item {
     flex: 0 0 auto;
     text-align: center;
-    padding: 8px 10px;
+    padding: 8px 8px;
     min-height: 36px;
-    font-size: 0.8rem;
+    font-size: 0.82rem;
     white-space: nowrap;
     background: transparent;
     border-bottom-width: 2px;
@@ -243,6 +255,34 @@
     width: 100% !important;
     max-width: 100% !important;
     min-width: 0 !important;
+  }
+  /* 手機：快速待辦在課表上方；按鈕與內容同一列 */
+  .mobile-quick-todo-top {
+    order: -1 !important;
+    width: 100% !important;
+  }
+  .mobile-quick-todo-top .quick-todo-row {
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    gap: 6px !important;
+  }
+  .mobile-quick-todo-top .quick-todo-main {
+    min-width: 0 !important;
+    flex: 1 1 auto !important;
+  }
+  .mobile-quick-todo-top .quick-todo-actions {
+    width: auto !important;
+    flex-shrink: 0 !important;
+    margin-top: 0 !important;
+    justify-content: flex-end !important;
+    flex-wrap: nowrap !important;
+    gap: 4px !important;
+  }
+  .mobile-quick-todo-top .quick-todo-actions .btn {
+    min-height: 32px !important;
+    padding: 4px 8px !important;
+    font-size: 0.72rem !important;
+    white-space: nowrap !important;
   }
   .two-column-layout > * {
     width: 100% !important;
@@ -690,19 +730,24 @@
     margin-left: 0 !important;
   }
 
-  /* 快速待辦：按鈕不擠爆 */
+  /* 快速待辦：按鈕與內容同一列 */
   .quick-todo-row {
-    align-items: flex-start !important;
+    align-items: center !important;
+    flex-wrap: nowrap !important;
     gap: 6px !important;
   }
   .quick-todo-actions {
-    flex-wrap: wrap;
-    max-width: 48%;
+    flex-wrap: nowrap !important;
+    max-width: none !important;
+    width: auto !important;
+    flex-shrink: 0 !important;
+    margin-top: 0 !important;
     justify-content: flex-end;
   }
   .quick-todo-actions .btn {
     padding: 4px 7px !important;
     font-size: 0.68rem !important;
+    white-space: nowrap !important;
   }
   .hist-actions {
     flex-direction: column;
