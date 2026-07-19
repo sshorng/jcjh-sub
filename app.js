@@ -24,6 +24,57 @@ function showToast(msg, type = 'info', duration = 3500) {
   }, duration);
 }
 
+// ── Modal 無障礙：Esc 關閉 + 焦點陷阱 ───────────────────────
+function installModalA11y(overlay, opts) {
+  opts = opts || {};
+  const onClose = typeof opts.onClose === 'function' ? opts.onClose : function () {};
+  const box = opts.box || overlay.querySelector('.modal-card, .match-drawer, #confirm-box, [role="dialog"]') || overlay;
+  const prevFocus = document.activeElement;
+  const FOCUSABLE = 'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])';
+  overlay.setAttribute('role', 'presentation');
+  if (box) {
+    box.setAttribute('role', 'dialog');
+    box.setAttribute('aria-modal', 'true');
+    if (opts.label && !box.getAttribute('aria-label') && !box.getAttribute('aria-labelledby')) {
+      box.setAttribute('aria-label', opts.label);
+    }
+  }
+  const onKey = (e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      onClose();
+      return;
+    }
+    if (e.key !== 'Tab' || !box) return;
+    const nodes = Array.prototype.slice.call(box.querySelectorAll(FOCUSABLE))
+      .filter((el) => el.offsetParent !== null || el === document.activeElement);
+    if (!nodes.length) return;
+    const first = nodes[0];
+    const last = nodes[nodes.length - 1];
+    if (e.shiftKey) {
+      if (document.activeElement === first || !box.contains(document.activeElement)) {
+        e.preventDefault();
+        last.focus();
+      }
+    } else if (document.activeElement === last || !box.contains(document.activeElement)) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
+  document.addEventListener('keydown', onKey, true);
+  requestAnimationFrame(() => {
+    const prefer = box && (box.querySelector('[data-autofocus], .btn-close, #confirm-ok, button') || box);
+    try { if (prefer && prefer.focus) prefer.focus(); } catch (eF) { /* ignore */ }
+  });
+  return () => {
+    document.removeEventListener('keydown', onKey, true);
+    try {
+      if (prevFocus && prevFocus.focus && document.contains(prevFocus)) prevFocus.focus();
+    } catch (eR) { /* ignore */ }
+  };
+}
+
 // ── 自訂確認 Modal ──────────────────────────────────────────
 // opts.withNote=true 時回傳 { ok, note }；否則回傳 boolean
 function showConfirm(msg, title = '請確認', opts = {}) {
@@ -44,22 +95,24 @@ function showConfirm(msg, title = '請確認', opts = {}) {
     msgEl.textContent = msg;
     if (noteWrap && noteEl) {
       if (opts.withNote) {
-        noteWrap.style.display = 'block';
+        noteWrap.classList.add('is-open');
         noteEl.value = '';
         noteEl.placeholder = opts.notePlaceholder || '備註（選填）';
       } else {
-        noteWrap.style.display = 'none';
+        noteWrap.classList.remove('is-open');
         noteEl.value = '';
       }
     }
     overlay.classList.add('confirm-show');
+    let disposeA11y = null;
     const cleanup = (ok) => {
       overlay.classList.remove('confirm-show');
       btnOk.removeEventListener('click', onOk);
       btnCan.removeEventListener('click', onCancel);
       overlay.removeEventListener('click', onOverlay);
+      if (disposeA11y) disposeA11y();
       const note = (noteEl && noteEl.value || '').trim();
-      if (noteWrap) noteWrap.style.display = 'none';
+      if (noteWrap) noteWrap.classList.remove('is-open');
       resolve(opts.withNote ? { ok, note } : ok);
     };
     const onOk = () => cleanup(true);
@@ -71,6 +124,11 @@ function showConfirm(msg, title = '請確認', opts = {}) {
     btnOk.addEventListener('click', onOk, { once: true });
     btnCan.addEventListener('click', onCancel, { once: true });
     overlay.addEventListener('click', onOverlay);
+    disposeA11y = installModalA11y(overlay, {
+      box: document.getElementById('confirm-box'),
+      label: title,
+      onClose: () => cleanup(false)
+    });
   });
 }
 
@@ -121,6 +179,160 @@ createApp({
     /** 靜默刷新 Google ID Token（A）；供 gas-api 請求前／背景換票 */
     let _gsiInitialized = false;
     let _tokenRefreshP = null;
+    let _gsiButtonRendered = false;
+    let _gsiWaitTimer = null;
+    const gsiButtonReady = ref(false);
+    const gsiButtonError = ref('');
+
+    function isGoogleGsiReady() {
+      return typeof google !== 'undefined'
+        && google.accounts
+        && google.accounts.id
+        && typeof google.accounts.id.initialize === 'function'
+        && typeof google.accounts.id.renderButton === 'function';
+    }
+
+    /** 等待 GSI 腳本（async defer 常比 Vue onMounted 晚到） */
+    function waitForGoogleGsi(timeoutMs) {
+      const limit = timeoutMs != null ? timeoutMs : 15000;
+      return new Promise((resolve) => {
+        if (isGoogleGsiReady()) {
+          resolve(true);
+          return;
+        }
+        const t0 = Date.now();
+        const tick = () => {
+          if (isGoogleGsiReady()) {
+            resolve(true);
+            return;
+          }
+          if (Date.now() - t0 >= limit) {
+            resolve(false);
+            return;
+          }
+          setTimeout(tick, 120);
+        };
+        tick();
+      });
+    }
+
+    function ensureGsiInitialized() {
+      if (!isGoogleGsiReady() || !googleClientId.value) return false;
+      if (_gsiInitialized) return true;
+      try {
+        if (typeof window.handleCredentialResponse !== 'function') {
+          window.handleCredentialResponse = async (response) => {
+            const token = response && response.credential;
+            if (!token) return;
+            localStorage.setItem('jcjh_google_id_token', token);
+            const payload = decodeJwt(token);
+            if (!payload || !assertSchoolDomain(payload)) return;
+            user.value = {
+              email: payload.email,
+              displayName: payload.name,
+              photoURL: payload.picture
+            };
+            loading.value = true;
+            loadingMessage.value = '登入成功，同步系統中...';
+            await loadWeeklyData();
+            await checkUrlCallback(user.value);
+            if (!classReadonlyMode.value) restoreNavAfterLogin();
+            else _navPersistReady = true;
+            if (!localStorage.getItem('jcjh_onboarding_v2')) {
+              setTimeout(() => startOnboarding(), 800);
+            }
+          };
+        }
+        google.accounts.id.initialize({
+          client_id: googleClientId.value,
+          callback: window.handleCredentialResponse,
+          auto_select: true,
+          cancel_on_tap_outside: false
+        });
+        _gsiInitialized = true;
+        return true;
+      } catch (e) {
+        console.warn('GSI initialize 失敗', e);
+        return false;
+      }
+    }
+
+    /** 渲染登入按鈕；容器空或腳本晚到時可重試 */
+    function renderGsiLoginButton(opts) {
+      opts = opts || {};
+      if (classReadonlyMode.value || user.value) return false;
+      const btnContainer = document.getElementById('gsi-button-container');
+      if (!btnContainer) {
+        gsiButtonReady.value = false;
+        return false;
+      }
+      if (!isGoogleGsiReady()) {
+        gsiButtonReady.value = false;
+        gsiButtonError.value = '正在載入 Google 登入…';
+        return false;
+      }
+      if (!ensureGsiInitialized()) {
+        gsiButtonReady.value = false;
+        gsiButtonError.value = 'Google 登入初始化失敗';
+        return false;
+      }
+      try {
+        btnContainer.innerHTML = '';
+        google.accounts.id.renderButton(btnContainer, {
+          theme: 'outline',
+          size: 'large',
+          width: 280,
+          text: 'signin_with',
+          shape: 'rectangular'
+        });
+        const ok = btnContainer.childNodes && btnContainer.childNodes.length > 0;
+        _gsiButtonRendered = !!ok;
+        gsiButtonReady.value = !!ok;
+        gsiButtonError.value = ok ? '' : '登入按鈕未顯示，請點重新載入';
+        return ok;
+      } catch (e) {
+        console.warn('renderButton 失敗', e);
+        gsiButtonReady.value = false;
+        gsiButtonError.value = '登入按鈕渲染失敗';
+        return false;
+      }
+    }
+
+    async function setupGoogleSignInUi() {
+      if (classReadonlyMode.value) return;
+      gsiButtonError.value = '正在載入 Google 登入…';
+      gsiButtonReady.value = false;
+      const ready = await waitForGoogleGsi(15000);
+      if (!ready) {
+        gsiButtonError.value = '無法載入 Google 登入元件，請檢查網路後重新整理';
+        return;
+      }
+      // 等 Vue 畫出登入區（loading 結束後才有 #gsi-button-container）
+      await nextTick();
+      let tries = 0;
+      const tryRender = () => {
+        tries++;
+        if (user.value || classReadonlyMode.value) return;
+        if (renderGsiLoginButton()) {
+          // 未登入時可 One Tap（不擋按鈕）
+          try { google.accounts.id.prompt(); } catch (eP) { /* ignore */ }
+          return;
+        }
+        if (tries < 20) {
+          if (_gsiWaitTimer) clearTimeout(_gsiWaitTimer);
+          _gsiWaitTimer = setTimeout(tryRender, 250);
+        } else if (!user.value) {
+          gsiButtonError.value = '登入按鈕未出現，請點下方「重新載入登入按鈕」';
+        }
+      };
+      tryRender();
+    }
+
+    const reloadGsiLoginButton = async () => {
+      _gsiButtonRendered = false;
+      gsiButtonError.value = '重新載入中…';
+      await setupGoogleSignInUi();
+    };
     const refreshGoogleIdToken = () => {
       if (_tokenRefreshP) return _tokenRefreshP;
       _tokenRefreshP = new Promise((resolve) => {
@@ -245,6 +457,22 @@ createApp({
       },
       showToast
     });
+
+    /** 長操作進度：寫入 loadingMessage（匯入／批次核准等） */
+    const gasProgressHandler = (label) => (p) => {
+      if (!p || !loadingMessage) return;
+      const sec = p.elapsed || 0;
+      const hint = p.hintSec || 0;
+      if (p.phase === 'done') return;
+      if (p.phase === 'slow' || (hint > 0 && sec >= hint)) {
+        loadingMessage.value = (label || '處理中') + '…已 ' + sec + ' 秒（較久屬正常，請勿關閉）';
+      } else if (sec > 0) {
+        loadingMessage.value = (label || '處理中') + '…' + sec + ' 秒'
+          + (hint ? '／約 ' + hint + ' 秒' : '');
+      }
+    };
+    const callGasApiWithProgress = (action, data, label) =>
+      callGasApi(action, data, { onProgress: gasProgressHandler(label || action), longOp: true });
     // 網域白名單：預設 → 後端 settings.allowedHd 覆寫
     const allowedHdList = ref(DEFAULT_ALLOWED_HD.slice());
     const applySettings = (settings) => {
@@ -852,6 +1080,7 @@ createApp({
       lineCopyText.value += '\n\n（以上為操作教學示範範本，與正式送出後格式相同；此連結不會對應真實申請單。）';
       successModalTitle.value = '🎉 申請已送出（導覽示範）';
       successModalMessage.value = '這是送出成功後的畫面示範，並未真正送出申請。下方 LINE 範本格式與正式通知相同。';
+      successFlowMode.value = 'tour';
       hasLineTemplate.value = true;
       lineBatchParts.value = [];
       showSuccessModal.value = true;
@@ -1347,6 +1576,8 @@ createApp({
     const matchSearchQuery = ref('');
     const matchDisplayCount = ref(10);
     const matchShowNoTeacherWarning = ref(false);
+    /** 媒合 0 人時的可能原因（字串陣列） */
+    const matchEmptyReasons = ref(null);
 
     // 調課推薦
     const exchangeTeacherEmail = ref('');
@@ -1361,6 +1592,8 @@ createApp({
     const showSuccessModal = ref(false);
     const successModalTitle = ref('');
     const successModalMessage = ref('');
+    /** 成功畫面固定步驟：normal 三步／direct 兩步／tour 導覽 */
+    const successFlowMode = ref('normal');
     const lineCopyText = ref('');
     const hasLineTemplate = ref(false);
     // 多受邀人：[{ name, text }] 方便分開複製／傳送
@@ -1443,28 +1676,24 @@ createApp({
 
       if (isExchange) {
         if (isLeaveSide) {
-          // 申請人：原節不用上；同時要去上對方節 → 預設記「要上的那節」（較常漏）
-          // 標題仍清楚；details 寫兩邊
+          // 申請人調入：時間＝對方節；班科＝自己的課
           eventDate = req.targetDate || req.requestDate;
           eventPeriod = req.targetPeriod != null ? req.targetPeriod : req.requestPeriod;
-          const inRec = findSubAt(eventDate, eventPeriod, true)
-            || subs.find(r => r.actualTeacherEmail && String(r.actualTeacherEmail).toLowerCase() === userEmail);
-          const cs = pickClassSubject(inRec, req.targetClassName || req.className, req.targetSubject || req.subject);
+          const cs = pickClassSubject(null, req.className, req.subject);
           className = cs.className;
           subject = cs.subject;
           titleTag = '調入';
-          actionLine = `本則為您的上課節次。\n原節 ${req.requestDate || ''}第${req.requestPeriod || ''}節（${req.className || ''} ${req.subject || ''}）不用上，由 ${req.targetTeacherName || '對方'} 上。`;
+          actionLine = `本則為您的上課節次（您的課程：${req.className || ''} ${req.subject || ''}）。\n原節 ${req.requestDate || ''}第${req.requestPeriod || ''}節不用上，由 ${req.targetTeacherName || '對方'} 上。`;
         } else if (isCoverSide) {
-          // 受邀人：去上申請人原節
+          // 受邀人調入：時間＝申請人原節；班科＝自己的課（對調目標節原課）
           eventDate = req.requestDate;
           eventPeriod = req.requestPeriod;
-          const inRec = findSubAt(eventDate, eventPeriod, true)
-            || subs.find(r => r.actualTeacherEmail && String(r.actualTeacherEmail).toLowerCase() === userEmail);
-          const cs = pickClassSubject(inRec, req.className, req.subject);
+          const tgtInfo = getTargetClassAndSubject(req);
+          const cs = pickClassSubject(null, tgtInfo.className || req.targetClassName || '', tgtInfo.subject || req.targetSubject || '');
           className = cs.className;
           subject = cs.subject;
           titleTag = '調入';
-          actionLine = `本則為您的上課節次。\n您原 ${req.targetDate || ''}第${req.targetPeriod || ''}節 不用上，由 ${req.requesterName || '對方'} 上。`;
+          actionLine = `本則為您的上課節次（您的課程：${className || ''} ${subject || ''}）。\n您原 ${req.targetDate || ''}第${req.targetPeriod || ''}節不用上，由 ${req.requesterName || '對方'} 上。`;
         } else {
           eventDate = req.requestDate;
           eventPeriod = req.requestPeriod;
@@ -1934,8 +2163,8 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     const detailRequest = ref(null);
     const detailSubRecord = ref(null);
 
-    // 歷史紀錄篩選與分頁
-    const historyFilterMode = ref('all');
+    // 歷史紀錄篩選與分頁（預設本月，減少一次掃全學期）
+    const historyFilterMode = ref('month');
     const historyFilterDate = ref(new Date().toISOString().split('T')[0]);
     const historySearchQuery = ref('');
     const historyPage = ref(1);
@@ -2212,6 +2441,15 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     const setHistoryFilterMode = (mode) => {
       historyFilterMode.value = mode;
       historyPage.value = 1;
+      // 本日／本週／本月：對齊篩選日期到今天（可再改 date 輸入）
+      if (mode === 'day' || mode === 'week' || mode === 'month') {
+        if (!historyFilterDate.value) {
+          historyFilterDate.value = toLocalDateStr(new Date());
+        }
+        if (mode === 'day') {
+          historyFilterDate.value = toLocalDateStr(new Date());
+        }
+      }
       if (mode === 'month') {
         ensureHistoryMonthLoaded(String(historyFilterDate.value || '').slice(0, 7));
       }
@@ -2728,24 +2966,35 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     const dateFilteredHistoryRecords = computed(() => {
       let records = filteredHistoryRecords.value;
 
-      // 搜尋（單號或教師姓名）
+      // 搜尋：單號／教師／班級／科目／日期／假別
       const q = (historySearchQuery.value || '').trim().toLowerCase();
       if (q) {
-        records = records.filter(r =>
-          (r.serial && r.serial.toLowerCase().includes(q)) ||
-          (r.requesterName && r.requesterName.toLowerCase().includes(q)) ||
-          (r.targetTeacherName && r.targetTeacherName.toLowerCase().includes(q))
-        );
+        records = records.filter(r => {
+          const blob = [
+            r.serial, r.requesterName, r.targetTeacherName,
+            r.className, r.subject, r.targetClassName, r.targetSubject,
+            r.requestDate, r.date, r.targetDate, r.reason, r.note, r.status
+          ].map(x => String(x || '').toLowerCase()).join(' ');
+          return blob.indexOf(q) >= 0;
+        });
       }
 
       if (historyFilterMode.value === 'all' || !historyFilterDate.value) return records;
 
       return records.filter(r => {
+        // 請假日或對調目標日落在篩選範圍皆算
+        const dates = [r.date, r.requestDate, r.targetDate].filter(Boolean).map(String);
+        if (historyFilterMode.value === 'day') {
+          const d = String(historyFilterDate.value);
+          return dates.some(x => x.slice(0, 10) === d.slice(0, 10));
+        }
         if (historyFilterMode.value === 'week') {
-          return getWeekStart(r.date) === getWeekStart(historyFilterDate.value);
+          const wk = getWeekStart(historyFilterDate.value);
+          return dates.some(x => getWeekStart(x) === wk);
         }
         if (historyFilterMode.value === 'month') {
-          return getMonthStart(r.date) === getMonthStart(historyFilterDate.value);
+          const mo = getMonthStart(historyFilterDate.value);
+          return dates.some(x => getMonthStart(x) === mo);
         }
         return true;
       });
@@ -2758,18 +3007,60 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       return dateFilteredHistoryRecords.value.slice(start, start + historyPageSize.value);
     });
 
-    // 待辦分頁
+    // 待辦分頁＋搜尋
     const pendingMyPendingPage = ref(1);
     const pendingMySentPage = ref(1);
     const pendingAdminPage = ref(1);
+    const pendingSearchQuery = ref('');
 
-    const paginatedMyPending = computed(() => { const s = (pendingMyPendingPage.value - 1) * pendingPageSize; return myPendingRequests.value.slice(s, s + pendingPageSize); });
-    const paginatedMySent = computed(() => { const s = (pendingMySentPage.value - 1) * pendingPageSize; return mySentRequests.value.slice(s, s + pendingPageSize); });
-    const paginatedAdminPending = computed(() => { const s = (pendingAdminPage.value - 1) * pendingPageSize; return adminPendingRequests.value.slice(s, s + pendingPageSize); });
+    const matchPendingSearch = (req, q) => {
+      if (!q) return true;
+      const blob = [
+        req.serial, req.requesterName, req.targetTeacherName,
+        req.className, req.subject, req.targetClassName, req.targetSubject,
+        req.requestDate, req.targetDate, req.reason, req.note, req.status, req.batchId
+      ].map(x => String(x || '').toLowerCase()).join(' ');
+      return blob.indexOf(q) >= 0;
+    };
 
-    const pendingMyPendingTotal = computed(() => Math.max(1, Math.ceil(myPendingRequests.value.length / pendingPageSize)));
-    const pendingMySentTotal = computed(() => Math.max(1, Math.ceil(mySentRequests.value.length / pendingPageSize)));
-    const pendingAdminTotal = computed(() => Math.max(1, Math.ceil(adminPendingRequests.value.length / pendingPageSize)));
+    const filteredMyPendingRequests = computed(() => {
+      const q = (pendingSearchQuery.value || '').trim().toLowerCase();
+      if (!q) return myPendingRequests.value || [];
+      return (myPendingRequests.value || []).filter(r => matchPendingSearch(r, q));
+    });
+    const filteredMySentRequests = computed(() => {
+      const q = (pendingSearchQuery.value || '').trim().toLowerCase();
+      if (!q) return mySentRequests.value || [];
+      return (mySentRequests.value || []).filter(r => matchPendingSearch(r, q));
+    });
+    const filteredAdminPendingRequests = computed(() => {
+      const q = (pendingSearchQuery.value || '').trim().toLowerCase();
+      if (!q) return adminPendingRequests.value || [];
+      return (adminPendingRequests.value || []).filter(r => matchPendingSearch(r, q));
+    });
+
+    const paginatedMyPending = computed(() => {
+      const s = (pendingMyPendingPage.value - 1) * pendingPageSize;
+      return filteredMyPendingRequests.value.slice(s, s + pendingPageSize);
+    });
+    const paginatedMySent = computed(() => {
+      const s = (pendingMySentPage.value - 1) * pendingPageSize;
+      return filteredMySentRequests.value.slice(s, s + pendingPageSize);
+    });
+    const paginatedAdminPending = computed(() => {
+      const s = (pendingAdminPage.value - 1) * pendingPageSize;
+      return filteredAdminPendingRequests.value.slice(s, s + pendingPageSize);
+    });
+
+    const pendingMyPendingTotal = computed(() => Math.max(1, Math.ceil(filteredMyPendingRequests.value.length / pendingPageSize)));
+    const pendingMySentTotal = computed(() => Math.max(1, Math.ceil(filteredMySentRequests.value.length / pendingPageSize)));
+    const pendingAdminTotal = computed(() => Math.max(1, Math.ceil(filteredAdminPendingRequests.value.length / pendingPageSize)));
+
+    watch(pendingSearchQuery, () => {
+      pendingMyPendingPage.value = 1;
+      pendingMySentPage.value = 1;
+      pendingAdminPage.value = 1;
+    });
 
     // 調課推薦（domain-match）
     const recommendedExchangeList = computed(() => {
@@ -2987,7 +3278,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       a.fetchRecommendations({
         matchMode, inputRequestDate, activeCell, teachersList, getTeacherSubjectByEmail,
         activityBalanceCtx, recommendationLoading, matchSearchQuery, matchDisplayCount,
-        matchShowNoTeacherWarning, recommendedTeachers,
+        matchShowNoTeacherWarning, matchEmptyReasons, recommendedTeachers,
         scheduleScope,
         fetchMatchCandidates: typeof fetchMatchCandidates === 'function' ? fetchMatchCandidates : null
       });
@@ -3250,6 +3541,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       matchSearchQuery: matchSearchQuery,
       matchDisplayCount: matchDisplayCount,
       matchShowNoTeacherWarning: matchShowNoTeacherWarning,
+      matchEmptyReasons: matchEmptyReasons,
       consecAlertsA: consecAlertsA,
       consecAlertsB: consecAlertsB,
       directApproveMode: directApproveMode,
@@ -3275,7 +3567,8 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       lineBatchParts: lineBatchParts,
       lineCopyText: lineCopyText,
       showSuccessModal: showSuccessModal,
-      buildLineBatchInviteText: buildLineBatchInviteText
+      buildLineBatchInviteText: buildLineBatchInviteText,
+      successFlowMode: successFlowMode
     });
 
     // ── 主函數③：執行提交（ui-request.js）──
@@ -3293,7 +3586,8 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         isMutualCover, mutualSkipNotify, isAdmin, directApproveMode, directApproveSkipNotify,
         callGasApi, showCompareModal, showMatchModal, optimisticUpsertRequest, sheetRequestToFront,
         deductMutualQuotaForRows, softRefreshInBackground, isQuotaDeductFee, buildLineInviteText,
-        successModalTitle, successModalMessage, lineCopyText, hasLineTemplate, showSuccessModal, showToast
+        successModalTitle, successModalMessage, lineCopyText, hasLineTemplate, showSuccessModal, showToast,
+        successFlowMode
       });
     };
 
@@ -3319,7 +3613,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         getTeacherNameByEmail, getTeacherSubjectByEmail, formatDateMMDD, isSingleWeek,
         isClassAwayOnDate, getWeekDayText,
         batchSelectMode, isBatchSlotSelected, isMutualCover, getMutualDraftAt,
-        mutualAwayClasses, mutualActivityStart, mutualActivityEnd, DAC
+        mutualDrafts, mutualAwayClasses, mutualActivityStart, mutualActivityEnd, DAC
       });
       return _timetableApi;
     };
@@ -3446,6 +3740,8 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     };
     const closeMatchModal = () => {
       clearMatchPreview();
+      matchShowNoTeacherWarning.value = false;
+      matchEmptyReasons.value = null;
       showMatchModal.value = false;
     };
     watch(showMatchModal, (open) => {
@@ -3465,6 +3761,64 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         } catch (e) { /* ignore */ }
       }
     });
+
+    // ── 各 Modal：Esc 關閉 + 焦點陷阱 + aria-modal ──
+    const _modalA11yDisposers = {};
+    const bindVueModalA11y = (flag, closeFn, sel, label) => {
+      watch(flag, (open) => {
+        const key = sel;
+        if (_modalA11yDisposers[key]) {
+          try { _modalA11yDisposers[key](); } catch (e) { /* ignore */ }
+          _modalA11yDisposers[key] = null;
+        }
+        if (!open) return;
+        nextTick(() => {
+          const overlay = document.querySelector(sel);
+          if (!overlay) return;
+          _modalA11yDisposers[key] = installModalA11y(overlay, {
+            label: label || '對話框',
+            onClose: () => {
+              try { closeFn(); } catch (eC) { /* ignore */ }
+            }
+          });
+        });
+      });
+    };
+    bindVueModalA11y(showMatchModal, () => { closeMatchModal(); }, '.match-drawer-overlay', '智慧媒合');
+    bindVueModalA11y(showCompareModal, () => { showCompareModal.value = false; }, '[data-tour="compare-modal"]', '模擬對照');
+    bindVueModalA11y(showSuccessModal, () => { showSuccessModal.value = false; }, '[data-tour="success-modal"]', '送出成功');
+    // 其餘後台 modal：開啟時抓目前顯示的 .modal-overlay
+    const bindFlagModal = (flag, closeFn, label) => {
+      if (!flag || typeof flag !== 'object' || !('value' in flag)) return;
+      watch(flag, (open) => {
+        const key = 'flag:' + label;
+        if (_modalA11yDisposers[key]) {
+          try { _modalA11yDisposers[key](); } catch (e) { /* ignore */ }
+          _modalA11yDisposers[key] = null;
+        }
+        if (!open) return;
+        nextTick(() => {
+          const overlays = document.querySelectorAll('.modal-overlay');
+          let overlay = null;
+          for (let i = overlays.length - 1; i >= 0; i--) {
+            const el = overlays[i];
+            const st = window.getComputedStyle(el);
+            if (st.display !== 'none' && st.visibility !== 'hidden') {
+              overlay = el;
+              break;
+            }
+          }
+          if (!overlay && overlays.length) overlay = overlays[overlays.length - 1];
+          if (!overlay) return;
+          _modalA11yDisposers[key] = installModalA11y(overlay, {
+            label: label,
+            onClose: () => { try { closeFn(); } catch (eC) { /* ignore */ } }
+          });
+        });
+      });
+    };
+    bindFlagModal(showDetailModal, () => { showDetailModal.value = false; }, '異動詳情');
+    bindFlagModal(showSemesterModal, () => { showSemesterModal.value = false; }, '學期設定');
     const isMatchPreviewSelected = () => false;
     // 媒合來源格：開抽屜時 DOM 標一次（不在模板每格呼叫 isMatchSourceCell）
     const paintMatchSourceDom = () => {
@@ -3863,39 +4217,88 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       }
     };
 
-    /** 歷史紀錄：批次後發通知信（依代課老師合併） */
+    /** 歷史紀錄：批次後發通知信（依受邀人合併；寄前同步 DOM 勾選） */
     const sendSelectedBatchNotices = async () => {
       if (!isAdmin.value) {
         showToast('僅管理員可批次發通知', 'warning');
         return;
       }
+      // 與列印相同：勾選可能只在 DOM，先同步再取 id
+      try {
+        if (typeof syncHistorySelectionFromDom === 'function') syncHistorySelectionFromDom();
+        else {
+          const domIds = [];
+          document.querySelectorAll('.hist-select-cb:checked').forEach((el) => {
+            const id = el.getAttribute('data-rec-id') || el.value;
+            if (id) domIds.push(id);
+          });
+          if (domIds.length) selectedRecordIds.value = domIds;
+        }
+      } catch (eSync) { /* ignore */ }
       const ids = (selectedRecordIds.value || []).slice();
       if (!ids.length) {
         showToast('請先勾選歷史紀錄', 'warning');
         return;
       }
-      // 轉成申請單 ID（substitution 紀錄 id 可能帶 _1/_2）
+      // 轉成申請單 ID（調課 id 可能為 xxx_1 / xxx_2；每筆申請只算一次）
       const requestIds = [...new Set(ids.map(id => {
-        const rec = (substitutionRecords.value || []).find(r => r.id === id);
-        return rec ? (rec.requestId || String(id).replace(/_[12]$/, '')) : String(id).replace(/_[12]$/, '');
+        const rec = (substitutionRecords.value || []).find(r => r && r.id === id);
+        if (rec && rec.requestId) return String(rec.requestId);
+        return String(id || '').replace(/_[12]$/, '');
       }).filter(Boolean))];
       if (!requestIds.length) {
         showToast('無法解析申請單 ID', 'warning');
         return;
       }
-      // 預覽：依代課老師分組
-      const bySub = {};
+      // 預覽：核准信寄雙方（申請人＋受邀人）；邀請信只寄受邀人。同人合併後計「約幾封」
+      const recipientMap = {}; // email -> { name, roles: Set, n }
+      let approvedN = 0;
+      let pendingN = 0;
+      const addRecipient = (email, name, role) => {
+        const em = String(email || '').toLowerCase().trim();
+        if (!em || em.indexOf('@') === -1) return;
+        if (!recipientMap[em]) recipientMap[em] = { name: name || em, roles: {}, n: 0 };
+        if (name && !recipientMap[em].name) recipientMap[em].name = name;
+        recipientMap[em].roles[role] = true;
+        recipientMap[em].n++;
+      };
       requestIds.forEach(rid => {
-        const req = (requestsList.value || []).find(r => r.id === rid);
-        if (!req) return;
-        const em = String(req.targetTeacherEmail || '').toLowerCase();
-        const name = req.targetTeacherName || em;
-        if (!bySub[em]) bySub[em] = { name, n: 0 };
-        bySub[em].n++;
+        const req = (requestsList.value || []).find(r => r && String(r.id) === String(rid));
+        const rec = !req ? (substitutionRecords.value || []).find(r =>
+          r && (String(r.requestId) === String(rid) || String(r.id || '').replace(/_[12]$/, '') === String(rid))
+        ) : null;
+        const st = String((req && req.status) || (rec && rec.status) || 'approved').toLowerCase();
+        const isApproved = !st || st === 'approved';
+        const leaveEm = (req && req.requesterEmail) || (rec && rec.originalTeacherEmail) || '';
+        const coverEm = (req && req.targetTeacherEmail) || (rec && rec.actualTeacherEmail) || '';
+        const leaveName = (req && (req.requesterName || getTeacherNameByEmail(leaveEm)))
+          || getTeacherNameByEmail(leaveEm) || leaveEm;
+        const coverName = (req && (req.targetTeacherName || getTeacherNameByEmail(coverEm)))
+          || getTeacherNameByEmail(coverEm) || coverEm;
+        if (isApproved) {
+          approvedN++;
+          addRecipient(leaveEm, leaveName, '申請人');
+          addRecipient(coverEm, coverName, '受邀人');
+        } else {
+          pendingN++;
+          addRecipient(coverEm, coverName, '受邀人');
+        }
       });
-      const preview = Object.values(bySub).map(g => `${g.name}（${g.n}節）`).join('、') || '（依後端分組）';
+      const recipients = Object.keys(recipientMap);
+      const mailEst = recipients.length;
+      const previewLines = recipients.slice(0, 12).map(em => {
+        const g = recipientMap[em];
+        const roles = Object.keys(g.roles || {}).join('／');
+        return `• ${g.name}${roles ? '（' + roles + '）' : ''}`;
+      });
+      if (recipients.length > 12) previewLines.push(`…另有 ${recipients.length - 12} 人`);
+      const typeTip = approvedN && pendingN
+        ? `已核准 ${approvedN} 筆（雙方）＋待簽核 ${pendingN} 筆（僅受邀）`
+        : approvedN
+          ? `已核准 ${approvedN} 筆（核准信寄雙方）`
+          : `待簽核 ${pendingN} 筆（僅寄受邀人）`;
       const ok = await showConfirm(
-        `將後發通知信給代課老師（同人合併一封）\n共 ${requestIds.length} 筆申請 → 約 ${Object.keys(bySub).length || '？'} 封信\n\n${preview}\n\n確定寄出？`,
+        `後發通知：${typeTip}\n共 ${requestIds.length} 筆申請 → 約 ${mailEst} 封信（同人合併）\n\n收件人：\n${previewLines.join('\n') || '（依後端）'}\n\n確定寄出？`,
         '批次發通知信'
       );
       if (!ok) return;
@@ -3903,9 +4306,15 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       loadingMessage.value = '正在寄送通知…';
       try {
         const res = await callGasApi('sendBatchNotices', { requestIds });
-        const sent = res && res.sent != null ? res.sent : Object.keys(bySub).length;
+        const mailCount = res && res.mailCount != null ? res.mailCount : mailEst;
         const failed = res && res.failed ? res.failed : 0;
-        showToast(failed ? `已寄 ${sent} 組，失敗 ${failed} 組` : `已寄出 ${sent} 組通知（依代課老師合併）`, failed ? 'warning' : 'success');
+        const found = res && res.found != null ? res.found : requestIds.length;
+        showToast(
+          failed
+            ? `已處理 ${found} 筆，約寄 ${mailCount} 封，失敗 ${failed} 組`
+            : `已處理 ${found} 筆申請，約寄出 ${mailCount} 封（雙方／同人合併）`,
+          failed ? 'warning' : 'success'
+        );
       } catch (e) {
         console.error(e);
         showToast('批次通知失敗：' + (e && e.message ? e.message : String(e)), 'error');
@@ -4250,6 +4659,35 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     let _softRefreshQueued = null; // null | { force, delay, requestsOnly }
     let _softRefreshLastAt = 0;
     const SOFT_REFRESH_MIN_GAP_MS = 3500;
+    /** 畫面「更新於 HH:mm」；手動刷新／softRefresh／全量載入成功時寫入 */
+    const dataUpdatedAt = ref(null);
+    const dataRefreshing = ref(false);
+    /** 背景 softRefresh 進行中（不擋全螢幕，只顯示 nav 小標） */
+    const softSyncing = ref(false);
+    const markDataUpdated = () => {
+      dataUpdatedAt.value = Date.now();
+      _softRefreshLastAt = dataUpdatedAt.value;
+    };
+    const dataUpdatedLabel = computed(() => {
+      if (!dataUpdatedAt.value) return '尚未同步';
+      const d = new Date(dataUpdatedAt.value);
+      const hh = String(d.getHours()).padStart(2, '0');
+      const mm = String(d.getMinutes()).padStart(2, '0');
+      return '更新於 ' + hh + ':' + mm;
+    });
+    const manualRefreshData = async () => {
+      if (!user.value || dataRefreshing.value) return;
+      dataRefreshing.value = true;
+      try {
+        await loadWeeklyData({ force: true, silent: false });
+        markDataUpdated();
+        showToast('資料已重新整理', 'success', 2000);
+      } catch (e) {
+        showToast('重新整理失敗：' + (e && e.message ? e.message : e), 'error');
+      } finally {
+        dataRefreshing.value = false;
+      }
+    };
     const softRefreshInBackground = (opts) => {
       opts = opts || {};
       if (opts.skip) return;
@@ -4269,6 +4707,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       const runDelay = _softRefreshQueued.delay;
       const runForce = _softRefreshQueued.force;
       const runReqOnly = _softRefreshQueued.requestsOnly;
+      softSyncing.value = true;
       _softRefreshTimer = setTimeout(async () => {
         _softRefreshTimer = null;
         _softRefreshQueued = null;
@@ -4286,6 +4725,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
           return;
         }
         _softRefreshRunning = true;
+        softSyncing.value = true;
         try {
           if (runForce) {
             await loadWeeklyData({ force: true, silent: true });
@@ -4311,15 +4751,18 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
             }
             // p===true && d==='empty'：無異動，結束
           }
-          _softRefreshLastAt = Date.now();
+          markDataUpdated();
         } catch (e) {
           console.warn('背景同步失敗：', e);
+          showToast('背景同步失敗，可按 ↻ 手動重整', 'warning', 2800);
         } finally {
           _softRefreshRunning = false;
           if (_softRefreshQueued) {
             const q = _softRefreshQueued;
             _softRefreshQueued = null;
             softRefreshInBackground(q);
+          } else {
+            softSyncing.value = false;
           }
         }
       }, runDelay);
@@ -4486,6 +4929,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         applyInitialPayload(res);
         await resolveUserRoleFromTeachers();
         resolvePendingClassView();
+        markDataUpdated();
         if (!silent) loading.value = false;
       } catch (err) {
         console.error("載入調代課系統資料失敗：", err);
@@ -5084,18 +5528,48 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       return `${m}(${day || '—'})第${req.targetPeriod}節` + (cls ? ` · ${cls}` : '');
     };
 
+    /** 核准前風險黃燈（綁課／第8／額度／再異動／跨日等） */
+    const getApproveRiskFlags = (req) => {
+      const flags = [];
+      if (!req) return flags;
+      const isEx = req.type === 'exchange' || req.type === '對調';
+      const period = parseInt(req.requestPeriod != null ? req.requestPeriod : req.period, 10);
+      try {
+        if (typeof isLeaveClassRestricted === 'function' && isLeaveClassRestricted(req)) {
+          flags.push({ key: 'leave-restricted', label: '原課綁課', level: 'warn' });
+        }
+        if (isEx && typeof isExchangeClassRestricted === 'function' && isExchangeClassRestricted(req)) {
+          flags.push({ key: 'ex-restricted', label: '對調綁課', level: 'warn' });
+        }
+        if (isEx && typeof isRequestExchangeRechanged === 'function' && isRequestExchangeRechanged(req)) {
+          flags.push({ key: 'chain', label: '再異動', level: 'warn' });
+        }
+      } catch (eR) { /* ignore */ }
+      if (period === 8) flags.push({ key: 'p8', label: '第8節', level: 'info' });
+      if (!isEx && isQuotaDeductFee(req.subFee)) {
+        flags.push({ key: 'quota', label: '扣額度', level: 'info' });
+        const t = typeof lookupTeacher === 'function'
+          ? lookupTeacher(req.targetTeacherEmail)
+          : (teachersList.value || []).find(x =>
+              x.email && String(x.email).toLowerCase() === String(req.targetTeacherEmail || '').toLowerCase()
+            );
+        const q = t ? (parseInt(t.mutualQuota, 10) || 0) : 0;
+        if (q <= 0) flags.push({ key: 'quota0', label: '額度不足', level: 'danger' });
+      } else if (!isEx && (req.subFee === '公費代課' || req.subFee === '學校移撥' || req.subFee === ACTIVITY_PUBLIC_FEE || req.subFee === '活動公費')) {
+        flags.push({ key: 'public', label: '公費', level: 'info' });
+      }
+      if (isEx && req.targetDate && req.requestDate && String(req.targetDate) !== String(req.requestDate)) {
+        flags.push({ key: 'crossday', label: '跨日', level: 'info' });
+      }
+      return flags;
+    };
+
     const formatRequestSummary = (req) => {
       if (!req) return '（無申請資料）';
-      const isEx = req.type === 'exchange';
+      const isEx = req.type === 'exchange' || req.type === '對調';
       const typeLabel = isEx ? '調課' : '代課';
-      const period = parseInt(req.requestPeriod, 10);
-      const risks = [];
-      if (!isEx && isQuotaDeductFee(req.subFee)) risks.push('扣額度');
-      else if (!isEx && (req.subFee === '公費代課' || req.subFee === '學校移撥' || req.subFee === '活動公費')) risks.push('公費');
-      if (period === 8) risks.push('第8節');
-      if (isEx && req.targetDate && req.requestDate && req.targetDate !== req.requestDate) risks.push('跨日調課');
-      if (isEx && req.targetDayOfWeek && req.requestPeriodDay &&
-          parseInt(req.targetDayOfWeek) !== parseInt(req.requestPeriodDay)) risks.push('跨週調課');
+      const flags = getApproveRiskFlags(req);
+      const risks = flags.map(f => f.label);
 
       let s = `【${typeLabel}】${req.serial || '—'}\n`;
       s += `${req.requesterName || '—'} → ${req.targetTeacherName || '—'}\n`;
@@ -5107,8 +5581,26 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         s += `經費：${req.subFee || '—'} · 事由：${req.reason || '—'}`;
       }
       if (req.note) s += `\n備註：${req.note}`;
-      if (risks.length) s += `\n⚠ ${risks.join('、')}`;
+      if (risks.length) s += `\n⚠ 風險：${risks.join('、')}`;
       return s;
+    };
+
+    /** 多筆核准前：彙整黃燈摘要 */
+    const formatApproveBatchRiskSummary = (ids) => {
+      const lines = [];
+      let warnN = 0;
+      (ids || []).forEach(id => {
+        const r = (allPendingRequests.value || []).find(x => x.id === id)
+          || (adminPendingRequests.value || []).find(x => x.id === id)
+          || (requestsList.value || []).find(x => x.id === id);
+        if (!r) return;
+        const flags = getApproveRiskFlags(r).filter(f => f.level === 'warn' || f.level === 'danger');
+        if (!flags.length) return;
+        warnN++;
+        lines.push(`• ${r.serial || id}：${flags.map(f => f.label).join('、')}`);
+      });
+      if (!warnN) return '';
+      return `\n\n⚠ 風險提醒（${warnN} 筆）：\n${lines.slice(0, 12).join('\n')}${lines.length > 12 ? '\n…另有 ' + (lines.length - 12) + ' 筆' : ''}`;
     };
 
     // ── 簽核／行政核准（ui-approval.js → UiApproval）──
@@ -5123,6 +5615,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     } = window.UiApproval.create({
       ref,
       callGasApi,
+      callGasApiWithProgress,
       showToast,
       showConfirm,
       loading,
@@ -5132,6 +5625,8 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       optimisticPatchRequestStatus,
       softRefreshInBackground,
       formatRequestSummary,
+      formatApproveBatchRiskSummary,
+      getApproveRiskFlags,
       printSelectedForms,
       applyClassViewFromUrl,
       resolvePendingClassView,
@@ -5406,10 +5901,12 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     // ── 後台匯入／教師／課表編輯（ui-admin.js → UiAdmin）──
     const {
       showImportTeachersModal, teacherExcelData, teacherExcelHeaders, teacherMappingFields,
+      teacherImportPreview, runTeacherImportPreview,
       showScheduleEditModal, scheduleForm,
       showTeacherModal, teacherModalMode, teacherForm,
       excelData, excelHeaders, mappingFields,
-      importSchedules, openScheduleEditModal, pickScheduleAttr, getSchedule,
+      importSchedules, importPreview, runImportPreview, downloadScheduleTemplate, downloadCurrentSchedules,
+      openScheduleEditModal, pickScheduleAttr, getSchedule,
       saveScheduleCell, clearScheduleCell, updateTeacherBaseHours,
       openAddTeacherModal, openEditTeacherModal, saveTeacher, deleteTeacher,
       handleTeacherExcelChange, importTeachersBatch, handleFileChange, getMappingLabel,
@@ -5417,6 +5914,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     } = window.UiAdmin.create({
       ref,
       callGasApi,
+      callGasApiWithProgress,
       showToast,
       showConfirm,
       loading,
@@ -5433,6 +5931,14 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       showHistoryEditModal,
       requestsList
     });
+
+    // 後台／列印等 modal：UiAdmin／UiApproval 就緒後綁 Esc＋焦點陷阱
+    bindFlagModal(showImportTeachersModal, () => { showImportTeachersModal.value = false; }, '匯入教師');
+    bindFlagModal(showTeacherModal, () => { showTeacherModal.value = false; }, '教師資料');
+    bindFlagModal(showScheduleEditModal, () => { showScheduleEditModal.value = false; }, '編輯課表');
+    bindFlagModal(showHistoryEditModal, () => { showHistoryEditModal.value = false; }, '編輯歷史');
+    bindFlagModal(showClassAwayModal, () => { showClassAwayModal.value = false; }, '空堂事件');
+    bindFlagModal(showBatchPrintPrompt, () => { dismissBatchPrintPrompt(); }, '批次列印');
 
     // 預設公費：公假／婚假／喪假／產前假/分娩假／身心調適假
     const PUBLIC_FEE_REASONS = ['公假', '婚假', '喪假', '產前假/分娩假', '身心調適假'];
@@ -5508,7 +6014,8 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         isAdmin, directApproveMode, callGasApi, optimisticUpsertRequest, sheetRequestToFront,
         deductMutualQuotaForRows, softRefreshInBackground, persistMutualPanelDraft, activityBalanceCtx,
         PERIOD8_FEE, ACTIVITY_PUBLIC_FEE, successModalTitle, successModalMessage,
-        hasLineTemplate, lineBatchParts, lineCopyText, showSuccessModal, buildLineBatchInviteText, DAC
+        hasLineTemplate, lineBatchParts, lineCopyText, showSuccessModal, buildLineBatchInviteText, DAC,
+        successFlowMode
       });
     };
     const toggleMutualCover = () => { const a = getMutualPanelApi(); if (a) a.toggleMutualCover(); };
@@ -5655,10 +6162,11 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         }
       }
 
-      // 初始化 Google Sign-in 與 One Tap（公開唯讀時不強制 One Tap）
-      if (googleClientId.value && typeof google !== 'undefined' && !classReadonlyMode.value) {
+      // 初始化 Google Sign-in（等 GSI 腳本就緒再 init／render，避免 async 競態）
+      if (googleClientId.value && !classReadonlyMode.value) {
         window.handleCredentialResponse = async (response) => {
-          const token = response.credential;
+          const token = response && response.credential;
+          if (!token) return;
           localStorage.setItem('jcjh_google_id_token', token);
           const payload = decodeJwt(token);
           if (payload) {
@@ -5670,28 +6178,17 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
             };
             loading.value = true;
             loadingMessage.value = '登入成功，同步系統中...';
-            
+
             await loadWeeklyData();
             await checkUrlCallback(user.value);
             if (!classReadonlyMode.value) restoreNavAfterLogin();
             else _navPersistReady = true;
-            
+
             if (!localStorage.getItem('jcjh_onboarding_v2')) {
               setTimeout(() => startOnboarding(), 800);
             }
           }
         };
-
-        google.accounts.id.initialize({
-          client_id: googleClientId.value,
-          callback: window.handleCredentialResponse,
-          auto_select: true,
-          cancel_on_tap_outside: false
-        });
-        _gsiInitialized = true;
-
-        // 嘗試在背景無感自動登入
-        google.accounts.id.prompt();
 
         // A：定時檢查 Token，快過期就靜默換票（約每 4 分鐘）
         const tokenKeepAlive = () => {
@@ -5704,21 +6201,34 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
           } catch (e) { /* ignore */ }
         };
         setInterval(tokenKeepAlive, 4 * 60 * 1000);
-        // 頁面重新可見時也檢查一次
         document.addEventListener('visibilitychange', () => {
-          if (document.visibilityState === 'visible') tokenKeepAlive();
+          if (document.visibilityState === 'visible') {
+            tokenKeepAlive();
+            // 回到登入頁且按鈕不見時補渲染
+            if (!user.value && !classReadonlyMode.value && !gsiButtonReady.value) {
+              setupGoogleSignInUi();
+            }
+          }
         });
 
-        // 嘗試在 UI 容器渲染按鈕
-        setTimeout(() => {
-          const btnContainer = document.getElementById("gsi-button-container");
-          if (btnContainer && typeof google !== 'undefined') {
-            google.accounts.id.renderButton(
-              btnContainer,
-              { theme: "outline", size: "large", width: 280 }
-            );
-          }
-        }, 500);
+        // 未登入：一定要等到 GSI + 登入 DOM 就緒再畫按鈕
+        if (!user.value) {
+          setupGoogleSignInUi();
+        } else {
+          // 已登入仍 init，供 refresh token
+          waitForGoogleGsi(10000).then((ok) => {
+            if (ok) ensureGsiInitialized();
+          });
+        }
+      }
+    });
+
+    // 登出回到登入畫面時重畫按鈕
+    watch(user, (u, prev) => {
+      if (!u && prev && !classReadonlyMode.value) {
+        _gsiButtonRendered = false;
+        gsiButtonReady.value = false;
+        nextTick(() => setupGoogleSignInUi());
       }
     });
     
@@ -5743,7 +6253,8 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
 
     // 返回 Vue 拋出變數
     return {
-      user, userRole, loading, loadingMessage, activeTab, setActiveTab, isSimulating, originalUser, avatarSrc, handleAvatarError, avatarSrc, handleAvatarError,
+      user, userRole, loading, loadingMessage, activeTab, setActiveTab, isSimulating, originalUser, avatarSrc, handleAvatarError,
+      dataUpdatedLabel, dataRefreshing, softSyncing, manualRefreshData,
       visibleTimetableTeachers, ttPage, ttPageSize, ttTotalPages, ttNeedPager, changeTtPage,
       requestWindowInfo, historyFullLoaded, historyLoadingFull, historyLoadedMonths, historyMonthLoading,
       loadHistoryMonth, setHistoryFilterMode, ensureHistoryMonthLoaded, loadFullSemesterHistory, reloadWindowedHistory,
@@ -5767,39 +6278,42 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       setBatchAssignMode, selectBatchSlotForMatch, assignBatchSlotSub, clearBatchSlotSub, prepBatchPerSlotCompare,
       toggleBatchSelectMode, clearBatchSlots, isBatchSlotSelected,
       openBatchMatch, prepBatchCompare, executeBatchSubmit,
-      matchSearchQuery, matchDisplayCount, matchShowNoTeacherWarning,
+      matchSearchQuery, matchDisplayCount, matchShowNoTeacherWarning, matchEmptyReasons,
       filteredRecommendedTeachers, displayedRecommendedTeachers,
       exchangeTeacherEmail, exchangeTeacherClasses, exchangePeriodId, exchangeTargetDate, exchangeWeekOffset,
       showCompareModal, showMatchModal, pendingRequestData, selectedRecordIds, showDevDropdown, devTeacherQuery, filteredDevTeachers,
       showDetailModal, consecAlertsA, consecAlertsB, detailRequest, detailSubRecord,
       showSuccessModal,
-      successModalTitle, successModalMessage, lineCopyText, hasLineTemplate, lineBatchParts,
+      successModalTitle, successModalMessage, successFlowMode, lineCopyText, hasLineTemplate, lineBatchParts,
       copyLineMessage, sendLineMessage, copyLineBatchPart, sendLineBatchPart, copyLineMessageForRequest, addToGoogleCalendar, downloadIcsCalendar, addEventToCalendar, printSingleRequest, showDetailForRecord, getTargetSubject, getTargetClassAndSubject, getOriginalRequestSubject, getOriginalRequestClass, getOriginalTargetSubject, getOriginalTargetClass,
       adminSubTab,
-      showImportTeachersModal, teacherExcelData, teacherExcelHeaders, teacherMappingFields, handleTeacherExcelChange, importTeachersBatch,
+      showImportTeachersModal, teacherExcelData, teacherExcelHeaders, teacherMappingFields, teacherImportPreview, runTeacherImportPreview, handleTeacherExcelChange, importTeachersBatch,
       isScheduleEditMode, showScheduleEditModal, scheduleForm,
       showTeacherModal, teacherModalMode, teacherForm,
       reportMonth, reportWeeksCount, monthlyReportData,
-      excelData, excelHeaders, mappingFields, directApproveMode, googleClientId, gasApiUrl, saveClientSettings,
+      excelData, excelHeaders, mappingFields, importPreview, runImportPreview, downloadScheduleTemplate, downloadCurrentSchedules,
+      directApproveMode, googleClientId, gasApiUrl, saveClientSettings,
       isSubFeeLockedToSelf, isPeriod8FeeLocked, quotaDeductPreview, quotaDeductInsufficient, switchQuotaDeductToSelfPay, hasSubTeacherConflict,
       isAdmin, userRoleText, subjectsList, filteredTeachers, displayTimetableTeachers, pendingCount, myInviteCount, adminTodoCount, hasQuickTodo, quickTodoSentOpen, allTeachersList, teachersListDetails,
       matchPreview,
       exchangeTeachersList, myTeacherProfile, isRequestValid, filteredHistoryRecords,
       dateFilteredHistoryRecords, paginatedHistoryRecords, historyTotalPages,
       historyFilterMode, historyFilterDate, historySearchQuery, historyPage, historyPageSize,
+      pendingSearchQuery,
       showHistoryEditModal, historyEditForm, leaveReasonOptions, onLeaveReasonChange, defaultSubFeeForReason,
       pendingMyPendingPage, pendingMySentPage, pendingAdminPage,
       paginatedMyPending, paginatedMySent, paginatedAdminPending,
       pendingMyPendingTotal, pendingMySentTotal, pendingAdminTotal,
       reportMonthOptions, personalChanges, recommendedExchangeList, displayedExchangeList, matchListCap,
-      loginWithGoogle, logout, changeWeek, getPeriodTimeSpan, getWeekDayText, formatDateMMDD,
+      loginWithGoogle, logout, gsiButtonReady, gsiButtonError, reloadGsiLoginButton,
+      changeWeek, getPeriodTimeSpan, getWeekDayText, formatDateMMDD,
       getClassCellClassForDate, getClassCellClassForClass, getScheduleForDate, weekScheduleGrid, cellFromGrid, handleCellClick, handleClassCellClick,
       isMatchSourceCell, isMatchSourceEntry, isMatchHoverCell, isMatchHoverEntry,
       selectMatchPreviewSub, selectMatchPreviewExchange, clearMatchPreview, closeMatchModal, isMatchPreviewSelected,
       selectedClassDate, selectedClassWeekDates, classWeekNumber, classSubstitutionMap, classChangeSummary, changeClassWeek, goToClassThisWeek,
       prepCompare, getCompareCellText, getCompareCellClass, executeSubmitRequest, isSubmitting,
       getStatusText, changeMatchMode, respondToRequest, respondToBatch, adminApprove, adminReject, cancelRequest, deleteSubstitutionRecord, loadMoreMatches,
-      formatRequestSummary, formatLeaveClassSlot, formatExchangeClassSlot, formatHistoryLeaveSlot, formatHistoryExchangeSlot, getRequestRiskTags, getRequestTypeTags, isHistoryLeaveRechanged, isHistoryExchangeRechanged, isRequestExchangeRechanged, getCellPlainStatus, getRequestProgressSteps, isLeaveClassRestricted, isExchangeClassRestricted, isHistoryLeaveRestricted, isHistoryExchangeRestricted,
+      formatRequestSummary, formatLeaveClassSlot, formatExchangeClassSlot, formatHistoryLeaveSlot, formatHistoryExchangeSlot, getRequestRiskTags, getRequestTypeTags, getApproveRiskFlags, formatApproveBatchRiskSummary, isHistoryLeaveRechanged, isHistoryExchangeRechanged, isRequestExchangeRechanged, getCellPlainStatus, getRequestProgressSteps, isLeaveClassRestricted, isExchangeClassRestricted, isHistoryLeaveRestricted, isHistoryExchangeRestricted,
       dashboardScope, dashboardStats,
       selectedAdminPendingIds, isAdminPendingSelected, toggleAdminPendingSelect, toggleSelectAllAdminPending, clearAdminPendingSelection,
       batchAdminApprove, batchAdminReject, lastBatchPrintIds, showBatchPrintPrompt, printLastBatchNotices, dismissBatchPrintPrompt,
