@@ -439,6 +439,7 @@ createApp({
     const {
       callGasApi, fetchInitialData, fetchMetaData, fetchPublicClassData,
       fetchPendingOnly, fetchRequestsDelta, fetchHistoryMonth, fetchMatchCandidates,
+      fetchMutualQuotaLedger,
       decodeJwt, isTokenExpired, isTokenExpiringSoon,
       formatError, clearSWR, parseAllowedHd, isEmailDomainAllowed, DEFAULT_ALLOWED_HD
     } = window.GasApi.createClient({
@@ -876,7 +877,7 @@ createApp({
       return wn === 0 || wn % 2 === 1;
     };
 
-    // 班級空堂事件（畢旅 keep／畢業 reduce）；取代舊「畢業日隱藏九年級」
+    // 空堂事件（畢旅 keep／畢業 reduce）；取代舊「畢業日隱藏九年級」
     const classAwayEvents = ref([]);
     const semesterEndDate = computed(() => {
       const sem = semestersList.value.find(s => s.id === currentSemester.value);
@@ -1347,6 +1348,8 @@ createApp({
     // ── 活動互代面板狀態（ui-activity.js → UiMutualPanelState）──
     // 延後 create：需 currentWeekDates / getScheduleForDate / softRefresh 就緒
     let _mutualPanelApi = null;
+    /** 延後取空堂事件 ID（UiMutualBridge 較晚 create） */
+    let _getMutualImportEventId = () => '';
     const getMutualPanelApi = () => {
       if (_mutualPanelApi) return _mutualPanelApi;
       if (!window.UiMutualPanelState) {
@@ -1359,6 +1362,8 @@ createApp({
         mutualActivityStart, mutualActivityEnd, currentWeekDates, classList, teachersList, allSchedules, requestsList,
         activeCell, inputRequestDate, recommendedTeachers, showMatchModal, pendingRequestData, batchSubFee, directApproveMode,
         ACTIVITY_PUBLIC_FEE, PERIOD8_FEE, getTeacherNameByEmail, softRefreshInBackground, defaultSubFeeForReason, getScheduleForDate,
+        classAwayEvents,
+        getMutualImportEventId: function () { return _getMutualImportEventId(); },
         DAC
       });
       return _mutualPanelApi;
@@ -1386,8 +1391,11 @@ createApp({
       if (wasLead) showToast(`已取消帶隊：${name}`, 'info');
       else showToast(`已加入帶隊：${name}`, 'info');
     };
-    /** 定位到指定教師課表（搜尋姓名並捲動） */
-    const jumpToTeacherTimetable = (email) => {
+    /**
+     * 定位到指定教師課表（搜尋姓名並捲動）
+     * opts.date / opts.useActivityWeek：一併切到該日期所在週（活動互代用起日）
+     */
+    const jumpToTeacherTimetable = (email, opts) => {
       const em = String(email || '').trim();
       if (!em) return;
       const t = lookupTeacher(em);
@@ -1395,11 +1403,19 @@ createApp({
         showToast('找不到該教師', 'warning');
         return;
       }
+      opts = opts || {};
+      // 活動互代：預設跳到活動起日所在週
+      let jumpDate = opts.date ? String(opts.date).slice(0, 10) : '';
+      if (!jumpDate && (opts.useActivityWeek || isMutualCover.value)) {
+        jumpDate = String(mutualActivityStart.value || mutualActivityEnd.value || '').slice(0, 10);
+      }
+      if (jumpDate && /^\d{4}-\d{2}-\d{2}$/.test(jumpDate)) {
+        selectedWeekDate.value = jumpDate;
+      }
       activeTab.value = 'timetable';
       selectedSubject.value = 'all';
       searchQuery.value = t.name || '';
       nextTick(() => {
-        // 分頁：把目標老師所在頁打開
         const list = displayTimetableTeachers.value || [];
         const idx = list.findIndex(x => String(x.email || '').toLowerCase() === String(t.email).toLowerCase());
         if (idx >= 0) {
@@ -1414,11 +1430,16 @@ createApp({
             el.classList.add('tt-teacher-flash');
             setTimeout(() => el.classList.remove('tt-teacher-flash'), 1600);
           }
-          showToast(`已定位：${t.name} 老師課表`, 'success');
+          const weekTip = jumpDate
+            ? `（週次 ${formatDateMMDD(currentWeekDates.value[0])}～${formatDateMMDD(currentWeekDates.value[4])}）`
+            : '';
+          showToast(`已定位：${t.name} 老師課表${weekTip}`, 'success');
         });
       });
     };
-    /** 送出後依經費扣減代課老師互代額度（經費＝扣額度） */
+    /**
+     * 送出後樂觀扣減畫面餘額（真正扣包／流水已在 GAS submit 時完成，勿再打 updateMutualQuotas）
+     */
     const deductMutualQuotaForRows = async (rows) => {
       if (!rows || !rows.length) return;
       const shouldDeduct = (fee) => {
@@ -1435,23 +1456,12 @@ createApp({
         if (!em) return;
         deductMap[em] = (deductMap[em] || 0) + 1;
       });
-      const emails = Object.keys(deductMap);
-      if (!emails.length) return;
-      if (!isAdmin.value) return; // 僅管理員可改額度
-      const updates = [];
-      emails.forEach(em => {
+      Object.keys(deductMap).forEach(em => {
         const t = lookupTeacher(em);
         const prev = t ? (parseInt(t.mutualQuota, 10) || 0) : 0;
         const next = Math.max(0, prev - deductMap[em]);
-        updates.push({ email: t ? t.email : em, mutualQuota: next });
         patchLocalMutualQuota(t ? t.email : em, next);
       });
-      try {
-        await callGasApi('updateMutualQuotas', { list: updates });
-      } catch (e) {
-        console.warn('扣減互代額度失敗（申請已送出）', e);
-        showToast('申請已送出，但互代額度寫回失敗，請用「重算額度」校正', 'warning');
-      }
     };
     /**
      * 申請作廢時樂觀還原互代額度（後端已寫回試算表；此處只更新畫面）
@@ -2675,16 +2685,20 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
           return matchesName && matchesSubj;
         });
       }
-      // 自己置頂
+      // 有搜尋／活動互代看別人：不強制把自己掛最上面
+      if (query || isMutualCover.value) {
+        return list;
+      }
+      // 無搜尋瀏覽全校時：自己置頂
       const me = [];
       const others = [];
       list.forEach(t => {
         if (String(t.email || '').toLowerCase() === myEmail) me.push(t);
         else others.push(t);
       });
-      if (!me.length && (subj === 'all' || !query)) {
+      if (!me.length && subj === 'all') {
         const self = lookupTeacher(myEmail);
-        if (self && (subj === 'all' || subj === 'mine')) me.push(self);
+        if (self) me.push(self);
       }
       return me.concat(others);
     });
@@ -3142,30 +3156,52 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     const quotaDeductInsufficient = computed(() =>
       !!(quotaDeductPreview.value && quotaDeductPreview.value.some(q => q.short))
     );
-    /** 額度不足時改為自費排代 */
+    /** 額度不足時改經費：活動互代→活動公費；一般→自費 */
     const switchQuotaDeductToSelfPay = () => {
       if (pendingRequestData.value.mode !== 'substitution') return;
       if (isPeriod8FeeLocked.value) {
         showToast('第8節須使用計畫經費，無法改自費', 'warning');
         return;
       }
+      if (isMutualCover.value) {
+        pendingRequestData.value.subFee = ACTIVITY_PUBLIC_FEE;
+        batchSubFee.value = ACTIVITY_PUBLIC_FEE;
+        showToast('額度不足，已改為活動公費', 'info');
+        return;
+      }
       pendingRequestData.value.subFee = '自費代課';
       batchSubFee.value = '自費代課';
       showToast('已改為自費代課，請再確認後送出', 'info');
     };
-    /** 選「扣額度」且額度不足 → 擋送出 */
+    /**
+     * 選「扣額度」且額度不足：
+     * - 活動互代 → 自動改「活動公費」並允許送出
+     * - 一般 → 擋送出（請改自費或換人）
+     */
     const assertQuotaDeductAllowed = () => {
       if (pendingRequestData.value.mode !== 'substitution') return true;
       if (pendingRequestData.value.subFee !== QUOTA_DEDUCT_FEE) return true;
       if (isPeriod8FeeLocked.value) return true;
       const lines = quotaDeductPreview.value;
       if (!lines || !lines.length) {
+        if (isMutualCover.value) {
+          pendingRequestData.value.subFee = ACTIVITY_PUBLIC_FEE;
+          batchSubFee.value = ACTIVITY_PUBLIC_FEE;
+          showToast('找不到可用額度，已改為活動公費', 'info');
+          return true;
+        }
         showToast('找不到代課老師的互代額度，請改用自費代課或其他經費', 'warning');
         return false;
       }
       const shorts = lines.filter(q => q.short);
       if (!shorts.length) return true;
       const tip = shorts.map(q => `${q.name}（現有 ${q.before}，需扣 ${q.deduct}）`).join('、');
+      if (isMutualCover.value) {
+        pendingRequestData.value.subFee = ACTIVITY_PUBLIC_FEE;
+        batchSubFee.value = ACTIVITY_PUBLIC_FEE;
+        showToast(`額度不足（${tip}），已自動改為活動公費`, 'info');
+        return true;
+      }
       showToast(`額度不足，不可用「扣額度」：${tip}。請改自費排代，或另選有額度的老師。`, 'warning');
       return false;
     };
@@ -3284,22 +3320,11 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       });
     };
 
-    // H：媒合列表分頁上限（無搜尋最多 30；有搜尋最多 50）
+    // 媒合列表：每次多載 10 人，無總人數上限
     const MATCH_PAGE_SIZE = 10;
-    const MATCH_MAX_NO_SEARCH = 30;
-    const MATCH_MAX_WITH_SEARCH = 50;
-    const matchListCap = computed(() =>
-      matchSearchQuery.value.trim() ? MATCH_MAX_WITH_SEARCH : MATCH_MAX_NO_SEARCH
-    );
     const loadMoreMatches = () => {
-      const cap = matchListCap.value;
       const total = filteredRecommendedTeachers.value.length;
-      const next = Math.min(matchDisplayCount.value + MATCH_PAGE_SIZE, cap, total);
-      if (next === matchDisplayCount.value && matchDisplayCount.value >= cap && total > cap) {
-        showToast('請用上方搜尋姓名／科目，以縮小名單', 'info');
-        return;
-      }
-      matchDisplayCount.value = next;
+      matchDisplayCount.value = Math.min(matchDisplayCount.value + MATCH_PAGE_SIZE, total);
     };
 
     const filteredRecommendedTeachers = computed(() => {
@@ -3323,16 +3348,14 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       return list;
     });
 
-    const displayedRecommendedTeachers = computed(() => {
-      const cap = Math.min(matchDisplayCount.value, matchListCap.value);
-      return filteredRecommendedTeachers.value.slice(0, cap);
-    });
+    const displayedRecommendedTeachers = computed(() =>
+      filteredRecommendedTeachers.value.slice(0, matchDisplayCount.value)
+    );
 
     // 調課媒合同樣分頁
     const displayedExchangeList = computed(() => {
       const list = recommendedExchangeList.value || [];
-      const cap = Math.min(matchDisplayCount.value, matchListCap.value);
-      return list.slice(0, cap);
+      return list.slice(0, matchDisplayCount.value);
     });
     watch(matchSearchQuery, () => {
       matchDisplayCount.value = MATCH_PAGE_SIZE;
@@ -3427,14 +3450,16 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       if (!window.UiSubmitHelpers || !window.UiSubmitHelpers.getCompareCellText) return '';
       return window.UiSubmitHelpers.getCompareCellText({
         pendingRequestData, currentWeekDates, getScheduleForDate, isClassAwayOnDate,
-        resolveCompareBEmail, isBatchSlotAt, getBatchSlotForCompareB
+        resolveCompareBEmail, isBatchSlotAt, getBatchSlotForCompareB,
+        mutualDrafts, isMutualCover
       }, who, day, period);
     };
     const getCompareCellClass = (who, day, period) => {
       if (!window.UiSubmitHelpers || !window.UiSubmitHelpers.getCompareCellClass) return '';
       return window.UiSubmitHelpers.getCompareCellClass({
         pendingRequestData, currentWeekDates, getScheduleForDate, isClassAwayOnDate,
-        resolveCompareBEmail, isBatchSlotAt, getBatchSlotForCompareB, isSlotConflict
+        resolveCompareBEmail, isBatchSlotAt, getBatchSlotForCompareB, isSlotConflict,
+        mutualDrafts, isMutualCover
       }, who, day, period);
     };
 
@@ -5045,7 +5070,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       }
     };
 
-    // ── 班級空堂事件管理（ui-activity.js → UiClassAwayAdmin）──
+    // ── 空堂事件管理（ui-activity.js → UiClassAwayAdmin）──
     const {
       showClassAwayModal, classAwayModalMode, classAwayForm,
       openAddClassAwayModal, openEditClassAwayModal, toggleClassAwayFormClass,
@@ -5087,11 +5112,13 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       teachersList,
       currentWeekDates,
       getScheduleForDate,
+      isSingleWeek,
       persistMutualPanelDraft,
       clearScheduleCache,
       ensureMutualActivityRange,
       DAC
     });
+    _getMutualImportEventId = () => (mutualImportEventId && mutualImportEventId.value) || '';
 
     // ════════════════════════════════════════
     // §6 後台：核准 / 匯入 / 教師 / 課表編輯
@@ -5940,6 +5967,77 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     bindFlagModal(showClassAwayModal, () => { showClassAwayModal.value = false; }, '空堂事件');
     bindFlagModal(showBatchPrintPrompt, () => { dismissBatchPrintPrompt(); }, '批次列印');
 
+    // ── 後台：互代額度歷程（額度帳本）──
+    const showQuotaLedgerModal = ref(false);
+    const quotaLedgerLoading = ref(false);
+    const quotaLedgerTeacher = ref(null); // { email, name, balance, sheetQuota }
+    const quotaLedgerRows = ref([]);
+    /** 前端短快取：同師 60 秒內再開不重打 GAS */
+    const _quotaLedgerCache = Object.create(null);
+    try {
+      window.__quotaLedgerCacheBust = function () {
+        Object.keys(_quotaLedgerCache).forEach(function (k) { delete _quotaLedgerCache[k]; });
+      };
+    } catch (eQ) { /* ignore */ }
+    const openQuotaLedger = async (t) => {
+      if (!t || !t.email) return;
+      if (!isAdmin.value) {
+        showToast('僅管理員可查看額度歷程', 'warning');
+        return;
+      }
+      if (typeof fetchMutualQuotaLedger !== 'function') {
+        showToast('額度歷程 API 未載入，請重新整理', 'error');
+        return;
+      }
+      const emKey = String(t.email).toLowerCase();
+      showQuotaLedgerModal.value = true;
+      quotaLedgerTeacher.value = {
+        email: t.email,
+        name: t.name || t.email,
+        balance: parseInt(t.mutualQuota, 10) || 0,
+        sheetQuota: parseInt(t.mutualQuota, 10) || 0
+      };
+      const hit = _quotaLedgerCache[emKey];
+      if (hit && (Date.now() - hit.ts) < 60000) {
+        quotaLedgerRows.value = hit.rows;
+        if (hit.meta) quotaLedgerTeacher.value = hit.meta;
+        quotaLedgerLoading.value = false;
+        return;
+      }
+      quotaLedgerLoading.value = true;
+      quotaLedgerRows.value = [];
+      try {
+        const res = await fetchMutualQuotaLedger({ email: t.email, limit: 80 });
+        const rows = (res && res.ledger) || [];
+        const meta = {
+          email: (res && res.email) || t.email,
+          name: (res && res.name) || t.name || t.email,
+          balance: res && res.balance != null ? res.balance : (parseInt(t.mutualQuota, 10) || 0),
+          sheetQuota: res && res.sheetQuota != null ? res.sheetQuota : (parseInt(t.mutualQuota, 10) || 0)
+        };
+        quotaLedgerRows.value = rows;
+        quotaLedgerTeacher.value = meta;
+        _quotaLedgerCache[emKey] = { ts: Date.now(), rows: rows, meta: meta };
+      } catch (e) {
+        console.error(e);
+        showToast('載入額度歷程失敗：' + (e && e.message ? e.message : e), 'error');
+      } finally {
+        quotaLedgerLoading.value = false;
+      }
+    };
+    const closeQuotaLedger = () => {
+      showQuotaLedgerModal.value = false;
+    };
+    const quotaTypeClass = (type) => {
+      const k = String(type || '').toLowerCase();
+      if (k === 'earn') return 'quota-type-earn';
+      if (k === 'spend') return 'quota-type-spend';
+      if (k === 'restore') return 'quota-type-restore';
+      if (k === 'adjust') return 'quota-type-adjust';
+      return '';
+    };
+    bindFlagModal(showQuotaLedgerModal, () => { showQuotaLedgerModal.value = false; }, '額度歷程');
+
     // 預設公費：公假／婚假／喪假／產前假/分娩假／身心調適假
     const PUBLIC_FEE_REASONS = ['公假', '婚假', '喪假', '產前假/分娩假', '身心調適假'];
     const isPublicFeeReason = (reason) => {
@@ -5997,6 +6095,24 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     const removeMutualDraft = (key) => { const a = getMutualPanelApi(); if (a) a.removeMutualDraft(key); };
     const clearMutualDrafts = () => { const a = getMutualPanelApi(); if (a) a.clearMutualDrafts(); };
     const assignMutualDraftFromMatch = (subEmail) => { const a = getMutualPanelApi(); if (a) a.assignMutualDraftFromMatch(subEmail); };
+    /** 從暫定列再開模擬對照（不重寫暫定） */
+    const previewMutualDraft = (d) => {
+      if (!d || !d.subEmail) return;
+      activeCell.value = {
+        teacherEmail: d.leaveEmail,
+        teacherName: d.leaveName,
+        dayOfWeek: d.dayOfWeek,
+        period: d.period,
+        classData: {
+          className: d.className || '',
+          subject: d.subject || '',
+          restriction: d.restriction || ''
+        }
+      };
+      inputRequestDate.value = d.dateStr;
+      selectedWeekDate.value = d.dateStr;
+      prepCompare('substitution', d.subEmail);
+    };
 
     /** 全部暫定一次送出（ui-activity.js → UiMutualSubmit） */
     const submitAllMutualDrafts = async () => {
@@ -6271,7 +6387,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       toggleMutualAwayClass, selectAwayGrade, mutualCoverStats,
       mutualLeadEmails, toggleMutualLead, isMutualLead, onMutualLeadChipClick, jumpToTeacherTimetable,
       mutualSkipNotify, directApproveSkipNotify, mutualNote, mutualDrafts, getMutualDraftAt, removeMutualDraft, clearMutualDrafts,
-      clearMutualPanel, assignMutualDraftFromMatch, submitAllMutualDrafts, recalculateMutualQuotasFromActivity,
+      clearMutualPanel, assignMutualDraftFromMatch, previewMutualDraft, submitAllMutualDrafts, recalculateMutualQuotasFromActivity,
       persistMutualPanelDraft, isAwayClassCell,
       batchAssignMode, batchActiveSlotKey, isBatchMatchFlow, isBatchPerSlotMode, batchAssignedCount, batchAllSlotsAssigned, batchActiveSlot,
       batchCompareViewEmail, batchCompareSubGroups, setBatchCompareViewEmail, resolveCompareBEmail,
@@ -6290,6 +6406,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       showImportTeachersModal, teacherExcelData, teacherExcelHeaders, teacherMappingFields, teacherImportPreview, runTeacherImportPreview, handleTeacherExcelChange, importTeachersBatch,
       isScheduleEditMode, showScheduleEditModal, scheduleForm,
       showTeacherModal, teacherModalMode, teacherForm,
+      showQuotaLedgerModal, quotaLedgerLoading, quotaLedgerTeacher, quotaLedgerRows, openQuotaLedger, closeQuotaLedger, quotaTypeClass,
       reportMonth, reportWeeksCount, monthlyReportData,
       excelData, excelHeaders, mappingFields, importPreview, runImportPreview, downloadScheduleTemplate, downloadCurrentSchedules,
       directApproveMode, googleClientId, gasApiUrl, saveClientSettings,
@@ -6304,7 +6421,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       pendingMyPendingPage, pendingMySentPage, pendingAdminPage,
       paginatedMyPending, paginatedMySent, paginatedAdminPending,
       pendingMyPendingTotal, pendingMySentTotal, pendingAdminTotal,
-      reportMonthOptions, personalChanges, recommendedExchangeList, displayedExchangeList, matchListCap,
+      reportMonthOptions, personalChanges, recommendedExchangeList, displayedExchangeList,
       loginWithGoogle, logout, gsiButtonReady, gsiButtonError, reloadGsiLoginButton,
       changeWeek, getPeriodTimeSpan, getWeekDayText, formatDateMMDD,
       getClassCellClassForDate, getClassCellClassForClass, getScheduleForDate, weekScheduleGrid, cellFromGrid, handleCellClick, handleClassCellClick,
@@ -6334,7 +6451,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       toLocalDateStr,
       // 單/雙週輔導課
       isSingleWeek, semesterStartDate,
-      // 班級空堂事件
+      // 空堂事件
       classAwayEvents, semesterEndDate, activeAwayBanner, isClassAwayOnDate,
       showClassAwayModal, classAwayModalMode, classAwayForm,
       openAddClassAwayModal, openEditClassAwayModal, toggleClassAwayFormClass,
