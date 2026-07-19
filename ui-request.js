@@ -608,6 +608,7 @@ window.UiSubmitHelpers = (function () {
             + newRequest['受邀人姓名'] + ' 老師！');
         lineCopyText.value = buildLineInviteText(linePayload);
         hasLineTemplate.value = true;
+        if (deps.successFlowMode) deps.successFlowMode.value = 'normal';
       } else {
         successModalTitle.value = '🎉 申請已直接核准';
         successModalMessage.value = '申請單（' + serial + '）已直接審核完成' + mutualTip
@@ -619,6 +620,7 @@ window.UiSubmitHelpers = (function () {
           lineCopyText.value = '';
           hasLineTemplate.value = false;
         }
+        if (deps.successFlowMode) deps.successFlowMode.value = 'direct';
       }
       showSuccessModal.value = true;
     } catch (err) {
