@@ -582,8 +582,10 @@
                               <template v-else>
                                 <div class="cell-main">
                                   <div class="cell-class-name">{{ slot.cell.className }}</div>
-                                  <div class="cell-subject">{{ slot.cell.subject }}</div>
-                                  <div v-if="slot.isAwayLabel" class="cell-sub-text away-class-label">班外出</div>
+                                  <div class="cell-subject">
+                                    {{ slot.cell.subject }}
+                                    <span v-if="slot.isAwayLabel" class="away-class-badge">班外出</span>
+                                  </div>
                                   <div v-if="slot.draft" class="cell-sub-text mutual-draft-label">
                                     暫定：{{ slot.draftSubName }}
                                     <span class="opacity-85">（{{ slot.draftFeeShort }}）</span>
@@ -2329,7 +2331,7 @@
                 style="background:#7c3aed;border-color:#6d28d9;"
                 :disabled="isSubmitting || loading"
                 @click="assignMutualDraftFromMatch(pendingRequestData.subTeacher); showCompareModal = false"
-              >暫定此人</button>
+              >暫定</button>
               <button type="button" class="btn btn-secondary" :disabled="isSubmitting || loading" @click="showCompareModal = false">關閉</button>
             </template>
             <template v-else>

@@ -17,6 +17,24 @@ window.DomainSchedule = (function () {
   var PATROL_INCOMING_TIP =
     '對方本節為【巡堂】。排入代課／調課後，請私下協調代巡堂或互換，系統不另開巡堂代課單。';
 
+  function formatShortDateAndPeriod(dateStr, period, getWeekDayText) {
+    if (!dateStr) return '';
+    var mmdd = dateStr.slice(5).replace('-', '/');
+    var dayText = '';
+    if (typeof getWeekDayText === 'function') {
+      try {
+        var d = new Date(dateStr.replace(/-/g, '/'));
+        if (!isNaN(d.getTime())) {
+          var w = d.getDay();
+          var dayNum = w === 0 ? 7 : w;
+          dayText = getWeekDayText(dayNum);
+        }
+      } catch (e) {}
+    }
+    var weekPart = dayText ? '(' + dayText + ')' : '';
+    return mmdd + weekPart + ' ' + period;
+  }
+
   function buildSubstitutionsLookup(records) {
     const map = {};
     (records || []).forEach(function (r) {
@@ -86,6 +104,8 @@ window.DomainSchedule = (function () {
     const allSubs = ctx.allSubs || [];
     const index = ctx.scheduleIndex || null;
     const h = ctx.helpers || {};
+
+
 
     if (periodSubs.length > 0) {
       const forwardMap = {};
@@ -172,10 +192,8 @@ window.DomainSchedule = (function () {
             return x.requestId === firstEdge.requestId
               && (x.date !== firstEdge.date || String(x.period) !== String(firstEdge.period) || x.id !== firstEdge.id);
           });
-          var dest = otherSub
-            ? (h.formatDateMMDD(otherSub.date) + ' 第' + otherSub.period + '節')
-            : '他處';
-          subText = '⇄ 調至 ' + dest + ' (' + h.getTeacherNameByEmail(firstEdge.actualTeacherEmail) + ')';
+          var dest = otherSub ? formatShortDateAndPeriod(otherSub.date, otherSub.period, h.getWeekDayText) : '他處';
+          subText = '⇄ 調至 ' + dest + ' ' + h.getTeacherNameByEmail(firstEdge.actualTeacherEmail);
         } else if (firstEdge.subFee === '扣額度' || firstEdge.subFee === '互代不結') {
           subText = '🔁 互代: ' + h.getTeacherNameByEmail(firstEdge.actualTeacherEmail);
         } else {
@@ -290,10 +308,8 @@ window.DomainSchedule = (function () {
               return x.requestId === incomingEdge.requestId
                 && (x.date !== incomingEdge.date || String(x.period) !== String(incomingEdge.period) || x.id !== incomingEdge.id);
             });
-            var src = otherIn
-              ? (h.formatDateMMDD(otherIn.date) + ' 第' + otherIn.period + '節')
-              : '他處';
-            subTextIn = '⇄ 調自 ' + src + ' (' + h.getTeacherNameByEmail(incomingEdge.originalTeacherEmail) + ')';
+            var src = otherIn ? formatShortDateAndPeriod(otherIn.date, otherIn.period, h.getWeekDayText) : '他處';
+            subTextIn = '⇄ 調自 ' + src + ' ' + h.getTeacherNameByEmail(incomingEdge.originalTeacherEmail);
           } else if (incomingEdge.subFee === '扣額度' || incomingEdge.subFee === '互代不結') {
             subTextIn = '🔁 互代: ' + h.getTeacherNameByEmail(incomingEdge.originalTeacherEmail);
           } else {
@@ -452,14 +468,14 @@ window.DomainSchedule = (function () {
           return Object.assign({}, cell, {
             isPending: true,
             pendingType: 'exchange_out',
-            pendingText: '⏳ 調出中 ⇄ 週' + getWeekDayText(pReq.targetDayOfWeek) + '第' + pReq.targetPeriod + '節 (' + pReq.targetTeacherName + ')',
+            pendingText: '⇄ 調至 ' + formatShortDateAndPeriod(pReq.targetDate, pReq.targetPeriod, getWeekDayText) + ' ' + pReq.targetTeacherName,
             pendingRecord: pReq
           });
         }
         return Object.assign({}, cell, {
           isPending: true,
           pendingType: 'substitution_out',
-          pendingText: '⏳ 代課中 ➔ ' + pReq.targetTeacherName,
+          pendingText: '⇄ 代課 ➔ ' + pReq.targetTeacherName,
           pendingRecord: pReq
         });
       }
@@ -469,7 +485,7 @@ window.DomainSchedule = (function () {
         return Object.assign({}, cell, {
           isPending: true,
           pendingType: 'exchange_out',
-          pendingText: '⏳ 調出中 ⇄ 週' + getWeekDayText(pReqB.requestPeriodDay) + '第' + pReqB.requestPeriod + '節 (' + pReqB.requesterName + ')',
+          pendingText: '⇄ 調至 ' + formatShortDateAndPeriod(pReqB.requestDate, pReqB.requestPeriod, getWeekDayText) + ' ' + pReqB.requesterName,
           pendingRecord: pReqB
         });
       }
@@ -485,7 +501,7 @@ window.DomainSchedule = (function () {
           teacherEmail: teacherEmail,
           isPending: true,
           pendingType: 'substitution_in',
-          pendingText: '⏳ 待代課 🠔 ' + pSub.requesterName,
+          pendingText: '⇄ 待代 🠔 ' + pSub.requesterName,
           pendingRecord: pSub
         };
       }
@@ -502,7 +518,7 @@ window.DomainSchedule = (function () {
           teacherEmail: teacherEmail,
           isPending: true,
           pendingType: 'exchange_in',
-          pendingText: '⏳ 調入中 ⇄ 週' + getWeekDayText(pExcA.requestPeriodDay) + '第' + pExcA.requestPeriod + '節 (' + pExcA.targetTeacherName + ')',
+          pendingText: '⇄ 調自 ' + formatShortDateAndPeriod(pExcA.requestDate, pExcA.requestPeriod, getWeekDayText) + ' ' + pExcA.targetTeacherName,
           pendingRecord: pExcA
         };
       }
@@ -515,7 +531,7 @@ window.DomainSchedule = (function () {
           teacherEmail: teacherEmail,
           isPending: true,
           pendingType: 'exchange_in',
-          pendingText: '⏳ 調入中 ⇄ 週' + getWeekDayText(pExcB.targetDayOfWeek) + '第' + pExcB.targetPeriod + '節 (' + pExcB.requesterName + ')',
+          pendingText: '⇄ 調自 ' + formatShortDateAndPeriod(pExcB.targetDate, pExcB.targetPeriod, getWeekDayText) + ' ' + pExcB.requesterName,
           pendingRecord: pExcB
         };
       }

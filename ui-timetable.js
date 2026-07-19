@@ -63,7 +63,8 @@ window.UiTimetable = (function () {
           getTeacherSubjectByEmail: getTeacherSubjectByEmail,
           formatDateMMDD: formatDateMMDD,
           isSingleWeek: isSingleWeek,
-          isClassAway: isClassAwayOnDate
+          isClassAway: isClassAwayOnDate,
+          getWeekDayText: getWeekDayText
         }
       });
     }
@@ -90,14 +91,35 @@ window.UiTimetable = (function () {
       return merged;
     }
 
+    /** 暫定草稿 key → draft（建 grid 時一次索引，避免每格 find） */
+    var mutualDraftIndex = computed(function () {
+      var map = {};
+      if (!isMutualCover.value) return map;
+      (deps.mutualDrafts && deps.mutualDrafts.value ? deps.mutualDrafts.value : []).forEach(function (d) {
+        if (d && d.key) map[d.key] = d;
+      });
+      return map;
+    });
+
+    function draftAt(leaveEmail, dateStr, period) {
+      if (!isMutualCover.value) return null;
+      var key = (window.UiMutualPanelState && window.UiMutualPanelState.mutualDraftKey)
+        ? window.UiMutualPanelState.mutualDraftKey(leaveEmail, dateStr, period)
+        : (String(leaveEmail || '').toLowerCase() + '|' + dateStr + '|' + period);
+      return mutualDraftIndex.value[key] || null;
+    }
+
     var weekScheduleGrid = computed(function () {
       // 明確依賴索引／lookup，避免 memo 命中時漏追蹤、異動後不重畫
       void pendingIndex.value;
       void scheduleIndex.value;
       void substitutionsLookup.value;
+      void mutualDraftIndex.value;
+      void batchSelectMode.value;
       var grid = {};
       var teachers = displayTimetableTeachers.value || [];
       var dates = currentWeekDates.value || [];
+      var mutualOn = !!isMutualCover.value;
       teachers.forEach(function (t) {
         if (!t || !t.email) return;
         var row = {};
@@ -105,7 +127,25 @@ window.UiTimetable = (function () {
           var dateStr = dates[day - 1];
           if (!dateStr) continue;
           for (var period = 1; period <= 8; period++) {
-            row[day + '-' + period] = getScheduleForDate(t.email, dateStr, period, day);
+            var cell = getScheduleForDate(t.email, dateStr, period, day);
+            var draft = mutualOn ? draftAt(t.email, dateStr, period) : null;
+            var batchOn = batchSelectMode.value && isBatchSlotSelected(t.email, dateStr, period);
+            var awayLabel = !!(cell && cell.className && (isAwayClassCell(cell.className, dateStr) || cell.isClassAway) && !draft);
+            var cls = cellClassFromCell(cell, !!draft, batchOn, awayLabel);
+            var feeShort = '';
+            if (draft) {
+              if (draft.fee === '扣額度' || draft.fee === '互代不結') feeShort = '互代';
+              else if (draft.fee === '第8節代課') feeShort = '第8節';
+              else feeShort = '公費';
+            }
+            row[day + '-' + period] = {
+              cell: cell,
+              cls: cls,
+              draft: draft,
+              draftSubName: draft ? (draft.subName || '') : '',
+              draftFeeShort: feeShort,
+              isAwayLabel: awayLabel && !!(mutualOn || cell.isClassAway)
+            };
           }
         }
         grid[t.email] = row;
@@ -119,7 +159,44 @@ window.UiTimetable = (function () {
       var g = weekScheduleGrid.value;
       if (!g || !email) return null;
       var row = g[email] || g[String(email).toLowerCase()];
+      var slot = row ? row[day + '-' + period] : null;
+      if (!slot) return null;
+      // 相容：舊呼叫端期待 cell 本體
+      return slot.cell !== undefined ? slot.cell : slot;
+    }
+
+    function slotFromGrid(email, day, period) {
+      var g = weekScheduleGrid.value;
+      if (!g || !email) return null;
+      var row = g[email] || g[String(email).toLowerCase()];
       return row ? (row[day + '-' + period] || null) : null;
+    }
+
+    function cellClassFromCell(cell, draftOn, batchOn, awayOn) {
+      var batchCls = batchOn ? ' is-batch-selected' : '';
+      if (!cell) return 'is-empty' + batchCls;
+      if (cell.isPending) {
+        if (cell.pendingType === 'substitution_out') return 'is-pending-sub-out' + batchCls;
+        if (cell.pendingType === 'substitution_in') return 'is-pending-sub-in' + batchCls;
+        if (cell.pendingType === 'exchange_out') return 'is-pending-exc-out' + batchCls;
+        if (cell.pendingType === 'exchange_in') return 'is-pending-exc-in' + batchCls;
+      }
+      if (cell.isSubstituted) {
+        return (cell.subType === 'exchange' ? 'is-exchange-out' : 'is-substituted-out') + batchCls;
+      }
+      if (cell.isSubstitutionDuty) {
+        var baseCls = cell.subType === 'exchange' ? 'is-exchange-in' : 'is-substituted-in';
+        if (awayOn || cell.isClassAway) {
+          baseCls += ' is-away-vacant';
+        }
+        return baseCls + batchCls;
+      }
+      if (draftOn) return 'is-mutual-draft' + batchCls;
+      if (awayOn || cell.isClassAway) return 'is-away-class' + batchCls;
+      if (cell.isPatrol || cell.attr === '巡堂') return 'is-patrol' + batchCls;
+      if (cell.attr === '兼課') return 'is-overtime' + batchCls;
+      if (cell.attr === '實支') return 'is-elastic' + batchCls;
+      return 'has-class' + batchCls;
     }
 
     function isAwayClassCell(className, dateStr) {
@@ -142,31 +219,16 @@ window.UiTimetable = (function () {
     }
 
     function getClassCellClassForDate(teacherEmail, dateStr, period, dayOfWeek) {
+      var slot = slotFromGrid(teacherEmail, dayOfWeek, period);
+      if (slot && slot.cls) return slot.cls;
       var cell = getScheduleForDate(teacherEmail, dateStr, period, dayOfWeek);
-      if (!cell) return 'is-empty';
-      var draftOn = isMutualCover.value && !!getMutualDraftAt(teacherEmail, dateStr, period);
-      // 批次選取：疊在狀態 class 上（保留 is-substituted-in 等），避免 Vue 重繪洗掉 DOM 高亮
+      var draftOn = isMutualCover.value && !!draftAt(teacherEmail, dateStr, period);
       var batchOn = batchSelectMode.value && isBatchSlotSelected(teacherEmail, dateStr, period);
-      var batchCls = batchOn ? ' is-batch-selected' : '';
-      if (cell.isPending) {
-        if (cell.pendingType === 'substitution_out') return 'is-pending-sub-out' + batchCls;
-        if (cell.pendingType === 'substitution_in') return 'is-pending-sub-in' + batchCls;
-        if (cell.pendingType === 'exchange_out') return 'is-pending-exc-out' + batchCls;
-        if (cell.pendingType === 'exchange_in') return 'is-pending-exc-in' + batchCls;
+      var cls = cellClassFromCell(cell, draftOn, batchOn);
+      if (cell && (isAwayClassCell(cell.className, dateStr) || cell.isClassAway) && !draftOn && !cell.isPending && !cell.isSubstituted && !cell.isSubstitutionDuty) {
+        return 'is-away-class' + (batchOn ? ' is-batch-selected' : '');
       }
-      if (cell.isSubstituted) {
-        return (cell.subType === 'exchange' ? 'is-exchange-out' : 'is-substituted-out') + batchCls;
-      }
-      if (cell.isSubstitutionDuty) {
-        return (cell.subType === 'exchange' ? 'is-exchange-in' : 'is-substituted-in') + batchCls;
-      }
-      if (draftOn) return 'is-mutual-draft' + batchCls;
-      if (isAwayClassCell(cell.className, dateStr) || cell.isClassAway) return 'is-away-class' + batchCls;
-      if (cell.isPatrol || cell.attr === '巡堂') return 'is-patrol' + batchCls;
-      // 第8節／輔導：與一般課同色（僅 badge 標「輔導」）
-      if (cell.attr === '兼課') return 'is-overtime' + batchCls;
-      if (cell.attr === '實支') return 'is-elastic' + batchCls;
-      return 'has-class' + batchCls;
+      return cls;
     }
 
     /**
@@ -192,7 +254,7 @@ window.UiTimetable = (function () {
       if (matchMode.value !== 'substitution' || !inputRequestDate.value) return;
       recommendationLoading.value = true;
 
-      function applyList(list) {
+      function applyList(list, emptyMeta) {
         list = list || [];
         if (isMutualCover.value && DAC() && DAC().enrichCandidatesWithBalance) {
           list = DAC().enrichCandidatesWithBalance(list, activityBalanceCtx());
@@ -201,7 +263,37 @@ window.UiTimetable = (function () {
         matchDisplayCount.value = 10;
         matchShowNoTeacherWarning.value = list.length === 0;
         recommendedTeachers.value = list;
+        if (matchDeps.matchEmptyReasons) {
+          matchDeps.matchEmptyReasons.value = (list.length === 0 && emptyMeta)
+            ? emptyMeta
+            : null;
+        }
         recommendationLoading.value = false;
+      }
+
+      /** 媒合 0 人時的可能原因（給 UI） */
+      function buildEmptyReasons(opts) {
+        opts = opts || {};
+        var period = parseInt(activeCell.value && activeCell.value.period, 10);
+        var reasons = [];
+        if (opts.batchAll) {
+          reasons.push('選定的多節無法由「同一人」全節皆空');
+          reasons.push('可改「每節不同人」、減少節數，或改單節媒合');
+          return reasons;
+        }
+        if (period === 8) {
+          reasons.push('第 8 節僅能與第 8 節互代，可代人選通常較少');
+        }
+        reasons.push('該時段多數教師已有課（含進行中申請佔位）');
+        if (activeCell.value && activeCell.value.classData
+            && activeCell.value.classData.restriction === 'restricted') {
+          reasons.push('本節為綁課，建議代課；可人選仍可能偏少');
+        }
+        if (isMutualCover.value) {
+          reasons.push('活動互代僅帶隊老師課可排；請確認外出班與帶隊設定');
+        }
+        reasons.push('可試：換日期、改調課、或請教學組手動安排');
+        return reasons;
       }
 
       function runLocal() {
@@ -227,7 +319,7 @@ window.UiTimetable = (function () {
           activityMode: !!isMutualCover.value,
           preferReleasedByAway: !!isMutualCover.value
         });
-        applyList(list);
+        applyList(list, list.length === 0 ? buildEmptyReasons({}) : null);
       }
 
       function runRemoteThenLocal() {
@@ -268,7 +360,8 @@ window.UiTimetable = (function () {
         if (!fetchRecommendations._cache) fetchRecommendations._cache = {};
         var hit = fetchRecommendations._cache[cacheKey];
         if (hit && (now - hit.ts) < 45000 && hit.list) {
-          applyList(hit.list.slice());
+          var cached = hit.list.slice();
+          applyList(cached, cached.length === 0 ? buildEmptyReasons({}) : null);
           return;
         }
 
@@ -316,7 +409,7 @@ window.UiTimetable = (function () {
               });
             }
           } catch (eC) { /* ignore */ }
-          applyList(list);
+          applyList(list, list.length === 0 ? buildEmptyReasons({}) : null);
         }).catch(function (err) {
           console.warn('getMatchCandidates 失敗，改本地媒合：', err);
           runLocal();
@@ -564,6 +657,19 @@ window.UiTimetable = (function () {
         matchDisplayCount.value = 10;
         matchShowNoTeacherWarning.value = ranked.length === 0;
         recommendedTeachers.value = ranked;
+        if (matchDeps.matchEmptyReasons) {
+          if (ranked.length === 0) {
+            var r = [];
+            if (parseInt(slot.period, 10) === 8) r.push('第 8 節僅能與第 8 節互代，可代人選通常較少');
+            r.push('該時段多數教師已有課（含進行中申請佔位）');
+            if (slot.restriction === 'restricted') r.push('本節為綁課，建議代課；可人選仍可能偏少');
+            if (isMutualCover.value) r.push('活動互代僅帶隊老師課可排；請確認外出班與帶隊設定');
+            r.push('可試：換日期、改調課、或請教學組手動安排');
+            matchDeps.matchEmptyReasons.value = r;
+          } else {
+            matchDeps.matchEmptyReasons.value = null;
+          }
+        }
         recommendationLoading.value = false;
       };
       if (typeof requestAnimationFrame === 'function') {
@@ -714,6 +820,14 @@ window.UiTimetable = (function () {
         matchDisplayCount.value = 10;
         matchShowNoTeacherWarning.value = list.length === 0;
         recommendedTeachers.value = list;
+        if (matchDeps.matchEmptyReasons) {
+          matchDeps.matchEmptyReasons.value = list.length === 0
+            ? [
+                '選定的多節無法由「同一人」全節皆空',
+                '可改「每節不同人」、減少節數，或改單節媒合'
+              ]
+            : null;
+        }
         recommendationLoading.value = false;
       };
       if (typeof requestAnimationFrame === 'function') {
@@ -730,6 +844,7 @@ window.UiTimetable = (function () {
       clearScheduleCache: clearScheduleCache,
       weekScheduleGrid: weekScheduleGrid,
       cellFromGrid: cellFromGrid,
+      slotFromGrid: slotFromGrid,
       isAwayClassCell: isAwayClassCell,
       getClassCellClassForDate: getClassCellClassForDate,
       fetchRecommendations: fetchRecommendations,

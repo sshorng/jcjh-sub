@@ -668,6 +668,33 @@ body {
   color: #94a3b8 !important;
 }
 
+.grid-cell-class.is-away-vacant {
+  opacity: 0.55 !important;
+  border-style: dashed !important;
+  background: #f8fafc !important;
+}
+
+.grid-cell-class.is-away-vacant .cell-subject,
+.grid-cell-class.is-away-vacant .cell-class-name,
+.grid-cell-class.is-away-vacant .cell-sub-text {
+  text-decoration: line-through !important;
+  color: #94a3b8 !important;
+}
+
+.away-class-badge {
+  display: inline-block;
+  font-size: 0.65rem;
+  padding: 1px 4px;
+  background: var(--color-danger-glow, #fef2f2);
+  color: var(--color-danger, #ef4444);
+  border: 1px solid rgba(239, 68, 68, 0.15);
+  border-radius: 4px;
+  margin-left: 4px;
+  font-weight: 500;
+  vertical-align: middle;
+  line-height: 1.2;
+}
+
 .grid-cell-class.is-exchange-in {
   background: #eff6ff !important;
   border: 1px solid #bfdbfe !important;
@@ -3598,23 +3625,23 @@ td.table-empty {
   word-break: break-all;
 }
 .td-match-op {
-  padding: 8px 4px;
+  padding: 6px 4px;
   text-align: right;
   vertical-align: middle;
-  width: 3.8rem;
+  width: 3.0rem;
 }
 .match-op-pair {
   display: inline-flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 4px;
+  gap: 3px;
   margin-left: auto;
 }
 .match-op-btn {
   width: 100%;
-  min-width: 3.2rem;
-  padding: 3px 4px;
-  font-size: 0.72rem;
+  min-width: 2.5rem;
+  padding: 2px 3px;
+  font-size: 0.68rem;
   text-align: center;
   white-space: nowrap;
   box-sizing: border-box;
