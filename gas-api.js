@@ -11,6 +11,7 @@ window.GasApi = (function () {
     adminApprove: 1, adminReject: 1, adminApproveBatch: 1, adminRejectBatch: 1,
     cancelRequest: 1, withdrawRequest: 1, deleteSubstitutionRecord: 1,
     saveTeacher: 1, deleteTeacher: 1, importTeachersBatch: 1, updateMutualQuotas: 1,
+    earnMutualQuotaFromActivity: 1,
     saveScheduleCell: 1, clearScheduleCell: 1, importSchedulesBatch: 1,
     saveSemester: 1, deleteSemester: 1, setDefaultSemester: 1,
     saveClassAwayEvent: 1, deleteClassAwayEvent: 1,
@@ -26,6 +27,7 @@ window.GasApi = (function () {
   /** 課表／教師／學期結構變更 → 清全部分鍵 */
   var STRUCTURE_WRITE_ACTIONS = {
     saveTeacher: 1, deleteTeacher: 1, importTeachersBatch: 1, updateMutualQuotas: 1,
+    earnMutualQuotaFromActivity: 1,
     saveScheduleCell: 1, clearScheduleCell: 1, importSchedulesBatch: 1,
     saveSemester: 1, deleteSemester: 1, setDefaultSemester: 1,
     saveClassAwayEvent: 1, deleteClassAwayEvent: 1, saveMailSettings: 1
@@ -339,7 +341,8 @@ window.GasApi = (function () {
       adminRejectBatch: 40,
       submitRequestBatch: 50,
       sendBatchNotices: 40,
-      getInitialData: 25
+      getInitialData: 25,
+      earnMutualQuotaFromActivity: 45
     };
 
     async function postJson(action, data, options) {
@@ -643,6 +646,24 @@ window.GasApi = (function () {
       }
     }
 
+    /** 互代額度帳本歷程（email 可選；管理員可查他人） */
+    async function fetchMutualQuotaLedger(options) {
+      options = options || {};
+      const semesterId = options.semesterId || opts.getSemesterId();
+      const prevGet = opts.getSemesterId;
+      if (options.semesterId) {
+        opts.getSemesterId = function () { return semesterId; };
+      }
+      try {
+        return await postJson('getMutualQuotaLedger', {
+          email: options.email || options.teacherEmail || '',
+          limit: options.limit != null ? options.limit : 80
+        });
+      } finally {
+        opts.getSemesterId = prevGet;
+      }
+    }
+
     return {
       callGasApi,
       fetchInitialData,
@@ -652,6 +673,7 @@ window.GasApi = (function () {
       fetchRequestsDelta,
       fetchHistoryMonth,
       fetchMatchCandidates,
+      fetchMutualQuotaLedger,
       decodeJwt,
       isTokenExpired,
       isTokenExpiringSoon,
