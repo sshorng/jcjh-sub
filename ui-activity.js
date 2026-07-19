@@ -4,7 +4,7 @@
  * 對外 API 不變：UiClassAwayAdmin, UiMutualBridge, UiMutualPanelState, UiMutualSubmit, UiBatchSubmit
  */
 /**
- * 後台：班級空堂事件 CRUD（從 app.js 抽出）
+  * 後台：空堂事件 CRUD（從 app.js 抽出）
  * create(deps) → { refs + methods } 供 Vue setup 解構
  */
 window.UiClassAwayAdmin = (function () {
@@ -281,6 +281,7 @@ window.UiMutualBridge = (function () {
         });
         return { email: em, name: t ? t.name : em };
       });
+      var isSingleWeekFn = deps.isSingleWeek;
       return dac.buildStats({
         active: !!isMutualCover.value,
         awayClasses: mutualAwayClasses.value,
@@ -294,7 +295,8 @@ window.UiMutualBridge = (function () {
         teachers: teachersList.value,
         pendingDrafts: isMutualCover.value ? (mutualDrafts.value || []) : [],
         pendingSlots: isMutualCover.value ? (batchSlots.value || []) : [],
-        getScheduleForDate: getScheduleForDate
+        getScheduleForDate: getScheduleForDate,
+        isSingleWeek: typeof isSingleWeekFn === 'function' ? isSingleWeekFn : null
       });
     });
 
@@ -355,6 +357,8 @@ window.UiMutualPanelState = (function () {
     var softRefreshInBackground = deps.softRefreshInBackground || function () {};
     var defaultSubFeeForReason = deps.defaultSubFeeForReason || function () { return '自費代課'; };
     var getScheduleForDate = deps.getScheduleForDate;
+    var classAwayEvents = deps.classAwayEvents;
+    var getMutualImportEventId = deps.getMutualImportEventId || function () { return ''; };
     var DAC = deps.DAC || function () { return window.DomainActivityCover; };
 
     function persistMutualPanelDraft() {
@@ -527,9 +531,72 @@ window.UiMutualPanelState = (function () {
       teachersList.value = list;
     }
 
+    /** 從空堂事件解析發放用的 eventId / eventName */
+    function resolveEarnEventFromClassAway() {
+      var events = (classAwayEvents && classAwayEvents.value) ? classAwayEvents.value : [];
+      var selectedId = String(getMutualImportEventId() || '').trim();
+      var hit = null;
+      if (selectedId) {
+        hit = events.find(function (e) { return String(e.id) === selectedId; }) || null;
+      }
+      // 未選下拉：用期間＋外出班對可進互代事件做最佳匹配
+      if (!hit && events.length) {
+        var start = String(mutualActivityStart.value || '').slice(0, 10);
+        var end = String(mutualActivityEnd.value || '').slice(0, 10);
+        var awaySet = {};
+        (mutualAwayClasses.value || []).forEach(function (c) {
+          var k = String(c || '').trim();
+          if (k) awaySet[k] = true;
+        });
+        var best = null;
+        var bestScore = -1;
+        events.forEach(function (e) {
+          if (!e || e.enabled === false) return;
+          if (e.forMutual === false) return;
+          var es = String(e.startDate || '').slice(0, 10);
+          var ee = String(e.endDate || '').slice(0, 10);
+          var score = 0;
+          if (start && es && start === es) score += 3;
+          if (end && ee && end === ee) score += 2;
+          if (start && es && !end && start === es) score += 1;
+          var cls = Array.isArray(e.classes) ? e.classes : [];
+          var overlap = 0;
+          cls.forEach(function (c) {
+            if (awaySet[String(c || '').trim()]) overlap++;
+          });
+          if (overlap > 0) score += Math.min(5, overlap);
+          if (score > bestScore) {
+            bestScore = score;
+            best = e;
+          }
+        });
+        if (best && bestScore >= 3) hit = best;
+      }
+      if (hit) {
+        return {
+          eventId: String(hit.id || '').trim(),
+          eventName: String(hit.name || '').trim()
+        };
+      }
+      // 備註常在帶入事件時寫成「事件名 起日～迄日」
+      var note = String(mutualNote.value || '').trim();
+      if (note) {
+        var nameFromNote = note.split(/\s+/)[0] || note;
+        if (nameFromNote && nameFromNote !== '活動互代') {
+          var awayKey = (mutualAwayClasses.value || []).slice().sort().join(',');
+          return {
+            eventId: 'act_' + mutualActivityStart.value + '_' + mutualActivityEnd.value + '_'
+              + String(awayKey).replace(/[^0-9A-Za-z\u4e00-\u9fff,]/g, '').slice(0, 40),
+            eventName: nameFromNote
+          };
+        }
+      }
+      return { eventId: '', eventName: '' };
+    }
+
     async function recalculateMutualQuotasFromActivity() {
       if (!isAdmin.value) {
-        showToast('僅管理員可累加互代額度', 'warning');
+        showToast('僅管理員可發放互代額度', 'warning');
         return;
       }
       var dac = DAC();
@@ -559,11 +626,19 @@ window.UiMutualPanelState = (function () {
       var changed = rows.filter(function (r) { return !r.skipped && r.released > 0; });
       if (!changed.length) {
         var tip = skippedLeaders.length ? '（已排除帶隊 ' + skippedLeaders.length + ' 人）' : '';
-        showToast('此期間沒有可累加的釋出節數' + tip, 'info');
+        showToast('此期間沒有可發放的釋出節數' + tip, 'info');
+        return;
+      }
+      // 事件名稱／ID：必須對應空堂事件名稱（勿寫死「活動互代」）
+      var eventMeta = resolveEarnEventFromClassAway();
+      var eventId = eventMeta.eventId;
+      var eventName = eventMeta.eventName;
+      if (!eventName) {
+        showToast('請先在上方選取空堂事件（事件名稱會寫入額度帳本）', 'warning');
         return;
       }
       var sample = changed.slice(0, 5).map(function (r) {
-        return (r.name || r.email) + '：' + r.prevQuota + '→' + r.nextQuota + '（＋' + r.released + '）';
+        return (r.name || r.email) + '：釋出 ' + r.released + '（目前餘額 ' + r.prevQuota + '）';
       }).join('\n');
       var skipTip = skippedLeaders.length
         ? '\n已排除帶隊 ' + skippedLeaders.length + ' 人：'
@@ -571,29 +646,68 @@ window.UiMutualPanelState = (function () {
           + (skippedLeaders.length > 5 ? '…' : '')
         : '';
       var ok = await showConfirm(
-        '將依活動期間累加互代額度\n'
+        '將寫入「額度帳本」並更新教師名單餘額（同活動不重複）\n'
+        + '空堂事件：' + eventName + '\n'
         + '期間：' + mutualActivityStart.value + '～' + mutualActivityEnd.value + '\n'
         + '外出班：' + mutualAwayClasses.value.length + ' 班\n'
-        + '更新 ' + changed.length + ' 位教師' + skipTip + '\n\n'
-        + sample + (changed.length > 5 ? '\n…' : '') + '\n\n確定寫回試算表？',
-        '累加互代額度'
+        + '發放 ' + changed.length + ' 位教師' + skipTip + '\n\n'
+        + sample + (changed.length > 5 ? '\n…' : '') + '\n\n'
+        + '確定發放？\n（若本活動已發放過，將略過已發者）',
+        '發放互代額度'
       );
       if (!ok) return;
       loading.value = true;
-      loadingMessage.value = '正在寫回互代額度…';
+      loadingMessage.value = '計算釋出節數並批次寫入額度帳本（約數秒）…';
       try {
-        await callGasApi('updateMutualQuotas', {
-          list: changed.map(function (r) {
-            return { email: r.email, mutualQuota: r.nextQuota };
-          })
+        // 只送有釋出者，減輕 payload
+        var payloadList = changed.map(function (r) {
+          return { email: r.email, name: r.name || '', released: r.released };
         });
-        changed.forEach(function (r) { patchLocalMutualQuota(r.email, r.nextQuota); });
-        var skipMsg = skippedLeaders.length ? '，已排除帶隊 ' + skippedLeaders.length + ' 人' : '';
-        showToast('已累加 ' + changed.length + ' 位教師的互代額度' + skipMsg, 'success');
+        loadingMessage.value = '正在批次寫入 ' + payloadList.length + ' 人…';
+        var gasCall = (typeof callGasApi === 'function') ? callGasApi : null;
+        var res = await gasCall('earnMutualQuotaFromActivity', {
+          eventId: eventId,
+          eventName: eventName,
+          startDate: mutualActivityStart.value,
+          endDate: mutualActivityEnd.value,
+          mode: 'add',
+          list: payloadList
+        });
+        var earnedN = res && res.earned != null ? res.earned : 0;
+        var skippedN = res && res.skipped != null ? res.skipped : 0;
+        var wroteN = res && res.wroteLedger != null ? res.wroteLedger : earnedN;
+        if (res && res.results && res.results.length) {
+          res.results.forEach(function (r) {
+            if (r.skipped) return;
+            if (typeof r.balance === 'number') {
+              patchLocalMutualQuota(r.email, r.balance);
+              return;
+            }
+            var src = changed.find(function (c) {
+              return String(c.email).toLowerCase() === String(r.email).toLowerCase();
+            });
+            var t = (teachersList.value || []).find(function (x) {
+              return x.email && String(x.email).toLowerCase() === String(r.email).toLowerCase();
+            });
+            var prev = t ? (parseInt(t.mutualQuota, 10) || 0) : 0;
+            patchLocalMutualQuota(r.email, prev + (src ? (src.released || 0) : 0));
+          });
+        }
+        var skipMsg = skippedLeaders.length ? '，帶隊排除 ' + skippedLeaders.length : '';
+        var dupMsg = skippedN ? '，帳本已有略過 ' + skippedN : '';
+        if (earnedN === 0 && skippedN > 0) {
+          showToast('本事件帳本已有 earn 列（略過 ' + skippedN + '）。若表上沒看到，請確認分頁名是「額度帳本」', 'warning');
+        } else {
+          showToast('已寫入額度帳本 ' + wroteN + ' 列／發放 ' + earnedN + ' 人' + dupMsg + skipMsg, 'success');
+        }
+        // 額度已變：清前端歷程快取（若有）
+        try {
+          if (typeof window !== 'undefined' && window.__quotaLedgerCacheBust) window.__quotaLedgerCacheBust();
+        } catch (eB) { /* ignore */ }
         softRefreshInBackground({ force: true, delay: 900 });
       } catch (e) {
         console.error(e);
-        showToast('寫回額度失敗：' + (e && e.message ? e.message : String(e)), 'error');
+        showToast('發放額度失敗：' + (e && e.message ? e.message : String(e)), 'error');
       } finally {
         loading.value = false;
       }
@@ -1057,6 +1171,10 @@ window.UiBatchSubmit = (function () {
     }
     if (fee === QUOTA_DEDUCT_FEE || pendingRequestData.value.subFee === QUOTA_DEDUCT_FEE) {
       if (!assertQuotaDeductAllowed()) { unlockSubmit(); return; }
+      // 活動互代可能已自動改活動公費
+      if (isMutualCover.value && pendingRequestData.value.subFee === ACTIVITY_PUBLIC_FEE) {
+        fee = ACTIVITY_PUBLIC_FEE;
+      }
     }
 
     loadingMessage.value = '正在批次送出 ' + workSlots.length + ' 筆申請...';
@@ -1067,6 +1185,7 @@ window.UiBatchSubmit = (function () {
       var stamp = Date.now();
       var serialRoot = 'SUB' + (1000 + Math.floor(Math.random() * 9000));
       var feeAssigns = null;
+      // 活動互代：逐節依剩餘額度決定扣額度／活動公費（不足自動公費）
       if (isMutualCover.value && DAC() && DAC().assignFeesForBatchSlots) {
         feeAssigns = DAC().assignFeesForBatchSlots(workSlots, activityBalanceCtx());
       }
