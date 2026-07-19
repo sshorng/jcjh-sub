@@ -6,6 +6,7 @@ window.UiApproval = (function () {
   function create(deps) {
     var ref = deps.ref;
     var callGasApi = deps.callGasApi;
+    var callGasApiWithProgress = deps.callGasApiWithProgress || deps.callGasApi;
     var showToast = deps.showToast;
     var showConfirm = deps.showConfirm;
     var loading = deps.loading;
@@ -15,6 +16,8 @@ window.UiApproval = (function () {
     var optimisticPatchRequestStatus = deps.optimisticPatchRequestStatus;
     var softRefreshInBackground = deps.softRefreshInBackground || function () {};
     var formatRequestSummary = deps.formatRequestSummary || function () { return ''; };
+    var formatApproveBatchRiskSummary = deps.formatApproveBatchRiskSummary || function () { return ''; };
+    var getApproveRiskFlags = deps.getApproveRiskFlags || function () { return []; };
     var printSelectedForms = deps.printSelectedForms;
     var applyClassViewFromUrl = deps.applyClassViewFromUrl || function () { return false; };
     var resolvePendingClassView = deps.resolvePendingClassView || function () {};
@@ -278,8 +281,15 @@ window.UiApproval = (function () {
       }
       var approveNote = '';
       if (!opts.skipConfirm) {
+        var riskLine = '';
+        try {
+          var flags = getApproveRiskFlags(req) || [];
+          if (flags.length) {
+            riskLine = '\n\n⚠ 風險黃燈：' + flags.map(function (f) { return f.label; }).join('、');
+          }
+        } catch (eF) { /* ignore */ }
         var result = await showConfirm(
-          formatRequestSummary(req) + '\n\n請再次核對後按「確認」出單。',
+          formatRequestSummary(req) + riskLine + '\n\n請再次核對後按「確認」出單。',
           '核准前核對',
           { withNote: true, notePlaceholder: '行政備註（選填）' }
         );
@@ -357,24 +367,32 @@ window.UiApproval = (function () {
       }
       var preview = ids.slice(0, 8).map(function (id) {
         var r = findRequestById(id);
-        return r
-          ? '• ' + (r.serial || id) + ' ' + r.requesterName + '→' + r.targetTeacherName +
-            ' ' + r.requestDate + '第' + r.requestPeriod + '節'
-          : '• ' + id;
+        if (!r) return '• ' + id;
+        var flags = [];
+        try { flags = (getApproveRiskFlags(r) || []).map(function (f) { return f.label; }); } catch (eG) { /* ignore */ }
+        return '• ' + (r.serial || id) + ' ' + r.requesterName + '→' + r.targetTeacherName +
+          ' ' + r.requestDate + '第' + r.requestPeriod + '節' +
+          (flags.length ? ' ⚠' + flags.join('/') : '');
       }).join('\n');
       var more = ids.length > 8 ? '\n…另有 ' + (ids.length - 8) + ' 筆' : '';
+      var riskBlock = '';
+      try { riskBlock = formatApproveBatchRiskSummary(ids) || ''; } catch (eR) { /* ignore */ }
       if (!await showConfirm(
-        '即將批次核准 ' + ids.length + ' 筆：\n' + preview + more + '\n\n確定全部出單？',
+        '即將批次核准 ' + ids.length + ' 筆：\n' + preview + more + riskBlock + '\n\n確定全部出單？',
         '批次核准'
       )) return;
       loading.value = true;
-      loadingMessage.value = '批次核准中（一次寫入）...';
+      loadingMessage.value = '批次核准中（' + ids.length + ' 筆，請稍候）…';
       var ok = 0;
       var fail = 0;
       var printIds = [];
       try {
         // 後端一次讀表 + 一次 saveRows；失敗則回退逐筆
-        var res = await callGasApi('adminApproveBatch', { requestIds: ids });
+        var res = await callGasApiWithProgress(
+          'adminApproveBatch',
+          { requestIds: ids },
+          '批次核准 ' + ids.length + ' 筆'
+        );
         var doneIds = (res && res.ids) || ids;
         ok = (res && res.count) || doneIds.length;
         doneIds.forEach(function (id) {
