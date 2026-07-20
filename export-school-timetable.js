@@ -93,7 +93,11 @@ window.ExportSchoolTimetable = (function () {
       dates.forEach(function (dateStr) {
         var d = parseDate(dateStr);
         var dayOfWeek = d ? d.getDay() : 0;
-        for (var p = 1; p <= 8; p++) {
+        var periodList = (window.DateUtils && window.DateUtils.getTimetablePeriods)
+          ? window.DateUtils.getTimetablePeriods()
+          : [1, 2, 3, 4, 5, 6, 7, 8];
+        for (var pi = 0; pi < periodList.length; pi++) {
+          var p = periodList[pi];
           var cell = getCell ? getCell(t.email, dateStr, p, dayOfWeek) : null;
           var changed = isChangedCell(cell);
           if (changed) hasChange = true;
@@ -122,8 +126,11 @@ window.ExportSchoolTimetable = (function () {
       var dateStr = dates[i];
       var d = parseDate(dateStr);
       var dayOfWeek = d ? d.getDay() : 0;
-      for (var p = 1; p <= 8; p++) {
-        if (isChangedCell(getCell(email, dateStr, p, dayOfWeek))) return true;
+      var periodList = (window.DateUtils && window.DateUtils.getTimetablePeriods)
+        ? window.DateUtils.getTimetablePeriods()
+        : [1, 2, 3, 4, 5, 6, 7, 8];
+      for (var pi = 0; pi < periodList.length; pi++) {
+        if (isChangedCell(getCell(email, dateStr, periodList[pi], dayOfWeek))) return true;
       }
     }
     return false;
@@ -233,7 +240,10 @@ window.ExportSchoolTimetable = (function () {
     var margin = 284;
     var usableW = pgW - margin * 2;
     var nameW = 720; // 教師欄 ~1.27cm
-    var periodW = Math.max(220, Math.floor((usableW - nameW) / Math.max(1, dates.length * 8)));
+    var periodsPerDay = (window.DateUtils && window.DateUtils.getTimetablePeriods)
+      ? window.DateUtils.getTimetablePeriods().length
+      : 8;
+    var periodW = Math.max(180, Math.floor((usableW - nameW) / Math.max(1, dates.length * periodsPerDay)));
 
     function shd(hex) {
       return '<w:shd w:val="clear" w:color="auto" w:fill="' + hex + '"/>';
@@ -273,23 +283,31 @@ window.ExportSchoolTimetable = (function () {
       return '<w:tc>' + tcPr + para(text || '', !!center, !!bold, sz || 14) + '</w:tc>';
     }
 
+    var periodListHdr = (window.DateUtils && window.DateUtils.getTimetablePeriods)
+      ? window.DateUtils.getTimetablePeriods()
+      : [1, 2, 3, 4, 5, 6, 7, 8];
+    var pCount = periodListHdr.length;
     var gridCols = '<w:gridCol w:w="' + nameW + '"/>';
-    for (var gi = 0; gi < dates.length * 8; gi++) gridCols += '<w:gridCol w:w="' + periodW + '"/>';
+    for (var gi = 0; gi < dates.length * pCount; gi++) gridCols += '<w:gridCol w:w="' + periodW + '"/>';
 
     // header row 1: 教師 + 各日
     var h1 = '<w:tr><w:trPr><w:trHeight w:val="280" w:hRule="atLeast"/></w:trPr>';
     h1 += tc('教師', nameW, HEADER_HEX, true, true, 16, 'restart');
     dates.forEach(function (ds) {
-      h1 += tc(formatDateHeader(ds), periodW * 8, HEADER_HEX, true, true, 15, null, 8);
+      h1 += tc(formatDateHeader(ds), periodW * pCount, HEADER_HEX, true, true, 15, null, pCount);
     });
     h1 += '</w:tr>';
 
-    // header row 2: 節次 1-8
+    // header row 2: 節次（含午休）
     var h2 = '<w:tr><w:trPr><w:trHeight w:val="220" w:hRule="atLeast"/></w:trPr>';
     h2 += tc('', nameW, HEADER_HEX, true, true, 14, 'continue');
     dates.forEach(function () {
-      for (var p = 1; p <= 8; p++) {
-        h2 += tc(String(p), periodW, 'F1F5F9', true, true, 12);
+      for (var hi = 0; hi < periodListHdr.length; hi++) {
+        var hp = periodListHdr[hi];
+        var lab = (window.DateUtils && window.DateUtils.getPeriodLabel)
+          ? window.DateUtils.getPeriodLabel(hp)
+          : String(hp);
+        h2 += tc(lab, periodW, 'F1F5F9', true, true, 11);
       }
     });
     h2 += '</w:tr>';
