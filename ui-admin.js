@@ -142,7 +142,7 @@ window.UiAdmin = (function () {
       if (kind === 'ambiguous') return '缺：可辨識的唯一 Email（姓名重複）';
       if (kind === 'not_found') return '缺：教師名單中的對應，或本列 Email';
       if (kind === 'day') return '缺：合法星期（1–5 或 一～五）' + (extra ? '，目前「' + extra + '」' : '');
-      if (kind === 'period') return '缺：合法節次（1–8）' + (extra ? '，目前「' + extra + '」' : '');
+      if (kind === 'period') return '缺：合法節次（1–8 或 午休/45）' + (extra ? '，目前「' + extra + '」' : '');
       return extra || '';
     }
 
@@ -259,8 +259,10 @@ window.UiAdmin = (function () {
             buildSkipMissing(name, emailRaw, dayRaw, periodRaw, className, subject, 'day', dayRaw));
           continue;
         }
-        var period = parseInt(periodRaw, 10);
-        if (isNaN(period) || period < 1 || period > 8) {
+        var period = (window.DateUtils && window.DateUtils.parsePeriod)
+          ? window.DateUtils.parsePeriod(periodRaw)
+          : parseInt(periodRaw, 10);
+        if (isNaN(period) || !(period === 45 || (period >= 1 && period <= 8))) {
           pushSkip(skippedRows, lineNo, '節次格式錯誤', snippet,
             buildSkipMissing(name, emailRaw, dayRaw, periodRaw, className, subject, 'period', periodRaw));
           continue;
@@ -1104,7 +1106,7 @@ window.UiAdmin = (function () {
         teacherEmail: 'Email（選填，可空白靠姓名對應）',
         subject: '科目（必填）',
         dayOfWeek: '星期 1-5（必填）',
-        period: '節次 1-8（必填）',
+        period: '節次 1-8 或 午休/45（必填）',
         className: '班級（必填）',
         attr: '課堂屬性（選填）',
         restriction: '調課限制／綁課（選填）'
