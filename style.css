@@ -511,6 +511,26 @@ body {
   grid-template-columns: 60px repeat(5, 1fr);
   gap: 6px;
 }
+/* 午休列：左側時間欄淡青底 */
+.grid-cell-time.is-lunch-period {
+  background: #f0fdfa;
+  border-radius: 6px;
+  color: #0f766e;
+}
+.grid-cell-time.is-lunch-period .period {
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+/* 併班小標籤 */
+.cell-badge.tag-combined {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+  font-weight: 600;
+  font-size: 0.62rem;
+  margin-left: 4px;
+  vertical-align: middle;
+}
 
 /* 多位老師課表：清楚分隔、中密度 */
 .tt-teacher-list {
