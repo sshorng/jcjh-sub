@@ -52,7 +52,14 @@ function generateFormHtml(g, currentType, ctx) {
   const getTeacherNameByEmail = ctx.getTeacherNameByEmail;
   const getTeacherSubjectByEmail = ctx.getTeacherSubjectByEmail;
   const getWeekDayText = ctx.getWeekDayText;
-  const getPeriodChinese = (p) => ['', '第一節', '第二節', '第三節', '第四節', '第五節', '第六節', '第七節', '第八節'][p];
+  const getPeriodChinese = (p) => {
+    const n = parseInt(p, 10);
+    if (n === 45) return '午休';
+    return ['', '第一節', '第二節', '第三節', '第四節', '第五節', '第六節', '第七節', '第八節'][n] || String(p);
+  };
+  const printPeriodList = (window.DateUtils && window.DateUtils.getTimetablePeriods)
+    ? window.DateUtils.getTimetablePeriods()
+    : [1, 2, 3, 4, 5, 6, 7, 8];
   const reprintClass = g.isReprint ? 'is-reprint' : '';
 
   const getOriginalSubject = (rec) => {
@@ -148,21 +155,22 @@ function generateFormHtml(g, currentType, ctx) {
     tableHeader += '<th style="width:20%; border-left: 1.5pt solid black !important;">調（代）課教師<br>簽名</th></tr>';
 
     let tableBody = '';
-    for (let p = 1; p <= 8; p++) {
-      const rowStyle = p === 4 ? 'border-bottom: 2.5pt solid black !important;' : '';
+    for (let pi = 0; pi < printPeriodList.length; pi++) {
+      const p = printPeriodList[pi];
+      const rowStyle = p === 4 ? 'border-bottom: 2.5pt solid black !important;' : (p === 45 ? 'background:#f0fdfa !important;' : '');
       let matchTeacherName = '';
       days.forEach(d => {
-        const isTarget1 = (d === targetDayText1 && p === parseInt(rec1.period));
-        const isTarget2 = (d === targetDayText2 && p === parseInt(rec2.period));
+        const isTarget1 = (d === targetDayText1 && p === parseInt(rec1.period, 10));
+        const isTarget2 = (d === targetDayText2 && p === parseInt(rec2.period, 10));
         if (isTarget1) matchTeacherName = getTeacherNameByEmail(rec1.actualTeacherEmail);
         else if (isTarget2) matchTeacherName = getTeacherNameByEmail(rec2.actualTeacherEmail);
       });
 
-      tableBody += '<tr>';
+      tableBody += '<tr' + (rowStyle ? ` style="${rowStyle}"` : '') + '>';
       tableBody += `<td style="background:#e2e8f0; font-weight:bold; text-align:center;">${getPeriodChinese(p)}</td>`;
       days.forEach(d => {
-        const isTarget1 = (d === targetDayText1 && p === parseInt(rec1.period));
-        const isTarget2 = (d === targetDayText2 && p === parseInt(rec2.period));
+        const isTarget1 = (d === targetDayText1 && p === parseInt(rec1.period, 10));
+        const isTarget2 = (d === targetDayText2 && p === parseInt(rec2.period, 10));
         let cellContent = '';
         let cellStyle = '';
         if (isTarget1) {
@@ -300,12 +308,13 @@ function generateFormHtml(g, currentType, ctx) {
   tableHeader += '<th style="width:20%; border-left: 1.5pt solid black !important;">調（代）課教師<br>簽名</th></tr>';
 
   let tableBody = '';
-  for (let p = 1; p <= 8; p++) {
+  for (let pi = 0; pi < printPeriodList.length; pi++) {
+    const p = printPeriodList[pi];
     const rowStyle = p === 4 ? 'border-bottom: 2.5pt solid black !important;' : '';
     tableBody += '<tr>';
     tableBody += `<td style="background:#f8fafc; font-weight:bold; text-align:center;">${getPeriodChinese(p)}</td>`;
     days.forEach(d => {
-      const matchPeriod = g.periods.find(x => x.num === p && dayIdx[new Date(x.date + 'T00:00:00').getDay()] === d);
+      const matchPeriod = g.periods.find(x => parseInt(x.num, 10) === parseInt(p, 10) && dayIdx[new Date(x.date + 'T00:00:00').getDay()] === d);
       let cellContent = '';
       let cellStyle = '';
       if (matchPeriod) {
