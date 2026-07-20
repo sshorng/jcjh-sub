@@ -50,6 +50,36 @@ window.UiSubmitHelpers = (function () {
         showToast('⚠️ 對調日期不能為非補班日的週末放假日！', 'warning');
         return false;
       }
+      // 抽離僅可與抽離互調（保險：候選／模擬已擋，送出再驗一次）
+      var leaveCell = deps.activeCell && deps.activeCell.value && deps.activeCell.value.classData
+        ? deps.activeCell.value.classData
+        : null;
+      var leavePull = !!(leaveCell && (
+        leaveCell.isPullOut
+        || leaveCell.attr === '抽離'
+        || (window.DomainSchedule && window.DomainSchedule.isPullOutCell
+          && window.DomainSchedule.isPullOutCell(leaveCell))
+      ));
+      var targetPull = false;
+      if (window.DomainMatch && window.DomainMatch.isPullOutSlot) {
+        // 若 pending 有 classB／subject 對應不到 attr，用 allSchedules 回推
+        var allS = deps.allSchedules && deps.allSchedules.value ? deps.allSchedules.value : [];
+        var tDay = parseInt(String(pending.timeB || '').charAt(0), 10);
+        var tPer = parseInt(String(pending.timeB || '').slice(1), 10);
+        var tHit = allS.find(function (s) {
+          return s && pending.subTeacher
+            && String(s.teacherEmail || '').toLowerCase() === String(pending.subTeacher).toLowerCase()
+            && parseInt(s.dayOfWeek, 10) === tDay
+            && parseInt(s.period, 10) === tPer;
+        });
+        targetPull = !!(tHit && window.DomainMatch.isPullOutSlot(tHit));
+      }
+      if (leavePull !== targetPull) {
+        var tipEx = (window.DomainSchedule && window.DomainSchedule.PULL_OUT_EXCHANGE_TIP)
+          || '抽離課僅可與另一節「抽離」互調，不可與一般課調課。';
+        showToast(tipEx, 'warning', 4500);
+        return false;
+      }
     }
     return true;
   }
@@ -272,6 +302,27 @@ window.UiSubmitHelpers = (function () {
           '綁課提醒'
         );
         if (!ok) return 'cancelled';
+      }
+      // 抽離不可與一般課互調（候選已過濾；此為保險）
+      var leavePullOut = !!(activeCell.value && activeCell.value.classData
+        && (activeCell.value.classData.isPullOut
+          || activeCell.value.classData.attr === '抽離'
+          || (window.DomainSchedule && window.DomainSchedule.isPullOutCell
+            && window.DomainSchedule.isPullOutCell(activeCell.value.classData))));
+      var targetPullOut = !!(targetSched && (
+        targetSched.attr === '抽離'
+        || (window.DomainSchedule && window.DomainSchedule.isPullOutAttr
+          && window.DomainSchedule.isPullOutAttr(targetSched.attr))
+      ));
+      if (leavePullOut !== targetPullOut) {
+        var tipPull = (window.DomainSchedule && window.DomainSchedule.PULL_OUT_EXCHANGE_TIP)
+          || '抽離課僅可與另一節「抽離」互調，不可與一般課調課。';
+        if (typeof window.showToast === 'function') {
+          window.showToast(tipPull, 'warning', 4500);
+        } else {
+          await showConfirm(tipPull, '抽離調課限制');
+        }
+        return 'cancelled';
       }
       if (targetSched && window.DomainSchedule && window.DomainSchedule.isPatrolAttr
           && window.DomainSchedule.isPatrolAttr(targetSched.attr)) {
