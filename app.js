@@ -273,6 +273,8 @@ createApp({
         return false;
       }
       try {
+        // 關掉殘留 One Tap（避免畫面上「以 OOO 身份登入」點了無反應）
+        try { if (google.accounts.id.cancel) google.accounts.id.cancel(); } catch (eCancel) { /* ignore */ }
         btnContainer.innerHTML = '';
         google.accounts.id.renderButton(btnContainer, {
           theme: 'outline',
@@ -321,8 +323,7 @@ createApp({
         tries++;
         if (user.value || classReadonlyMode.value) return;
         if (renderGsiLoginButton()) {
-          // 未登入時可 One Tap（不擋按鈕）
-          try { google.accounts.id.prompt(); } catch (eP) { /* ignore */ }
+          // 不呼叫 prompt()：One Tap「以 OOO 身份登入」本機常點了無 callback；只保留官方按鈕
           return;
         }
         if (tries < 20) {
@@ -434,10 +435,11 @@ createApp({
       // B：過期只清 user，不 reload（gas-api 已移除 location.reload）
       onAuthExpired: () => {
         user.value = null;
+        // 不呼叫 prompt()（One Tap 易無反應）；回登入頁後由 setupGoogleSignInUi 重畫按鈕
         try {
-          // 再觸發一次 One Tap／登入鈕，方便立刻登回
-          if (typeof google !== 'undefined' && google.accounts && google.accounts.id) {
-            google.accounts.id.prompt();
+          if (!user.value) {
+            gsiButtonReady.value = false;
+            nextTick(() => setupGoogleSignInUi());
           }
         } catch (e) { /* ignore */ }
       },
