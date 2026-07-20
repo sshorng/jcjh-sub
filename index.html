@@ -445,7 +445,7 @@
                         class="mutual-draft-row"
                       >
                         <span>{{ d.leaveName }}</span>
-                        <span class="text-muted">{{ formatDateMMDD(d.dateStr) }} 第{{ d.period }}節 {{ d.className }}</span>
+                        <span class="text-muted">{{ formatDateMMDD(d.dateStr) }} {{ formatPeriodText(d.period) }} {{ d.className }}</span>
                         <span>→ <strong class="text-draft-on">{{ d.subName }}</strong></span>
                         <span :class="(d.fee==='扣額度' || d.fee==='互代不結') ? 'text-draft-on' : (d.fee==='第8節代課' ? 'text-period8' : 'text-amber')">{{ d.fee === '互代不結' ? '扣額度' : d.fee }}</span>
                         <button
@@ -555,9 +555,9 @@
                       <div class="grid-header">四<span class="date-sub" v-if="!isMobile"><br>{{ formatDateMMDD(currentWeekDates[3]) }}</span></div>
                       <div class="grid-header">五<span class="date-sub" v-if="!isMobile"><br>{{ formatDateMMDD(currentWeekDates[4]) }}</span></div>
                       
-                      <template v-for="period in 8" :key="period">
-                        <div class="grid-cell-time">
-                          <span class="period">{{ period }}</span>
+                      <template v-for="period in timetablePeriods" :key="'tt-p-'+period">
+                        <div class="grid-cell-time" :class="{ 'is-lunch-period': isLunchPeriod(period) }">
+                          <span class="period">{{ getPeriodLabel(period) }}</span>
                           <span class="time-span" v-if="!isMobile">{{ getPeriodTimeSpan(period) }}</span>
                         </div>
                         
@@ -581,7 +581,10 @@
                               </template>
                               <template v-else>
                                 <div class="cell-main">
-                                  <div class="cell-class-name">{{ slot.cell.className }}</div>
+                                  <div class="cell-class-name">
+                                    {{ formatClassName(slot.cell.className) || slot.cell.className }}
+                                    <span v-if="isCombinedClass(slot.cell.className)" class="cell-badge tag-combined" title="併班">併班</span>
+                                  </div>
                                   <div class="cell-subject">
                                     {{ slot.cell.subject }}
                                     <span v-if="slot.isAwayLabel" class="away-class-badge">班外出</span>
@@ -771,8 +774,11 @@
                       <div v-for="(dateStr, idx) in selectedClassWeekDates" :key="'h'+idx" class="grid-header">
                         {{ formatDateMMDD(dateStr) }}<br><span style="font-weight:400;">{{ ['一','二','三','四','五'][idx] }}</span>
                       </div>
-                      <template v-for="period in 8" :key="period">
-                        <div class="grid-cell-time"><span class="period">{{ period }}</span></div>
+                      <template v-for="period in timetablePeriods" :key="'ct-p-'+period">
+                        <div class="grid-cell-time" :class="{ 'is-lunch-period': isLunchPeriod(period) }">
+                          <span class="period">{{ getPeriodLabel(period) }}</span>
+                          <span class="time-span" v-if="!isMobile" style="font-size:0.62rem;">{{ getPeriodTimeSpan(period) }}</span>
+                        </div>
                         <div v-for="(dateStr, dayIdx) in selectedClassWeekDates" :key="dayIdx"
                           class="grid-cell-class"
                           :class="getClassCellClassForClass(selectedClass, dayIdx+1, period)">
@@ -802,9 +808,11 @@
                                   <div class="cell-subject">
                                     {{ entry.subject }}
                                     <span v-if="entry.attr === '單週' || entry.attr === '雙週'" style="font-size:0.65rem;color:var(--text-muted);margin-left:2px;">({{ entry.attr }})</span>
+                                    <span v-if="entry._isCombined || isCombinedClass(entry.className)" class="cell-badge tag-combined" title="併班">併班</span>
                                   </div>
                                   <div class="cell-class-name">
                                     {{ getRealTeacherName(entry) }}
+                                    <span v-if="entry._combinedWith" style="font-size:0.65rem;color:var(--text-muted);">（與{{ entry._combinedWith }}）</span>
                                   </div>
                                 </div>
                               </template>
@@ -1472,14 +1480,14 @@
                   <thead>
                     <tr class="billing-th-group">
                       <th colspan="2" class="billing-th-id">教師</th>
-                      <th colspan="8" class="billing-th-17">1～7 節超鐘</th>
-                      <th colspan="4" class="billing-th-sub">1～7 我去代課</th>
+                      <th colspan="8" class="billing-th-17">1～7＋午休 超鐘</th>
+                      <th colspan="4" class="billing-th-sub">1～7＋午休 我去代課</th>
                       <th colspan="2" class="billing-th-p8">第 8 節</th>
                     </tr>
                     <tr class="billing-th-cols">
                       <th class="billing-sticky-name">姓名</th>
                       <th>科目</th>
-                      <th title="每週 1～7 基本／兼課節數">排課</th>
+                      <th title="每週 1～7＋午休；基本／一般／兼課／抽離（不含巡堂／第8）">排課</th>
                       <th title="教師基本授課鐘點">基鐘</th>
                       <th title="排課 − 基鐘（每週）">超時/週</th>
                       <th title="畢業等 reduce：只扣起日後週 × 1～7">空堂調降</th>
@@ -1609,7 +1617,7 @@
               <div style="margin-bottom:16px;font-size:0.88rem;color:var(--text-secondary);line-height:1.55;">
                 <p class="mb-8-block"><strong>策略 S1：</strong>匯入時<strong>只清除目前選取學期</strong>的課表（其他學期保留），再一次寫入。</p>
                 <p class="mb-8-block"><strong>格式：</strong>一列一節；<strong>Email 可空白</strong>（依「教師姓名」對應已匯入的教師名單）；同節多班可多列。</p>
-                <p class="m-0">一般課必填：教師姓名、星期、節次、班級、科目。<strong>巡堂</strong>可省略班級／科目（科目或屬性寫「巡堂」即可）。選填：Email、課堂屬性、調課限制。姓名重複或名單沒有時請填 Email，或先匯入教師名單（教師匯入<strong>必填 Email</strong>）。</p>
+                <p class="m-0">一般課必填：教師姓名、星期、節次、班級、科目。<strong>巡堂</strong>可省略班級／科目（科目或屬性寫「巡堂」即可）。節次可填 1–8，或<strong>午休／45</strong>（12:35–13:15）。併班可填<strong>701、702</strong> 或 701/702。選填：Email、課堂屬性、調課限制。姓名重複或名單沒有時請填 Email，或先匯入教師名單（教師匯入<strong>必填 Email</strong>）。</p>
               </div>
 
               <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;background:#f8fafc;padding:14px;border-radius:12px;border:1px solid var(--border-color);margin-bottom:16px;">
@@ -1857,7 +1865,7 @@
                     @click="selectBatchSlotForMatch(s.key)"
                   >
                     <span>
-                      {{ formatDateMMDD(s.dateStr) }}（{{ getWeekDayText(s.dayOfWeek) }}）第{{ s.period }}節 {{ s.className }} {{ s.subject }}
+                      {{ formatDateMMDD(s.dateStr) }}（{{ getWeekDayText(s.dayOfWeek) }}）{{ formatPeriodText(s.period) }} {{ s.className }} {{ s.subject }}
                     </span>
                     <span style="display:flex;align-items:center;gap:6px;">
                       <strong v-if="s.subTeacherEmail" style="color:var(--color-success);">{{ s.subTeacherName }}</strong>
@@ -1874,7 +1882,7 @@
                 </div>
                 <div v-else class="batch-slot-chips">
                   <span v-for="s in batchSlots" :key="'m'+s.key" class="batch-slot-chip">
-                    {{ formatDateMMDD(s.dateStr) }}（{{ getWeekDayText(s.dayOfWeek) }}）第{{ s.period }}節 {{ s.className }}{{ s.subject }}
+                    {{ formatDateMMDD(s.dateStr) }}（{{ getWeekDayText(s.dayOfWeek) }}）{{ formatPeriodText(s.period) }} {{ s.className }}{{ s.subject }}
                   </span>
                 </div>
                 <div class="text-xs-muted-75-mt">
@@ -1900,7 +1908,7 @@
                   已選定：{{ activeCell.teacherName }} 老師
                 </div>
                 <div style="color: var(--text-secondary); font-size: 0.8rem; line-height: 1.4;">
-                  {{ inputRequestDate }}（週{{ getWeekDayText(activeCell.dayOfWeek) }}第{{ activeCell.period }}節）
+                  {{ inputRequestDate }}（週{{ getWeekDayText(activeCell.dayOfWeek) }}{{ formatPeriodText(activeCell.period) }}）
                   {{ activeCell.classData ? activeCell.classData.className : '' }}
                   {{ activeCell.classData ? activeCell.classData.subject : '' }}
                 </div>
@@ -2072,7 +2080,7 @@
                           <span v-if="r.restriction === 'restricted'" class="badge-match badge-restricted">對調課綁課</span>
                         </td>
                         <td style="padding: 10px 4px; font-size: 0.8rem; color: var(--text-secondary);">
-                          可調：週{{ getWeekDayText(r.dayOfWeek) }}第{{ r.period }}節
+                          可調：週{{ getWeekDayText(r.dayOfWeek) }}{{ formatPeriodText(r.period) }}
                         </td>
                         <td class="td-match-op">
                           <button class="btn btn-primary btn-sm-compact" @click.stop="prepCompare('exchange', r.teacherEmail, r.periodKey, r.subject, r.className)">模擬</button>
@@ -2146,8 +2154,8 @@
                   <div class="mini-grid-cell mini-grid-header">四</div>
                   <div class="mini-grid-cell mini-grid-header">五</div>
                   
-                  <template v-for="p in 8" :key="'A-'+p">
-                    <div class="mini-grid-cell mini-grid-period">{{ p }}</div>
+                  <template v-for="p in timetablePeriods" :key="'A-'+p">
+                    <div class="mini-grid-cell mini-grid-period">{{ getPeriodLabel(p) }}</div>
                     <div 
                       v-for="d in 5" 
                       :key="'A-'+p+'-'+d"
@@ -2192,8 +2200,8 @@
                   <div class="mini-grid-cell mini-grid-header">四</div>
                   <div class="mini-grid-cell mini-grid-header">五</div>
                   
-                  <template v-for="p in 8" :key="'B-'+p">
-                    <div class="mini-grid-cell mini-grid-period">{{ p }}</div>
+                  <template v-for="p in timetablePeriods" :key="'B-'+p">
+                    <div class="mini-grid-cell mini-grid-period">{{ getPeriodLabel(p) }}</div>
                     <div 
                       v-for="d in 5" 
                       :key="'B-'+p+'-'+d"
@@ -2220,13 +2228,13 @@
               </div>
               <div v-if="pendingRequestData.isPerSlot" class="batch-slot-list" style="max-height:180px;background:#fff;">
                 <div v-for="s in batchSlots" :key="'c'+s.key" class="batch-slot-item">
-                  <span>{{ formatDateMMDD(s.dateStr) }}（{{ getWeekDayText(s.dayOfWeek) }}）第{{ s.period }}節 {{ s.className }} {{ s.subject }}</span>
+                  <span>{{ formatDateMMDD(s.dateStr) }}（{{ getWeekDayText(s.dayOfWeek) }}）{{ formatPeriodText(s.period) }} {{ s.className }} {{ s.subject }}</span>
                   <strong class="text-primary-strong">{{ s.subTeacherName || getTeacherNameByEmail(s.subTeacherEmail) }}</strong>
                 </div>
               </div>
               <div v-else class="batch-slot-chips">
                 <span v-for="s in batchSlots" :key="'c'+s.key" class="batch-slot-chip">
-                  {{ formatDateMMDD(s.dateStr) }}（{{ getWeekDayText(s.dayOfWeek) }}）第{{ s.period }}節 {{ s.className }} {{ s.subject }}
+                  {{ formatDateMMDD(s.dateStr) }}（{{ getWeekDayText(s.dayOfWeek) }}）{{ formatPeriodText(s.period) }} {{ s.className }} {{ s.subject }}
                 </span>
               </div>
               <div class="text-xs-muted-75-mt">
@@ -2812,7 +2820,7 @@
               <div class="form-group m-0">
                 <label class="form-label">節次</label>
                 <select class="form-select" v-model.number="historyEditForm.requestPeriod">
-                  <option v-for="p in [1,2,3,4,5,6,7,8]" :key="'he-rp-'+p" :value="p">第 {{ p }} 節</option>
+                  <option v-for="p in timetablePeriods" :key="'he-rp-'+p" :value="p">{{ formatPeriodText(p) }}</option>
                 </select>
               </div>
             </div>
@@ -2826,7 +2834,7 @@
                 <div class="form-group m-0">
                   <label class="form-label">節次</label>
                   <select class="form-select" v-model.number="historyEditForm.targetPeriod">
-                    <option v-for="p in [1,2,3,4,5,6,7,8]" :key="'he-tp-'+p" :value="p">第 {{ p }} 節</option>
+                    <option v-for="p in timetablePeriods" :key="'he-tp-'+p" :value="p">{{ formatPeriodText(p) }}</option>
                   </select>
                 </div>
               </div>
@@ -3072,11 +3080,12 @@
           <div class="modal-body">
             <div style="background: #f8fafc; padding: 12px; border-radius: 8px; margin-bottom: 16px; font-size: 0.85rem; border: 1px solid var(--border-color);">
               <p><strong>授課教師</strong>：{{ scheduleForm.teacherName }}</p>
-              <p><strong>授課時段</strong>：星期{{ getWeekDayText(scheduleForm.dayOfWeek) }} 第 {{ scheduleForm.period }} 節</p>
+              <p><strong>授課時段</strong>：星期{{ getWeekDayText(scheduleForm.dayOfWeek) }} {{ formatPeriodText(scheduleForm.period) }}</p>
             </div>
             <div class="form-group">
               <label class="form-label">授課班級</label>
-              <input type="text" class="form-input" placeholder="702" v-model="scheduleForm.className">
+              <input type="text" class="form-input" placeholder="702 或併班 701、702" v-model="scheduleForm.className">
+              <span class="text-xs-muted-70">併班可填多班：701、702 或 701/702（本土語、特教／資優抽離等）</span>
             </div>
             <div class="form-group">
               <label class="form-label">授課科目</label>
@@ -3110,10 +3119,10 @@
                 <option v-if="parseInt(scheduleForm.period, 10) === 8" value="單週">單週（僅第8節輔導）</option>
                 <option v-if="parseInt(scheduleForm.period, 10) === 8" value="雙週">雙週（僅第8節輔導）</option>
                 <option v-if="parseInt(scheduleForm.period, 10) === 8" value="輔導">輔導（第8節每週）</option>
-                <option value="抽離">抽離（不顯示於班級課表；可另勾綁課）</option>
+                <option value="抽離">抽離（不進班級課表；計週鐘點；可另勾綁課）</option>
               </select>
               <span class="text-xs-muted-70">
-                1～7 節無單雙週。兼課：列入週鐘點（常為超鐘點課）。巡堂不計鐘點。抽離不進班級課表、調課僅可與抽離互調。單／雙週僅第 8 節可用。
+                1～7 節無單雙週。兼課／抽離／午休皆計週鐘點。巡堂、第8 不計。抽離一律不進班級課表（含併班）；調課僅可與抽離互調。午休可排特教／資優等。單／雙週僅第 8 節。
               </span>
             </div>
             <div class="form-group" style="flex-direction: row; align-items: center; gap: 8px;">
