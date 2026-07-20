@@ -195,9 +195,23 @@ window.DomainMatch = (function () {
     return false;
   }
 
+  function isPullOutSlot(cellOrSched) {
+    if (!cellOrSched) return false;
+    if (window.DomainSchedule && window.DomainSchedule.isPullOutCell
+        && window.DomainSchedule.isPullOutCell(cellOrSched)) {
+      return true;
+    }
+    if (window.DomainSchedule && window.DomainSchedule.isPullOutAttr
+        && window.DomainSchedule.isPullOutAttr(cellOrSched.attr)) {
+      return true;
+    }
+    return String(cellOrSched.attr || '').trim() === '抽離';
+  }
+
   /**
    * 調課候選（同班、雙方空堂）
    * 外出班／空堂事件釋出視同空堂，可對調
+   * 抽離僅可與抽離互調；一般課不可與抽離調課
    */
   function listExchangeCandidates(opts) {
     const allSchedules = opts.allSchedules || [];
@@ -215,12 +229,30 @@ window.DomainMatch = (function () {
       if (k) awaySet[k] = true;
     });
 
+    // 請假節是否為抽離（優先用 leaveCell／leaveAttr，否則從課表推）
+    var leaveIsPullOut = false;
+    if (opts.leaveIsPullOut != null) {
+      leaveIsPullOut = !!opts.leaveIsPullOut;
+    } else if (opts.leaveCell) {
+      leaveIsPullOut = isPullOutSlot(opts.leaveCell);
+    } else if (opts.leaveAttr != null) {
+      leaveIsPullOut = isPullOutSlot({ attr: opts.leaveAttr });
+    } else if (typeof getScheduleForDate === 'function' && leaveTeacher && leaveDate) {
+      leaveIsPullOut = isPullOutSlot(
+        getScheduleForDate(leaveTeacher, leaveDate, leavePeriod, leaveDay)
+      );
+    }
+
     const classSchedules = allSchedules.filter(function (s) {
       return s.className === cls && s.teacherEmail !== leaveTeacher;
     });
     const res = [];
 
     classSchedules.forEach(function (sched) {
+      // 抽離 ↔ 僅抽離；一般 ↔ 僅非抽離
+      var targetIsPullOut = isPullOutSlot(sched);
+      if (leaveIsPullOut !== targetIsPullOut) return;
+
       const schedTimeKey = sched.dayOfWeek + '-' + sched.period;
       const schedDate = weekDates[sched.dayOfWeek - 1];
       if (!schedDate) return;
@@ -252,6 +284,8 @@ window.DomainMatch = (function () {
           periodKey: schedTimeKey,
           subject: sched.subject,
           className: sched.className,
+          attr: sched.attr || '',
+          isPullOut: targetIsPullOut,
           restriction: sched.restriction || '',
           freeByAway: !!(
             (cellAtTarget && (cellAtTarget.isClassAway || (awaySet[String(cellAtTarget.className || '').trim()])))
@@ -277,7 +311,8 @@ window.DomainMatch = (function () {
     rankSubstitutionCandidates: rankSubstitutionCandidates,
     listExchangeCandidates: listExchangeCandidates,
     parseSubjects: parseSubjects,
-    isSlotFreeForMatch: isSlotFreeForMatch
+    isSlotFreeForMatch: isSlotFreeForMatch,
+    isPullOutSlot: isPullOutSlot
   };
 })();
 
