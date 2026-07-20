@@ -731,7 +731,11 @@ window.DomainActivityCover = (function () {
         rangeDates.forEach(function (dateStr) {
           var dow = dayOfWeekMon1(dateStr);
           if (!dow) return;
-          for (var p = 1; p <= 8; p++) {
+          var periodList = (window.DateUtils && window.DateUtils.getTimetablePeriods)
+            ? window.DateUtils.getTimetablePeriods()
+            : [1, 2, 3, 4, 5, 6, 7, 8];
+          for (var pi = 0; pi < periodList.length; pi++) {
+            var p = periodList[pi];
             var cell = null;
             try { cell = getSched(em, dateStr, p, dow); } catch (eG) { cell = null; }
             if (!isDemandCell_(cell)) continue;
@@ -751,7 +755,8 @@ window.DomainActivityCover = (function () {
           if (emailKey(s.teacherEmail) !== em) return;
           if (parseInt(s.dayOfWeek, 10) !== dow) return;
           var per = parseInt(s.period, 10);
-          if (!per || per < 1 || per > 8) return;
+          // 允許午休 45；其餘僅 1–8
+          if (!per || (per !== 45 && (per < 1 || per > 8))) return;
           var attr = String(s.attr || '');
           if (attr === '抽離' || attr === '巡堂') return;
           if (window.DomainSchedule && window.DomainSchedule.isPatrolAttr
