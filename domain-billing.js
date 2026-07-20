@@ -45,6 +45,33 @@ window.DomainBilling = (function () {
   }
 
   /**
+   * 是否計入「每週排課鐘點」
+   * - 節次：1–7 或 午休 45
+   * - 屬性：基本／一般／兼課／抽離（空屬性視同一般）
+   * - 不含：巡堂、第8、輔導（第8）、單雙週輔導
+   */
+  function isWeeklyHoursSlot(s) {
+    if (!s) return false;
+    var p = parseInt(s.period, 10);
+    var isLunch = p === 45 || (window.DateUtils && window.DateUtils.isLunchPeriod
+      && window.DateUtils.isLunchPeriod(s.period));
+    if (!(isLunch || (p >= 1 && p <= 7))) return false;
+    var a = String(s.attr || '').trim();
+    if (!a || a === '一般' || a === '基本' || a === '兼課' || a === '抽離') return true;
+    // 舊匯入可能寫「實支」仍計（與有課同）
+    if (a === '實支') return true;
+    return false;
+  }
+
+  /** 請假／代課是否落在「週鐘點節次」（1–7 或午休） */
+  function isWeeklyHoursPeriod(period) {
+    var p = parseInt(period, 10);
+    if (p === 45) return true;
+    if (window.DateUtils && window.DateUtils.isLunchPeriod && window.DateUtils.isLunchPeriod(period)) return true;
+    return p >= 1 && p <= 7;
+  }
+
+  /**
    * 第8節：有上有拿、沒上沒拿、誰上誰拿
    * - 空堂事件（keep／reduce 皆）當日該班第8 → 不發
    * - 有異動：以 substitution 紀錄的 actualTeacher 為準（代課入）
@@ -274,9 +301,9 @@ window.DomainBilling = (function () {
         ? 0
         : (parseInt(t.baseHours, 10) || 16);
 
-      // 僅基本／兼課計鐘點；巡堂／輔導／第8 等不算
+      // 週鐘點：1–7＋午休(45)；基本／一般／兼課／抽離皆計；巡堂／第8／輔導單雙週不算
       var weeklyPeriods = allSchedules.filter(function (s) {
-        return s.teacherEmail === email && parseInt(s.period) <= 7 && (s.attr === '基本' || s.attr === '兼課');
+        return emailKey(s.teacherEmail) === em && isWeeklyHoursSlot(s);
       }).length;
       var reduceDeduction = 0;
       if (window.DomainClassAway && classAwayEvents.length) {
@@ -291,9 +318,9 @@ window.DomainBilling = (function () {
       }
       var weeklyOvertime = Math.max(0, weeklyPeriods - baseHours);
 
-      // 1～7 請假／代課（不含第8）
+      // 1～7＋午休 請假／代課（不含第8）
       var leaveRecords = monthlyRecords.filter(function (r) {
-        return r.originalTeacherEmail === email && r.type === 'substitution' && parseInt(r.period) <= 7;
+        return r.originalTeacherEmail === email && r.type === 'substitution' && isWeeklyHoursPeriod(r.period);
       });
       var selfPaidDeduction = leaveRecords.filter(function (r) {
         return r.subFee === '自費代課';
@@ -327,7 +354,7 @@ window.DomainBilling = (function () {
       var schoolPublicPayout = Math.max(0, pubLeaveCount - publicOvertimeUsed);
 
       var pubSubRecords = monthlyRecords.filter(function (r) {
-        if (r.actualTeacherEmail !== email || r.type !== 'substitution' || parseInt(r.period) > 7) return false;
+        if (r.actualTeacherEmail !== email || r.type !== 'substitution' || !isWeeklyHoursPeriod(r.period)) return false;
         if (window.DomainActivityCover && window.DomainActivityCover.isPublicSubPayout) {
           return window.DomainActivityCover.isPublicSubPayout(r.subFee);
         }
@@ -335,7 +362,7 @@ window.DomainBilling = (function () {
       });
       var pubSubCount = pubSubRecords.length;
       var selfPaidSubRecords = monthlyRecords.filter(function (r) {
-        return r.actualTeacherEmail === email && r.type === 'substitution' && parseInt(r.period) <= 7 && r.subFee === '自費代課';
+        return r.actualTeacherEmail === email && r.type === 'substitution' && isWeeklyHoursPeriod(r.period) && r.subFee === '自費代課';
       });
       var selfSubCount = selfPaidSubRecords.length;
       var selfSubFee = selfSubCount * FEE_REGULAR;
@@ -383,7 +410,7 @@ window.DomainBilling = (function () {
       return {
         "教師姓名": row.name,
         "學科": row.subject,
-        "每週排課(1-7)": row.weeklyPeriods,
+        "每週排課(1-7+午休)": row.weeklyPeriods,
         "基本授課鐘點": row.baseHours,
         "預設超時/週": row.weeklyOvertime,
         "空堂調降(1-7)": row.reduceDeduction || 0,
@@ -427,6 +454,8 @@ window.DomainBilling = (function () {
     FEE_8TH: FEE_8TH,
     getWeekKey: getWeekKey,
     listWeekdaysInMonth: listWeekdaysInMonth,
+    isWeeklyHoursSlot: isWeeklyHoursSlot,
+    isWeeklyHoursPeriod: isWeeklyHoursPeriod,
     buildPeriod8Payout: buildPeriod8Payout,
     buildMonthlyReportRows: buildMonthlyReportRows,
     toExcelRows: toExcelRows,
