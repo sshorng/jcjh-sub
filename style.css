@@ -732,6 +732,19 @@ body {
   font-weight: 500;
   font-size: 0.65rem;
 }
+/* 抽離：青綠色小標籤（可與綁課並存） */
+.cell-badge.tag-pullout,
+.badge-match.badge-pullout {
+  background: #f0fdfa;
+  color: #0f766e;
+  border: 1px solid #99f6e4;
+  font-weight: 600;
+  font-size: 0.65rem;
+}
+/* 抽離格：左側細青線，底色仍同有課 */
+.grid-cell-class.is-pullout {
+  border-left: 3px solid #14b8a6 !important;
+}
 /* 課格：上主文、下標籤（桌機也略沉底；手機再強制） */
 .cell-main {
   display: flex;
