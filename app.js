@@ -5535,7 +5535,8 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       const day = getWeekDayText(req.requestPeriodDay);
       const m = req.requestDate ? req.requestDate.slice(5, 10).replace('-', '/') : '—';
       const cls = `${req.className || ''} ${req.subject || ''}`.trim();
-      return `${m}(${day})第${req.requestPeriod}節` + (cls ? ` · ${cls}` : '');
+      const per = formatPeriodText(req.requestPeriod);
+      return `${m}(${day})${per}` + (cls ? ` · ${cls}` : '');
     };
     // 對調課堂：受邀人在目標節的有效班／科（含調入／代課）；勿回退申請人班科
     const formatExchangeClassSlot = (req) => {
@@ -5558,7 +5559,77 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       const m = req.targetDate && String(req.targetDate).length >= 10
         ? String(req.targetDate).slice(5, 10).replace('-', '/')
         : (req.targetDate || '—');
-      return `${m}(${day || '—'})第${req.targetPeriod}節` + (cls ? ` · ${cls}` : '');
+      const per = formatPeriodText(req.targetPeriod);
+      return `${m}(${day || '—'})${per}` + (cls ? ` · ${cls}` : '');
+    };
+
+    /** 快速待辦節次：7/24(五)第7節國文 */
+    const formatQuickSlotCompact = (dateStr, dayHint, period, className, subject) => {
+      let md = '—';
+      if (dateStr && String(dateStr).length >= 10) {
+        const mm = parseInt(String(dateStr).slice(5, 7), 10);
+        const dd = parseInt(String(dateStr).slice(8, 10), 10);
+        if (!isNaN(mm) && !isNaN(dd)) md = mm + '/' + dd;
+      }
+      let day = '';
+      if (typeof dayHint === 'number' || (dayHint != null && String(dayHint).match(/^\d+$/))) {
+        day = getWeekDayText(parseInt(dayHint, 10)) || '';
+      } else if (dayHint) {
+        day = String(dayHint);
+      } else if (dateStr) {
+        try {
+          const d = new Date(String(dateStr).replace(/-/g, '/'));
+          if (!isNaN(d.getTime())) day = getWeekDayText(d.getDay() === 0 ? 7 : d.getDay()) || '';
+        } catch (e) { /* ignore */ }
+      }
+      const dayPart = day ? '(' + day + ')' : '';
+      const perPart = formatPeriodText(period) || '';
+      const subj = String(subject || className || '').replace(/\s+/g, '');
+      return md + dayPart + perPart + subj;
+    };
+
+    /**
+     * 快速待辦標題（調／代課用上方小 tag）
+     * 調課：7/24五7國文（我）⇄ 7/20一6數學（對方）
+     * @param {'incoming'|'sent'} role
+     */
+    const formatQuickTodoTitle = (req, role) => {
+      if (!req) return '—';
+      const isEx = req.type === 'exchange' || req.type === '對調';
+      const leaveSlot = formatQuickSlotCompact(
+        req.requestDate, req.requestPeriodDay, req.requestPeriod, req.className, req.subject
+      );
+      if (isEx) {
+        let dayNum = req.targetDayOfWeek;
+        if ((dayNum == null || dayNum === '') && req.targetDate) {
+          const d = new Date(String(req.targetDate).replace(/-/g, '/'));
+          if (!Number.isNaN(d.getTime())) dayNum = d.getDay() === 0 ? 7 : d.getDay();
+        }
+        const cell = resolveExchangeTargetCell(
+          req.targetTeacherEmail, req.targetDate, req.targetPeriod, dayNum
+        );
+        const peerSlot = formatQuickSlotCompact(
+          req.targetDate,
+          dayNum,
+          req.targetPeriod,
+          cell ? cell.className : (req.targetClassName || ''),
+          cell ? cell.subject : (req.targetSubject || '')
+        );
+        // sent＝申請人視角；incoming＝受邀人視角；括號內放真實姓名
+        const meName = role === 'sent'
+          ? (req.requesterName || '我')
+          : (req.targetTeacherName || '我');
+        const peerName = role === 'sent'
+          ? (req.targetTeacherName || '對方')
+          : (req.requesterName || '對方');
+        const mySlot = role === 'sent' ? leaveSlot : peerSlot;
+        const otherSlot = role === 'sent' ? peerSlot : leaveSlot;
+        return mySlot + '（' + meName + '）⇄ ' + otherSlot + '（' + peerName + '）';
+      }
+      if (role === 'sent') {
+        return (req.targetTeacherName || '對方') + ' · ' + leaveSlot;
+      }
+      return (req.requesterName || '申請人') + ' · ' + leaveSlot;
     };
 
     /** 核准前風險黃燈（綁課／第8／額度／再異動／跨日等） */
@@ -6461,7 +6532,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       selectedClassDate, selectedClassWeekDates, classWeekNumber, classSubstitutionMap, classChangeSummary, changeClassWeek, goToClassThisWeek,
       prepCompare, getCompareCellText, getCompareCellClass, executeSubmitRequest, isSubmitting,
       getStatusText, changeMatchMode, respondToRequest, respondToBatch, adminApprove, adminReject, cancelRequest, deleteSubstitutionRecord, loadMoreMatches,
-      formatRequestSummary, formatLeaveClassSlot, formatExchangeClassSlot, formatHistoryLeaveSlot, formatHistoryExchangeSlot, getRequestRiskTags, getRequestTypeTags, getApproveRiskFlags, formatApproveBatchRiskSummary, isHistoryLeaveRechanged, isHistoryExchangeRechanged, isRequestExchangeRechanged, getCellPlainStatus, getRequestProgressSteps, isLeaveClassRestricted, isExchangeClassRestricted, isHistoryLeaveRestricted, isHistoryExchangeRestricted,
+      formatRequestSummary, formatLeaveClassSlot, formatExchangeClassSlot, formatQuickTodoTitle, formatHistoryLeaveSlot, formatHistoryExchangeSlot, getRequestRiskTags, getRequestTypeTags, getApproveRiskFlags, formatApproveBatchRiskSummary, isHistoryLeaveRechanged, isHistoryExchangeRechanged, isRequestExchangeRechanged, getCellPlainStatus, getRequestProgressSteps, isLeaveClassRestricted, isExchangeClassRestricted, isHistoryLeaveRestricted, isHistoryExchangeRestricted,
       dashboardScope, dashboardStats,
       selectedAdminPendingIds, isAdminPendingSelected, toggleAdminPendingSelect, toggleSelectAllAdminPending, clearAdminPendingSelection,
       batchAdminApprove, batchAdminReject, lastBatchPrintIds, showBatchPrintPrompt, printLastBatchNotices, dismissBatchPrintPrompt,
