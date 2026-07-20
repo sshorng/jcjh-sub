@@ -321,7 +321,13 @@ window.DomainClassAway = (function () {
   function scanClassNames(allSchedules) {
     var set = {};
     (allSchedules || []).forEach(function (s) {
+      // 巡堂不是實際班級，一律排除
+      if (s.attr === '巡堂' || s.isPatrol) return;
+      if (String(s.subject || '').trim() === '巡堂') return;
       var raw = s.className || s['班級'];
+      if (String(raw || '').trim() === '巡堂') return;
+      // 抽離也不應出現在班級清單（不代表真實授課班）
+      if (s.attr === '抽離' || s.isPullOut) return;
       // 併班「701、702」拆成個別班名
       var parts = null;
       if (window.DateUtils && typeof window.DateUtils.parseCombinedClasses === 'function') {
