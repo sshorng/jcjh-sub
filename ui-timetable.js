@@ -194,6 +194,7 @@ window.UiTimetable = (function () {
       if (draftOn) return 'is-mutual-draft' + batchCls;
       if (awayOn || cell.isClassAway) return 'is-away-class' + batchCls;
       if (cell.isPatrol || cell.attr === '巡堂') return 'is-patrol' + batchCls;
+      if (cell.isPullOut || cell.attr === '抽離') return 'is-pullout has-class' + batchCls;
       if (cell.attr === '兼課') return 'is-overtime' + batchCls;
       if (cell.attr === '實支') return 'is-elastic' + batchCls;
       return 'has-class' + batchCls;
