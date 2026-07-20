@@ -710,8 +710,8 @@ window.DomainActivityCover = (function () {
           && window.DomainSchedule.isPatrolCell(cell)) return false;
       var attr = String(cell.attr || '');
       if (attr === '抽離' || attr === '巡堂') return false;
-      // 純調出：本地已無課，不算需求
-      if (cell.isSubstituted && !cell.isSubstitutionDuty) return false;
+      // 已代（isSubstituted）仍算需求：累計口徑，已送出另欄扣，避免補排時需求變小
+      // 僅「純調入而無原班」不在此用 isSubstituted 排除
       var cn = normalizeClass(cell.className);
       if (!cn) return false;
       if (cn === '巡堂') return false;
