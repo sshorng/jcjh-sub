@@ -64,8 +64,11 @@ window.UiSubmitHelpers = (function () {
       if (window.DomainMatch && window.DomainMatch.isPullOutSlot) {
         // 若 pending 有 classB／subject 對應不到 attr，用 allSchedules 回推
         var allS = deps.allSchedules && deps.allSchedules.value ? deps.allSchedules.value : [];
-        var tDay = parseInt(String(pending.timeB || '').charAt(0), 10);
-        var tPer = parseInt(String(pending.timeB || '').slice(1), 10);
+        var tb = (window.DateUtils && window.DateUtils.decodeTimeKey)
+          ? window.DateUtils.decodeTimeKey(pending.timeB)
+          : { day: parseInt(String(pending.timeB || '').charAt(0), 10), period: parseInt(String(pending.timeB || '').slice(1), 10) };
+        var tDay = tb.day;
+        var tPer = tb.period;
         var tHit = allS.find(function (s) {
           return s && pending.subTeacher
             && String(s.teacherEmail || '').toLowerCase() === String(pending.subTeacher).toLowerCase()
@@ -100,7 +103,10 @@ window.UiSubmitHelpers = (function () {
     var isExchange = pending.mode === 'exchange';
     var finalFeeType = '無';
     if (!isExchange) {
-      var periodNum = parseInt(String(pending.timeKey || '').slice(-1), 10)
+      var tk0 = (window.DateUtils && window.DateUtils.decodeTimeKey)
+        ? window.DateUtils.decodeTimeKey(pending.timeKey)
+        : { period: parseInt(String(pending.timeKey || '').slice(-1), 10) };
+      var periodNum = parseInt(tk0.period, 10)
         || (activeCell.value ? parseInt(activeCell.value.period, 10) : 0);
       if (periodNum === 8) {
         finalFeeType = PERIOD8_FEE;
@@ -131,8 +137,18 @@ window.UiSubmitHelpers = (function () {
       "受邀人Email": pending.subTeacher,
       "受邀人姓名": getTeacherNameByEmail(pending.subTeacher),
       "異動日期": pending.date,
-      "異動節次": parseInt(String(pending.timeKey).slice(-1), 10),
-      "異動星期": parseInt(String(pending.timeKey).charAt(0), 10),
+      "異動節次": (function () {
+        var tk = (window.DateUtils && window.DateUtils.decodeTimeKey)
+          ? window.DateUtils.decodeTimeKey(pending.timeKey)
+          : { period: parseInt(String(pending.timeKey).slice(-1), 10) };
+        return parseInt(tk.period, 10);
+      })(),
+      "異動星期": (function () {
+        var tk = (window.DateUtils && window.DateUtils.decodeTimeKey)
+          ? window.DateUtils.decodeTimeKey(pending.timeKey)
+          : { day: parseInt(String(pending.timeKey).charAt(0), 10) };
+        return parseInt(tk.day, 10);
+      })(),
       "班級": pending.cls,
       "科目": pending.subject,
       "請假事由": pending.reason,
@@ -144,8 +160,14 @@ window.UiSubmitHelpers = (function () {
 
     if (isExchange) {
       newRequest["對調目標日期"] = pending.dateB;
-      newRequest["對調目標節次"] = parseInt(String(pending.timeB).slice(-1), 10);
-      newRequest["對調目標星期"] = parseInt(String(pending.timeB).charAt(0), 10);
+      var tb = (window.DateUtils && window.DateUtils.decodeTimeKey)
+        ? window.DateUtils.decodeTimeKey(pending.timeB)
+        : {
+            day: parseInt(String(pending.timeB).charAt(0), 10),
+            period: parseInt(String(pending.timeB).slice(-1), 10)
+          };
+      newRequest["對調目標節次"] = parseInt(tb.period, 10);
+      newRequest["對調目標星期"] = parseInt(tb.day, 10);
     }
 
     var payload = {
@@ -335,7 +357,9 @@ window.UiSubmitHelpers = (function () {
 
     var leaveEmail = activeCell.value.teacherEmail;
     var curDate = inputRequestDate.value;
-    var timeKey = String(activeCell.value.dayOfWeek) + String(activeCell.value.period);
+    var timeKey = (window.DateUtils && window.DateUtils.encodeTimeKey)
+      ? window.DateUtils.encodeTimeKey(activeCell.value.dayOfWeek, activeCell.value.period)
+      : (String(activeCell.value.dayOfWeek) + '-' + String(activeCell.value.period));
 
     var dateBVal = '';
     var timeBVal = '';
@@ -364,7 +388,9 @@ window.UiSubmitHelpers = (function () {
         dateBVal = exchangeTargetDate.value;
       }
       var dp = periodIdVal.split('-');
-      timeBVal = dp[0] + dp[1];
+      timeBVal = (window.DateUtils && window.DateUtils.encodeTimeKey)
+        ? window.DateUtils.encodeTimeKey(dp[0], dp[1])
+        : (String(dp[0]) + '-' + String(dp[1]));
       subBVal = subjectVal;
       classBVal = classVal || '';
     }
@@ -493,7 +519,9 @@ window.UiSubmitHelpers = (function () {
     var email = who === 'A' ? pending.leaveTeacher : bEmail;
     var targetTimeKey = who === 'A' ? pending.timeKey : pending.timeB;
     var swapTimeKey = who === 'A' ? pending.timeB : pending.timeKey;
-    var timeKey = String(day) + String(period);
+    var timeKey = (window.DateUtils && window.DateUtils.encodeTimeKey)
+      ? window.DateUtils.encodeTimeKey(day, period)
+      : (String(day) + '-' + String(period));
     var dateStr = currentWeekDates.value[day - 1];
 
     if (pending.isBatch && pending.mode === 'substitution' && dateStr) {
@@ -570,7 +598,9 @@ window.UiSubmitHelpers = (function () {
     var email = who === 'A' ? pending.leaveTeacher : bEmail;
     var targetTimeKey = who === 'A' ? pending.timeKey : pending.timeB;
     var swapTimeKey = who === 'A' ? pending.timeB : pending.timeKey;
-    var timeKey = String(day) + String(period);
+    var timeKey = (window.DateUtils && window.DateUtils.encodeTimeKey)
+      ? window.DateUtils.encodeTimeKey(day, period)
+      : (String(day) + '-' + String(period));
     var dateStr = currentWeekDates.value[day - 1];
 
     if (pending.isBatch && pending.mode === 'substitution' && dateStr) {
