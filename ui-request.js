@@ -362,11 +362,6 @@ window.UiSubmitHelpers = (function () {
       }
     }
 
-    if (mode === 'substitution' && isMutualCover.value) {
-      assignMutualDraftFromMatch(targetEmail);
-      return 'drafted';
-    }
-
     // 代課：落在對方巡堂節 → 提醒（不擋）
     if (mode === 'substitution') {
       var subCell = getScheduleForDate(
@@ -382,28 +377,56 @@ window.UiSubmitHelpers = (function () {
     }
 
     var periodNum = parseInt(activeCell.value.period, 10);
-    var subFeeVal = mode === 'exchange' ? '無' : (periodNum === 8 ? PERIOD8_FEE : '自費代課');
+    var ACTIVITY_PUBLIC_FEE = (window.DomainActivityCover && window.DomainActivityCover.ACTIVITY_PUBLIC_FEE) || '活動公費';
+    var subFeeVal = mode === 'exchange'
+      ? '無'
+      : (periodNum === 8
+        ? PERIOD8_FEE
+        : (isMutualCover.value ? ACTIVITY_PUBLIC_FEE : '自費代課'));
 
+    // 活動互代：模擬只開對照，不直接寫暫定（暫定由「暫定此人」按鈕）
     pendingRequestData.value = {
       mode: mode,
       leaveTeacher: leaveEmail,
       subTeacher: targetEmail,
-      cls: activeCell.value.classData.className,
-      subject: activeCell.value.classData.subject,
+      cls: activeCell.value.classData ? activeCell.value.classData.className : '',
+      subject: activeCell.value.classData ? activeCell.value.classData.subject : '',
       date: curDate,
       timeKey: timeKey,
-      reason: '',
+      reason: isMutualCover.value ? '公假' : '',
       subFee: subFeeVal,
       dateB: dateBVal,
       timeB: timeBVal,
       subB: subBVal,
       subBClass: classBVal,
-      note: ''
+      note: '',
+      mutualPreview: !!isMutualCover.value
     };
 
     showMatchModal.value = false;
     showCompareModal.value = true;
     return 'opened';
+  }
+
+  /** 活動互代暫定：找出該師該日該節的草稿 */
+  function findMutualDraftAt(deps, email, dateStr, period) {
+    var drafts = deps.mutualDrafts
+      ? (deps.mutualDrafts.value || deps.mutualDrafts)
+      : [];
+    if (!drafts || !drafts.length || !email || !dateStr) return null;
+    var em = String(email).toLowerCase();
+    var d0 = String(dateStr).slice(0, 10);
+    var p0 = parseInt(period, 10);
+    for (var i = 0; i < drafts.length; i++) {
+      var d = drafts[i];
+      if (!d) continue;
+      if (String(d.dateStr || '').slice(0, 10) !== d0) continue;
+      if (parseInt(d.period, 10) !== p0) continue;
+      var leave = String(d.leaveEmail || '').toLowerCase();
+      var sub = String(d.subEmail || d.subTeacherEmail || '').toLowerCase();
+      if (leave === em || sub === em) return d;
+    }
+    return null;
   }
 
   function getCompareCellText(deps, who, day, period) {
@@ -446,8 +469,29 @@ window.UiSubmitHelpers = (function () {
     }
 
     if (!email) return '';
+    // 目前正在模擬的這一節（優先）
     if (timeKey === targetTimeKey) return '移出';
     if (timeKey === swapTimeKey) return pending.cls || '';
+
+    // 活動互代：疊上其他暫定（移出／代入）
+    var draft = findMutualDraftAt(deps, email, dateStr, period);
+    if (draft) {
+      var leaveEm = String(draft.leaveEmail || '').toLowerCase();
+      var subEm = String(draft.subEmail || draft.subTeacherEmail || '').toLowerCase();
+      var me = String(email).toLowerCase();
+      if (leaveEm === me) {
+        return '暫移';
+      }
+      if (subEm === me) {
+        var clsIn = draft.className || pending.cls || '代入';
+        // 代入格若原本有課 → 衝堂標示
+        var baseCell = getScheduleForDate(email, dateStr, period, day);
+        if (baseCell && !isCompareEmptySlot(baseCell, dateStr, isClassAwayOnDate)) {
+          return String(clsIn) + ' ⚠';
+        }
+        return '暫:' + clsIn;
+      }
+    }
 
     var cell = getScheduleForDate(email, dateStr, period, day);
     if (isCompareEmptySlot(cell, dateStr, isClassAwayOnDate)) return '';
@@ -501,6 +545,23 @@ window.UiSubmitHelpers = (function () {
     if (!email) return '';
     if (timeKey === targetTimeKey) return 'mini-cell-out';
     if (timeKey === swapTimeKey) return 'mini-cell-new';
+
+    // 活動互代暫定疊色
+    var draft = findMutualDraftAt(deps, email, dateStr, period);
+    if (draft) {
+      var leaveEm = String(draft.leaveEmail || '').toLowerCase();
+      var subEm = String(draft.subEmail || draft.subTeacherEmail || '').toLowerCase();
+      var me = String(email).toLowerCase();
+      if (leaveEm === me) return 'mini-cell-out mini-cell-draft';
+      if (subEm === me) {
+        var baseCell = getScheduleForDate(email, dateStr, period, day);
+        if (baseCell && !isCompareEmptySlot(baseCell, dateStr, isClassAwayOnDate)
+            && isSlotConflict(baseCell)) {
+          return 'mini-cell-conflict mini-cell-draft';
+        }
+        return 'mini-cell-new mini-cell-draft';
+      }
+    }
 
     var cell = getScheduleForDate(email, dateStr, period, day);
     if (isCompareEmptySlot(cell, dateStr, isClassAwayOnDate)) return '';
@@ -608,6 +669,7 @@ window.UiSubmitHelpers = (function () {
             + newRequest['受邀人姓名'] + ' 老師！');
         lineCopyText.value = buildLineInviteText(linePayload);
         hasLineTemplate.value = true;
+        if (deps.successFlowMode) deps.successFlowMode.value = 'normal';
       } else {
         successModalTitle.value = '🎉 申請已直接核准';
         successModalMessage.value = '申請單（' + serial + '）已直接審核完成' + mutualTip
@@ -619,6 +681,7 @@ window.UiSubmitHelpers = (function () {
           lineCopyText.value = '';
           hasLineTemplate.value = false;
         }
+        if (deps.successFlowMode) deps.successFlowMode.value = 'direct';
       }
       showSuccessModal.value = true;
     } catch (err) {
