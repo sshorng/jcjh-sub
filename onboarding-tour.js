@@ -4,7 +4,7 @@
  */
 window.OnboardingTour = (function () {
   var STORAGE_KEY = 'jcjh_onboarding_v2';
-  var CSS_HREF = 'onboarding-tour.css?v=20260717-tour30';
+  var CSS_HREF = 'onboarding-tour.css';
   var _active = false;
   var _idx = 0;
   var _steps = [];
