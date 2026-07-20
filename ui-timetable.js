@@ -126,7 +126,11 @@ window.UiTimetable = (function () {
         for (var day = 1; day <= 5; day++) {
           var dateStr = dates[day - 1];
           if (!dateStr) continue;
-          for (var period = 1; period <= 8; period++) {
+          var periodList = (window.DateUtils && window.DateUtils.getTimetablePeriods)
+            ? window.DateUtils.getTimetablePeriods()
+            : [1, 2, 3, 4, 5, 6, 7, 8];
+          for (var pi = 0; pi < periodList.length; pi++) {
+            var period = periodList[pi];
             var cell = getScheduleForDate(t.email, dateStr, period, day);
             var draft = mutualOn ? draftAt(t.email, dateStr, period) : null;
             var batchOn = batchSelectMode.value && isBatchSlotSelected(t.email, dateStr, period);
