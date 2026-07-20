@@ -11,6 +11,7 @@ window.GasApi = (function () {
     adminApprove: 1, adminReject: 1, adminApproveBatch: 1, adminRejectBatch: 1,
     cancelRequest: 1, withdrawRequest: 1, deleteSubstitutionRecord: 1,
     saveTeacher: 1, deleteTeacher: 1, importTeachersBatch: 1, updateMutualQuotas: 1,
+    earnMutualQuotaFromActivity: 1,
     saveScheduleCell: 1, clearScheduleCell: 1, importSchedulesBatch: 1,
     saveSemester: 1, deleteSemester: 1, setDefaultSemester: 1,
     saveClassAwayEvent: 1, deleteClassAwayEvent: 1,
@@ -26,6 +27,7 @@ window.GasApi = (function () {
   /** 課表／教師／學期結構變更 → 清全部分鍵 */
   var STRUCTURE_WRITE_ACTIONS = {
     saveTeacher: 1, deleteTeacher: 1, importTeachersBatch: 1, updateMutualQuotas: 1,
+    earnMutualQuotaFromActivity: 1,
     saveScheduleCell: 1, clearScheduleCell: 1, importSchedulesBatch: 1,
     saveSemester: 1, deleteSemester: 1, setDefaultSemester: 1,
     saveClassAwayEvent: 1, deleteClassAwayEvent: 1, saveMailSettings: 1
@@ -130,12 +132,21 @@ window.GasApi = (function () {
   }
 
   function writePart(semesterId, part, data) {
+    var key = partKey(semesterId, part);
+    var payload = JSON.stringify({ ts: Date.now(), data: data });
     try {
-      sessionStorage.setItem(
-        partKey(semesterId, part),
-        JSON.stringify({ ts: Date.now(), data: data })
-      );
-    } catch (e) {}
+      sessionStorage.setItem(key, payload);
+    } catch (e1) {
+      // QuotaExceeded：清舊 SWR 後重試一次
+      try {
+        Object.keys(sessionStorage).forEach(function (k) {
+          if (k.indexOf('jcjh_swr_') === 0) sessionStorage.removeItem(k);
+        });
+        sessionStorage.setItem(key, payload);
+      } catch (e2) {
+        try { console.warn('SWR writePart failed:', part, e2); } catch (e3) {}
+      }
+    }
   }
 
   function removePart(semesterId, part) {
@@ -193,16 +204,11 @@ window.GasApi = (function () {
     }
   }
 
-  /** 寫整包並拆分鍵 */
+  /** 只寫分鍵（不再寫整包 full bag，避免 sessionStorage 爆量） */
   function writeSWR(semesterId, data) {
     if (!data) return;
-    try {
-      // 舊整包（短保留，方便除錯）
-      sessionStorage.setItem(
-        cacheKey(semesterId),
-        JSON.stringify({ ts: Date.now(), data: data })
-      );
-    } catch (e) {}
+    // 清掉舊版整包 key（若仍存在）
+    try { sessionStorage.removeItem(cacheKey(semesterId)); } catch (e0) {}
     writeSWRParts(semesterId, data);
   }
 
@@ -327,6 +333,18 @@ window.GasApi = (function () {
       return null;
     }
 
+    /** 長操作預估秒數（僅 UI 進度提示用） */
+    var LONG_ACTION_HINT_SEC = {
+      importSchedulesBatch: 90,
+      importTeachersBatch: 45,
+      adminApproveBatch: 60,
+      adminRejectBatch: 40,
+      submitRequestBatch: 50,
+      sendBatchNotices: 40,
+      getInitialData: 25,
+      earnMutualQuotaFromActivity: 45
+    };
+
     async function postJson(action, data, options) {
       options = options || {};
       const url = opts.getApiUrl();
@@ -349,6 +367,29 @@ window.GasApi = (function () {
         currentUrl: window.location.origin + window.location.pathname,
         data: data || {}
       };
+
+      // 長操作：每秒回報經過秒數，避免畫面像卡住
+      var progressTimer = null;
+      var t0 = Date.now();
+      var onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
+      var hintSec = LONG_ACTION_HINT_SEC[action] || (options.longOp ? 60 : 0);
+      if (onProgress && hintSec > 0) {
+        try {
+          onProgress({ action: action, elapsed: 0, hintSec: hintSec, phase: 'start' });
+        } catch (e0) { /* ignore */ }
+        progressTimer = setInterval(function () {
+          var elapsed = Math.floor((Date.now() - t0) / 1000);
+          try {
+            onProgress({
+              action: action,
+              elapsed: elapsed,
+              hintSec: hintSec,
+              phase: elapsed >= hintSec ? 'slow' : 'wait'
+            });
+          } catch (eP) { /* ignore */ }
+        }, 1000);
+      }
+
       let response;
       try {
         response = await fetch(url, {
@@ -358,8 +399,16 @@ window.GasApi = (function () {
           body: JSON.stringify(payload)
         });
       } catch (netErr) {
+        if (progressTimer) clearInterval(progressTimer);
+        var netMsg = String(netErr && netErr.message ? netErr.message : netErr);
+        if (/abort|timeout|timed out|Failed to fetch|NetworkError|network/i.test(netMsg)) {
+          throw new Error(formatError(new Error(
+            '連線逾時或中斷（可能 GAS 處理較久）。請稍候再試；若剛完成寫入，可按 ↻ 重新整理確認。'
+          ), action));
+        }
         throw new Error(formatError(netErr, action));
       }
+      if (progressTimer) clearInterval(progressTimer);
       if (!response.ok) {
         throw new Error(
           formatError(new Error('網路連線失敗：HTTP ' + response.status + ' ' + (response.statusText || '')), action)
@@ -385,13 +434,29 @@ window.GasApi = (function () {
           }
           handleAuthExpired();
         }
+        if (/exceeded maximum execution time|Maximum execution time|逾時|timeout/i.test(String(errMsg))) {
+          throw new Error(formatError(new Error(
+            'GAS 執行逾時。請減少單次筆數後再試，或稍候按 ↻ 確認是否已部分寫入。'
+          ), action));
+        }
         throw new Error(formatError(new Error(errMsg), action));
+      }
+      if (onProgress && hintSec > 0) {
+        try {
+          onProgress({
+            action: action,
+            elapsed: Math.floor((Date.now() - t0) / 1000),
+            hintSec: hintSec,
+            phase: 'done'
+          });
+        } catch (eD) { /* ignore */ }
       }
       return res;
     }
 
-    const callGasApi = async (action, data) => {
-      const res = await postJson(action, data || {});
+    const callGasApi = async (action, data, callOpts) => {
+      callOpts = callOpts || {};
+      const res = await postJson(action, data || {}, callOpts);
       if (WRITE_ACTIONS[action]) {
         var sid = opts.getSemesterId();
         if (REQUEST_WRITE_ACTIONS[action] && !STRUCTURE_WRITE_ACTIONS[action]) {
@@ -581,6 +646,24 @@ window.GasApi = (function () {
       }
     }
 
+    /** 互代額度帳本歷程（email 可選；管理員可查他人） */
+    async function fetchMutualQuotaLedger(options) {
+      options = options || {};
+      const semesterId = options.semesterId || opts.getSemesterId();
+      const prevGet = opts.getSemesterId;
+      if (options.semesterId) {
+        opts.getSemesterId = function () { return semesterId; };
+      }
+      try {
+        return await postJson('getMutualQuotaLedger', {
+          email: options.email || options.teacherEmail || '',
+          limit: options.limit != null ? options.limit : 80
+        });
+      } finally {
+        opts.getSemesterId = prevGet;
+      }
+    }
+
     return {
       callGasApi,
       fetchInitialData,
@@ -590,6 +673,7 @@ window.GasApi = (function () {
       fetchRequestsDelta,
       fetchHistoryMonth,
       fetchMatchCandidates,
+      fetchMutualQuotaLedger,
       decodeJwt,
       isTokenExpired,
       isTokenExpiringSoon,
