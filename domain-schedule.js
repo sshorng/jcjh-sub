@@ -14,8 +14,22 @@ window.DomainSchedule = (function () {
     return isPatrolAttr(cell.attr);
   }
 
+  /** 課堂屬性＝抽離（不進班級課表；調課僅可與另一節抽離互調，不可與一般課） */
+  function isPullOutAttr(attr) {
+    return String(attr || '').trim() === '抽離';
+  }
+
+  function isPullOutCell(cell) {
+    if (!cell) return false;
+    if (cell.isPullOut) return true;
+    return isPullOutAttr(cell.attr);
+  }
+
   var PATROL_INCOMING_TIP =
     '對方本節為【巡堂】。排入代課／調課後，請私下協調代巡堂或互換，系統不另開巡堂代課單。';
+
+  var PULL_OUT_EXCHANGE_TIP =
+    '抽離課僅可與另一節「抽離」互調，不可與一般課調課。';
 
   function formatShortDateAndPeriod(dateStr, period, getWeekDayText) {
     if (!dateStr) return '';
@@ -343,9 +357,11 @@ window.DomainSchedule = (function () {
     if (base.attr === '雙週' && h.isSingleWeek(dateStr)) return null;
     // 空堂事件：不刪格（畫面淡化）；標 isClassAway 供媒合／匯出／模擬當空堂
     var patrol = isPatrolAttr(base.attr);
+    var pullOut = isPullOutAttr(base.attr);
     return Object.assign({}, base, {
       isElastic: base.attr === '實支',
       isPatrol: patrol,
+      isPullOut: pullOut,
       // 顯示用：巡堂格固定文案
       className: patrol ? (base.className || '巡堂') : base.className,
       subject: patrol ? '巡堂' : base.subject,
@@ -550,6 +566,9 @@ window.DomainSchedule = (function () {
     applyPendingOverlay: applyPendingOverlay,
     isPatrolAttr: isPatrolAttr,
     isPatrolCell: isPatrolCell,
-    PATROL_INCOMING_TIP: PATROL_INCOMING_TIP
+    isPullOutAttr: isPullOutAttr,
+    isPullOutCell: isPullOutCell,
+    PATROL_INCOMING_TIP: PATROL_INCOMING_TIP,
+    PULL_OUT_EXCHANGE_TIP: PULL_OUT_EXCHANGE_TIP
   };
 })();
