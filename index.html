@@ -217,7 +217,7 @@
                       <span class="status-badge tag-red badge-mini">待簽核</span>
                       <span class="status-badge badge-mini" :class="req.type === 'exchange' ? 'tag-blue' : 'tag-red'">{{ req.type === 'exchange' ? '調課' : '代課' }}</span>
                     </div>
-                    <div class="quick-todo-title">{{ req.requesterName }} · {{ formatLeaveClassSlot(req) }}</div>
+                    <div class="quick-todo-title">{{ formatQuickTodoTitle(req, 'incoming') }}</div>
                   </div>
                   <div class="quick-todo-actions">
                     <button v-if="req.batchId" class="btn btn-success btn-xs-batch" @click="respondToBatch(req.batchId, 'agree')" title="同批次全部同意">全同意</button>
@@ -229,8 +229,9 @@
                   <div class="quick-todo-main">
                     <div class="quick-todo-top">
                       <span class="status-badge tag-yellow badge-mini">{{ getStatusText(req.status) }}</span>
+                      <span class="status-badge badge-mini" :class="req.type === 'exchange' ? 'tag-blue' : 'tag-red'">{{ req.type === 'exchange' ? '調課' : '代課' }}</span>
                     </div>
-                    <div class="quick-todo-title">{{ req.targetTeacherName }} · {{ formatLeaveClassSlot(req) }}</div>
+                    <div class="quick-todo-title">{{ formatQuickTodoTitle(req, 'sent') }}</div>
                   </div>
                   <div class="quick-todo-actions" @click.stop>
                     <button v-if="req.status === 'pending_teacher'" type="button" class="btn btn-success btn-xs-line" @click.stop="copyLineMessageForRequest(req)">LINE</button>
@@ -661,7 +662,7 @@
                         <span class="status-badge badge-mini" :class="req.type === 'exchange' ? 'tag-blue' : 'tag-red'">{{ req.type === 'exchange' ? '調課' : '代課' }}</span>
                         <span v-for="tag in getRequestTypeTags(req)" :key="tag.key" class="risk-tag" :class="'risk-'+tag.key">{{ tag.label }}</span>
                       </div>
-                      <div class="quick-todo-title">{{ req.requesterName }} · {{ formatLeaveClassSlot(req) }}</div>
+                      <div class="quick-todo-title">{{ formatQuickTodoTitle(req, 'incoming') }}</div>
                     </div>
                     <div class="quick-todo-actions">
                       <button v-if="req.batchId" class="btn btn-success btn-xs-batch" @click="respondToBatch(req.batchId, 'agree')" title="同批次全部同意">全同意</button>
@@ -673,9 +674,10 @@
                     <div class="quick-todo-main">
                       <div class="quick-todo-top">
                         <span class="status-badge tag-yellow badge-mini">{{ getStatusText(req.status) }}</span>
+                        <span class="status-badge badge-mini" :class="req.type === 'exchange' ? 'tag-blue' : 'tag-red'">{{ req.type === 'exchange' ? '調課' : '代課' }}</span>
                         <span v-for="tag in getRequestTypeTags(req)" :key="tag.key" class="risk-tag" :class="'risk-'+tag.key">{{ tag.label }}</span>
                       </div>
-                      <div class="quick-todo-title">{{ req.targetTeacherName }} · {{ formatLeaveClassSlot(req) }}</div>
+                      <div class="quick-todo-title">{{ formatQuickTodoTitle(req, 'sent') }}</div>
                       <div style="font-size:0.68rem;color:var(--text-muted);margin-top:2px;">{{ getRequestProgressSteps(req).summary }}</div>
                     </div>
                     <div class="quick-todo-actions" @click.stop>
