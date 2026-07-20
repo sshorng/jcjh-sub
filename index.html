@@ -609,6 +609,7 @@
                                     v-if="period === 8 && slot.cell.attr !== '單週' && slot.cell.attr !== '雙週' && !slot.cell.isSubstituted && !slot.cell.isSubstitutionDuty && !slot.cell.isPending && !(slot.cell.isPatrol || slot.cell.attr === '巡堂')"
                                     class="cell-badge tag-blue"
                                   >輔導</span>
+                                  <span v-if="slot.cell.isPullOut || slot.cell.attr === '抽離'" class="cell-badge tag-pullout">抽離</span>
                                   <span v-if="slot.cell.restriction === 'restricted'" class="cell-badge tag-restricted">綁課</span>
                                   <span 
                                     v-if="slot.cell.isPending"
@@ -1808,6 +1809,9 @@
             <div v-if="!isBatchMatchFlow && activeCell.classData && (activeCell.classData.isPatrol || activeCell.classData.attr === '巡堂')" style="font-size:0.75rem;color:#5b21b6;margin:-4px 0 10px;padding:6px 10px;background:#f5f3ff;border-radius:6px;border:1px solid #ddd6fe;">
               本節為巡堂：不計鐘點、不需系統代課；若要請人代巡，請私下安排
             </div>
+            <div v-if="!isBatchMatchFlow && activeCell.classData && (activeCell.classData.isPullOut || activeCell.classData.attr === '抽離')" style="font-size:0.75rem;color:#0f766e;margin:-4px 0 10px;padding:6px 10px;background:#f0fdfa;border-radius:6px;border:1px solid #99f6e4;">
+              本節為抽離：調課僅可與另一節「抽離」互調，不可與一般課調課；可找人代課
+            </div>
             <div v-if="!isBatchMatchFlow && activeCell.classData && activeCell.classData.restriction === 'restricted'" style="font-size:0.75rem;color:#b45309;margin:-4px 0 10px;padding:6px 10px;background:#fffbeb;border-radius:6px;border:1px solid #fde68a;">
               此堂為綁課：建議代課；特殊狀況仍可調課（切換時會提醒）
             </div>
@@ -2062,6 +2066,8 @@
                           <div v-if="hasSubTeacherConflict" style="color: var(--color-danger); font-size: 0.7rem; font-weight: bold;">⚠️ 教師課務衝突</div>
                           <div style="font-size: 0.7rem; color: var(--text-muted);">{{ r.className }} ({{ r.subject }})</div>
                           <span v-if="r.freeByAway" class="badge-match badge-released">外出班釋出</span>
+                          <span v-if="r.isPullOut || r.attr === '抽離'" class="badge-match badge-pullout">抽離</span>
+                          <span v-if="activeCell.classData && (activeCell.classData.isPullOut || activeCell.classData.attr === '抽離')" class="badge-match badge-pullout">原課抽離</span>
                           <span v-if="activeCell.classData && activeCell.classData.restriction === 'restricted'" class="badge-match badge-restricted">原課綁課</span>
                           <span v-if="r.restriction === 'restricted'" class="badge-match badge-restricted">對調課綁課</span>
                         </td>
@@ -3104,15 +3110,15 @@
                 <option v-if="parseInt(scheduleForm.period, 10) === 8" value="單週">單週（僅第8節輔導）</option>
                 <option v-if="parseInt(scheduleForm.period, 10) === 8" value="雙週">雙週（僅第8節輔導）</option>
                 <option v-if="parseInt(scheduleForm.period, 10) === 8" value="輔導">輔導（第8節每週）</option>
-                <option value="抽離">抽離（不顯示於班級課表）</option>
+                <option value="抽離">抽離（不顯示於班級課表；可另勾綁課）</option>
               </select>
               <span class="text-xs-muted-70">
-                1～7 節無單雙週。兼課：列入週鐘點（常為超鐘點課）。巡堂不計鐘點。抽離不進班級課表。單／雙週僅第 8 節可用。
+                1～7 節無單雙週。兼課：列入週鐘點（常為超鐘點課）。巡堂不計鐘點。抽離不進班級課表、調課僅可與抽離互調。單／雙週僅第 8 節可用。
               </span>
             </div>
             <div class="form-group" style="flex-direction: row; align-items: center; gap: 8px;">
               <input type="checkbox" id="chk-restricted-course" v-model="scheduleForm.restriction" true-value="restricted" false-value="" class="chk-box-16">
-              <label for="chk-restricted-course" class="form-label m-0">綁課／特殊課程，調課前跳提醒</label>
+              <label for="chk-restricted-course" class="form-label m-0">綁課／特殊課程，調課前跳提醒（抽離課也可勾）</label>
             </div>
           </div>
           <div class="modal-footer" style="flex-direction: column; gap: 8px;">
