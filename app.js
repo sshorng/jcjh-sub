@@ -216,38 +216,34 @@ createApp({
       });
     }
 
+    /** GSI 固定橋接：initialize 只綁一次，實際邏輯永遠走最新 handler */
+    function gsiCredentialBridge(response) {
+      const fn = window.__gsiCredentialHandler || window.handleCredentialResponse;
+      if (typeof fn === 'function') {
+        try {
+          return fn(response);
+        } catch (e) {
+          console.error('GSI credential handler error', e);
+          showToast('登入處理失敗：' + (e && e.message ? e.message : e), 'error');
+        }
+      } else {
+        console.warn('GSI callback 尚未就緒', response);
+        showToast('登入回呼尚未就緒，請重新整理後再試', 'warning');
+      }
+    }
+
     function ensureGsiInitialized() {
       if (!isGoogleGsiReady() || !googleClientId.value) return false;
       if (_gsiInitialized) return true;
       try {
-        if (typeof window.handleCredentialResponse !== 'function') {
-          window.handleCredentialResponse = async (response) => {
-            const token = response && response.credential;
-            if (!token) return;
-            localStorage.setItem('jcjh_google_id_token', token);
-            const payload = decodeJwt(token);
-            if (!payload || !assertSchoolDomain(payload)) return;
-            user.value = {
-              email: payload.email,
-              displayName: payload.name,
-              photoURL: payload.picture
-            };
-            loading.value = true;
-            loadingMessage.value = '登入成功，同步系統中...';
-            await loadWeeklyData();
-            await checkUrlCallback(user.value);
-            if (!classReadonlyMode.value) restoreNavAfterLogin();
-            else _navPersistReady = true;
-            if (!localStorage.getItem('jcjh_onboarding_v2')) {
-              setTimeout(() => startOnboarding(), 800);
-            }
-          };
-        }
         google.accounts.id.initialize({
           client_id: googleClientId.value,
-          callback: window.handleCredentialResponse,
-          auto_select: true,
-          cancel_on_tap_outside: false
+          callback: gsiCredentialBridge,
+          auto_select: false,
+          cancel_on_tap_outside: true,
+          // 本機／部分瀏覽器 FedCM 會讓按鈕「點了沒反應」；維持傳統 GSI 流程
+          use_fedcm_for_prompt: false,
+          itp_support: true
         });
         _gsiInitialized = true;
         return true;
@@ -283,12 +279,23 @@ createApp({
           size: 'large',
           width: 280,
           text: 'signin_with',
-          shape: 'rectangular'
+          shape: 'rectangular',
+          logo_alignment: 'left',
+          click_listener: function () {
+            try { console.info('[GSI] button clicked', location.origin); } catch (eC) { /* ignore */ }
+          }
         });
         const ok = btnContainer.childNodes && btnContainer.childNodes.length > 0;
         _gsiButtonRendered = !!ok;
         gsiButtonReady.value = !!ok;
         gsiButtonError.value = ok ? '' : '登入按鈕未顯示，請點重新載入';
+        if (ok) {
+          // iframe 渲染後若 origin 不符，點擊常完全無 callback；給本機明確提示
+          const host = String(location.hostname || '').toLowerCase();
+          if (host === '127.0.0.1' || host === '[::1]') {
+            gsiButtonError.value = '目前是 127.0.0.1，GSI 常無反應；請改開 http://localhost:8000/';
+          }
+        }
         return ok;
       } catch (e) {
         console.warn('renderButton 失敗', e);
@@ -342,32 +349,21 @@ createApp({
             resolve(null);
             return;
           }
-          // 確保已 initialize（onMounted 也會 init；這裡防尚未就緒）
-          if (!_gsiInitialized) {
-            try {
-              google.accounts.id.initialize({
-                client_id: googleClientId.value,
-                callback: function (resp) {
-                  // 預設 callback；實際 refresh 用下方覆寫式 callback
-                  if (resp && resp.credential) {
-                    localStorage.setItem('jcjh_google_id_token', resp.credential);
-                  }
-                },
-                auto_select: true,
-                cancel_on_tap_outside: false
-              });
-              _gsiInitialized = true;
-            } catch (eInit) { /* may already init */ }
-          }
+          if (!_gsiInitialized) ensureGsiInitialized();
           let settled = false;
+          const prevHandler = window.__gsiCredentialHandler || window.handleCredentialResponse;
           const finish = (tok) => {
             if (settled) return;
             settled = true;
+            // 還原正式登入 handler
+            if (typeof prevHandler === 'function') {
+              window.__gsiCredentialHandler = prevHandler;
+              window.handleCredentialResponse = prevHandler;
+            }
             resolve(tok || null);
           };
-          // 暫時掛一次性 callback 接 silent credential
-          const prev = window.handleCredentialResponse;
-          window.handleCredentialResponse = async (response) => {
+          // 暫時掛一次性 handler（經 bridge，不必 re-initialize）
+          const onceHandler = async (response) => {
             try {
               const token = response && response.credential;
               if (!token) {
@@ -380,7 +376,6 @@ createApp({
                 return;
               }
               localStorage.setItem('jcjh_google_id_token', token);
-              // 若已有 user 只更新欄位；若被清掉則補回（不整頁重整）
               if (!user.value || String(user.value.email || '').toLowerCase() !== String(payload.email || '').toLowerCase()) {
                 user.value = {
                   email: payload.email,
@@ -396,20 +391,10 @@ createApp({
               finish(token);
             } catch (e) {
               finish(null);
-            } finally {
-              // 還原正式登入 callback
-              if (typeof prev === 'function') window.handleCredentialResponse = prev;
             }
           };
-          try {
-            google.accounts.id.initialize({
-              client_id: googleClientId.value,
-              callback: window.handleCredentialResponse,
-              auto_select: true,
-              cancel_on_tap_outside: false
-            });
-            _gsiInitialized = true;
-          } catch (e2) { /* ignore */ }
+          window.__gsiCredentialHandler = onceHandler;
+          window.handleCredentialResponse = onceHandler;
           // 超時：One Tap 可能被擋
           setTimeout(() => finish(null), 4500);
           try {
@@ -6246,15 +6231,21 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
           };
           loading.value = true;
           loadingMessage.value = '同步系統中...';
-          
-          await loadWeeklyData();
-          await checkUrlCallback(user.value);
-          // 資料載入與簽核 callback 後再還原分頁，避免被中間流程蓋掉
-          if (!hasClassLink && !classReadonlyMode.value) restoreNavAfterLogin();
-          else _navPersistReady = true;
-          
-          if (!localStorage.getItem('jcjh_onboarding_v2') && !classReadonlyMode.value) {
-            setTimeout(() => startOnboarding(), 800);
+
+          try {
+            await loadWeeklyData();
+            await checkUrlCallback(user.value);
+            // 資料載入與簽核 callback 後再還原分頁，避免被中間流程蓋掉
+            if (!hasClassLink && !classReadonlyMode.value) restoreNavAfterLogin();
+            else _navPersistReady = true;
+
+            if (!localStorage.getItem('jcjh_onboarding_v2') && !classReadonlyMode.value) {
+              setTimeout(() => startOnboarding(), 800);
+            }
+          } catch (eRest) {
+            console.error('還原登入同步失敗', eRest);
+            loading.value = false;
+            showToast('登入後同步失敗：' + (eRest && eRest.message ? eRest.message : eRest), 'error', 5000);
           }
         } else {
           localStorage.removeItem('jcjh_google_id_token');
@@ -6281,21 +6272,29 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
 
       // 初始化 Google Sign-in（等 GSI 腳本就緒再 init／render，避免 async 競態）
       if (googleClientId.value && !classReadonlyMode.value) {
-        window.handleCredentialResponse = async (response) => {
+        const onCredential = async (response) => {
           const token = response && response.credential;
-          if (!token) return;
+          if (!token) {
+            console.warn('[GSI] credential 空白', response);
+            showToast('Google 未回傳登入憑證，請確認 OAuth 來源含目前網址', 'warning', 5000);
+            return;
+          }
           localStorage.setItem('jcjh_google_id_token', token);
           const payload = decodeJwt(token);
-          if (payload) {
-            if (!assertSchoolDomain(payload)) return;
-            user.value = {
-              email: payload.email,
-              displayName: payload.name,
-              photoURL: payload.picture
-            };
-            loading.value = true;
-            loadingMessage.value = '登入成功，同步系統中...';
+          if (!payload) {
+            showToast('無法解析 Google 登入憑證', 'error');
+            return;
+          }
+          if (!assertSchoolDomain(payload)) return;
+          user.value = {
+            email: payload.email,
+            displayName: payload.name,
+            photoURL: payload.picture
+          };
+          loading.value = true;
+          loadingMessage.value = '登入成功，同步系統中...';
 
+          try {
             await loadWeeklyData();
             await checkUrlCallback(user.value);
             if (!classReadonlyMode.value) restoreNavAfterLogin();
@@ -6304,8 +6303,14 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
             if (!localStorage.getItem('jcjh_onboarding_v2')) {
               setTimeout(() => startOnboarding(), 800);
             }
+          } catch (eLogin) {
+            console.error('登入後同步失敗', eLogin);
+            loading.value = false;
+            showToast('登入後同步失敗：' + (eLogin && eLogin.message ? eLogin.message : eLogin), 'error', 5000);
           }
         };
+        window.handleCredentialResponse = onCredential;
+        window.__gsiCredentialHandler = onCredential;
 
         // A：定時檢查 Token，快過期就靜默換票（約每 4 分鐘）
         const tokenKeepAlive = () => {
