@@ -359,22 +359,39 @@ function generateFormHtml(g, currentType, ctx) {
   `;
 }
 
+/** 申請單 ID：requestId 優先，否則剝掉 _1/_2 */
+function resolvePrintRequestId(r) {
+  if (!r) return '';
+  if (r.requestId != null && String(r.requestId).trim() !== '') return String(r.requestId).trim();
+  return String(r.id || '').replace(/_[12]$/, '');
+}
+
+function isPrintExchangeRec(r) {
+  if (!r) return false;
+  const t = String(r.type || '');
+  if (t === 'exchange' || t === '對調') return true;
+  // 後備：id 為 xxx_1 / xxx_2 且有對調特徵
+  return /_[12]$/.test(String(r.id || '')) && !!(r.targetDate || r.targetPeriod);
+}
+
 /**
  * 代課紀錄合併：
  * - 教師聯：同一「被代課教師」合併
  * - 班級聯：同一「班級」合併（產版面時再切）
- * 調課仍依 requestId 一組
+ * 調課仍依 requestId 一組（勿因 requestId 空而併成 exc_undefined）
  */
 function buildPrintGroups(recordsToPrint, allSubs) {
   const groups = {};
   recordsToPrint.forEach(r => {
     const rReason = r.reason || '請假';
-    if (r.type === 'exchange') {
-      const key = `exc_${r.requestId}`;
+    if (isPrintExchangeRec(r)) {
+      const rid = resolvePrintRequestId(r);
+      // 每筆調課必須獨立 key；rid 空時用 id 避免多筆互併
+      const key = rid ? ('exc_' + rid) : ('exc_id_' + String(r.id || Math.random()));
       if (!groups[key]) {
         groups[key] = {
           isExchange: true,
-          requestId: r.requestId,
+          requestId: rid || r.id,
           serials: [r.serial],
           isReprint: r.printed,
           note: r.note || '',
@@ -391,7 +408,8 @@ function buildPrintGroups(recordsToPrint, allSubs) {
     } else {
       // 教師聯合併鍵：代課老師（actual）
       const subKey = String(r.actualTeacherEmail || '').toLowerCase();
-      const key = `sub_${subKey || r.requestId}`;
+      const rid = resolvePrintRequestId(r);
+      const key = 'sub_' + (subKey || rid || r.id);
       if (!groups[key]) {
         groups[key] = {
           isExchange: false,
@@ -412,7 +430,6 @@ function buildPrintGroups(recordsToPrint, allSubs) {
         if (!groups[key].dates.includes(r.date)) groups[key].dates.push(r.date);
         if (!groups[key].reasons.includes(rReason)) groups[key].reasons.push(rReason);
         if (r.printed) groups[key].isReprint = true;
-        // 多種經費時保留第一個，明細仍逐節寫 subFee
       }
       groups[key].periods.push({
         date: r.date,
@@ -430,16 +447,25 @@ function buildPrintGroups(recordsToPrint, allSubs) {
   groupList.forEach(g => {
     if (g.isExchange) {
       if (g.records.length === 1) {
-        const match = (allSubs || []).find(x => x.requestId === g.requestId && x.id !== g.records[0].id);
+        const rid = String(g.requestId || resolvePrintRequestId(g.records[0]) || '');
+        const curId = g.records[0].id;
+        const match = (allSubs || []).find(function (x) {
+          if (!x || x.id === curId) return false;
+          const xRid = resolvePrintRequestId(x);
+          if (rid && xRid && xRid === rid) return true;
+          // 後備：同主 id 的 _1/_2 成對
+          const base = String(curId || '').replace(/_[12]$/, '');
+          const xBase = String(x.id || '').replace(/_[12]$/, '');
+          return !!(base && xBase && base === xBase && /_[12]$/.test(String(x.id || '')));
+        });
         if (match) {
           g.records.push(match);
           g.serials.push(match.serial);
         }
       }
-      g.records.sort((a, b) => a.date.localeCompare(b.date) || a.period - b.period);
+      g.records.sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || (parseInt(a.period, 10) || 0) - (parseInt(b.period, 10) || 0));
     } else if (g.periods && g.periods.length) {
       g.periods.sort((a, b) => String(a.date).localeCompare(String(b.date)) || a.num - b.num);
-      // 單號精簡顯示：同主號則 SUB4821-1～3
       g.serials = compactSerials(g.serials);
     }
   });
