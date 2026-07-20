@@ -117,14 +117,24 @@ window.DomainClassAway = (function () {
   }
 
   function isClassAwayOnDate(className, dateStr, events, semesterEndDate) {
-    var c = normClass(className);
-    if (!c) return false;
+    // 併班「701、702」：任一班外出即視為該格外出
+    var candidates = [];
+    if (window.DateUtils && typeof window.DateUtils.parseCombinedClasses === 'function') {
+      candidates = window.DateUtils.parseCombinedClasses(className).map(normClass).filter(Boolean);
+    }
+    if (!candidates.length) {
+      var one = normClass(className);
+      if (one) candidates = [one];
+    }
+    if (!candidates.length) return false;
     var list = events || [];
     for (var i = 0; i < list.length; i++) {
       var ev = list[i];
       if (!isDateInEvent(dateStr, ev, semesterEndDate)) continue;
       var classes = eventClasses(ev);
-      if (classes.indexOf(c) >= 0) return true;
+      for (var j = 0; j < candidates.length; j++) {
+        if (classes.indexOf(candidates[j]) >= 0) return true;
+      }
     }
     return false;
   }
@@ -240,18 +250,38 @@ window.DomainClassAway = (function () {
   }
 
   /**
-   * 教師基礎課表中，屬於「reduce 空堂班」的 1–7 節基本／兼課節數
+   * 教師基礎課表中，屬於「reduce 空堂班」的週鐘點節數
+   * （1–7＋午休45；基本／一般／兼課／抽離；不含巡堂／第8）
    */
   function countReduceSlotsForTeacher(teacherEmail, allSchedules, awayClassSet) {
     var em = String(teacherEmail || '').toLowerCase();
     var n = 0;
     (allSchedules || []).forEach(function (s) {
       if (String(s.teacherEmail || '').toLowerCase() !== em) return;
-      if (parseInt(s.period, 10) > 7) return;
-      var attr = s.attr || '';
-      if (attr !== '基本' && attr !== '兼課') return;
-      var c = normClass(s.className);
-      if (c && awayClassSet[c]) n++;
+      // 與 DomainBilling.isWeeklyHoursSlot 對齊
+      if (window.DomainBilling && typeof window.DomainBilling.isWeeklyHoursSlot === 'function') {
+        if (!window.DomainBilling.isWeeklyHoursSlot(s)) return;
+      } else {
+        var p = parseInt(s.period, 10);
+        if (!(p === 45 || (p >= 1 && p <= 7))) return;
+        var attr = String(s.attr || '').trim();
+        if (attr && attr !== '基本' && attr !== '一般' && attr !== '兼課' && attr !== '抽離' && attr !== '實支') return;
+      }
+      // 併班：任一班在 reduce 名單即計
+      var classes = [];
+      if (window.DateUtils && typeof window.DateUtils.parseCombinedClasses === 'function') {
+        classes = window.DateUtils.parseCombinedClasses(s.className).map(normClass).filter(Boolean);
+      }
+      if (!classes.length) {
+        var one = normClass(s.className);
+        if (one) classes = [one];
+      }
+      for (var i = 0; i < classes.length; i++) {
+        if (awayClassSet[classes[i]]) {
+          n++;
+          break;
+        }
+      }
     });
     return n;
   }
@@ -291,8 +321,20 @@ window.DomainClassAway = (function () {
   function scanClassNames(allSchedules) {
     var set = {};
     (allSchedules || []).forEach(function (s) {
-      var c = normClass(s.className || s['班級']);
-      if (c && isPlausibleClassName(c)) set[c] = 1;
+      var raw = s.className || s['班級'];
+      // 併班「701、702」拆成個別班名
+      var parts = null;
+      if (window.DateUtils && typeof window.DateUtils.parseCombinedClasses === 'function') {
+        parts = window.DateUtils.parseCombinedClasses(raw);
+      }
+      if (!parts || !parts.length) {
+        var one = normClass(raw);
+        parts = one ? [one] : [];
+      }
+      parts.forEach(function (c0) {
+        var c = normClass(c0);
+        if (c && isPlausibleClassName(c)) set[c] = 1;
+      });
     });
     return Object.keys(set).sort(function (a, b) {
       return a.localeCompare(b, 'zh-Hant', { numeric: true });
