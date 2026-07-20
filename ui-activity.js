@@ -1714,7 +1714,9 @@ window.UiBatchPanel = (function () {
         leaveTeacher: leaveEmail,
         subTeacher: targetEmail,
         date: first.dateStr,
-        timeKey: `${first.dayOfWeek}${first.period}`,
+        timeKey: (window.DateUtils && window.DateUtils.encodeTimeKey)
+          ? window.DateUtils.encodeTimeKey(first.dayOfWeek, first.period)
+          : (`${first.dayOfWeek}-${first.period}`),
         cls: first.className,
         subject: first.subject,
         dateB: '',
@@ -1836,7 +1838,9 @@ window.UiBatchPanel = (function () {
         leaveTeacher: leaveEmail,
         subTeacher: groups.length === 1 ? groups[0].subEmail : (groups[0] ? groups[0].subEmail : ''),
         date: first.dateStr,
-        timeKey: `${first.dayOfWeek}${first.period}`,
+        timeKey: (window.DateUtils && window.DateUtils.encodeTimeKey)
+          ? window.DateUtils.encodeTimeKey(first.dayOfWeek, first.period)
+          : (`${first.dayOfWeek}-${first.period}`),
         cls: first.className,
         subject: first.subject,
         dateB: '',
