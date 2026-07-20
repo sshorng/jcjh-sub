@@ -133,6 +133,7 @@ window.DomainMatch = (function () {
     });
     freeAtTarget.forEach(function (t) {
       var periodsBusy = 0;
+      // 負荷只算 1–8（午休抽離不計入當日節數）
       for (var p = 1; p <= 8; p++) {
         var cell = getScheduleForDate(t.email, dateStr, p, targetDay);
         var awayRel = isCellAwayReleased(cell);
@@ -243,10 +244,19 @@ window.DomainMatch = (function () {
       );
     }
 
+    function classMatches(schedClass, targetCls) {
+      if (window.DateUtils && typeof window.DateUtils.classListIncludes === 'function') {
+        return window.DateUtils.classListIncludes(schedClass, targetCls);
+      }
+      return String(schedClass || '') === String(targetCls || '');
+    }
     const classSchedules = allSchedules.filter(function (s) {
-      return s.className === cls && s.teacherEmail !== leaveTeacher;
+      return classMatches(s.className, cls) && s.teacherEmail !== leaveTeacher;
     });
     const res = [];
+    var leaveP = parseInt(leavePeriod, 10);
+    var leaveIsLunch = leaveP === 45 || (window.DateUtils && window.DateUtils.isLunchPeriod
+      && window.DateUtils.isLunchPeriod(leavePeriod));
 
     classSchedules.forEach(function (sched) {
       // 抽離 ↔ 僅抽離；一般 ↔ 僅非抽離
@@ -272,8 +282,13 @@ window.DomainMatch = (function () {
       const cellAtLeave = getScheduleForDate(actualEmail, leaveDate, leavePeriod, leaveDay);
       const isTargetFreeAtLeave = isSlotFreeForMatch(cellAtLeave, awaySet);
 
-      if (parseInt(leavePeriod) === 8 && parseInt(sched.period) !== 8) return;
-      if (parseInt(leavePeriod) !== 8 && parseInt(sched.period) === 8) return;
+      var schedP = parseInt(sched.period, 10);
+      var schedIsLunch = schedP === 45 || (window.DateUtils && window.DateUtils.isLunchPeriod
+        && window.DateUtils.isLunchPeriod(sched.period));
+      // 第8節只對第8；午休只對午休；一般 1–7 互對
+      if (leaveP === 8 && schedP !== 8) return;
+      if (leaveP !== 8 && schedP === 8) return;
+      if (leaveIsLunch !== schedIsLunch) return;
 
       if (isRequesterFreeAtTarget && isTargetFreeAtLeave) {
         res.push({
