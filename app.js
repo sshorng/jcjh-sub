@@ -232,20 +232,40 @@ createApp({
       }
     }
 
+    function isSecureHttpsOrigin() {
+      try {
+        return String(location.protocol || '') === 'https:';
+      } catch (e) {
+        return false;
+      }
+    }
+
+    function suppressGsiAutoLogin() {
+      try {
+        if (typeof google !== 'undefined' && google.accounts && google.accounts.id) {
+          if (typeof google.accounts.id.cancel === 'function') google.accounts.id.cancel();
+          if (typeof google.accounts.id.disableAutoSelect === 'function') {
+            google.accounts.id.disableAutoSelect();
+          }
+        }
+      } catch (e) { /* ignore */ }
+    }
+
     function ensureGsiInitialized() {
       if (!isGoogleGsiReady() || !googleClientId.value) return false;
       if (_gsiInitialized) return true;
       try {
+        // 只顯示官方按鈕，不自動沿用上次帳號、不跳 One Tap
         google.accounts.id.initialize({
           client_id: googleClientId.value,
           callback: gsiCredentialBridge,
           auto_select: false,
           cancel_on_tap_outside: true,
-          // 本機／部分瀏覽器 FedCM 會讓按鈕「點了沒反應」；維持傳統 GSI 流程
           use_fedcm_for_prompt: false,
           itp_support: true
         });
         _gsiInitialized = true;
+        suppressGsiAutoLogin();
         return true;
       } catch (e) {
         console.warn('GSI initialize 失敗', e);
@@ -273,9 +293,10 @@ createApp({
         return false;
       }
       try {
-        // 關掉殘留 One Tap（避免畫面上「以 OOO 身份登入」點了無反應）
-        try { if (google.accounts.id.cancel) google.accounts.id.cancel(); } catch (eCancel) { /* ignore */ }
+        // 只渲染官方按鈕；關掉 One Tap／自動選帳（不跳「以 OOO 身份」）
+        suppressGsiAutoLogin();
         btnContainer.innerHTML = '';
+        let _clickAt = 0;
         google.accounts.id.renderButton(btnContainer, {
           theme: 'outline',
           size: 'large',
@@ -283,8 +304,17 @@ createApp({
           text: 'signin_with',
           shape: 'rectangular',
           logo_alignment: 'left',
+          type: 'standard',
           click_listener: function () {
+            _clickAt = Date.now();
             try { console.info('[GSI] button clicked', location.origin); } catch (eC) { /* ignore */ }
+            // 若彈窗被擋且無 callback，數秒後提示
+            setTimeout(function () {
+              if (!user.value && _clickAt && Date.now() - _clickAt >= 4500) {
+                gsiButtonError.value = '登入視窗可能被瀏覽器封鎖。請允許此網站的彈出式視窗後再試，或改用無痕／關閉廣告攔截。';
+                showToast('登入彈窗被擋：請允許 popup，或重新整理後再按一次 Google 登入', 'warning', 6000);
+              }
+            }, 4800);
           }
         });
         const ok = btnContainer.childNodes && btnContainer.childNodes.length > 0;
@@ -307,7 +337,7 @@ createApp({
       }
     }
 
-    async function setupGoogleSignInUi() {
+      async function setupGoogleSignInUi() {
       if (classReadonlyMode.value) return;
       gsiButtonError.value = '正在載入 Google 登入…';
       gsiButtonReady.value = false;
@@ -318,12 +348,13 @@ createApp({
       }
       // 等 Vue 畫出登入區（loading 結束後才有 #gsi-button-container）
       await nextTick();
+      suppressGsiAutoLogin();
       let tries = 0;
       const tryRender = () => {
         tries++;
         if (user.value || classReadonlyMode.value) return;
         if (renderGsiLoginButton()) {
-          // 不呼叫 prompt()：One Tap「以 OOO 身份登入」本機常點了無 callback；只保留官方按鈕
+          // 只保留官方「使用 Google 帳號登入」按鈕，不呼叫 prompt()
           return;
         }
         if (tries < 20) {
@@ -341,81 +372,15 @@ createApp({
       gsiButtonError.value = '重新載入中…';
       await setupGoogleSignInUi();
     };
+    /** 不呼叫 prompt()：避免跳出「以先前帳號登入」；票過期改請使用者再按官方按鈕 */
     const refreshGoogleIdToken = () => {
       if (_tokenRefreshP) return _tokenRefreshP;
-      _tokenRefreshP = new Promise((resolve) => {
+      _tokenRefreshP = Promise.resolve().then(() => {
         try {
-          if (!googleClientId.value || typeof google === 'undefined'
-              || !google.accounts || !google.accounts.id) {
-            resolve(null);
-            return;
-          }
-          if (!_gsiInitialized) ensureGsiInitialized();
-          let settled = false;
-          const prevHandler = window.__gsiCredentialHandler || window.handleCredentialResponse;
-          const finish = (tok) => {
-            if (settled) return;
-            settled = true;
-            // 還原正式登入 handler
-            if (typeof prevHandler === 'function') {
-              window.__gsiCredentialHandler = prevHandler;
-              window.handleCredentialResponse = prevHandler;
-            }
-            resolve(tok || null);
-          };
-          // 暫時掛一次性 handler（經 bridge，不必 re-initialize）
-          const onceHandler = async (response) => {
-            try {
-              const token = response && response.credential;
-              if (!token) {
-                finish(null);
-                return;
-              }
-              const payload = decodeJwt(token);
-              if (!payload || !assertSchoolDomain(payload)) {
-                finish(null);
-                return;
-              }
-              localStorage.setItem('jcjh_google_id_token', token);
-              if (!user.value || String(user.value.email || '').toLowerCase() !== String(payload.email || '').toLowerCase()) {
-                user.value = {
-                  email: payload.email,
-                  displayName: payload.name,
-                  photoURL: payload.picture
-                };
-              } else {
-                user.value = Object.assign({}, user.value, {
-                  displayName: payload.name || user.value.displayName,
-                  photoURL: payload.picture || user.value.photoURL
-                });
-              }
-              finish(token);
-            } catch (e) {
-              finish(null);
-            }
-          };
-          window.__gsiCredentialHandler = onceHandler;
-          window.handleCredentialResponse = onceHandler;
-          // 超時：One Tap 可能被擋
-          setTimeout(() => finish(null), 4500);
-          try {
-            google.accounts.id.prompt((notification) => {
-              try {
-                if (notification && typeof notification.isNotDisplayed === 'function'
-                    && notification.isNotDisplayed()) {
-                  finish(null);
-                } else if (notification && typeof notification.isSkippedMoment === 'function'
-                    && notification.isSkippedMoment()) {
-                  finish(null);
-                }
-              } catch (eN) { /* ignore */ }
-            });
-          } catch (eP) {
-            finish(null);
-          }
-        } catch (e) {
-          resolve(null);
-        }
+          const cur = localStorage.getItem('jcjh_google_id_token');
+          if (cur && !isTokenExpired(cur)) return cur;
+        } catch (e) { /* ignore */ }
+        return null;
       }).finally(() => {
         _tokenRefreshP = null;
       });
@@ -929,7 +894,11 @@ createApp({
       for (let day = 1; day <= 5; day++) {
         const dateStr = dates[day - 1];
         if (!dateStr) continue;
-        for (let period = 1; period <= 8; period++) {
+        const periodList = (window.DateUtils && window.DateUtils.getTimetablePeriods)
+          ? window.DateUtils.getTimetablePeriods()
+          : [1, 2, 3, 4, 5, 6, 7, 8];
+        for (let pi = 0; pi < periodList.length; pi++) {
+          const period = periodList[pi];
           try {
             const cell = getScheduleForDate(email, dateStr, period, day);
             if (!cell) continue;
@@ -2582,24 +2551,56 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     });
 
     // P2：只建「目前選取班」的格（全校班 map 太重）
+    // 併班：班級欄寫「701、702」時，701 與 702 班級課表都會看到此節
     const classSchedules = computed(() => {
       const map = {};
       const cls = String(selectedClass.value || '').trim();
       if (!cls) return map;
       const weekDates = selectedClassWeekDates.value || [];
+      const parseClasses = (window.DateUtils && window.DateUtils.parseCombinedClasses)
+        ? window.DateUtils.parseCombinedClasses
+        : (raw) => String(raw || '').split(/[、,，/／|｜\s]+/).map(s => s.trim()).filter(Boolean);
       allSchedules.value.forEach(s => {
-        if (!s.className || String(s.className).trim() !== cls) return;
-        if (s.attr === '抽離') return;
+        if (!s.className) return;
+        // 抽離一律不進班級課表（含併班）
+        if (s.attr === '抽離' || s.isPullOut) return;
+        const classes = parseClasses(s.className);
+        if (!classes.length) return;
+        if (!classes.some(c => c === cls)) return;
         const dateStr = weekDates[parseInt(s.dayOfWeek, 10) - 1];
         if (s.attr === '單週' && dateStr && !isSingleWeek(dateStr)) return;
         if (s.attr === '雙週' && dateStr && isSingleWeek(dateStr)) return;
         if (!map[cls]) map[cls] = {};
         const key = `${s.dayOfWeek}-${s.period}`;
         if (!map[cls][key]) map[cls][key] = [];
-        map[cls][key].push(s);
+        const others = classes.filter(c => c !== cls);
+        map[cls][key].push(Object.assign({}, s, {
+          _isCombined: classes.length > 1,
+          _combinedWith: others.length ? others.join('、') : ''
+        }));
       });
       return map;
     });
+
+    const timetablePeriods = (window.DateUtils && window.DateUtils.getTimetablePeriods)
+      ? window.DateUtils.getTimetablePeriods()
+      : [1, 2, 3, 4, 5, 6, 7, 8];
+    const getPeriodLabel = (p) =>
+      (window.DateUtils && window.DateUtils.getPeriodLabel)
+        ? window.DateUtils.getPeriodLabel(p)
+        : String(p);
+    const formatPeriodText = (p) =>
+      (window.DateUtils && window.DateUtils.formatPeriodText)
+        ? window.DateUtils.formatPeriodText(p)
+        : ('第' + p + '節');
+    const isLunchPeriod = (p) =>
+      !!(window.DateUtils && window.DateUtils.isLunchPeriod && window.DateUtils.isLunchPeriod(p));
+    const formatClassName = (raw) =>
+      (window.DateUtils && window.DateUtils.formatClassName)
+        ? window.DateUtils.formatClassName(raw)
+        : String(raw || '');
+    const isCombinedClass = (raw) =>
+      !!(window.DateUtils && window.DateUtils.isCombinedClass && window.DateUtils.isCombinedClass(raw));
 
     const currentWeekDates = computed(() => {
       const dates = [];
@@ -3066,13 +3067,16 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     // 調課推薦（domain-match）
     const recommendedExchangeList = computed(() => {
       if (matchMode.value !== 'exchange' || !activeCell.value.dayOfWeek || !inputRequestDate.value) return [];
+      const leaveCell = activeCell.value.classData || null;
       return window.DomainMatch.listExchangeCandidates({
         allSchedules: allSchedules.value,
-        className: activeCell.value.classData ? activeCell.value.classData.className : '',
+        className: leaveCell ? leaveCell.className : '',
         leaveEmail: activeCell.value.teacherEmail,
         leaveDate: inputRequestDate.value,
         leavePeriod: activeCell.value.period,
         leaveDay: activeCell.value.dayOfWeek,
+        leaveCell: leaveCell,
+        leaveAttr: leaveCell ? leaveCell.attr : '',
         weekDates: currentWeekDates.value,
         getScheduleForDate,
         getTeacherNameByEmail,
@@ -3091,7 +3095,10 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         return p.batchSlots.map(s => parseInt(s.period, 10)).filter(n => !isNaN(n));
       }
       if (p.timeKey) {
-        const n = parseInt(String(p.timeKey).slice(-1), 10);
+        const tk = (window.DateUtils && window.DateUtils.decodeTimeKey)
+          ? window.DateUtils.decodeTimeKey(p.timeKey)
+          : { period: parseInt(String(p.timeKey).slice(-1), 10) };
+        const n = parseInt(tk.period, 10);
         if (!isNaN(n)) return [n];
       }
       if (activeCell.value && activeCell.value.period != null) {
@@ -3474,8 +3481,11 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       const timeKey = pendingRequestData.value.timeKey;
       const dateStr = pendingRequestData.value.date;
       if (!timeKey || !dateStr) return false;
-      const day = parseInt(timeKey.slice(0, -1));
-      const period = parseInt(timeKey.slice(-1));
+      const tk = (window.DateUtils && window.DateUtils.decodeTimeKey)
+        ? window.DateUtils.decodeTimeKey(timeKey)
+        : { day: parseInt(timeKey.slice(0, -1), 10), period: parseInt(timeKey.slice(-1), 10) };
+      const day = parseInt(tk.day, 10);
+      const period = parseInt(tk.period, 10);
       const cell = getScheduleForDate(subEmail, dateStr, period, day);
       return isSlotConflict(cell);
     });
@@ -3488,7 +3498,8 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       }
       return window.UiSubmitHelpers.validateSubmitRequest({
         pendingRequestData, showToast, showConfirm, isAdmin, getTeacherNameByEmail,
-        hasSubTeacherConflict, assertQuotaDeductAllowed
+        hasSubTeacherConflict, assertQuotaDeductAllowed,
+        activeCell, allSchedules
       });
     };
 
@@ -4024,7 +4035,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       const data = window.DomainBilling.toExcelRows(monthlyReportData.value);
       const ws = XLSX.utils.json_to_sheet(data);
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, `${reportMonth.value}大鐘點1-7`);
+      XLSX.utils.book_append_sheet(wb, ws, `${reportMonth.value}大鐘點1-7午休`);
       if (window.DomainBilling.toPeriod8ExcelRows) {
         const p8 = window.DomainBilling.toPeriod8ExcelRows({
           reportMonth: reportMonth.value,
@@ -4375,6 +4386,13 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         matchMode.value = 'substitution';
         clearMatchPreview();
         return;
+      }
+      // 抽離：可調課，但僅限與另一節抽離互調（候選列表已過濾；此處提示）
+      if (mode === 'exchange' && activeCell.value && activeCell.value.classData &&
+          (activeCell.value.classData.isPullOut || activeCell.value.classData.attr === '抽離')) {
+        const tip = (window.DomainSchedule && window.DomainSchedule.PULL_OUT_EXCHANGE_TIP)
+          || '抽離課僅可與另一節「抽離」互調，不可與一般課調課。';
+        showToast(tip, 'info', 4500);
       }
       // 綁課：可調課，但需確認提醒（特殊狀況）
       if (mode === 'exchange' && activeCell.value && activeCell.value.classData &&
@@ -5846,6 +5864,8 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       loading.value = true;
       localStorage.removeItem('jcjh_google_id_token');
       clearSWR();
+      // 登出後不要自動帶回上一帳號（One Tap / auto_select）
+      suppressGsiAutoLogin();
       resetAppState();
       loading.value = false;
     };
@@ -6281,6 +6301,8 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
             showToast('Google 未回傳登入憑證，請確認 OAuth 來源含目前網址', 'warning', 5000);
             return;
           }
+          // 成功拿到票：清掉「彈窗被擋」提示
+          try { gsiButtonError.value = ''; } catch (eClr) { /* ignore */ }
           localStorage.setItem('jcjh_google_id_token', token);
           const payload = decodeJwt(token);
           if (!payload) {
@@ -6431,7 +6453,8 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       pendingMyPendingTotal, pendingMySentTotal, pendingAdminTotal,
       reportMonthOptions, personalChanges, recommendedExchangeList, displayedExchangeList,
       loginWithGoogle, logout, gsiButtonReady, gsiButtonError, reloadGsiLoginButton,
-      changeWeek, getPeriodTimeSpan, getWeekDayText, formatDateMMDD,
+      changeWeek,       getPeriodTimeSpan, getWeekDayText, formatDateMMDD,
+      timetablePeriods, getPeriodLabel, formatPeriodText, isLunchPeriod, formatClassName, isCombinedClass,
       getClassCellClassForDate, getClassCellClassForClass, getScheduleForDate, weekScheduleGrid, cellFromGrid, handleCellClick, handleClassCellClick,
       isMatchSourceCell, isMatchSourceEntry, isMatchHoverCell, isMatchHoverEntry,
       selectMatchPreviewSub, selectMatchPreviewExchange, clearMatchPreview, closeMatchModal, isMatchPreviewSelected,
