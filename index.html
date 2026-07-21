@@ -903,10 +903,10 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="req in paginatedAdminPending" :key="req.id">
+                  <tr v-for="req in paginatedAdminPending" :key="req.id" class="cursor-pointer" @click="detailRequest = req; detailSubRecord = null; showDetailModal = true">
                     <td>
                       <div class="flex-row-gap-6">
-                        <input type="checkbox" class="admin-select-cb chk-sm" :value="req.id" :data-req-id="req.id">
+                        <input type="checkbox" class="admin-select-cb chk-sm" :value="req.id" :data-req-id="req.id" @click.stop>
                         <strong>{{ req.serial || '---' }}</strong>
                       </div>
                       <div v-if="req.note" class="req-note-cell" :title="req.note">{{ req.note }}</div>
@@ -945,7 +945,7 @@
                         {{ getStatusText(req.status) }}
                       </span>
                     </td>
-                    <td>
+                    <td @click.stop>
                       <div class="action-buttons action-buttons-row">
                         <button class="btn btn-success btn-md-nowrap" @click="adminApprove(req.id)">核准並出單</button>
                         <button class="btn btn-danger btn-md-nowrap" @click="adminReject(req.id)">退回</button>
@@ -1023,7 +1023,7 @@
                       </div>
                     </td>
                   </tr>
-                  <tr v-for="req in paginatedMyPending" :key="req.id">
+                  <tr v-for="req in paginatedMyPending" :key="req.id" class="cursor-pointer" @click="detailRequest = req; detailSubRecord = null; showDetailModal = true">
                     <td>
                       <strong>{{ req.serial || '---' }}</strong>
                       <div v-if="req.note" class="req-note-cell no-checkbox" :title="req.note">{{ req.note }}</div>
@@ -1055,7 +1055,7 @@
                     <td>
                       <span class="status-badge tag-orange w-fit-fs-75">待您簽核</span>
                     </td>
-                    <td>
+                    <td @click.stop>
                       <div class="action-buttons action-buttons-col">
                         <button v-if="req.batchId" class="btn btn-success" style="padding: 5px 8px; font-size: 0.72rem; white-space: nowrap;" @click="respondToBatch(req.batchId, 'agree')">全部同意</button>
                         <div class="flex-gap-6">
@@ -1104,7 +1104,7 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="req in paginatedMySent" :key="req.id">
+                  <tr v-for="req in paginatedMySent" :key="req.id" class="cursor-pointer" @click="detailRequest = req; detailSubRecord = null; showDetailModal = true">
                     <td>
                       <strong>{{ req.serial || '---' }}</strong>
                       <div v-if="req.note" class="req-note-cell no-checkbox" :title="req.note">{{ req.note }}</div>
@@ -1138,7 +1138,7 @@
                         {{ getStatusText(req.status) }}
                       </span>
                     </td>
-                    <td class="td-actions">
+                    <td class="td-actions" @click.stop>
                       <div class="req-action-stack">
                         <button
                           type="button"
@@ -1157,7 +1157,7 @@
                           type="button"
                           class="btn btn-secondary btn-req-action"
                           style="color: var(--color-danger); border-color: rgba(239, 68, 68, 0.2);"
-                          @click.stop="cancelRequest(req.id)"
+                          @click="cancelRequest(req.id)"
                         >撤回</button>
                       </div>
                     </td>
@@ -1271,10 +1271,10 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="rec in paginatedHistoryRecords" :key="rec.id">
+                  <tr v-for="rec in paginatedHistoryRecords" :key="rec.id" class="cursor-pointer" @click="showDetailForRecord(rec.id, rec.requestId)">
                     <td class="hist-td-serial">
                       <div class="hist-serial-row">
-                        <input type="checkbox" class="hist-select-cb chk-14-shrink" :value="rec.id" :data-rec-id="rec.id">
+                        <input type="checkbox" class="hist-select-cb chk-14-shrink" :value="rec.id" :data-rec-id="rec.id" @click.stop>
                         <strong class="hist-serial-text" :title="rec.serial">{{ rec.serial }}</strong>
                       </div>
                       <div v-if="rec.note" class="req-note-cell" :title="rec.note">{{ rec.note }}</div>
@@ -1313,7 +1313,7 @@
                         </span>
                       </div>
                     </td>
-                    <td v-if="isAdmin">
+                    <td v-if="isAdmin" @click.stop>
                       <div class="hist-actions">
                         <button type="button" class="btn btn-secondary" @click="openHistoryEditModal(rec)">編輯</button>
                         <button type="button" class="btn btn-secondary" style="color: var(--color-danger); border-color: rgba(220, 38, 38, 0.18);" @click="deleteSubstitutionRecord(rec.id, rec.requestId)">撤銷</button>

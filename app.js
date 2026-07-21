@@ -5790,32 +5790,41 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       let overdue = false;
       let overdueHint = '';
 
-      let ageDays = 0;
-      if (req && req.createdAt) {
-        const t = new Date(String(req.createdAt).replace(/-/g, '/'));
-        if (!isNaN(t.getTime())) {
-          ageDays = (Date.now() - t.getTime()) / (1000 * 60 * 60 * 24);
-        }
-      } else if (req && req.requestDate) {
-        const t = new Date(String(req.requestDate).replace(/-/g, '/'));
-        if (!isNaN(t.getTime())) {
-          ageDays = (Date.now() - t.getTime()) / (1000 * 60 * 60 * 24);
+      // 逾時起算：教師階段＝送出日(createdAt)；行政階段＝進入行政日(updatedAt，通常為對方同意時間)
+      const parseAgeDays = (stamp) => {
+        if (!stamp) return 0;
+        const t = new Date(String(stamp).replace(/-/g, '/'));
+        if (isNaN(t.getTime())) return 0;
+        return (Date.now() - t.getTime()) / (1000 * 60 * 60 * 24);
+      };
+      const createdAgeDays = parseAgeDays(req && req.createdAt)
+        || parseAgeDays(req && req.requestDate);
+      // 行政等候：優先 updatedAt（教師同意後寫入）；若與 createdAt 相同或更舊則視為無可靠「進行政時間」，不拿送出日當行政逾時
+      const updatedStamp = req && req.updatedAt ? String(req.updatedAt).trim() : '';
+      const createdStamp = req && req.createdAt ? String(req.createdAt).trim() : '';
+      let adminWaitAgeDays = 0;
+      if (updatedStamp) {
+        const uAge = parseAgeDays(updatedStamp);
+        const cAge = parseAgeDays(createdStamp);
+        // updatedAt 明顯晚於建立（或無 createdAt）才視為「進行政後」的時鐘
+        if (!createdStamp || uAge + 0.02 < cAge) {
+          adminWaitAgeDays = uAge;
         }
       }
 
       if (status === 'pending_teacher') {
         active = 0;
         summary = `目前：等待 ${name} 老師線上同意`;
-        if (ageDays >= 2) {
+        if (createdAgeDays >= 2) {
           overdue = true;
-          overdueHint = `已超過 ${Math.floor(ageDays)} 天未回覆，可再傳 LINE 或改請他人`;
+          overdueHint = `已超過 ${Math.floor(createdAgeDays)} 天未回覆，可再傳 LINE 或改請他人`;
         }
       } else if (status === 'pending_admin') {
         active = 1;
         summary = '目前：對方已同意，等待教學組核准出單';
-        if (ageDays >= 2) {
+        if (adminWaitAgeDays >= 2) {
           overdue = true;
-          overdueHint = `已超過 ${Math.floor(ageDays)} 天待行政核准`;
+          overdueHint = `已超過 ${Math.floor(adminWaitAgeDays)} 天待行政核准`;
         }
       } else if (status === 'approved') {
         // 若從未 pending_admin：多半是直接核准 → 兩步顯示
