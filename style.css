@@ -844,7 +844,54 @@ body {
 .tag-red { background: var(--color-danger-glow); color: var(--color-danger); border: 1px solid rgba(239, 68, 68, 0.2); }
 .tag-green { background: var(--color-success-glow); color: var(--color-success); border: 1px solid rgba(16, 185, 129, 0.2); }
 .tag-blue { background: var(--color-primary-glow); color: var(--color-primary); border: 1px solid rgba(37, 99, 235, 0.2); }
+.tag-amber { background: #fef3c7; color: #b45309; border: 1px solid rgba(245, 158, 11, 0.35); }
 .tag-gray { background: #f1f5f9; color: var(--text-secondary); border: 1px solid #e2e8f0; }
+
+.badge-admin {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #fee2e2;
+  color: #b91c1c;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+}
+.badge-staff {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #b45309;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+.badge-teacher {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #e0f2fe;
+  color: #0369a1;
+  border: 1px solid rgba(14, 165, 233, 0.25);
+}
+.badge-proxy {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #fff7ed;
+  color: #c2410c;
+  border: 1px solid rgba(249, 115, 22, 0.4);
+  max-width: 9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
 
 /* 智慧媒合：右側抽屜（不遮主課表） */
 .match-drawer-overlay {
@@ -2899,6 +2946,10 @@ td.table-empty {
   color: #15803d;
   font-weight: 600;
 }
+.success-flow-steps li.is-current {
+  color: #1d4ed8;
+  font-weight: 600;
+}
 .success-flow-steps .sf-n {
   flex-shrink: 0;
   width: 20px;
@@ -2916,6 +2967,10 @@ td.table-empty {
 .success-flow-steps li.is-done .sf-n {
   background: #bbf7d0;
   color: #15803d;
+}
+.success-flow-steps li.is-current .sf-n {
+  background: #bfdbfe;
+  color: #1d4ed8;
 }
 .success-flow-steps .sf-t { flex: 1; min-width: 0; }
 .success-flow-note {
@@ -2952,6 +3007,7 @@ td.table-empty {
 .risk-mutual { background: #f3e8ff; color: #6b21a8; border: 1px solid #d8b4fe; }
 .risk-quota { background: #ede9fe; color: #5b21b6; border: 1px solid #c4b5fd; }
 .risk-actpub { background: #ffedd5; color: #c2410c; border: 1px solid #fdba74; }
+.risk-proxy { background: #fff7ed; color: #c2410c; border: 1px solid #fdba74; }
 .risk-duty-out { background: #fce7f3; color: #9d174d; border: 1px solid #f9a8d4; }
 .risk-chain { background: #e0f2fe; color: #0369a1; border: 1px solid #7dd3fc; }
 .risk-peer-chain { background: #f3e8ff; color: #6b21a8; border: 1px solid #d8b4fe; }

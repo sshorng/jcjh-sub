@@ -1151,8 +1151,14 @@ window.UiBatchSubmit = (function () {
       }
     });
     if (conflicts.length) {
-      if (isAdmin.value) {
-        var ok = await showConfirm('以下代課衝堂：\n' + conflicts.join('\n') + '\n\n管理員可強制送出，確定？', '衝堂警告');
+      var proxyForce = false;
+      if (deps.isProxySubmitActive) {
+        proxyForce = typeof deps.isProxySubmitActive === 'function'
+          ? !!deps.isProxySubmitActive()
+          : !!deps.isProxySubmitActive.value;
+      }
+      if (isAdmin.value || proxyForce) {
+        var ok = await showConfirm('以下代課衝堂：\n' + conflicts.join('\n') + '\n\n可強制送出，確定？', '衝堂警告');
         if (!ok) { unlockSubmit(); return; }
       } else {
         showToast('代課教師衝堂：' + conflicts.join('、'), 'warning');
@@ -1201,13 +1207,45 @@ window.UiBatchSubmit = (function () {
           awayClasses: mutualAwayClasses.value
         });
       }
+      var leaveEmBatch = String(leaveEmail || '').toLowerCase();
+      var proxyActive = false;
+      if (deps.shouldProxySubmitForLeave) {
+        proxyActive = !!deps.shouldProxySubmitForLeave(leaveEmBatch);
+      } else if (deps.isProxySubmitActive) {
+        proxyActive = typeof deps.isProxySubmitActive === 'function'
+          ? !!deps.isProxySubmitActive()
+          : !!deps.isProxySubmitActive.value;
+      }
+      var proxyByEmail = '';
+      var proxyByName = '';
+      if (proxyActive && deps.getProxyActor) {
+        var actor = deps.getProxyActor() || {};
+        proxyByEmail = String(actor.email || '').trim().toLowerCase();
+        proxyByName = String(actor.name || '').trim();
+      }
+      if (proxyActive && !proxyByName && proxyByEmail) {
+        proxyByName = getTeacherNameByEmail(proxyByEmail) || proxyByEmail;
+      }
+      // 批次對象若是自己 → 不當代申請
+      if (proxyActive && proxyByEmail && leaveEmBatch === proxyByEmail) {
+        proxyActive = false;
+        proxyByEmail = '';
+        proxyByName = '';
+      }
+      var doDirectApprove = !!(isAdmin.value && directApproveMode.value && !proxyActive);
+      var batchStatus = doDirectApprove
+        ? 'approved'
+        : (proxyActive ? 'pending_admin' : 'pending_teacher');
       var rows = workSlots.map(function (s, i) {
         var base = String(note || '').trim();
         var noteOut = base;
-        if (isAdmin.value && directApproveMode.value) {
+        if (doDirectApprove) {
           noteOut = base ? ('[直接核准] ' + base) : '[直接核准]';
+        } else if (proxyActive) {
+          var tag = '[行政代申請：' + (proxyByName || proxyByEmail) + ' 代 ' + leaveName + ']';
+          noteOut = base ? (tag + ' ' + base) : tag;
         }
-        return {
+        var row = {
           "學期代號": currentSemester.value,
           "申請單ID": 'req_' + stamp + '_' + i + '_' + Math.random().toString(36).substr(2, 5),
           "單號": serialRoot + '-' + (i + 1),
@@ -1225,20 +1263,31 @@ window.UiBatchSubmit = (function () {
           "請假事由": reason,
           "經費來源": feeForSlot(s, i),
           "備註": noteOut,
-          "狀態": (isAdmin.value && directApproveMode.value) ? 'approved' : 'pending_teacher',
+          "狀態": batchStatus,
           "是否已印": false,
           "建立時間": '',
-          directApprove: !!(isAdmin.value && directApproveMode.value)
+          directApprove: doDirectApprove,
+          isProxySubmit: !!proxyActive,
+          proxyByEmail: proxyByEmail || '',
+          proxyByName: proxyByName || ''
         };
+        if (proxyActive && proxyByEmail) {
+          row["代申請人Email"] = proxyByEmail;
+          row["代申請人姓名"] = proxyByName || '';
+        }
+        return row;
       });
 
+      // 行政代申請：不寄受邀邀請信；教學組核准時再通知
       var skipNotify = !!(
         (isMutualCover.value && mutualSkipNotify.value)
-        || (isAdmin.value && directApproveMode.value && directApproveSkipNotify.value)
+        || (doDirectApprove && directApproveSkipNotify.value)
+        || proxyActive
       );
       await callGasApi('submitRequestBatch', {
         batchId: batchId,
-        directApprove: !!(isAdmin.value && directApproveMode.value),
+        directApprove: doDirectApprove,
+        proxySubmit: !!proxyActive,
         skipNotify: skipNotify,
         requests: rows
       });
@@ -1273,14 +1322,21 @@ window.UiBatchSubmit = (function () {
       }).join('、');
       var mutualTip = isMutualCover.value ? '（活動互代：' + feeTip + '）' : '';
       var notifyTip = skipNotify ? ' 尚未寄信，請用下方 LINE 範本手動通知。' : '';
-      successModalTitle.value = (isAdmin.value && directApproveMode.value) ? '🎉 批次已直接核准' : '🎉 批次申請已送出';
-      successModalMessage.value = groupList.length === 1
-        ? '共 ' + n + ' 節已送出' + mutualTip + '，代課：' + groupList[0].name + ' 老師。' + notifyTip
-        : '共 ' + n + ' 節已送出' + mutualTip + '，由 ' + groupList.length + ' 位老師分代：' + subSummary + '。' + notifyTip;
-      if (deps.successFlowMode) {
-        deps.successFlowMode.value = (isAdmin.value && directApproveMode.value) ? 'direct' : 'normal';
+      if (doDirectApprove) {
+        successModalTitle.value = '🎉 批次已直接核准';
+      } else if (proxyActive) {
+        successModalTitle.value = '🎉 批次已送交教學組';
+      } else {
+        successModalTitle.value = '🎉 批次申請已送出';
       }
-      hasLineTemplate.value = skipNotify || !(isAdmin.value && directApproveMode.value);
+      var proxyTip = proxyActive ? '（行政代申請，已跳過受邀確認）' : '';
+      successModalMessage.value = groupList.length === 1
+        ? '共 ' + n + ' 節已送出' + proxyTip + mutualTip + '，代課：' + groupList[0].name + ' 老師。' + notifyTip
+        : '共 ' + n + ' 節已送出' + proxyTip + mutualTip + '，由 ' + groupList.length + ' 位老師分代：' + subSummary + '。' + notifyTip;
+      if (deps.successFlowMode) {
+        deps.successFlowMode.value = doDirectApprove ? 'direct' : (proxyActive ? 'proxy' : 'normal');
+      }
+      hasLineTemplate.value = skipNotify || (!doDirectApprove && !proxyActive);
       if (hasLineTemplate.value) {
         var currentUrl = window.location.origin + window.location.pathname;
         lineBatchParts.value = groupList.map(function (g) {
@@ -1653,13 +1709,19 @@ window.UiBatchPanel = (function () {
         const cell = getScheduleForDate(targetEmail, s.dateStr, s.period, s.dayOfWeek);
         return isSlotConflict(cell);
       });
-      if (conflicts.length && !isAdmin.value) {
+      var proxyForce2 = false;
+      if (deps.isProxySubmitActive) {
+        proxyForce2 = typeof deps.isProxySubmitActive === 'function'
+          ? !!deps.isProxySubmitActive()
+          : !!deps.isProxySubmitActive.value;
+      }
+      if (conflicts.length && !isAdmin.value && !proxyForce2) {
         showToast(`該教師在 ${conflicts.map(c => c.dateStr + '第' + c.period + '節').join('、')} 有課`, 'warning');
         return;
       }
-      if (conflicts.length && isAdmin.value) {
+      if (conflicts.length && (isAdmin.value || proxyForce2)) {
         const ok = await showConfirm(
-          `該教師於以下節次已有課：\n${conflicts.map(c => c.dateStr + ' 第' + c.period + '節').join('\n')}\n\n管理員可強制安排，確定？`,
+          `該教師於以下節次已有課：\n${conflicts.map(c => c.dateStr + ' 第' + c.period + '節').join('\n')}\n\n可強制安排，確定？`,
           '衝堂警告'
         );
         if (!ok) return;

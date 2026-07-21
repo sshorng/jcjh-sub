@@ -918,9 +918,13 @@ window.UiAdmin = (function () {
         if (teacherMappingFields.value.role &&
             row[teacherMappingFields.value.role] !== undefined) {
           var rawRole = String(row[teacherMappingFields.value.role]).trim();
-          if (rawRole.indexOf('管理') >= 0 || rawRole.indexOf('主管') >= 0 ||
-              rawRole.toLowerCase() === 'admin') {
+          if (window.FieldMap && window.FieldMap.normalizeRole) {
+            role = window.FieldMap.normalizeRole(rawRole);
+          } else if (rawRole.indexOf('管理') >= 0 || rawRole.indexOf('主管') >= 0 ||
+              rawRole.indexOf('教學組') >= 0 || rawRole.toLowerCase() === 'admin') {
             role = 'admin';
+          } else if (rawRole.indexOf('行政') >= 0 || rawRole.toLowerCase() === 'staff') {
+            role = 'staff';
           }
         }
         var exists = (teachersList.value || []).some(function (t) {

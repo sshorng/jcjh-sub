@@ -153,8 +153,23 @@ createApp({
     // ════════════════════════════════════════
     // 系統狀態
     const user = ref(null);
-    const userRole = ref('teacher'); // 'admin' 或 'teacher'
+    const userRole = ref('teacher'); // 'admin' | 'staff' | 'teacher'
     const originalUser = ref(null); // 模擬前的原始管理員身分
+    /** 行政代申請：代理對象 Email（請假老師）；空＝只處理自己 */
+    const proxyTargetEmail = ref('');
+    const PROXY_SUBMIT_EMAILS_LS_KEY = 'jcjh_proxy_submit_emails';
+    /** 可代申請人員白名單（Email 小寫）；空＝全關。後端 settings 優先，localStorage 備援 */
+    const proxySubmitEmails = ref((() => {
+      try {
+        const raw = localStorage.getItem('jcjh_proxy_submit_emails') || '';
+        return raw.split(/[,，;\s]+/).map(s => s.trim().toLowerCase()).filter(Boolean);
+      } catch (e) { return []; }
+    })());
+    const proxySubmitEnabledBy = ref('');
+    const proxySubmitEnabledAt = ref('');
+    const showProxyTargetDropdown = ref(false);
+    const proxyTargetQuery = ref('');
+    const proxyGrantQuery = ref('');
     const avatarLoadFailed = ref(false);
     const avatarSrc = computed(() => {
       const src = user.value && user.value.photoURL ? String(user.value.photoURL).trim() : '';
@@ -181,6 +196,8 @@ createApp({
     let _tokenRefreshP = null;
     let _gsiButtonRendered = false;
     let _gsiWaitTimer = null;
+    let _gsiPopupHintTimer = null;
+    let _gsiClickGen = 0;
     const gsiButtonReady = ref(false);
     const gsiButtonError = ref('');
 
@@ -296,7 +313,6 @@ createApp({
         // 只渲染官方按鈕；關掉 One Tap／自動選帳（不跳「以 OOO 身份」）
         suppressGsiAutoLogin();
         btnContainer.innerHTML = '';
-        let _clickAt = 0;
         google.accounts.id.renderButton(btnContainer, {
           theme: 'outline',
           size: 'large',
@@ -306,15 +322,17 @@ createApp({
           logo_alignment: 'left',
           type: 'standard',
           click_listener: function () {
-            _clickAt = Date.now();
+            // 選帳／同意常超過 5 秒；僅在「仍無登入且未進同步」才提示，成功登入必須清掉計時
+            _gsiClickGen += 1;
+            const gen = _gsiClickGen;
+            try { if (_gsiPopupHintTimer) clearTimeout(_gsiPopupHintTimer); } catch (eT) { /* ignore */ }
             try { console.info('[GSI] button clicked', location.origin); } catch (eC) { /* ignore */ }
-            // 若彈窗被擋且無 callback，數秒後提示
-            setTimeout(function () {
-              if (!user.value && _clickAt && Date.now() - _clickAt >= 4500) {
-                gsiButtonError.value = '登入視窗可能被瀏覽器封鎖。請允許此網站的彈出式視窗後再試，或改用無痕／關閉廣告攔截。';
-                showToast('登入彈窗被擋：請允許 popup，或重新整理後再按一次 Google 登入', 'warning', 6000);
-              }
-            }, 4800);
+            _gsiPopupHintTimer = setTimeout(function () {
+              if (gen !== _gsiClickGen) return;
+              if (user.value || loading.value) return;
+              gsiButtonError.value = '若未出現 Google 登入視窗，請允許此網站的彈出式視窗後再試。';
+              showToast('尚未完成登入：請完成 Google 帳號選擇，或允許彈出式視窗後再按一次', 'info', 5000);
+            }, 12000);
           }
         });
         const ok = btnContainer.childNodes && btnContainer.childNodes.length > 0;
@@ -431,6 +449,21 @@ createApp({
     const applySettings = (settings) => {
       if (!settings) return;
       allowedHdList.value = parseAllowedHd(settings);
+      // 行政代申請：指定行政 Email 白名單
+      if (Object.prototype.hasOwnProperty.call(settings, 'proxySubmitEmails')
+          || Object.prototype.hasOwnProperty.call(settings, 'PROXY_SUBMIT_EMAILS')) {
+        const rawEmails = settings.proxySubmitEmails != null
+          ? settings.proxySubmitEmails
+          : settings.PROXY_SUBMIT_EMAILS;
+        const list = String(rawEmails == null ? '' : rawEmails)
+          .split(/[,，;\s]+/)
+          .map(s => s.trim().toLowerCase())
+          .filter(Boolean);
+        proxySubmitEmails.value = list;
+        try { localStorage.setItem(PROXY_SUBMIT_EMAILS_LS_KEY, list.join(',')); } catch (e) { /* ignore */ }
+      }
+      if (settings.proxySubmitEnabledBy) proxySubmitEnabledBy.value = String(settings.proxySubmitEnabledBy);
+      if (settings.proxySubmitEnabledAt) proxySubmitEnabledAt.value = String(settings.proxySubmitEnabledAt);
     };
     const assertSchoolDomain = (payload) => {
       const email = payload && payload.email;
@@ -1192,7 +1225,7 @@ createApp({
       },
       goClass: () => {
         clearTourDemoInvite();
-        if (isAdmin.value || classReadonlyMode.value) {
+        if (isAdmin.value || isStaff.value || classReadonlyMode.value) {
           activeTab.value = 'class';
           return true;
         }
@@ -2619,7 +2652,76 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     });
 
     const isAdmin = computed(() => userRole.value === 'admin');
+    const isStaff = computed(() => userRole.value === 'staff');
     const isSimulating = computed(() => !!originalUser.value);
+    /** 目前登入者是否在「可代申請」白名單（Email） */
+    const isProxySubmitGranted = computed(() => {
+      if (!user.value) return false;
+      const me = String(user.value.email || '').trim().toLowerCase();
+      if (!me) return false;
+      return (proxySubmitEmails.value || []).some(function (e) {
+        return String(e || '').trim().toLowerCase() === me;
+      });
+    });
+    /** 可瀏覽全校課表：教學組 or 行政（與代申請授權無關） */
+    const canViewAllTimetables = computed(() => isAdmin.value || isStaff.value);
+    /**
+     * 可代申請：必須是「行政」角色，且被教學組勾進授權名單。
+     * 不是一鍵全開所有行政，也不是一般教師。
+     */
+    const canStaffProxySubmit = computed(() => isStaff.value && isProxySubmitGranted.value);
+    /** 後台狀態：至少授權一位行政時為「部分開放」 */
+    const proxySubmitEnabled = computed(() => (proxySubmitEmails.value || []).length > 0);
+    /** 目前是否處於「代別人申請」模式（代理對象 ≠ 自己） */
+    const isProxySubmitActive = computed(() => {
+      if (!canStaffProxySubmit.value || !user.value) return false;
+      const me = String(user.value.email || '').toLowerCase();
+      const tgt = String(proxyTargetEmail.value || '').toLowerCase();
+      return !!(tgt && tgt !== me);
+    });
+    const proxyTargetName = computed(() => {
+      const em = proxyTargetEmail.value;
+      if (!em) return '';
+      return getTeacherNameByEmail(em) || em;
+    });
+    const filteredProxyTeachers = computed(() => {
+      const q = String(proxyTargetQuery.value || '').trim().toLowerCase();
+      const list = teachersList.value || [];
+      const me = user.value ? String(user.value.email || '').toLowerCase() : '';
+      return list.filter(t => {
+        const em = String(t.email || '').toLowerCase();
+        if (!em || em === me) return false;
+        if (t.role === 'admin') return false;
+        if (!q) return true;
+        const name = String(t.name || '').toLowerCase();
+        const sub = String(t.subject || '').toLowerCase();
+        return name.includes(q) || em.includes(q) || sub.includes(q);
+      });
+    });
+    /** 後台：僅「行政」角色可被勾選授權（非全校教師） */
+    const proxyGrantCandidateTeachers = computed(() => {
+      const q = String(proxyGrantQuery.value || '').trim().toLowerCase();
+      return (teachersList.value || []).filter(t => {
+        if (t.role !== 'staff') return false;
+        const em = String(t.email || '').toLowerCase();
+        if (!em) return false;
+        if (!q) return true;
+        const name = String(t.name || '').toLowerCase();
+        const sub = String(t.subject || '').toLowerCase();
+        return name.includes(q) || em.includes(q) || sub.includes(q);
+      });
+    });
+    const proxyGrantedTeachers = computed(() => {
+      const set = {};
+      (proxySubmitEmails.value || []).forEach(e => { set[e] = 1; });
+      return (teachersList.value || []).filter(t =>
+        t.role === 'staff' && set[String(t.email || '').toLowerCase()]
+      );
+    });
+    const isProxySubmitEmailGranted = (email) => {
+      const em = String(email || '').toLowerCase();
+      return !!(em && (proxySubmitEmails.value || []).indexOf(em) >= 0);
+    };
 
     const parseTeacherSubjects = (raw) => {
       if (window.DomainMatch && typeof window.DomainMatch.parseSubjects === 'function') {
@@ -2632,12 +2734,209 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     };
 
     const userRoleText = computed(() => {
+      if (isAdmin.value) return '教學組';
+      if (isStaff.value) return '行政';
       const match = user.value ? lookupTeacher(user.value.email) : null;
       if (!match) return '教師';
       const domains = parseTeacherSubjects(match.subject);
       if (!domains.length) return '教師';
       return domains.length === 1 ? `${domains[0]}科教師` : `${domains.join('／')}教師`;
     });
+
+    /**
+     * 可否對指定教師操作（點格申請／批次）：
+     * 自己 / 教學組 / 已授權行政（可對任何教師；點格時自動切代理對象）
+     */
+    const canOperateOnTeacherEmail = (teacherEmail) => {
+      if (!user.value) return false;
+      const me = String(user.value.email || '').toLowerCase();
+      const em = String(teacherEmail || '').toLowerCase();
+      if (!em) return false;
+      if (em === me) return true;
+      if (isAdmin.value) return true;
+      // 已授權行政：可對全校教師操作（不必先在右上選好才准點）
+      if (canStaffProxySubmit.value) return true;
+      return false;
+    };
+
+    /** 點別人課格時，若是已授權行政，自動把該人設為代申請對象 */
+    const ensureProxyTargetForTeacher = (teacherEmail) => {
+      if (!canStaffProxySubmit.value || !user.value) return;
+      const me = String(user.value.email || '').toLowerCase();
+      const em = String(teacherEmail || '').trim().toLowerCase();
+      if (!em || em === me) return;
+      if (String(proxyTargetEmail.value || '').toLowerCase() === em) return;
+      proxyTargetEmail.value = em;
+      try {
+        const nm = getTeacherNameByEmail(em) || em;
+        if (selectedSubject.value === 'mine') selectedSubject.value = 'all';
+        showToast('已切換代申請對象：' + nm, 'info', 2200);
+      } catch (e) { /* ignore */ }
+    };
+
+    const assertCanSubmitAsLeaveTeacher = (leaveEmail) => {
+      if (canOperateOnTeacherEmail(leaveEmail)) {
+        ensureProxyTargetForTeacher(leaveEmail);
+        return true;
+      }
+      if (isStaff.value && !isProxySubmitGranted.value) {
+        showToast('您是行政，但尚未被教學組勾選授權代申請。', 'warning');
+        return false;
+      }
+      showToast('無法代此教師申請。僅「已授權的行政」可代送。', 'warning');
+      return false;
+    };
+
+    const getProxyActor = () => {
+      // 只要目前登入者有代申請能力就回傳本人（送出時再比對請假人）
+      if (!user.value) return null;
+      if (!canStaffProxySubmit.value && !isProxySubmitActive.value) return null;
+      return {
+        email: String(user.value.email || '').toLowerCase(),
+        name: (user.value.displayName || getTeacherNameByEmail(user.value.email) || '').replace(/\s*\(模擬\)\s*$/, '')
+      };
+    };
+
+    /** 請假人不是自己，且目前帳號是已授權行政 → 應走代申請 */
+    const shouldProxySubmitForLeave = (leaveEmail) => {
+      if (!canStaffProxySubmit.value || !user.value) return false;
+      const me = String(user.value.email || '').trim().toLowerCase();
+      const leave = String(leaveEmail || '').trim().toLowerCase();
+      return !!(me && leave && leave !== me);
+    };
+
+    const setProxyTarget = (email) => {
+      const em = String(email || '').trim().toLowerCase();
+      if (!em) {
+        proxyTargetEmail.value = '';
+        showProxyTargetDropdown.value = false;
+        proxyTargetQuery.value = '';
+        return;
+      }
+      if (!canStaffProxySubmit.value && !isAdmin.value) {
+        showToast(isStaff.value
+          ? '您是行政，但尚未被教學組勾選授權代申請'
+          : '僅授權的行政可代申請', 'warning');
+        return;
+      }
+      proxyTargetEmail.value = em;
+      showProxyTargetDropdown.value = false;
+      proxyTargetQuery.value = '';
+      // 切到該教師課表
+      searchQuery.value = getTeacherNameByEmail(em) || em;
+      if (selectedSubject.value === 'mine') selectedSubject.value = 'all';
+      showToast('代申請對象：' + (getTeacherNameByEmail(em) || em), 'info');
+    };
+
+    const clearProxyTarget = () => {
+      proxyTargetEmail.value = '';
+      proxyTargetQuery.value = '';
+      showProxyTargetDropdown.value = false;
+      searchQuery.value = '';
+      if (isStaff.value) selectedSubject.value = 'mine';
+      showToast('已改回處理自己的課', 'info');
+    };
+
+    /** 只允許 role=staff 的 Email 進授權名單 */
+    const filterStaffEmailsOnly = (emails) => {
+      const staffSet = {};
+      (teachersList.value || []).forEach(t => {
+        if (t.role === 'staff') {
+          const em = String(t.email || '').toLowerCase();
+          if (em) staffSet[em] = 1;
+        }
+      });
+      const seen = {};
+      const out = [];
+      (emails || []).forEach(raw => {
+        const e = String(raw || '').trim().toLowerCase();
+        if (!e || seen[e] || !staffSet[e]) return;
+        seen[e] = 1;
+        out.push(e);
+      });
+      return out;
+    };
+
+    const persistProxySubmitEmails = async (nextList, toastOk) => {
+      if (!isAdmin.value) {
+        showToast('僅教學組可設定代申請行政', 'warning');
+        return false;
+      }
+      const prev = (proxySubmitEmails.value || []).slice();
+      const uniq = filterStaffEmailsOnly(nextList);
+      proxySubmitEmails.value = uniq;
+      const by = user.value
+        ? (user.value.displayName || getTeacherNameByEmail(user.value.email) || user.value.email)
+        : '';
+      const at = new Date().toISOString();
+      proxySubmitEnabledBy.value = by;
+      proxySubmitEnabledAt.value = at;
+      try { localStorage.setItem(PROXY_SUBMIT_EMAILS_LS_KEY, uniq.join(',')); } catch (e) { /* ignore */ }
+      try {
+        loading.value = true;
+        loadingMessage.value = '儲存代申請授權…';
+        await callGasApi('saveMailSettings', {
+          proxySubmitEmails: uniq.join(','),
+          proxySubmitEnabled: uniq.length > 0,
+          proxySubmitEnabledBy: by,
+          proxySubmitEnabledAt: at
+        });
+        if (toastOk !== false) {
+          showToast(
+            uniq.length
+              ? ('已授權 ' + uniq.length + ' 位行政可代申請')
+              : '已清空授權（所有行政皆不可代申請）',
+            'success'
+          );
+        }
+        return true;
+      } catch (err) {
+        const msg = err && err.message ? String(err.message) : String(err || '');
+        if (/未定義|不支援|not support|Unknown action/i.test(msg)) {
+          showToast('已寫入本機授權名單（後端尚未同步，請更新 GAS）', 'warning', 4500);
+          return true;
+        }
+        proxySubmitEmails.value = prev;
+        try { localStorage.setItem(PROXY_SUBMIT_EMAILS_LS_KEY, prev.join(',')); } catch (e2) { /* ignore */ }
+        showToast('儲存失敗：' + msg, 'error');
+        return false;
+      } finally {
+        loading.value = false;
+      }
+    };
+
+    const toggleProxySubmitEmail = async (email) => {
+      const em = String(email || '').trim().toLowerCase();
+      if (!em) return;
+      const t = (teachersList.value || []).find(x =>
+        String(x.email || '').toLowerCase() === em
+      );
+      if (!t || t.role !== 'staff') {
+        showToast('只能授權「行政」角色', 'warning');
+        return;
+      }
+      const cur = (proxySubmitEmails.value || []).slice();
+      const idx = cur.indexOf(em);
+      if (idx >= 0) cur.splice(idx, 1);
+      else cur.push(em);
+      await persistProxySubmitEmails(cur);
+    };
+
+    const clearAllProxySubmitEmails = async () => {
+      if (!(proxySubmitEmails.value || []).length) return;
+      const ok = await showConfirm('確定清空所有行政的代申請授權？清空後沒有行政可代他人申請。', '清空授權');
+      if (!ok) return;
+      await persistProxySubmitEmails([]);
+    };
+
+    /** 相容舊按鈕：不再「一鍵全開所有行政」 */
+    const setProxySubmitEnabled = async (enabled) => {
+      if (enabled) {
+        showToast('請在下方勾選「指定行政」授權，不會一次開放全部行政', 'info');
+        return;
+      }
+      await clearAllProxySubmitEmails();
+    };
 
     const subjectsList = computed(() => {
       const list = new Set();
@@ -2650,8 +2949,8 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     const filteredTeachers = computed(() => {
       if (!user.value) return [];
       const myEmail = String(user.value.email || '').toLowerCase();
-      // 一般教師：只看自己
-      if (!isAdmin.value) {
+      // 一般教師：只看自己；行政／教學組可看全校
+      if (!canViewAllTimetables.value) {
         return teachersList.value.filter(t => String(t.email || '').toLowerCase() === myEmail);
       }
       const query = searchQuery.value.trim().toLowerCase();
@@ -2816,12 +3115,22 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       const email = user.value ? user.value.email.toLowerCase() : '';
       let filteredRecords = substitutionRecords.value;
       
-      // 非管理員教師，限制只能看到與自己相關的調代課紀錄 (自己請假或自己代課)
+      // 非教學組：預設只看自己相關；行政另含「我代送」的單
       if (!isAdmin.value && email) {
-        filteredRecords = substitutionRecords.value.filter(r => 
-          (r.originalTeacherEmail && r.originalTeacherEmail.toLowerCase() === email) ||
-          (r.actualTeacherEmail && r.actualTeacherEmail.toLowerCase() === email)
-        );
+        filteredRecords = substitutionRecords.value.filter(r => {
+          const related =
+            (r.originalTeacherEmail && r.originalTeacherEmail.toLowerCase() === email) ||
+            (r.actualTeacherEmail && r.actualTeacherEmail.toLowerCase() === email);
+          if (related) return true;
+          if (isStaff.value && r.requestId) {
+            const req = (requestsList.value || []).find(x => x && x.id === r.requestId);
+            if (req && isProxySubmitRequest(req)) {
+              const proxyEm = String(req.proxyByEmail || '').toLowerCase();
+              if (proxyEm && proxyEm === email) return true;
+            }
+          }
+          return false;
+        });
       }
 
       // 調課 (exchange) 去重：同一 requestId 只留一列
@@ -3499,7 +3808,9 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       return window.UiSubmitHelpers.validateSubmitRequest({
         pendingRequestData, showToast, showConfirm, isAdmin, getTeacherNameByEmail,
         hasSubTeacherConflict, assertQuotaDeductAllowed,
-        activeCell, allSchedules
+        activeCell, allSchedules,
+        isProxySubmitActive: function () { return isProxySubmitActive.value; },
+        assertCanSubmitAsLeaveTeacher: assertCanSubmitAsLeaveTeacher
       });
     };
 
@@ -3509,7 +3820,12 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       }
       return window.UiSubmitHelpers.buildSubmitPayload({
         pendingRequestData, currentSemester, getTeacherNameByEmail, isAdmin, directApproveMode,
-        isMutualCover, PERIOD8_FEE, ACTIVITY_PUBLIC_FEE, defaultSubFeeForReason, activeCell, DAC
+        isMutualCover, PERIOD8_FEE, ACTIVITY_PUBLIC_FEE, defaultSubFeeForReason, activeCell, DAC,
+        isProxySubmitActive: function () { return isProxySubmitActive.value; },
+        canStaffProxySubmit: function () { return canStaffProxySubmit.value; },
+        shouldProxySubmitForLeave: shouldProxySubmitForLeave,
+        getProxyActor: getProxyActor,
+        userEmail: function () { return user.value ? user.value.email : ''; }
       }, requestId, serial);
     };
 
@@ -3540,6 +3856,10 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       optimisticUpsertRequest: function (r) { return optimisticUpsertRequest(r); },
       sheetRequestToFront: function (r) { return sheetRequestToFront(r); },
       isAdmin: isAdmin,
+      isProxySubmitActive: function () { return isProxySubmitActive.value; },
+      canStaffProxySubmit: function () { return canStaffProxySubmit.value; },
+      shouldProxySubmitForLeave: shouldProxySubmitForLeave,
+      getProxyActor: getProxyActor,
       isMutualCover: isMutualCover,
       DAC: DAC,
       mutualAwayClasses: mutualAwayClasses,
@@ -3611,7 +3931,12 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         callGasApi, showCompareModal, showMatchModal, optimisticUpsertRequest, sheetRequestToFront,
         deductMutualQuotaForRows, softRefreshInBackground, isQuotaDeductFee, buildLineInviteText,
         successModalTitle, successModalMessage, lineCopyText, hasLineTemplate, showSuccessModal, showToast,
-        successFlowMode
+        successFlowMode,
+        canStaffProxySubmit: function () { return canStaffProxySubmit.value; },
+        shouldProxySubmitForLeave: shouldProxySubmitForLeave,
+        getProxyActor: getProxyActor,
+        getTeacherNameByEmail: getTeacherNameByEmail,
+        userEmail: function () { return user.value ? user.value.email : ''; }
       });
     };
 
@@ -3959,7 +4284,9 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         showDetailModal, resolveDetailRequest, classReadonlyMode, isAdmin, getTeacherNameByEmail,
         activeCell, inputRequestDate, matchMode, exchangeTargetDate, exchangeWeekOffset, exchangePeriodId,
         exchangeTeacherEmail, matchPreview, recommendedTeachers, matchSearchQuery, matchDisplayCount,
-        showMatchModal, fetchRecommendations
+        showMatchModal, fetchRecommendations,
+        canOperateOnTeacherEmail: canOperateOnTeacherEmail,
+        ensureProxyTargetForTeacher: ensureProxyTargetForTeacher
       }, cls, day, period, entryOrIndex);
     };
 
@@ -3975,7 +4302,9 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         matchMode, matchPreview, showCompareModal, showMatchModal,
         fetchRecommendations, batchSelectMode, isAdmin, user, toggleBatchSlot,
         detailRequest, detailSubRecord, showDetailModal, resolveDetailRequest,
-        getTeacherNameByEmail, exchangeTargetDate, exchangeWeekOffset, exchangePeriodId, exchangeTeacherEmail
+        getTeacherNameByEmail, exchangeTargetDate, exchangeWeekOffset, exchangePeriodId, exchangeTeacherEmail,
+        canOperateOnTeacherEmail: canOperateOnTeacherEmail,
+        ensureProxyTargetForTeacher: ensureProxyTargetForTeacher
       }, teacherEmail, dayOfWeek, period, dateStr);
     };
 
@@ -4494,6 +4823,53 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       return note.indexOf('[直接核准]') >= 0 || note.indexOf('行政直接核准') >= 0;
     };
 
+    const isProxySubmitRequest = (r) => {
+      if (!r) return false;
+      if (r.isProxySubmit === true) return true;
+      if (r.proxyByEmail) return true;
+      const note = String(r.note || '');
+      return note.indexOf('[行政代申請') >= 0;
+    };
+
+    /** 目前 UI 身分 Email（含模擬身份；列表／權限一律用此，不用 JWT 原帳） */
+    const effectiveUserEmail = computed(() => {
+      if (!user.value || !user.value.email) return '';
+      return String(user.value.email).toLowerCase().trim();
+    });
+
+    /**
+     * 是否為「我送出的申請」（email＝effectiveUserEmail，模擬時用被模擬者）
+     * - 代申請：只有代申請人是我才算（請假人本人不進此列表）
+     * - 一般：申請人是我，且不是別人代送
+     */
+    const isMySentRequest = (r, email) => {
+      if (!r || !email) return false;
+      if (isAdminDirectRequest(r)) return false;
+      const me = String(email).toLowerCase().trim();
+      const reqEm = String(r.requesterEmail || '').toLowerCase().trim();
+      const proxyEm = String(r.proxyByEmail || '').toLowerCase().trim();
+      const note = String(r.note || '');
+      const noteIsProxy = note.indexOf('[行政代申請') >= 0;
+      // 只要有代申請跡象：絕不能用「請假人＝我」混進來
+      if (proxyEm || noteIsProxy || r.isProxySubmit === true) {
+        if (proxyEm) return proxyEm === me;
+        // 無代申請人 Email 欄時：用備註姓名對 lookup（模擬 displayName 去「(模擬)」）
+        const m = note.match(/\[行政代申請[：:]\s*([^代\]]+?)\s*代/);
+        if (m) {
+          const proxyName = String(m[1] || '').trim();
+          const myName = String(getTeacherNameByEmail(me) || '')
+            .trim()
+            .replace(/\s*\(模擬\)\s*$/, '');
+          const disp = String((user.value && user.value.displayName) || '')
+            .trim()
+            .replace(/\s*\(模擬\)\s*$/, '');
+          if (proxyName && (proxyName === myName || proxyName === disp)) return true;
+        }
+        return false;
+      }
+      return reqEm === me;
+    };
+
     const applyInitialPayload = (res) => {
       if (!res) return;
       if (res.scheduleScope) scheduleScope.value = String(res.scheduleScope);
@@ -4523,13 +4899,14 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         substitutionRecords.value = convertRequestsToSubstitutions(sortedAll);
         bumpRequestsWatermarkFromRows(sortedAll);
         if (user.value) {
-          const email = user.value.email.toLowerCase();
-          mySentRequests.value = sortedAll.filter(r =>
-            r.requesterEmail && r.requesterEmail.toLowerCase() === email
-            && !isAdminDirectRequest(r)
-          );
+          // 模擬身份時用被模擬者 Email（user.value.email），不用 JWT 原帳
+          const email = effectiveUserEmail.value || String(user.value.email || '').toLowerCase();
+          mySentRequests.value = sortedAll.filter(r => isMySentRequest(r, email));
           myPendingRequests.value = sortedAll.filter(r => r.targetTeacherEmail && r.targetTeacherEmail.toLowerCase() === email && r.status === 'pending_teacher');
-          adminPendingRequests.value = sortedAll.filter(r => r.status === 'pending_admin');
+          // 待核准僅教學組；模擬成行政／教師時清空，避免誤以為「我的送出」
+          adminPendingRequests.value = (userRole.value === 'admin')
+            ? sortedAll.filter(r => r.status === 'pending_admin')
+            : [];
           allPendingRequests.value = sortedAll.filter(r => r.status === 'pending_teacher' || r.status === 'pending_admin');
         } else {
           mySentRequests.value = [];
@@ -4632,21 +5009,21 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
 
     const recomputeRequestBuckets = () => {
       if (!user.value) return;
-      const email = user.value.email.toLowerCase();
+      // 模擬身份：一律用目前 user.value.email（被模擬者），勿用 originalUser／JWT
+      const email = effectiveUserEmail.value || String(user.value.email || '').toLowerCase().trim();
       const all = sortRequestListDesc(requestsList.value || []);
       requestsList.value = all;
-      // 送出的申請：僅教師本人發起；教學組代申請／直接核准不列（見歷史紀錄）
-      mySentRequests.value = all.filter(r =>
-        r.requesterEmail && r.requesterEmail.toLowerCase() === email
-        && !isAdminDirectRequest(r)
+      mySentRequests.value = all.filter(r => isMySentRequest(r, email));
+      myPendingRequests.value = all.filter(r =>
+        r.targetTeacherEmail && String(r.targetTeacherEmail).toLowerCase() === email
+        && r.status === 'pending_teacher'
       );
-      myPendingRequests.value = all.filter(r => r.targetTeacherEmail && r.targetTeacherEmail.toLowerCase() === email && r.status === 'pending_teacher');
-      adminPendingRequests.value = all.filter(r => r.status === 'pending_admin');
+      adminPendingRequests.value = (userRole.value === 'admin')
+        ? all.filter(r => r.status === 'pending_admin')
+        : [];
       allPendingRequests.value = all.filter(r => r.status === 'pending_teacher' || r.status === 'pending_admin');
       
-      // 關鍵：每次 recompute 亦同步重算虛擬 substitutions
       substitutionRecords.value = convertRequestsToSubstitutions(all);
-      
       clearScheduleCache();
     };
 
@@ -4804,7 +5181,10 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       const email = user.value.email.toLowerCase();
       const currentTeacher = lookupTeacher(email);
       if (currentTeacher) {
-        userRole.value = currentTeacher.role || 'teacher';
+        const raw = currentTeacher.role || 'teacher';
+        userRole.value = (window.FieldMap && window.FieldMap.normalizeRole)
+          ? window.FieldMap.normalizeRole(raw)
+          : raw;
         return true;
       }
       if (teachersList.value.length === 0) {
@@ -5137,6 +5517,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       if (!req) return [];
       const tags = [];
       const period = parseInt(req.requestPeriod != null ? req.requestPeriod : req.period, 10);
+      // 代申請已在申請人欄下方標示，不再加 Tag
       if (req.type !== 'exchange' && isQuotaDeductFee(req.subFee)) {
         tags.push({ key: 'quota', label: '扣額度' });
       } else if (req.type !== 'exchange' && req.subFee === ACTIVITY_PUBLIC_FEE) {
@@ -6252,6 +6633,9 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       myPendingRequests.value = [];
       adminPendingRequests.value = [];
       showMatchModal.value = false;
+      proxyTargetEmail.value = '';
+      proxyTargetQuery.value = '';
+      showProxyTargetDropdown.value = false;
     };
 
     /** 登入後還原分頁；公開班級連結與非管理員進 admin 時校正 */
@@ -6262,6 +6646,9 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       }
       let tab = readStoredTab();
       if (tab === 'admin' && userRole.value !== 'admin') tab = 'timetable';
+      if (tab === 'class' && userRole.value !== 'admin' && userRole.value !== 'staff' && !classReadonlyMode.value) {
+        tab = 'timetable';
+      }
       activeTab.value = tab;
       adminSubTab.value = readStoredAdminSubTab();
       _navPersistReady = true;
@@ -6269,9 +6656,9 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     };
 
     // 模擬切換使用者身分 (僅限管理員 Dev 工具)
+    // 注意：列表／權限用被模擬者 Email；後端 API 仍用 JWT（真正送出仍是原管理員帳號）
     const devSwitchUser = (email) => {
       if (!isAdmin.value && !isSimulating.value) return;
-      // 如果點選的就是原管理員，直接還原
       if (originalUser.value && email === originalUser.value.email) {
         restoreAdmin();
         return;
@@ -6283,10 +6670,16 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         }
         user.value = {
           email: match.email,
-          displayName: match.name + " (模擬)",
-          photoURL: "https://www.gstatic.com/images/branding/product/1x/avatar_circle_blue_512dp.png"
+          displayName: match.name + ' (模擬)',
+          photoURL: 'https://www.gstatic.com/images/branding/product/1x/avatar_circle_blue_512dp.png'
         };
-        userRole.value = match.role || 'teacher';
+        const raw = match.role || 'teacher';
+        userRole.value = (window.FieldMap && window.FieldMap.normalizeRole)
+          ? window.FieldMap.normalizeRole(raw)
+          : raw;
+        proxyTargetEmail.value = '';
+        // 先用目前已載入的全量資料，依「被模擬者 Email」重算待辦／送出列表
+        recomputeRequestBuckets();
         loadWeeklyData();
       }
     };
@@ -6296,11 +6689,13 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       if (!originalUser.value) return;
       user.value = {
         email: originalUser.value.email,
-        displayName: "管理員 (已還原)",
-        photoURL: "https://www.gstatic.com/images/branding/product/1x/avatar_circle_blue_512dp.png"
+        displayName: '管理員 (已還原)',
+        photoURL: 'https://www.gstatic.com/images/branding/product/1x/avatar_circle_blue_512dp.png'
       };
       userRole.value = originalUser.value.role;
       originalUser.value = null;
+      proxyTargetEmail.value = '';
+      recomputeRequestBuckets();
       loadWeeklyData();
     };
 
@@ -6381,7 +6776,9 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
             showToast('Google 未回傳登入憑證，請確認 OAuth 來源含目前網址', 'warning', 5000);
             return;
           }
-          // 成功拿到票：清掉「彈窗被擋」提示
+          // 成功拿到票：取消「彈窗被擋」延遲提示（選帳常超過數秒，不可誤報）
+          _gsiClickGen += 1;
+          try { if (_gsiPopupHintTimer) { clearTimeout(_gsiPopupHintTimer); _gsiPopupHintTimer = null; } } catch (eTm) { /* ignore */ }
           try { gsiButtonError.value = ''; } catch (eClr) { /* ignore */ }
           localStorage.setItem('jcjh_google_id_token', token);
           const payload = decodeJwt(token);
@@ -6521,7 +6918,13 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       excelData, excelHeaders, mappingFields, importPreview, runImportPreview, downloadScheduleTemplate, downloadCurrentSchedules,
       directApproveMode, googleClientId, gasApiUrl, saveClientSettings,
       isSubFeeLockedToSelf, isPeriod8FeeLocked, quotaDeductPreview, quotaDeductInsufficient, switchQuotaDeductToSelfPay, hasSubTeacherConflict,
-      isAdmin, userRoleText, subjectsList, filteredTeachers, displayTimetableTeachers, pendingCount, myInviteCount, adminTodoCount, hasQuickTodo, quickTodoSentOpen, allTeachersList, teachersListDetails,
+      isAdmin, isStaff, canViewAllTimetables, canStaffProxySubmit, isProxySubmitActive, isProxySubmitGranted,
+      proxySubmitEnabled, proxySubmitEnabledBy, proxySubmitEnabledAt, setProxySubmitEnabled,
+      proxySubmitEmails, proxyGrantQuery, proxyGrantCandidateTeachers, proxyGrantedTeachers,
+      isProxySubmitEmailGranted, toggleProxySubmitEmail, clearAllProxySubmitEmails, persistProxySubmitEmails,
+      proxyTargetEmail, proxyTargetName, proxyTargetQuery, showProxyTargetDropdown, filteredProxyTeachers,
+      setProxyTarget, clearProxyTarget, canOperateOnTeacherEmail, ensureProxyTargetForTeacher,
+      userRoleText, subjectsList, filteredTeachers, displayTimetableTeachers, pendingCount, myInviteCount, adminTodoCount, hasQuickTodo, quickTodoSentOpen, allTeachersList, teachersListDetails,
       matchPreview,
       exchangeTeachersList, myTeacherProfile, isRequestValid, filteredHistoryRecords,
       dateFilteredHistoryRecords, paginatedHistoryRecords, historyTotalPages,

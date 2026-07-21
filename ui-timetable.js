@@ -526,10 +526,17 @@ window.UiTimetable = (function () {
           showToast('此格尚有進行中申請，無法加入批次', 'warning');
           return;
         }
-        if (!isAdmin.value && user.value
+        var canActOnOther = !!(isAdmin && isAdmin.value);
+        if (!canActOnOther && clickDeps.canOperateOnTeacherEmail) {
+          canActOnOther = !!clickDeps.canOperateOnTeacherEmail(teacherEmail);
+        }
+        if (!canActOnOther && user.value
             && String(teacherEmail).toLowerCase() !== String(user.value.email).toLowerCase()) {
-          showToast('一般教師只能批次自己的課', 'warning');
+          showToast('一般教師只能批次自己的課；行政需先被教學組授權代申請', 'warning');
           return;
+        }
+        if (clickDeps.ensureProxyTargetForTeacher) {
+          try { clickDeps.ensureProxyTargetForTeacher(teacherEmail); } catch (eBat) { /* ignore */ }
         }
         toggleBatchSlot({
           teacherEmail: teacherEmail,
@@ -573,6 +580,28 @@ window.UiTimetable = (function () {
       if (cell.isPatrol || cell.attr === '巡堂') {
         showToast('本節為【巡堂】：不計鐘點、不需系統代課；若要請人代巡，請私下安排或互換', 'info');
         return;
+      }
+
+      // 權限：自己／教學組／已授權行政（點格即可，自動設代申請對象）
+      var canClick = !!(isAdmin && isAdmin.value);
+      if (!canClick && clickDeps.canOperateOnTeacherEmail) {
+        canClick = !!clickDeps.canOperateOnTeacherEmail(teacherEmail);
+      }
+      if (!canClick && user.value
+          && String(teacherEmail).toLowerCase() === String(user.value.email).toLowerCase()) {
+        canClick = true;
+      }
+      if (!canClick) {
+        var me = user.value ? String(user.value.email || '').toLowerCase() : '';
+        var other = String(teacherEmail || '').toLowerCase() !== me;
+        if (other) {
+          showToast('無法代此教師申請。請確認您是「已授權的行政」（後台有勾選您）。', 'warning');
+        }
+        return;
+      }
+      // 已授權行政點別人課格 → 自動設為代申請對象
+      if (clickDeps.ensureProxyTargetForTeacher) {
+        try { clickDeps.ensureProxyTargetForTeacher(teacherEmail); } catch (eEns) { /* ignore */ }
       }
 
       activeCell.value = {
@@ -1022,7 +1051,14 @@ window.UiTimetable = (function () {
           showDetailModal.value = true;
           return;
         }
-        if (!isAdmin.value) return;
+        var canClassAct = !!(isAdmin && isAdmin.value);
+        if (!canClassAct && deps.canOperateOnTeacherEmail) {
+          canClassAct = !!deps.canOperateOnTeacherEmail(cellData.teacherEmail);
+        }
+        if (!canClassAct) return;
+        if (deps.ensureProxyTargetForTeacher) {
+          try { deps.ensureProxyTargetForTeacher(cellData.teacherEmail); } catch (eCls) { /* ignore */ }
+        }
         var tName = cellData.teacherName || getTeacherNameByEmail(cellData.teacherEmail);
         activeCell.value = {
           teacherEmail: cellData.teacherEmail,

@@ -91,12 +91,23 @@ window.FieldMap = (function () {
     };
   }
 
+  /** 系統角色正規化：admin／staff／teacher */
+  function normalizeRole(raw) {
+    const s = String(raw == null ? '' : raw).trim().toLowerCase();
+    if (!s) return 'teacher';
+    if (s === 'admin' || s.indexOf('管理') >= 0 || s.indexOf('教學組') >= 0
+        || s.indexOf('主管') >= 0 || s === 'administrator') return 'admin';
+    if (s === 'staff' || s === '行政' || s.indexOf('行政') >= 0 || s === 'clerk') return 'staff';
+    if (s === 'teacher' || s.indexOf('教師') >= 0 || s.indexOf('老師') >= 0) return 'teacher';
+    return 'teacher';
+  }
+
   function mapTeacher(t) {
     return {
       email: pick(t, ['教師Email', 'email']),
       name: pick(t, ['教師姓名', 'name']),
       subject: pick(t, ['授課科目', '任課科目', 'subject']) || '',
-      role: pick(t, ['系統角色', 'role']) || 'teacher',
+      role: normalizeRole(pick(t, ['系統角色', 'role']) || 'teacher'),
       baseHours: asInt(pick(t, ['基本鐘點', 'baseHours']), 16),
       // 互代額度：活動釋出可寫回；送出扣額度時扣 1；可手動調整
       mutualQuota: asInt(pick(t, ['互代額度', 'mutualQuota']), 0)
@@ -174,6 +185,20 @@ window.FieldMap = (function () {
       directApprove: (function () {
         const n = String(pick(r, ['備註', 'note']) || '');
         return n.indexOf('[直接核准]') >= 0 || r.directApprove === true;
+      })(),
+      // 行政代申請：代申請人 Email；備註 [行政代申請…] 備援
+      proxyByEmail: (function () {
+        const em = pick(r, ['代申請人Email', 'proxyByEmail', 'proxySubmitBy']);
+        if (em) return String(em).trim().toLowerCase();
+        return '';
+      })(),
+      proxyByName: String(pick(r, ['代申請人姓名', 'proxyByName']) || ''),
+      isProxySubmit: (function () {
+        if (r.isProxySubmit === true || r.proxySubmit === true) return true;
+        const em = pick(r, ['代申請人Email', 'proxyByEmail', 'proxySubmitBy']);
+        if (em) return true;
+        const n = String(pick(r, ['備註', 'note']) || '');
+        return n.indexOf('[行政代申請') >= 0;
       })()
     };
   }
@@ -189,7 +214,7 @@ window.FieldMap = (function () {
       "教師姓名": t.name || t["教師姓名"],
       "授課科目": subject,
       "任課科目": subject,
-      "系統角色": t.role || t["系統角色"] || 'teacher',
+      "系統角色": normalizeRole(t.role || t["系統角色"] || 'teacher'),
       "基本鐘點": (function () {
         if (t.baseHours === 0 || t.baseHours === '0') return 0;
         if (t.baseHours !== undefined && t.baseHours !== null && t.baseHours !== '') {
@@ -279,6 +304,7 @@ window.FieldMap = (function () {
       deleteClassAwayEvent: '刪除空堂事件',
       saveHistoryEdit: '編輯歷史紀錄',
       batchMarkPrinted: '標記已列印',
+      saveMailSettings: '儲存系統設定',
       getInitialData: '載入資料'
     }[action] || (action || '操作');
 
@@ -311,6 +337,7 @@ window.FieldMap = (function () {
     pick,
     asBool,
     asInt,
+    normalizeRole,
     mapSemester,
     mapClassAwayEvent,
     mapTeacher,

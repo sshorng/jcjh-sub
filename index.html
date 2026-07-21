@@ -98,7 +98,7 @@
             <span class="nav-label-full">歷史紀錄</span><span class="nav-label-short">歷史</span>
           </button>
           <button 
-            v-if="isAdmin || classReadonlyMode"
+            v-if="isAdmin || isStaff || classReadonlyMode"
             class="nav-item" 
             :class="{ active: activeTab === 'class' }"
             data-tour="nav-class"
@@ -130,6 +130,7 @@
             <img class="user-avatar" :src="avatarSrc" @error="handleAvatarError" alt="Avatar">
             <span class="user-name">{{ user.displayName }}</span>
             <span v-if="isAdmin" class="badge-admin">教學組</span>
+            <span v-else-if="isStaff" class="badge-staff">行政</span>
             <span v-else class="badge-teacher">{{ userRoleText }}</span>
           </div>
           <div class="user-info" v-else>
@@ -146,6 +147,47 @@
             {{ currentSemesterName }}
           </div>
 
+          <!-- 代申請：僅「已授權的行政」可選代理對象 -->
+          <div v-if="isStaff" style="position: relative;">
+            <button
+              type="button"
+              class="btn btn-secondary"
+              style="padding: 4px 8px; font-size: 0.8rem;"
+              :disabled="!canStaffProxySubmit"
+              :title="canStaffProxySubmit ? '選擇要代誰申請' : '您尚未被教學組授權代申請'"
+              @click.stop="canStaffProxySubmit && (showProxyTargetDropdown = !showProxyTargetDropdown)"
+            >
+              {{ isProxySubmitActive ? ('代申請：' + proxyTargetName) : (canStaffProxySubmit ? '📋 代申請…' : '📋 代申請（未授權）') }}
+            </button>
+            <div
+              v-if="showProxyTargetDropdown && canStaffProxySubmit"
+              class="card"
+              style="position: absolute; top: 32px; right: 0; z-index: 1000; width: 260px; max-height: 340px; overflow: hidden; padding: 8px; border: 1px solid var(--border-color); box-shadow: var(--shadow-premium); background: white; display: flex; flex-direction: column; gap: 6px;"
+              @click.stop
+            >
+              <input v-model="proxyTargetQuery" type="search" class="form-input" placeholder="搜尋姓名／科目" style="width:100%;padding:6px 8px;font-size:0.78rem;" @click.stop>
+              <ul style="list-style:none;margin:0;padding:0;overflow-y:auto;max-height:260px;">
+                <li
+                  v-if="isProxySubmitActive"
+                  style="padding: 8px; cursor: pointer; border-radius: 6px; font-size: 0.85rem; font-weight: 700; color: var(--color-primary); text-align: center; border-bottom: 1px solid var(--border-color); margin-bottom: 4px;"
+                  class="recommend-item"
+                  @click="clearProxyTarget()"
+                >⬅ 改回自己的課</li>
+                <li
+                  v-for="t in filteredProxyTeachers"
+                  :key="'proxy-' + t.email"
+                  style="padding: 8px; cursor: pointer; border-radius: 6px; font-size: 0.85rem; display: flex; justify-content: space-between; align-items: center;"
+                  class="recommend-item"
+                  @click="setProxyTarget(t.email)"
+                >
+                  <span>{{ t.name }}</span>
+                  <span class="badge tag-blue" style="font-size: 0.7rem; padding: 2px 4px;">{{ t.subject || '教師' }}</span>
+                </li>
+                <li v-if="!filteredProxyTeachers.length" style="padding:12px;text-align:center;color:var(--text-muted);font-size:0.8rem;">無符合教師</li>
+              </ul>
+            </div>
+          </div>
+
           <!-- 模擬切換身份 (僅限管理員；開下拉才掛 DOM) -->
           <div v-if="isAdmin || isSimulating" style="position: relative;">
             <button type="button" class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.8rem;" @click.stop="showDevDropdown = !showDevDropdown">
@@ -159,7 +201,7 @@
                 </li>
                 <li v-for="t in filteredDevTeachers" :key="t.email" style="padding: 8px; cursor: pointer; border-radius: 6px; font-size: 0.85rem; display: flex; justify-content: space-between; align-items: center;" @click="devSwitchUser(t.email); showDevDropdown = false; devTeacherQuery = '';" class="recommend-item">
                   <span>{{ t.name }}</span>
-                  <span class="badge" style="font-size: 0.7rem; padding: 2px 4px;" :class="t.role === 'admin' ? 'tag-red' : 'tag-blue'">{{ t.role === 'admin' ? '行政' : '教師' }}</span>
+                  <span class="badge" style="font-size: 0.7rem; padding: 2px 4px;" :class="t.role === 'admin' ? 'tag-red' : (t.role === 'staff' ? 'tag-amber' : 'tag-blue')">{{ t.role === 'admin' ? '教學組' : (t.role === 'staff' ? '行政' : '教師') }}</span>
                 </li>
                 <li v-if="!filteredDevTeachers.length" style="padding:12px;text-align:center;color:var(--text-muted);font-size:0.8rem;">無符合教師</li>
               </ul>
@@ -465,8 +507,19 @@
                 </div>
               </div>
               
-              <!-- 管理員：搜尋與範圍（無標籤文字，僅控制項） -->
-              <div class="toolbar" v-if="isAdmin" data-tour="timetable-toolbar" style="align-items:center;gap:8px;margin-bottom:8px;">
+              <!-- 行政代申請提示（僅未授權／進行中顯示） -->
+              <div v-if="isStaff && (!canStaffProxySubmit || isProxySubmitActive)" class="batch-hint-bar" style="margin-bottom:8px;">
+                <template v-if="!canStaffProxySubmit">
+                  行政可瀏覽全校課表。代他人申請需教學組在「後台 → 系統設定」勾選授權<strong>您這位行政</strong>（不是一次開全部行政）。
+                </template>
+                <template v-else>
+                  目前代申請：<strong>{{ proxyTargetName }}</strong>。送出後跳過受邀確認，直接送教學組核准。
+                  <button type="button" class="btn btn-secondary btn-xs-tight" style="margin-left:8px;" @click="clearProxyTarget">改回自己</button>
+                </template>
+              </div>
+
+              <!-- 教學組／行政：搜尋與範圍 -->
+              <div class="toolbar" v-if="canViewAllTimetables" data-tour="timetable-toolbar" style="align-items:center;gap:8px;margin-bottom:8px;">
                 <div class="search-input-wrap" style="flex:2;min-width:140px;">
                   <input
                     type="text"
@@ -545,7 +598,7 @@
                     <h4 class="tt-teacher-head">
                       <span aria-hidden="true">👤</span>
                       <span class="tt-teacher-name">{{ teacher.name }} 老師</span>
-                      <span class="badge badge-subj" :class="teacher.role === 'admin' ? 'tag-red' : 'tag-blue'">{{ teacher.subject }}科</span>
+                      <span class="badge badge-subj" :class="teacher.role === 'admin' ? 'tag-red' : (teacher.role === 'staff' ? 'tag-amber' : 'tag-blue')">{{ teacher.subject }}科</span>
                     </h4>
                     
                     <div class="timetable-grid" :class="{ 'edit-mode': isScheduleEditMode }">
@@ -925,7 +978,12 @@
                         >{{ rf.label }}</span>
                       </div>
                     </td>
-                    <td>{{ req.requesterName }}</td>
+                    <td>
+                      {{ req.requesterName }}
+                      <div v-if="req.isProxySubmit || (req.note && req.note.indexOf('[行政代申請') >= 0)" class="req-note-cell no-checkbox" style="color:#b45309;">
+                        代申請{{ req.proxyByName ? '：' + req.proxyByName : '' }}
+                      </div>
+                    </td>
                     <td>{{ req.targetTeacherName }}</td>
                     <td>
                       <span class="hist-slot-inline">
@@ -1118,7 +1176,18 @@
                         <span v-for="tag in getRequestTypeTags(req)" :key="tag.key" class="risk-tag badge-micro" :class="'risk-'+tag.key">{{ tag.label }}</span>
                       </div>
                     </td>
-                    <td>{{ req.requesterName }} <span class="text-xs-muted">(您)</span></td>
+                    <td>
+                      {{ req.requesterName }}
+                      <span
+                        v-if="!(req.isProxySubmit || req.proxyByEmail || (req.note && req.note.indexOf('[行政代申請') >= 0))"
+                        class="text-xs-muted"
+                      >(您)</span>
+                      <div
+                        v-if="req.isProxySubmit || req.proxyByEmail || (req.note && req.note.indexOf('[行政代申請') >= 0)"
+                        class="req-note-cell no-checkbox"
+                        style="color:#b45309;"
+                      >代申請{{ req.proxyByName ? '：' + req.proxyByName : (user && user.displayName ? '：' + user.displayName : '') }}</div>
+                    </td>
                     <td>{{ req.targetTeacherName }}</td>
                     <td>
                       <span class="hist-slot-inline">
@@ -1584,8 +1653,8 @@
                       >{{ t.mutualQuota || 0 }}</button>
                     </td>
                     <td>
-                      <span class="status-badge" :class="t.role === 'admin' ? 'status-pending-teacher' : 'status-approved'" style="font-size: 0.75rem; padding: 2px 6px;">
-                        {{ t.role === 'admin' ? '主管/管理員' : '一般教師' }}
+                      <span class="status-badge" :class="t.role === 'admin' ? 'status-pending-teacher' : (t.role === 'staff' ? 'status-pending-admin' : 'status-approved')" style="font-size: 0.75rem; padding: 2px 6px;">
+                        {{ t.role === 'admin' ? '教學組' : (t.role === 'staff' ? '行政' : '一般教師') }}
                       </span>
                     </td>
                     <td>
@@ -1683,6 +1752,63 @@
 
           <!-- 子分頁 4：系統設定（空堂事件 → 學期 → 連線唯讀置底） -->
           <div v-if="adminSubTab === 'settings'">
+            <!-- 行政代申請：指定行政授權（非一鍵全開） -->
+            <div class="card mb-16">
+              <div class="card-title">
+                <span>📋 行政代申請</span>
+                <span
+                  class="status-badge"
+                  :class="proxySubmitEnabled ? 'status-approved' : 'status-pending-teacher'"
+                  style="font-size:0.75rem;padding:2px 8px;"
+                >{{ proxySubmitEnabled ? ('已授權 ' + (proxySubmitEmails || []).length + ' 位') : '未授權任何人' }}</span>
+              </div>
+              <p style="font-size:0.8rem;color:var(--text-secondary);line-height:1.55;margin:0 0 12px 0;">
+                只開放給<strong>您勾選的行政</strong>（不是一次開全部行政）。
+                被授權者可代全校教師送調代課，送出後<strong>跳過受邀確認、直接送教學組核准</strong>，行政<strong>不可</strong>直接出單。
+                未勾選的行政仍可看全校課表，但只能申請自己的課。
+              </p>
+              <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px;">
+                <input
+                  v-model="proxyGrantQuery"
+                  type="search"
+                  class="form-input"
+                  placeholder="搜尋行政姓名…"
+                  style="max-width:220px;padding:6px 10px;font-size:0.85rem;"
+                >
+                <button
+                  v-if="(proxySubmitEmails || []).length"
+                  type="button"
+                  class="btn btn-secondary btn-sm"
+                  @click="clearAllProxySubmitEmails"
+                >清空全部授權</button>
+                <span v-if="proxySubmitEnabledBy" style="font-size:0.75rem;color:var(--text-muted);">
+                  最近由 {{ proxySubmitEnabledBy }} 更新
+                  <template v-if="proxySubmitEnabledAt">（{{ String(proxySubmitEnabledAt).slice(0, 16).replace('T', ' ') }}）</template>
+                </span>
+              </div>
+              <div v-if="!proxyGrantCandidateTeachers.length" style="font-size:0.85rem;color:var(--text-muted);padding:8px 0;">
+                尚無「行政」角色同仁。請先到「教師管理」把人選角色改成<strong>行政</strong>，再回來勾選授權。
+              </div>
+              <ul v-else style="list-style:none;margin:0;padding:0;max-height:240px;overflow-y:auto;border:1px solid var(--border-color);border-radius:8px;">
+                <li
+                  v-for="t in proxyGrantCandidateTeachers"
+                  :key="'grant-' + t.email"
+                  style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border-color);"
+                >
+                  <label style="display:flex;align-items:center;gap:10px;cursor:pointer;width:100%;margin:0;font-size:0.88rem;">
+                    <input
+                      type="checkbox"
+                      :checked="isProxySubmitEmailGranted(t.email)"
+                      @change="toggleProxySubmitEmail(t.email)"
+                    >
+                    <span style="font-weight:600;">{{ t.name }}</span>
+                    <span style="color:var(--text-muted);font-size:0.78rem;">{{ t.email }}</span>
+                    <span class="badge-staff" style="margin-left:auto;">行政</span>
+                  </label>
+                </li>
+              </ul>
+            </div>
+
             <!-- 空堂事件（畢旅／畢業）置頂 -->
             <div class="card">
               <div class="card-title">
@@ -2121,17 +2247,28 @@
               <template v-else>
                 ⚠️ 衝堂警告：{{ getTeacherNameByEmail(pendingRequestData.subTeacher) }} 老師在此節次已有課（紅色格），無法正常代課！
               </template>
-              <span v-if="isAdmin" style="font-weight:400; color:#b91c1c;">（管理員可強制送出）</span>
+              <span v-if="isAdmin || (isProxySubmitActive && pendingRequestData.leaveTeacher && user && String(pendingRequestData.leaveTeacher).toLowerCase() !== String(user.email || '').toLowerCase())" style="font-weight:400; color:#b91c1c;">（可強制送出）</span>
             </div>
 
-            <!-- 管理員直接核准（結構 class，桌機／手機皆可；手機樣式在 mobile.css） -->
-            <div v-if="isAdmin" class="direct-approve-box">
-              <label class="direct-approve-main">
+            <!-- 行政代申請提示／教學組直接核准 -->
+            <div
+              v-if="isProxySubmitActive && pendingRequestData.leaveTeacher && user && String(pendingRequestData.leaveTeacher).toLowerCase() !== String(user.email || '').toLowerCase()"
+              class="direct-approve-box"
+              style="border-color:#f59e0b;background:#fffbeb;"
+            >
+              <div class="direct-approve-title" style="color:#b45309;">📋 行政代申請</div>
+              <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:4px;">
+                請假老師：{{ getTeacherNameByEmail(pendingRequestData.leaveTeacher) || pendingRequestData.leaveTeacher }}；
+                送出後<strong>跳過受邀確認</strong>，直接進入「待教學組核准」。
+              </div>
+            </div>
+            <div v-if="isAdmin && !(isProxySubmitActive && pendingRequestData.leaveTeacher && user && String(pendingRequestData.leaveTeacher).toLowerCase() !== String(user.email || '').toLowerCase())" class="direct-approve-box">
+              <label class="direct-approve-row">
                 <input type="checkbox" class="direct-approve-check" v-model="directApproveMode">
-                <div class="direct-approve-text">
-                  <div class="direct-approve-title">⚡ 行政直接核准</div>
+                <span>
+                  <div class="direct-approve-title">⚡ 教學組直接核准</div>
                   <div class="direct-approve-desc">勾選後送出即生效並更新課表；未勾選則需對方同意後再送行政審核。</div>
-                </div>
+                </span>
               </label>
               <label v-if="directApproveMode" class="direct-approve-sub">
                 <input type="checkbox" class="direct-approve-check-sm" v-model="directApproveSkipNotify">
@@ -2382,8 +2519,9 @@
               {{ successModalMessage }}
             </p>
 
-            <!-- 固定流程說明：讓老師知道課表何時會變 -->
+            <!-- 固定流程說明：依送出類型顯示不同後續 -->
             <div class="success-flow" data-tour="success-flow">
+              <!-- 教學組直接核准 -->
               <template v-if="successFlowMode === 'direct'">
                 <div class="success-flow-title">目前狀態</div>
                 <ol class="success-flow-steps">
@@ -2392,11 +2530,22 @@
                 </ol>
                 <p class="success-flow-note">若需通知相關教師，可使用下方 LINE 或之後到歷史紀錄列印通知單。</p>
               </template>
+              <!-- 行政代申請：跳過受邀確認，直接等教學組 -->
+              <template v-else-if="successFlowMode === 'proxy'">
+                <div class="success-flow-title">接下來怎麼辦</div>
+                <ol class="success-flow-steps">
+                  <li class="is-done"><span class="sf-n">1</span><span class="sf-t">已代送申請（跳過受邀確認）</span></li>
+                  <li class="is-current"><span class="sf-n">2</span><span class="sf-t">等教學組在「待辦」核准或退回</span></li>
+                  <li><span class="sf-n">3</span><span class="sf-t">教學組出單後，課表才正式變更</span></li>
+                </ol>
+                <p class="success-flow-note">不需等代課／調課對方同意。教學組退回 → 不生效。進度可在「待辦／歷史」查看。</p>
+              </template>
+              <!-- 一般教師送出 -->
               <template v-else>
                 <div class="success-flow-title">接下來怎麼辦</div>
                 <ol class="success-flow-steps">
                   <li class="is-done"><span class="sf-n">1</span><span class="sf-t">已送出申請（可用 LINE 再通知對方）</span></li>
-                  <li><span class="sf-n">2</span><span class="sf-t">等對方在「待辦」同意或拒絕</span></li>
+                  <li class="is-current"><span class="sf-n">2</span><span class="sf-t">等對方在「待辦」同意或拒絕</span></li>
                   <li><span class="sf-n">3</span><span class="sf-t">等教學組出單後，課表才正式變更</span></li>
                 </ol>
                 <p class="success-flow-note">對方拒絕、行政退回或您撤回 → 不生效。進度可在「待辦／歷史」查看。</p>
@@ -2635,7 +2784,8 @@
               <label class="form-label">系統角色</label>
               <select class="form-select" v-model="teacherForm.role">
                 <option value="teacher">一般教師</option>
-                <option value="admin">教學組 (Admin)</option>
+                <option value="staff">行政</option>
+                <option value="admin">教學組</option>
               </select>
             </div>
             <div class="form-group">

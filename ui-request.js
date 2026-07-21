@@ -7,6 +7,45 @@
  * 單節申請：驗證＋組裝 payload
  */
 window.UiSubmitHelpers = (function () {
+  function isProxySubmitActive(deps) {
+    if (deps.isProxySubmitActive && typeof deps.isProxySubmitActive === 'function') {
+      return !!deps.isProxySubmitActive();
+    }
+    return !!(deps.isProxySubmitActive && deps.isProxySubmitActive.value);
+  }
+
+  /** 依請假人判斷是否為行政代申請（不依賴右上是否已選好） */
+  function resolveUserEmail(deps) {
+    if (deps.getProxyActor) {
+      var a0 = deps.getProxyActor() || {};
+      if (a0.email) return String(a0.email).trim().toLowerCase();
+    }
+    if (typeof deps.userEmail === 'function') {
+      return String(deps.userEmail() || '').trim().toLowerCase();
+    }
+    if (deps.userEmail && deps.userEmail.value != null) {
+      return String(deps.userEmail.value).trim().toLowerCase();
+    }
+    if (deps.userEmail) return String(deps.userEmail).trim().toLowerCase();
+    return '';
+  }
+
+  function shouldProxySubmitForLeave(deps, leaveEmail) {
+    if (deps.shouldProxySubmitForLeave && typeof deps.shouldProxySubmitForLeave === 'function') {
+      return !!deps.shouldProxySubmitForLeave(leaveEmail);
+    }
+    var can = false;
+    if (deps.canStaffProxySubmit) {
+      can = typeof deps.canStaffProxySubmit === 'function'
+        ? !!deps.canStaffProxySubmit()
+        : !!deps.canStaffProxySubmit.value;
+    }
+    if (!can) return false;
+    var me = resolveUserEmail(deps);
+    var leave = String(leaveEmail || '').trim().toLowerCase();
+    return !!(me && leave && leave !== me);
+  }
+
   async function validateSubmitRequest(deps) {
     var pending = deps.pendingRequestData.value;
     var showToast = deps.showToast;
@@ -15,6 +54,12 @@ window.UiSubmitHelpers = (function () {
     var getTeacherNameByEmail = deps.getTeacherNameByEmail;
     var hasSubTeacherConflict = deps.hasSubTeacherConflict;
     var assertQuotaDeductAllowed = deps.assertQuotaDeductAllowed;
+    var canForceConflict = !!(isAdmin && isAdmin.value) || isProxySubmitActive(deps);
+
+    if (deps.assertCanSubmitAsLeaveTeacher) {
+      var leaveOk = deps.assertCanSubmitAsLeaveTeacher(pending.leaveTeacher);
+      if (leaveOk === false) return false;
+    }
 
     if (!pending.reason) {
       showToast('請選擇請假原因/假別！', 'info');
@@ -23,9 +68,9 @@ window.UiSubmitHelpers = (function () {
     if (hasSubTeacherConflict.value) {
       var subName = pending.subTeacher
         ? getTeacherNameByEmail(pending.subTeacher) : '該教師';
-      if (isAdmin.value) {
+      if (canForceConflict) {
         var force = await showConfirm(
-          '⚠️ 衝堂警告：' + subName + ' 在請假節次已有課！\n\n您是管理員，可以強制安排。確定要繼續嗎？'
+          '⚠️ 衝堂警告：' + subName + ' 在請假節次已有課！\n\n您可強制安排。確定要繼續嗎？'
         );
         if (!force) return false;
       } else {
@@ -99,6 +144,33 @@ window.UiSubmitHelpers = (function () {
     var defaultSubFeeForReason = deps.defaultSubFeeForReason;
     var activeCell = deps.activeCell;
     var DAC = deps.DAC || function () { return window.DomainActivityCover; };
+    var leaveEm0 = String(pending.leaveTeacher || '').trim().toLowerCase();
+    // 優先用「請假人≠自己＋已授權行政」判斷，避免只靠右上代理對象漏判
+    var proxyActive = shouldProxySubmitForLeave(deps, leaveEm0) || isProxySubmitActive(deps);
+    var proxyByEmail = '';
+    var proxyByName = '';
+    if (proxyActive) {
+      if (deps.getProxyActor) {
+        var actor = deps.getProxyActor() || {};
+        proxyByEmail = String(actor.email || '').trim().toLowerCase();
+        proxyByName = String(actor.name || '').trim();
+      }
+      if (!proxyByEmail) proxyByEmail = resolveUserEmail(deps);
+      if (!proxyByName && proxyByEmail) {
+        proxyByName = getTeacherNameByEmail(proxyByEmail) || proxyByEmail;
+      }
+      // 實際是自己的課 → 不當代申請
+      if (proxyByEmail && leaveEm0 && leaveEm0 === proxyByEmail) {
+        proxyActive = false;
+        proxyByEmail = '';
+        proxyByName = '';
+      }
+    }
+    // 行政代申請：跳過受邀確認，直接送教學組；不可直接核准
+    var doDirectApprove = !!(isAdmin && isAdmin.value && directApproveMode && directApproveMode.value && !proxyActive);
+    var initialStatus = doDirectApprove
+      ? 'approved'
+      : (proxyActive ? 'pending_admin' : 'pending_teacher');
 
     var isExchange = pending.mode === 'exchange';
     var finalFeeType = '無';
@@ -123,8 +195,12 @@ window.UiSubmitHelpers = (function () {
 
     var baseNote = String(pending.note || '').trim();
     var noteOut = baseNote;
-    if (isAdmin.value && directApproveMode.value) {
+    if (doDirectApprove) {
       noteOut = baseNote ? ('[直接核准] ' + baseNote) : '[直接核准]';
+    } else if (proxyActive) {
+      var leaveNm = getTeacherNameByEmail(pending.leaveTeacher) || pending.leaveTeacher;
+      var tag = '[行政代申請：' + (proxyByName || proxyByEmail) + ' 代 ' + leaveNm + ']';
+      noteOut = baseNote ? (tag + ' ' + baseNote) : tag;
     }
 
     var newRequest = {
@@ -154,9 +230,16 @@ window.UiSubmitHelpers = (function () {
       "請假事由": pending.reason,
       "經費來源": finalFeeType || '無',
       "備註": noteOut,
-      "狀態": (isAdmin.value && directApproveMode.value) ? 'approved' : 'pending_teacher',
-      directApprove: !!(isAdmin.value && directApproveMode.value)
+      "狀態": initialStatus,
+      directApprove: doDirectApprove,
+      isProxySubmit: !!proxyActive,
+      proxyByEmail: proxyByEmail || '',
+      proxyByName: proxyByName || ''
     };
+    if (proxyActive && proxyByEmail) {
+      newRequest["代申請人Email"] = proxyByEmail;
+      newRequest["代申請人姓名"] = proxyByName || getTeacherNameByEmail(proxyByEmail) || '';
+    }
 
     if (isExchange) {
       newRequest["對調目標日期"] = pending.dateB;
@@ -172,7 +255,8 @@ window.UiSubmitHelpers = (function () {
 
     var payload = {
       request: newRequest,
-      directApprove: !!(isAdmin.value && directApproveMode.value)
+      directApprove: doDirectApprove,
+      proxySubmit: !!proxyActive
     };
     return { payload: payload, newRequest: newRequest, isExchange: isExchange, finalFeeType: finalFeeType };
   }
@@ -704,9 +788,37 @@ window.UiSubmitHelpers = (function () {
       var payload = built.payload;
       var newRequest = built.newRequest;
       var isExchange = built.isExchange;
+      // 送出前再強制一次：已授權行政代別人 → pending_admin + proxySubmit
+      if (shouldProxySubmitForLeave(deps, newRequest['申請人Email'] || pendingRequestData.value.leaveTeacher)) {
+        newRequest['狀態'] = 'pending_admin';
+        newRequest.isProxySubmit = true;
+        payload.proxySubmit = true;
+        payload.directApprove = false;
+        newRequest.directApprove = false;
+        var actor2 = deps.getProxyActor ? (deps.getProxyActor() || {}) : {};
+        var actorEm2 = String(actor2.email || resolveUserEmail(deps) || '').trim().toLowerCase();
+        var nameFn = deps.getTeacherNameByEmail || function (e) { return e; };
+        if (actorEm2) {
+          newRequest['代申請人Email'] = actorEm2;
+          newRequest['代申請人姓名'] = actor2.name || nameFn(actorEm2) || actorEm2;
+          newRequest.proxyByEmail = actorEm2;
+          newRequest.proxyByName = newRequest['代申請人姓名'];
+        }
+        var note2 = String(newRequest['備註'] || '').trim();
+        if (note2.indexOf('[行政代申請') < 0) {
+          var leaveNm2 = newRequest['申請人姓名'] || newRequest['申請人Email'];
+          var tag2 = '[行政代申請：' + (newRequest['代申請人姓名'] || actorEm2) + ' 代 ' + leaveNm2 + ']';
+          newRequest['備註'] = note2 ? (tag2 + ' ' + note2) : tag2;
+        }
+        payload.request = newRequest;
+      }
+      // 行政代申請：不寄受邀邀請信（受邀者不需同意；教學組核准時再寄通知）
+      var isProxyPayload = !!(payload.proxySubmit || newRequest.isProxySubmit
+        || newRequest['狀態'] === 'pending_admin');
       var skipNotify = !!(
         (isMutualCover.value && mutualSkipNotify.value)
         || (isAdmin.value && directApproveMode.value && directApproveSkipNotify.value)
+        || isProxyPayload
       );
       payload.skipNotify = skipNotify;
       await callGasApi('submitRequest', payload);
@@ -751,6 +863,17 @@ window.UiSubmitHelpers = (function () {
         lineCopyText.value = buildLineInviteText(linePayload);
         hasLineTemplate.value = true;
         if (deps.successFlowMode) deps.successFlowMode.value = 'normal';
+      } else if (newRequest['狀態'] === 'pending_admin') {
+        var proxyTip = newRequest.isProxySubmit
+          ? '（行政代申請，已跳過受邀確認）'
+          : '';
+        successModalTitle.value = '🎉 已送交教學組';
+        successModalMessage.value = '申請單（' + serial + '）' + proxyTip
+          + '已送交教學組待核准' + mutualTip
+          + '。不會寄信給受邀者；教學組核准後才會通知。';
+        lineCopyText.value = '';
+        hasLineTemplate.value = false;
+        if (deps.successFlowMode) deps.successFlowMode.value = 'proxy';
       } else {
         successModalTitle.value = '🎉 申請已直接核准';
         successModalMessage.value = '申請單（' + serial + '）已直接審核完成' + mutualTip

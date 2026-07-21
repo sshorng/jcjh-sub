@@ -1,0 +1,2 @@
+# 後端 GAS 必須進版控，禁止被同步工具當前端產物刪除
+code.gs text eol=lf

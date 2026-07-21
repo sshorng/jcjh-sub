@@ -151,7 +151,7 @@
     gap: 4px;
   }
 
-  .badge-admin, .badge-teacher {
+  .badge-admin, .badge-staff, .badge-teacher, .badge-proxy {
     font-size: 0.65rem;
     padding: 2px 4px;
   }
