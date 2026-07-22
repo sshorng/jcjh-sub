@@ -150,10 +150,15 @@ body {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
 }
 
-.btn-google:hover {
+.btn-google:hover:not(:disabled) {
   transform: translateY(-2px);
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.06);
   background: #f8fafc;
+}
+.btn-google:disabled {
+  opacity: 0.7;
+  cursor: wait;
+  transform: none;
 }
 
 .btn-google img {
