@@ -3096,6 +3096,7 @@
                   >
                     <span class="req-progress-dot"></span>
                     <span class="req-progress-label">{{ st.label }}</span>
+                    <span v-if="st.done && st.at" class="req-progress-time">{{ st.at }}</span>
                     <span v-if="si < getRequestProgressSteps(detailRequest).steps.length - 1" class="req-progress-line"></span>
                   </div>
                 </div>

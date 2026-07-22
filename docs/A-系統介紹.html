@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>建成國中線上調代課系統｜完整系統介紹</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;800;900&display=swap" rel="stylesheet">
+<style>
+:root {
+  --blue: #1e5a8a;
+  --blue-deep: #0f3a5c;
+  --blue-soft: #e8f2fa;
+  --gold: #e8b84a;
+  --gold-soft: #fff8e6;
+  --ink: #1a1a2e;
+  --mute: #5a6070;
+  --line: #d8e2ec;
+  --paper: #fff;
+  --green: #2a7a4c;
+  --red: #c0392b;
+  --sans: "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: var(--sans);
+  background: #d0dce8;
+  color: var(--ink);
+  line-height: 1.75;
+  letter-spacing: 0.03em;
+}
+section { width: 794px; margin: 24px auto; box-shadow: 0 8px 28px rgba(15,58,92,.14); }
+.cover {
+  background: var(--blue-deep);
+  color: #fff;
+  padding: 64px 56px 48px;
+  min-height: 1123px;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+}
+.cover::before {
+  content: "";
+  position: absolute;
+  right: -80px; top: -80px;
+  width: 320px; height: 320px;
+  border-radius: 50%;
+  background: rgba(232,184,74,.12);
+}
+.cover::after {
+  content: "";
+  position: absolute;
+  left: -60px; bottom: 120px;
+  width: 220px; height: 220px;
+  border-radius: 50%;
+  background: rgba(255,255,255,.04);
+}
+.series {
+  font-size: 12px;
+  letter-spacing: .4em;
+  color: var(--gold);
+  font-weight: 800;
+  position: relative; z-index: 1;
+}
+.cover h1 {
+  font-size: 44px;
+  font-weight: 900;
+  line-height: 1.2;
+  margin: 22px 0 0;
+  position: relative; z-index: 1;
+}
+.cover .sub {
+  font-size: 18px;
+  color: rgba(255,255,255,.82);
+  margin-top: 16px;
+  max-width: 560px;
+  position: relative; z-index: 1;
+}
+.rule {
+  width: 64px; height: 5px;
+  background: var(--gold);
+  margin-top: 28px;
+  border-radius: 3px;
+  position: relative; z-index: 1;
+}
+.toc {
+  margin-top: 36px;
+  border: 1px solid rgba(255,255,255,.22);
+  border-radius: 12px;
+  padding: 20px 24px;
+  background: rgba(255,255,255,.07);
+  position: relative; z-index: 1;
+}
+.toc-title {
+  font-size: 11px;
+  letter-spacing: .35em;
+  color: var(--gold);
+  font-weight: 800;
+  margin-bottom: 12px;
+}
+.toc ul { list-style: none; margin: 0; padding: 0; }
+.toc li {
+  font-size: 14px;
+  color: rgba(255,255,255,.88);
+  padding: 7px 0;
+  border-bottom: 1px solid rgba(255,255,255,.1);
+  display: flex;
+  gap: 12px;
+}
+.toc li:last-child { border-bottom: 0; }
+.toc .n { color: var(--gold); font-weight: 800; width: 36px; flex-shrink: 0; }
+.author {
+  margin-top: auto;
+  font-size: 13px;
+  color: rgba(255,255,255,.65);
+  position: relative; z-index: 1;
+  line-height: 1.8;
+}
+.author b { color: #fff; }
+.page {
+  background: var(--paper);
+  width: 794px;
+  height: 1123px;
+  padding: 40px 48px 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+.page-inner { flex: 1; min-height: 0; overflow: hidden; }
+.kicker {
+  font-size: 11px;
+  letter-spacing: .4em;
+  color: var(--blue);
+  font-weight: 800;
+}
+h2 {
+  font-size: 28px;
+  font-weight: 900;
+  margin: 8px 0 0;
+  line-height: 1.3;
+}
+.h-rule {
+  width: 52px; height: 4px;
+  background: var(--gold);
+  margin: 12px 0 18px;
+  border-radius: 2px;
+}
+h3 {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--blue-deep);
+  margin: 18px 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+h3 .chip {
+  font-size: 11px;
+  background: var(--gold);
+  color: var(--blue-deep);
+  padding: 3px 9px;
+  border-radius: 4px;
+  font-weight: 900;
+}
+p { margin: 8px 0; font-size: 13.5px; }
+ul { margin: 8px 0; padding-left: 0; }
+li {
+  list-style: none;
+  position: relative;
+  padding-left: 18px;
+  margin: 5px 0;
+  font-size: 13.5px;
+}
+li::before {
+  content: "";
+  position: absolute;
+  left: 2px; top: 9px;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--gold);
+  border: 2px solid var(--blue);
+}
+strong { font-weight: 800; color: var(--blue-deep); }
+.tbl {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 10px 0;
+  font-size: 12.5px;
+}
+.tbl th {
+  background: var(--blue-deep);
+  color: #fff;
+  text-align: left;
+  padding: 8px 10px;
+  font-weight: 700;
+}
+.tbl td {
+  border: 1px solid var(--line);
+  padding: 7px 10px;
+  vertical-align: top;
+}
+.tbl tr:nth-child(even) td { background: var(--blue-soft); }
+.callout {
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin: 12px 0;
+  border-left: 5px solid;
+  font-size: 13px;
+}
+.callout.blue { background: var(--blue-soft); border-color: var(--blue); }
+.callout.gold { background: var(--gold-soft); border-color: var(--gold); }
+.callout.green { background: #eef8f1; border-color: var(--green); }
+.callout .tag {
+  display: block;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .1em;
+  margin-bottom: 4px;
+}
+.callout.blue .tag { color: var(--blue); }
+.callout.gold .tag { color: #9a7400; }
+.callout.green .tag { color: var(--green); }
+/* 流程圖 */
+.flow {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  margin: 14px 0;
+  flex-wrap: wrap;
+}
+.flow-step {
+  flex: 1;
+  min-width: 100px;
+  background: var(--blue-soft);
+  border: 1.5px solid var(--blue);
+  border-radius: 10px;
+  padding: 12px 10px;
+  text-align: center;
+  position: relative;
+}
+.flow-step .n {
+  width: 26px; height: 26px;
+  background: var(--blue);
+  color: #fff;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 900;
+  margin-bottom: 6px;
+}
+.flow-step .t { font-size: 13px; font-weight: 800; color: var(--blue-deep); }
+.flow-step .d { font-size: 11.5px; color: var(--mute); margin-top: 4px; line-height: 1.45; }
+.flow-arrow {
+  display: flex;
+  align-items: center;
+  color: var(--blue);
+  font-size: 18px;
+  font-weight: 900;
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+/* 角色卡 */
+.role-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+  margin: 12px 0;
+}
+.role-card {
+  border: 1.5px solid var(--line);
+  border-radius: 12px;
+  padding: 14px;
+  background: #fafcfe;
+}
+.role-card .icon {
+  width: 40px; height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  margin-bottom: 8px;
+}
+.role-card.admin .icon { background: #ffe8c8; }
+.role-card.staff .icon { background: #dceeff; }
+.role-card.teacher .icon { background: #e0f5e8; }
+.role-card h4 {
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 900;
+  color: var(--blue-deep);
+}
+.role-card p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--mute);
+  line-height: 1.55;
+}
+/* 畫面示意 mock */
+.mock {
+  border: 1.5px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  margin: 12px 0;
+  background: #f4f7fa;
+}
+.mock-bar {
+  background: var(--blue-deep);
+  color: #fff;
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+.mock-bar .tab {
+  opacity: .65;
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+.mock-bar .tab.on {
+  opacity: 1;
+  background: rgba(255,255,255,.18);
+}
+.mock-body { padding: 12px 14px; }
+.mock-grid {
+  display: grid;
+  grid-template-columns: 70px repeat(5, 1fr);
+  gap: 4px;
+  font-size: 10.5px;
+}
+.mock-cell {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 6px 4px;
+  text-align: center;
+  min-height: 36px;
+}
+.mock-cell.head {
+  background: var(--blue-soft);
+  font-weight: 800;
+  color: var(--blue-deep);
+}
+.mock-cell.lesson {
+  background: #e8f5e9;
+  border-color: #a5d6a7;
+  font-weight: 700;
+  color: #1b5e20;
+}
+.mock-cell.active {
+  background: var(--gold-soft);
+  border-color: var(--gold);
+  box-shadow: 0 0 0 2px rgba(232,184,74,.35);
+  font-weight: 800;
+}
+.mock-caption {
+  font-size: 11.5px;
+  color: var(--mute);
+  margin-top: 8px;
+  text-align: center;
+}
+/* 狀態徽章 */
+.badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 99px;
+  margin: 1px 2px;
+}
+.badge.y { background: #fff3cd; color: #856404; }
+.badge.b { background: #cce5ff; color: #004085; }
+.badge.g { background: #d4edda; color: #155724; }
+.badge.r { background: #f8d7da; color: #721c24; }
+.badge.gr { background: #e2e3e5; color: #383d41; }
+.foot {
+  margin-top: auto;
+  padding: 10px 0 14px;
+  border-top: 2px solid var(--gold);
+  font-size: 10.5px;
+  color: var(--mute);
+  display: flex;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin: 10px 0;
+}
+.box {
+  border: 1.5px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: #fafcfe;
+}
+.box h4 {
+  margin: 0 0 8px;
+  font-size: 13.5px;
+  font-weight: 900;
+  color: var(--blue-deep);
+}
+.box p, .box li { font-size: 12.5px; margin: 4px 0; }
+.step-row {
+  display: flex;
+  gap: 10px;
+  margin: 8px 0;
+  align-items: flex-start;
+}
+.step-n {
+  flex-shrink: 0;
+  width: 24px; height: 24px;
+  background: var(--blue);
+  color: #fff;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 2px;
+}
+.step-t { font-size: 13.5px; line-height: 1.6; flex: 1; }
+@media print {
+  *, *::before, *::after { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  @page { margin: 0; size: A4; }
+  body { background: #fff !important; }
+  section { margin: 0; box-shadow: none; page-break-after: always; }
+  .page { border: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- P00 封面 -->
+<section class="cover">
+  <div class="series">建成國中　校務數位化</div>
+  <h1>線上調代課系統<br>完整系統介紹</h1>
+  <p class="sub">從請假、智慧媒合、簽核到鐘點結算，一份文件看懂全校怎麼用。</p>
+  <div class="rule"></div>
+  <div class="toc">
+    <div class="toc-title">本手冊目錄</div>
+    <ul>
+      <li><span class="n">01</span>為什麼需要這套系統</li>
+      <li><span class="n">02</span>三角色與權限總覽</li>
+      <li><span class="n">03</span>主畫面導覽（附介面示意）</li>
+      <li><span class="n">04</span>核心流程：申請到生效</li>
+      <li><span class="n">05</span>智慧媒合與狀態說明</li>
+      <li><span class="n">06</span>進階功能：批次、活動互代、空堂事件</li>
+      <li><span class="n">07</span>鐘點結算與經費規則</li>
+      <li><span class="n">08</span>後台管理與上線建議</li>
+    </ul>
+  </div>
+  <div class="author">
+    <b>建成國中線上調代課系統</b><br>
+    使用手冊系列　A｜系統介紹<br>
+    版本 2026　校內推廣用
+  </div>
+</section>
+
+<!-- P01 為什麼需要 -->
+<section class="page">
+  <div class="page-inner">
+    <div class="kicker">CHAPTER 01</div>
+    <h2>為什麼需要這套系統</h2>
+    <div class="h-rule"></div>
+    <p>過去調代課多靠 LINE 群、紙本、口頭拜託。資訊分散、找不到人、課表改了沒同步、月底鐘點對不上，都是常見痛點。</p>
+    <div class="two-col">
+      <div class="box">
+        <h4>❌ 舊做法的問題</h4>
+        <ul>
+          <li>私訊找人，回覆慢、漏訊息</li>
+          <li>課表、申請、同意各處分開</li>
+          <li>衝堂、連堂靠人工記</li>
+          <li>月底結算靠 Excel 重算</li>
+          <li>行政難掌握全校進度</li>
+        </ul>
+      </div>
+      <div class="box">
+        <h4>✅ 系統帶來的改變</h4>
+        <ul>
+          <li>點課表格子就能申請</li>
+          <li>智慧媒合推薦適合代課人</li>
+          <li>模擬對照防衝堂</li>
+          <li>簽核狀態一目了然</li>
+          <li>鐘點費月底一鍵匯出</li>
+        </ul>
+      </div>
+    </div>
+    <h3><span class="chip">一句話</span>系統核心價值</h3>
+    <div class="callout gold">
+      <span class="tag">VALUE</span>
+      <strong>把「找人、對課表、簽核、結算」串成一條線</strong>，讓老師少跑腿、行政少對帳、教學組可掌握全校調代課進度。
+    </div>
+    <h3><span class="chip">技術</span>怎麼運作（簡述）</h3>
+    <div class="flow">
+      <div class="flow-step">
+        <div class="n">1</div>
+        <div class="t">網頁前端</div>
+        <div class="d">課表、申請、簽核介面</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">
+        <div class="n">2</div>
+        <div class="t">Google 登入</div>
+        <div class="d">僅本校 Workspace 帳號</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">
+        <div class="n">3</div>
+        <div class="t">GAS 後端</div>
+        <div class="d">權限與寫入邏輯</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">
+        <div class="n">4</div>
+        <div class="t">試算表資料庫</div>
+        <div class="d">課表、申請、結算</div>
+      </div>
+    </div>
+    <div class="callout blue">
+      <span class="tag">登入提醒</span>
+      請使用<strong>本校 Google Workspace 帳號</strong>登入。建議網址使用 <strong>localhost</strong> 或正式網域，避免 GSI 登入異常。
+    </div>
+  </div>
+  <div class="foot"><span>A｜系統介紹</span><span>建成國中線上調代課系統</span><span>01</span></div>
+</section>
+
+<!-- P02 三角色 -->
+<section class="page">
+  <div class="page-inner">
+    <div class="kicker">CHAPTER 02</div>
+    <h2>三角色與權限總覽</h2>
+    <div class="h-rule"></div>
+    <p>系統依教師名單中的「系統角色」決定權限。登入後右上角會顯示角色徽章。</p>
+    <div class="role-grid">
+      <div class="role-card teacher">
+        <div class="icon">👩‍🏫</div>
+        <h4>教師</h4>
+        <p>操作自己的課表。點格申請代課／調課、回覆邀請、查歷史紀錄與列印。</p>
+      </div>
+      <div class="role-card staff">
+        <div class="icon">📋</div>
+        <h4>行政</h4>
+        <p>可看全校課表與班級課表。若獲「行政代申請」授權，可代全校教師送單。</p>
+      </div>
+      <div class="role-card admin">
+        <div class="icon">🏫</div>
+        <h4>教學組</h4>
+        <p>全功能：核准、活動互代、課表編輯、鐘點結算、教師管理、系統設定。</p>
+      </div>
+    </div>
+    <h3><span class="chip">權限</span>能力對照</h3>
+    <table class="tbl">
+      <tr><th>能力</th><th>教師</th><th>行政</th><th>教學組</th></tr>
+      <tr><td>自己的課申請調代課</td><td>✔</td><td>✔</td><td>✔</td></tr>
+      <tr><td>全校課表總覽</td><td>—</td><td>✔</td><td>✔</td></tr>
+      <tr><td>行政代申請（需白名單）</td><td>—</td><td>△</td><td>—</td></tr>
+      <tr><td>待核准／直接核准</td><td>—</td><td>—</td><td>✔</td></tr>
+      <tr><td>活動互代、空堂事件</td><td>—</td><td>—</td><td>✔</td></tr>
+      <tr><td>鐘點結算、教師管理</td><td>—</td><td>—</td><td>✔</td></tr>
+      <tr><td>編輯基礎課表、課表匯入</td><td>—</td><td>—</td><td>✔</td></tr>
+    </table>
+    <div class="callout gold">
+      <span class="tag">特別說明</span>
+      <strong>行政代申請</strong>：後台勾選授權後才可用。代送會<strong>跳過受邀確認</strong>，直接進入「送交教學組」，但仍需教學組核准才生效。<br>
+      <strong>訪客唯讀</strong>：班級課表可產生公開連結（如 <ic>?class=701</ic>），僅供查課，不可申請。
+    </div>
+  </div>
+  <div class="foot"><span>A｜系統介紹</span><span>建成國中線上調代課系統</span><span>02</span></div>
+</section>
+
+<!-- P03 主畫面 -->
+<section class="page">
+  <div class="page-inner">
+    <div class="kicker">CHAPTER 03</div>
+    <h2>主畫面導覽</h2>
+    <div class="h-rule"></div>
+    <p>登入後上方有五個主要分頁（依角色顯示）。右上可切學期、代申請、模擬身份（教學組）、同步、操作教學、登出。</p>
+    <div class="mock">
+      <div class="mock-bar">
+        <span>🏫 建成國中線上調代課</span>
+        <span class="tab on">課表總覽</span>
+        <span class="tab">待辦簽核</span>
+        <span class="tab">歷史紀錄</span>
+        <span class="tab">班級課表</span>
+        <span class="tab">後台管理</span>
+      </div>
+      <div class="mock-body">
+        <div class="mock-grid">
+          <div class="mock-cell head">教師＼節</div>
+          <div class="mock-cell head">一</div>
+          <div class="mock-cell head">二</div>
+          <div class="mock-cell head">三</div>
+          <div class="mock-cell head">四</div>
+          <div class="mock-cell head">五</div>
+          <div class="mock-cell head">王老師</div>
+          <div class="mock-cell lesson">701 國</div>
+          <div class="mock-cell"></div>
+          <div class="mock-cell active">702 國<br>← 點我</div>
+          <div class="mock-cell lesson">801 國</div>
+          <div class="mock-cell"></div>
+          <div class="mock-cell head">李老師</div>
+          <div class="mock-cell"></div>
+          <div class="mock-cell lesson">703 數</div>
+          <div class="mock-cell lesson">704 數</div>
+          <div class="mock-cell"></div>
+          <div class="mock-cell lesson">802 數</div>
+        </div>
+        <div class="mock-caption">示意：點「自己有課」的格子 → 開啟智慧媒合</div>
+      </div>
+    </div>
+    <h3><span class="chip">分頁</span>各頁做什麼</h3>
+    <table class="tbl">
+      <tr><th>分頁</th><th>誰看得到</th><th>主要用途</th></tr>
+      <tr><td><strong>課表總覽</strong></td><td>全部</td><td>週課表、點格申請、批次代課、活動互代</td></tr>
+      <tr><td><strong>待辦簽核</strong></td><td>全部</td><td>回覆邀請、查看自己送出的單、教學組核准</td></tr>
+      <tr><td><strong>歷史紀錄</strong></td><td>全部</td><td>已核准／歷史查詢、列印各聯</td></tr>
+      <tr><td><strong>班級課表</strong></td><td>行政／教學組</td><td>依班查課、代調課摘要、唯讀連結</td></tr>
+      <tr><td><strong>後台管理</strong></td><td>僅教學組</td><td>結算、教師、匯入、設定、全校匯出</td></tr>
+    </table>
+    <div class="callout green">
+      <span class="tag">新手建議</span>
+      第一次登入請按右上 <strong>？操作教學</strong>，約 3～4 分鐘走完導覽（可重播，不會真的送出申請）。
+    </div>
+  </div>
+  <div class="foot"><span>A｜系統介紹</span><span>建成國中線上調代課系統</span><span>03</span></div>
+</section>
+
+<!-- P04 核心流程 -->
+<section class="page">
+  <div class="page-inner">
+    <div class="kicker">CHAPTER 04</div>
+    <h2>核心流程：從申請到生效</h2>
+    <div class="h-rule"></div>
+    <p>一般教師的標準路徑如下。課表<strong>正式變更</strong>，必須等「對方同意」且「教學組核准」。</p>
+    <div class="flow" style="margin-bottom:18px">
+      <div class="flow-step">
+        <div class="n">1</div>
+        <div class="t">點格子</div>
+        <div class="d">課表總覽<br>點自己有課的格</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">
+        <div class="n">2</div>
+        <div class="t">智慧媒合</div>
+        <div class="d">找人代課<br>或節次調課</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">
+        <div class="n">3</div>
+        <div class="t">模擬對照</div>
+        <div class="d">防衝堂<br>填假別／經費</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">
+        <div class="n">4</div>
+        <div class="t">送出＋LINE</div>
+        <div class="d">通知對方<br>等同意</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">
+        <div class="n">5</div>
+        <div class="t">教學組核准</div>
+        <div class="d">課表正式<br>生效</div>
+      </div>
+    </div>
+    <h3><span class="chip">步驟</span>操作細節</h3>
+    <div class="step-row"><div class="step-n">1</div><div class="step-t"><strong>切到正確週次</strong>，點自己有課的格子（無權限會提示）。</div></div>
+    <div class="step-row"><div class="step-n">2</div><div class="step-t">選<strong>找人代課</strong>或<strong>節次調課</strong>；可搜尋姓名，系統會依同課／同科／同班排序。</div></div>
+    <div class="step-row"><div class="step-n">3</div><div class="step-t">按<strong>模擬</strong>，看雙方迷你課表、連堂警示、衝堂檢查。填<strong>原因／假別</strong>與<strong>代課鐘點費結算方式</strong>。</div></div>
+    <div class="step-row"><div class="step-n">4</div><div class="step-t">按<strong>確認送出，通知相關人員</strong>。成功後可複製或<strong>LINE 傳送</strong>同意連結。</div></div>
+    <div class="step-row"><div class="step-n">5</div><div class="step-t">對方在<strong>待辦簽核</strong>同意後，進入教學組待核准；核准後課表變更、可於歷史紀錄列印。</div></div>
+    <div class="callout blue">
+      <span class="tag">兩條捷徑（進階）</span>
+      <strong>行政代申請</strong>：跳過受邀，直接送交教學組。<br>
+      <strong>教學組直接核准</strong>：模擬時勾選，送出即生效（課表立刻變）。
+    </div>
+  </div>
+  <div class="foot"><span>A｜系統介紹</span><span>建成國中線上調代課系統</span><span>04</span></div>
+</section>
+
+<!-- P05 媒合與狀態 -->
+<section class="page">
+  <div class="page-inner">
+    <div class="kicker">CHAPTER 05</div>
+    <h2>智慧媒合與申請狀態</h2>
+    <div class="h-rule"></div>
+    <h3><span class="chip">媒合</span>推薦怎麼排</h3>
+    <p>系統會找出該節<strong>空堂</strong>的老師（含：調出後空、巡堂、空堂事件班、活動外出班釋出），並標示：</p>
+    <table class="tbl">
+      <tr><th>徽章</th><th>意義</th><th>優先</th></tr>
+      <tr><td>同課</td><td>上同一門課</td><td>最高</td></tr>
+      <tr><td>同科</td><td>同科目領域</td><td>高</td></tr>
+      <tr><td>同班</td><td>同班任課</td><td>中</td></tr>
+      <tr><td>外出班釋出</td><td>活動互代時該班外出釋出空堂</td><td>互代時置頂</td></tr>
+    </table>
+    <p style="font-size:12.5px;color:var(--mute)">另：當日課少者優先；抽離僅可與抽離互調；巡堂不可調課，但可當媒合空堂。</p>
+    <h3><span class="chip">狀態</span>申請生命週期</h3>
+    <table class="tbl">
+      <tr><th>狀態顯示</th><th>代表意義</th></tr>
+      <tr><td><span class="badge y">待受邀確認</span></td><td>已送出，等對方同意／拒絕</td></tr>
+      <tr><td><span class="badge b">送交教學組</span></td><td>對方已同意（或行政代申請），等教學組</td></tr>
+      <tr><td><span class="badge g">核准生效</span></td><td>正式成立，課表已變更</td></tr>
+      <tr><td><span class="badge r">不成立／行政駁回</span></td><td>被拒或被駁回</td></tr>
+      <tr><td><span class="badge gr">已撤回／已撤銷</span></td><td>申請人撤回或撤銷</td></tr>
+    </table>
+    <div class="callout gold">
+      <span class="tag">課格上的標籤</span>
+      進行中會看到 <strong>申請</strong>（等對方）或 <strong>審核</strong>（等教學組）。生效後會顯示調出／代課入等結果。
+    </div>
+  </div>
+  <div class="foot"><span>A｜系統介紹</span><span>建成國中線上調代課系統</span><span>05</span></div>
+</section>
+
+<!-- P06 進階 -->
+<section class="page">
+  <div class="page-inner">
+    <div class="kicker">CHAPTER 06</div>
+    <h2>進階功能總覽</h2>
+    <div class="h-rule"></div>
+    <div class="two-col">
+      <div class="box">
+        <h4>📦 批次代課</h4>
+        <p>同一位老師多節請假時使用。</p>
+        <ul>
+          <li>按「批次代課」連點多格</li>
+          <li>可「同一人全代」或「每節不同人」</li>
+          <li>每批最多 <strong>20</strong> 節</li>
+          <li>每節仍獨立簽核</li>
+        </ul>
+      </div>
+      <div class="box">
+        <h4>🔁 活動互代（教學組）</h4>
+        <p>班級外出活動時的互代專用流程。</p>
+        <ul>
+          <li>設日期、選外出班</li>
+          <li>可發放互代額度</li>
+          <li>釋出空堂代課 → 扣額度</li>
+          <li>本來就空 → 活動公費</li>
+          <li>第 8 節固定第8節代課</li>
+        </ul>
+      </div>
+      <div class="box">
+        <h4>📭 空堂事件（教學組）</h4>
+        <p>畢旅、畢業考等整班空堂期間。</p>
+        <ul>
+          <li>設名稱、起迄日、班級</li>
+          <li>鐘點：不調降／調降</li>
+          <li>可進互代：是否進活動互代</li>
+          <li>課表淡化、媒合視同空堂</li>
+        </ul>
+      </div>
+      <div class="box">
+        <h4>📅 班級課表與列印</h4>
+        <p>行政／教學組常用。</p>
+        <ul>
+          <li>依班看週課表＋代調摘要</li>
+          <li>複製唯讀連結給班導師</li>
+          <li>歷史：教師聯／班級聯／留存聯</li>
+        </ul>
+      </div>
+    </div>
+    <div class="callout blue">
+      <span class="tag">課堂屬性提醒</span>
+      <strong>巡堂</strong>：不計鐘點、不可系統調代課。<strong>抽離</strong>：計鐘點、不進班級課表、僅抽離互調。<strong>綁課</strong>：建議優先代課，調課前會確認。
+    </div>
+  </div>
+  <div class="foot"><span>A｜系統介紹</span><span>建成國中線上調代課系統</span><span>06</span></div>
+</section>
+
+<!-- P07 鐘點 -->
+<section class="page">
+  <div class="page-inner">
+    <div class="kicker">CHAPTER 07</div>
+    <h2>鐘點結算與經費規則</h2>
+    <div class="h-rule"></div>
+    <h3><span class="chip">單價</span>目前常數</h3>
+    <table class="tbl">
+      <tr><th>項目</th><th>單價</th><th>說明</th></tr>
+      <tr><td>超鐘／公代／自代（1～7 節＋午休）</td><td><strong>455 元／節</strong></td><td>一般節次</td></tr>
+      <tr><td>第 8 節代課</td><td><strong>500 元／節</strong></td><td>誰上誰拿；不吃互代額度</td></tr>
+    </table>
+    <h3><span class="chip">經費</span>結算方式</h3>
+    <table class="tbl">
+      <tr><th>選項</th><th>意義</th></tr>
+      <tr><td>自費代課</td><td>請假人自付；扣自己超時</td></tr>
+      <tr><td>公費代課</td><td>公費；沖超時；代課人可領公代費</td></tr>
+      <tr><td>扣額度</td><td>不結鐘點，扣互代額度 1</td></tr>
+      <tr><td>活動公費</td><td>活動互代額度不足時可領費</td></tr>
+      <tr><td>第8節代課</td><td>計畫經費，不吃額度</td></tr>
+    </table>
+    <h3><span class="chip">預設</span>假別 → 經費（可改）</h3>
+    <p style="font-size:13px">公假、婚假、喪假、產前假／分娩假、身心調適假 → 預設<strong>公費代課</strong>。<br>
+    休假、病假、事假、補休、其他 → 預設<strong>自費代課</strong>。</p>
+    <div class="callout gold">
+      <span class="tag">月報概念</span>
+      週超時 = max(0, 排課 − 基鐘)。實得超時再扣空堂調降、自費扣、公費沖銷後 × 455。教學組於後台「鐘點結算」可匯出 Excel（大鐘點 1-7、第8節明細）。
+    </div>
+  </div>
+  <div class="foot"><span>A｜系統介紹</span><span>建成國中線上調代課系統</span><span>07</span></div>
+</section>
+
+<!-- P08 後台與上線 -->
+<section class="page">
+  <div class="page-inner">
+    <div class="kicker">CHAPTER 08</div>
+    <h2>後台管理與全校上線建議</h2>
+    <div class="h-rule"></div>
+    <h3><span class="chip">後台</span>教學組五個子頁</h3>
+    <table class="tbl">
+      <tr><th>子頁</th><th>用途</th></tr>
+      <tr><td>💰 鐘點結算</td><td>月底大鐘點與代課費、匯出 Excel</td></tr>
+      <tr><td>👤 教師管理</td><td>帳號、基鐘、互代額度、角色、批次匯入</td></tr>
+      <tr><td>📥 課表匯入</td><td>Excel 長表匯入（清當學期再寫入）</td></tr>
+      <tr><td>⚙️ 系統設定</td><td>行政代申請、空堂事件、學期管理</td></tr>
+      <tr><td>📄 全校課表匯出</td><td>期間內全校課表 Word（.docx）</td></tr>
+    </table>
+    <h3><span class="chip">推廣</span>建議導入節奏</h3>
+    <div class="step-row"><div class="step-n">1</div><div class="step-t"><strong>第 0 週</strong>：匯入教師與課表、設角色、測 3 筆真實流程。</div></div>
+    <div class="step-row"><div class="step-n">2</div><div class="step-t"><strong>第 1 週</strong>：教學組＋行政種子上線；只推「請假→媒合→簽核」。</div></div>
+    <div class="step-row"><div class="step-n">3</div><div class="step-t"><strong>第 2 週</strong>：領域種子老師午休 15 分鐘帶同仁；公告切換日。</div></div>
+    <div class="step-row"><div class="step-n">4</div><div class="step-t"><strong>切換日後</strong>：調代課以系統為準；鐘點核銷綁系統紀錄。</div></div>
+    <div class="callout green">
+      <span class="tag">配套文件</span>
+      請搭配本系列：<strong>B 分角色操作手冊</strong>（教師／行政／教學組逐步操作）、<strong>C 推廣投影片</strong>（全校說明會用）。
+    </div>
+    <div class="callout blue">
+      <span class="tag">常見問題速答</span>
+      Q：送出後課表怎麼還沒變？A：要等對方同意＋教學組核准。<br>
+      Q：找不到人？A：看智慧媒合排序，或改用批次／請行政代申請。<br>
+      Q：登入沒反應？A：確認本校帳號，並用正式網域或 localhost。
+    </div>
+  </div>
+  <div class="foot"><span>A｜系統介紹</span><span>建成國中線上調代課系統</span><span>08</span></div>
+</section>
+
+</body>
+</html>

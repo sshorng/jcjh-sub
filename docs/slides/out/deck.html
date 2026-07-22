@@ -1,0 +1,261 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8">
+<title>建成國中線上調代課系統｜全校推廣</title>
+<style>
+  :root {
+    --bg:#0a1020; --panel:#141d33; --ink:#eaf1ff;
+    --muted:#7f90b0; --accent:#46c6ff; --accent-dim:#1f5d80;
+    --danger:#ff5a4d;
+    --display:'Noto Sans CJK TC'; --body:'Noto Sans CJK TC';
+    --safe:64px;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { background:#000; }
+  body { display:flex; flex-direction:column; align-items:center; gap:28px; padding:28px; }
+
+  /* ── 契約：每張投影片固定 1280×720，封面滿版底色 ── */
+  .slide {
+    position:relative; width:1280px; height:720px;
+    background:var(--bg); overflow:hidden;
+    font-family:var(--body); color:var(--ink);
+    break-after:page;
+  }
+  /* 紙紋雜訊：自包含 SVG，不依賴外檔 */
+  .slide::before {
+    content:""; position:absolute; inset:0; pointer-events:none; opacity:.05;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  .safe { position:absolute; inset:var(--safe); }
+
+  /* ── 契約：四個角框（裝飾，驗證器會略過 .deco） ── */
+  .bracket { position:absolute; width:46px; height:46px; border-color:var(--accent); border-style:solid; border-width:0; }
+  .bracket.tl { top:34px;  left:34px;  border-top-width:4px;    border-left-width:4px; }
+  .bracket.tr { top:34px;  right:34px; border-top-width:4px;    border-right-width:4px; }
+  .bracket.bl { bottom:34px;left:34px;  border-bottom-width:4px; border-left-width:4px; }
+  .bracket.br { bottom:34px;right:34px; border-bottom-width:4px; border-right-width:4px; }
+
+  /* ── 字級尺度 ── */
+  .eyebrow { font-family:var(--display); font-weight:900; letter-spacing:.22em;
+             font-size:20px; color:var(--accent); }
+  .eyebrow .zh { color:var(--ink); letter-spacing:.12em; font-weight:700; opacity:.8; }
+  .title-xl { font-family:var(--display); font-weight:900; font-size:104px; line-height:1.04; letter-spacing:-.01em; }
+  .title-lg { font-family:var(--display); font-weight:900; font-size:68px;  line-height:1.1; }
+  .title-md { font-family:var(--display); font-weight:900; font-size:46px;  line-height:1.15; }
+  .accent { color:var(--accent); }
+  .muted  { color:var(--muted); }
+  .sub    { font-size:26px; line-height:1.6; color:var(--muted); }
+  .ital   { font-style:italic; }
+
+  /* 手刷底線 */
+  .brush { height:10px; width:520px; background:var(--ink); border-radius:6px;
+            clip-path:polygon(0 35%,4% 10%,12% 60%,22% 20%,33% 70%,46% 25%,60% 65%,73% 22%,86% 60%,95% 25%,100% 55%,100% 100%,0 100%); }
+  .brush.acc { background:var(--accent); }
+
+  .ghost { position:absolute; font-family:var(--display); font-weight:900;
+            font-size:560px; color:var(--ink); opacity:.05; line-height:1; }
+
+  .dots { display:flex; gap:18px; }
+  .dots i { width:16px; height:16px; border-radius:50%; background:var(--accent); display:block; }
+
+  /* content 列 */
+  .rows { display:flex; flex-direction:column; gap:26px; }
+  .row { display:flex; align-items:flex-start; gap:22px; }
+  .row .ico { flex:0 0 auto; width:54px; height:54px; }
+  .row .ico svg { width:54px; height:54px; stroke:var(--accent); fill:none; stroke-width:2; }
+  .row .lead { font-family:var(--display); font-weight:900; font-size:30px; }
+  .row .desc { font-size:22px; color:var(--muted); line-height:1.5; margin-top:4px; }
+
+  .rule { height:2px; background:var(--accent); opacity:.5; }
+  .takeaway { font-family:var(--display); font-weight:900; font-size:30px; color:var(--accent); }
+
+  .sectag { font-family:var(--display); font-weight:900; font-size:60px; color:var(--accent); }
+
+  /* closing 框 */
+  .quotebox { border:3px solid var(--accent); padding:48px 56px; }
+  .quotebox p { font-family:var(--display); font-weight:900; font-size:38px; line-height:1.6; text-align:center; }
+  .legend { display:flex; gap:48px; justify-content:center; }
+  .legend .item { display:flex; flex-direction:column; align-items:center; gap:10px; }
+  .legend .item svg { width:44px; height:44px; stroke:var(--accent); fill:none; stroke-width:2; }
+  .legend .item span { font-size:18px; color:var(--ink); }
+
+  /* ── 兩欄對比 ── */
+  .cols { display:flex; gap:44px; flex:1; }
+  .col { flex:1; display:flex; flex-direction:column; gap:18px; }
+  .col h3 { font-family:var(--display); font-weight:900; font-size:34px; color:var(--cc); }
+  .col .crule { height:3px; background:var(--cc); opacity:.7; }
+  .col ul { list-style:none; display:flex; flex-direction:column; gap:15px; }
+  .col li { font-size:23px; line-height:1.4; padding-left:28px; position:relative; }
+  .col li::before { content:""; position:absolute; left:0; top:12px; width:11px; height:11px; border-radius:50%; background:var(--cc); }
+
+  /* ── 金句 ── */
+  .qmark { font-family:var(--display); font-weight:900; font-size:120px; color:var(--accent); line-height:.5; }
+  .qtext { font-family:var(--display); font-weight:900; font-size:52px; line-height:1.45; text-align:center; max-width:1000px; }
+  .qby { font-size:24px; color:var(--muted); }
+
+  /* ── 流程步驟 ── */
+  .steps { display:flex; align-items:flex-start; justify-content:center; gap:4px; }
+  .step { flex:1; display:flex; flex-direction:column; align-items:center; gap:14px; text-align:center; max-width:200px; }
+  .step .circ { width:92px; height:92px; border-radius:50%; border:4px solid var(--accent);
+                 display:flex; align-items:center; justify-content:center;
+                 font-family:var(--display); font-weight:900; font-size:42px; color:var(--accent); }
+  .step .slab { font-family:var(--display); font-weight:900; font-size:24px; }
+  .step .ssub { font-size:18px; color:var(--muted); line-height:1.4; }
+  .arrow { align-self:flex-start; margin-top:30px; font-size:32px; color:var(--accent); }
+
+  /* ── 卡片網格 ── */
+  .grid { display:grid; gap:22px; flex:1; }
+  .card { background:var(--panel); border:2px solid var(--accent); padding:24px;
+           display:flex; flex-direction:column; gap:12px; }
+  .card .cico svg { width:46px; height:46px; stroke:var(--accent); fill:none; stroke-width:2; }
+  .card .ctitle { font-family:var(--display); font-weight:900; font-size:26px; }
+  .card .ccap { font-size:19px; color:var(--muted); line-height:1.45; }
+
+  /* ── 長條圖 ── */
+  .chart { display:flex; align-items:flex-end; gap:34px; height:330px; padding:10px 10px 0; flex:1; }
+  .bar { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; gap:12px; height:100%; }
+  .bar .col2 { width:64%; background:var(--accent); border-radius:7px 7px 0 0; }
+  .bar .col2.dim { background:var(--accent-dim); }
+  .bar .bval { font-family:var(--display); font-weight:900; font-size:28px; }
+  .bar .blab { font-size:20px; color:var(--muted); text-align:center; line-height:1.3; }
+
+  /* ── 公式頁 ── */
+  .flist { display:flex; flex-direction:column; gap:30px; flex:1; justify-content:center; }
+  .frow { display:flex; align-items:center; gap:34px; }
+  .frow .feq { flex:0 0 auto; }
+  .frow .feq svg { height:auto; max-height:104px; width:auto; }
+  .frow .fdesc { font-size:23px; color:var(--muted); line-height:1.5; }
+
+  @media print {
+    body { gap:0; padding:0; }
+    .slide { page-break-after:always; }
+  }
+</style>
+</head>
+<body>
+<section class="slide"><div class="bracket tl deco"></div><div class="bracket tr deco"></div><div class="bracket bl deco"></div><div class="bracket br deco"></div>
+  <div class="safe" style="display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:30px;">
+    <div style="font-family:var(--display);font-weight:900;font-size:34px;color:var(--accent);">墨</div>
+    <div class="title-xl" data-fit>線上調代課系統</div>
+    <div class="brush"></div>
+    <div class="title-md accent" data-fit>建成國中全校推廣說明</div>
+    <div class="sub" data-fit style="max-width:900px;">請假、媒合、簽核、結算，一條線完成。讓老師少跑腿，行政少對帳。</div>
+  </div>
+  <div style="position:absolute;left:0;right:0;bottom:42px;text-align:center;" class="muted">建成國中　校務數位化　2026</div>
+</section>
+
+<section class="slide"><div class="bracket tl deco"></div><div class="bracket tr deco"></div><div class="bracket bl deco"></div><div class="bracket br deco"></div>
+  <div class="safe" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:30px;">
+    <div class="qmark">&ldquo;</div>
+    <div class="qtext" data-fit>把找人、對課表、簽核、結算，串成一條線。</div>
+    <div class="qby">系統核心價值</div>
+  </div>
+</section>
+
+<section class="slide"><div class="bracket tl deco"></div><div class="bracket tr deco"></div><div class="bracket bl deco"></div><div class="bracket br deco"></div>
+  <div class="safe" style="display:flex;flex-direction:column;gap:34px;">
+    <div style="display:flex;align-items:baseline;gap:24px;"><span class="sectag">痛點</span><span class="title-md" data-fit>為什麼要換做法</span></div>
+    <div class="cols"><div class="col" style="--cc:var(--danger);"><h3 data-fit>舊做法</h3><div class="crule"></div><ul><li>LINE 私訊找人，容易漏</li><li>課表與申請各處分開</li><li>衝堂連堂靠人工記</li><li>月底鐘點難對帳</li></ul></div><div class="col" style="--cc:var(--accent);"><h3 data-fit>新系統</h3><div class="crule"></div><ul><li>點課表格子就能申請</li><li>智慧媒合推薦代課人</li><li>模擬對照防衝堂</li><li>核准後課表正式生效</li></ul></div></div>
+  </div>
+</section>
+
+<section class="slide"><div class="bracket tl deco"></div><div class="bracket tr deco"></div><div class="bracket bl deco"></div><div class="bracket br deco"></div>
+  <div class="safe" style="display:flex;flex-direction:column;gap:30px;">
+    <div style="display:flex;align-items:baseline;gap:24px;"><span class="sectag">角色</span><span class="title-md" data-fit>三種角色，各取所需</span></div>
+    <div class="grid" style="grid-template-columns:repeat(3,1fr);"><div class="card"><div class="cico deco"><svg viewBox="0 0 24 24"><path d="M4 4h7a2 2 0 0 1 2 2v14a2 2 0 0 0-2-2H4zM20 4h-7a2 2 0 0 0-2 2v14a2 2 0 0 1 2-2h7z"/></svg></div><div class="ctitle" data-fit>教師</div><div class="ccap">點格申請、回覆邀請、查歷史、列印各聯。</div></div><div class="card"><div class="cico deco"><svg viewBox="0 0 24 24"><path d="m21 8-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg></div><div class="ctitle" data-fit>行政</div><div class="ccap">全校課表、班級課表；授權後可代老師送單。</div></div><div class="card"><div class="cico deco"><svg viewBox="0 0 24 24"><path d="M12 2 4 5v6c0 5 3.4 8.7 8 11 4.6-2.3 8-6 8-11V5z"/><path d="m9 12 2 2 4-4"/></svg></div><div class="ctitle" data-fit>教學組</div><div class="ccap">核准、活動互代、鐘點結算、教師與課表管理。</div></div></div>
+  </div>
+</section>
+
+<section class="slide"><div class="bracket tl deco"></div><div class="bracket tr deco"></div><div class="bracket bl deco"></div><div class="bracket br deco"></div>
+  <div class="safe" style="display:flex;flex-direction:column;justify-content:center;gap:48px;">
+    <div style="display:flex;align-items:baseline;gap:24px;"><span class="sectag">流程</span><span class="title-md" data-fit>五步完成一筆調代課</span></div>
+    <div class="steps"><div class="step"><div class="circ">1</div><div class="slab" data-fit>點格子</div><div class="ssub">課表總覽選節</div></div><div class="arrow">&rarr;</div><div class="step"><div class="circ">2</div><div class="slab" data-fit>智慧媒合</div><div class="ssub">代課或調課</div></div><div class="arrow">&rarr;</div><div class="step"><div class="circ">3</div><div class="slab" data-fit>模擬對照</div><div class="ssub">防衝堂填假別</div></div><div class="arrow">&rarr;</div><div class="step"><div class="circ">4</div><div class="slab" data-fit>送出 LINE</div><div class="ssub">請對方同意</div></div><div class="arrow">&rarr;</div><div class="step"><div class="circ">5</div><div class="slab" data-fit>教學組核准</div><div class="ssub">課表正式生效</div></div></div>
+    <div class="takeaway" data-fit style="text-align:center;">送出不等於生效。對方同意且教學組核准後，課表才變更。</div>
+  </div>
+</section>
+
+<section class="slide"><div class="bracket tl deco"></div><div class="bracket tr deco"></div><div class="bracket bl deco"></div><div class="bracket br deco"></div>
+  <div class="safe" style="display:flex;flex-direction:column;gap:34px;">
+    <div style="display:flex;align-items:baseline;gap:24px;">
+      <span class="sectag">教師</span>
+      <span class="title-md" data-fit>老師最常用的能力</span>
+    </div>
+    <div class="rows"><div class="row"><div class="ico deco"><svg viewBox="0 0 24 24"><path d="M4 4h7a2 2 0 0 1 2 2v14a2 2 0 0 0-2-2H4zM20 4h-7a2 2 0 0 0-2 2v14a2 2 0 0 1 2-2h7z"/></svg></div>
+          <div data-fit><div class="lead">智慧媒合</div>
+          <div class="desc">依同課、同科、同班排序，當日課少者優先，減少亂槍打鳥。</div></div></div><div class="row"><div class="ico deco"><svg viewBox="0 0 24 24"><path d="m21 8-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg></div>
+          <div data-fit><div class="lead">批次代課</div>
+          <div class="desc">半天或一天多節一次選完，可同一人全代或每節不同人，上限二十節。</div></div></div><div class="row"><div class="ico deco"><svg viewBox="0 0 24 24"><path d="M12 2 4 5v6c0 5 3.4 8.7 8 11 4.6-2.3 8-6 8-11V5z"/><path d="m9 12 2 2 4-4"/></svg></div>
+          <div data-fit><div class="lead">待辦簽核</div>
+          <div class="desc">收到邀請一鍵同意或拒絕，同批可全同意，進度清楚可追。</div></div></div><div class="row"><div class="ico deco"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+          <div data-fit><div class="lead">歷史與列印</div>
+          <div class="desc">核准後可查紀錄，列印教師聯、班級聯、留存聯。</div></div></div></div>
+    <div style="margin-top:auto;display:flex;flex-direction:column;gap:18px;">
+      <div class="rule"></div>
+      <div class="takeaway" data-fit>第一次請按右上問號，三分鐘導覽不會真送單。</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide"><div class="bracket tl deco"></div><div class="bracket tr deco"></div><div class="bracket bl deco"></div><div class="bracket br deco"></div>
+  <div class="safe" style="display:flex;flex-direction:column;gap:34px;">
+    <div style="display:flex;align-items:baseline;gap:24px;">
+      <span class="sectag">行政</span>
+      <span class="title-md" data-fit>教學組與行政亮點</span>
+    </div>
+    <div class="rows"><div class="row"><div class="ico deco"><svg viewBox="0 0 24 24"><path d="M12 2 4 5v6c0 5 3.4 8.7 8 11 4.6-2.3 8-6 8-11V5z"/><path d="m9 12 2 2 4-4"/></svg></div>
+          <div data-fit><div class="lead">待核准與直接核准</div>
+          <div class="desc">批次核准駁回；緊急可勾教學組直接核准，課表立刻變更。</div></div></div><div class="row"><div class="ico deco"><svg viewBox="0 0 24 24"><path d="m21 8-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg></div>
+          <div data-fit><div class="lead">行政代申請</div>
+          <div class="desc">白名單行政可代全校送單，跳過受邀，仍須教學組核准。</div></div></div><div class="row"><div class="ico deco"><svg viewBox="0 0 24 24"><circle cx="13.5" cy="6.5" r="1.5"/><circle cx="17.5" cy="10.5" r="1.5"/><circle cx="8.5" cy="7.5" r="1.5"/><circle cx="6.5" cy="12.5" r="1.5"/><path d="M12 2a10 10 0 0 0 0 20 2.5 2.5 0 0 0 2-4 2.5 2.5 0 0 1 2-4h2a4 4 0 0 0 4-4 10 10 0 0 0-10-8z"/></svg></div>
+          <div data-fit><div class="lead">活動互代與空堂事件</div>
+          <div class="desc">班級外出、畢旅畢業等情境，額度與公費規則一次處理。</div></div></div><div class="row"><div class="ico deco"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+          <div data-fit><div class="lead">鐘點結算</div>
+          <div class="desc">月底大鐘點與代課費，一鍵匯出 Excel，減少人工重算。</div></div></div></div>
+    <div style="margin-top:auto;display:flex;flex-direction:column;gap:18px;">
+      <div class="rule"></div>
+      <div class="takeaway" data-fit>後台含教師管理、課表匯入、學期與系統設定。</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide"><div class="bracket tl deco"></div><div class="bracket tr deco"></div><div class="bracket bl deco"></div><div class="bracket br deco"></div>
+  <div class="safe" style="display:flex;flex-direction:column;gap:30px;">
+    <div style="display:flex;align-items:baseline;gap:24px;"><span class="sectag">經費</span><span class="title-md" data-fit>經費三軌，送出前選清楚</span></div>
+    <div class="grid" style="grid-template-columns:repeat(3,1fr);"><div class="card"><div class="cico deco"><svg viewBox="0 0 24 24"><path d="M4 4h7a2 2 0 0 1 2 2v14a2 2 0 0 0-2-2H4zM20 4h-7a2 2 0 0 0-2 2v14a2 2 0 0 1 2-2h7z"/></svg></div><div class="ctitle" data-fit>自費代課</div><div class="ccap">請假人自付，扣自己超時。病假事假常見。</div></div><div class="card"><div class="cico deco"><svg viewBox="0 0 24 24"><path d="M12 2 4 5v6c0 5 3.4 8.7 8 11 4.6-2.3 8-6 8-11V5z"/><path d="m9 12 2 2 4-4"/></svg></div><div class="ctitle" data-fit>公費代課</div><div class="ccap">公費沖超時，代課人可領公代費。公假婚喪等。</div></div><div class="card"><div class="cico deco"><svg viewBox="0 0 24 24"><path d="m21 8-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg></div><div class="ctitle" data-fit>扣額度</div><div class="ccap">不結鐘點，扣互代額度一點。活動互代另有規則。</div></div></div>
+  </div>
+</section>
+
+<section class="slide"><div class="bracket tl deco"></div><div class="bracket tr deco"></div><div class="bracket bl deco"></div><div class="bracket br deco"></div>
+  <div class="safe" style="display:flex;flex-direction:column;justify-content:center;gap:48px;">
+    <div style="display:flex;align-items:baseline;gap:24px;"><span class="sectag">導入</span><span class="title-md" data-fit>全校導入四週節奏</span></div>
+    <div class="steps"><div class="step"><div class="circ">0</div><div class="slab" data-fit>整備</div><div class="ssub">匯入課表與角色</div></div><div class="arrow">&rarr;</div><div class="step"><div class="circ">1</div><div class="slab" data-fit>種子</div><div class="ssub">教學組與行政</div></div><div class="arrow">&rarr;</div><div class="step"><div class="circ">2</div><div class="slab" data-fit>擴散</div><div class="ssub">領域小幫手</div></div><div class="arrow">&rarr;</div><div class="step"><div class="circ">3</div><div class="slab" data-fit>切換</div><div class="ssub">公告以系統為準</div></div></div>
+    <div class="takeaway" data-fit style="text-align:center;">切換日後，調代課與鐘點核銷建議綁定系統紀錄。</div>
+  </div>
+</section>
+
+<section class="slide"><div class="bracket tl deco"></div><div class="bracket tr deco"></div><div class="bracket bl deco"></div><div class="bracket br deco"></div>
+  <div class="safe" style="display:flex;flex-direction:column;gap:34px;">
+    <div style="display:flex;align-items:baseline;gap:24px;">
+      <span class="sectag">行動</span>
+      <span class="title-md" data-fit>今天請你做三件事</span>
+    </div>
+    <div class="rows"><div class="row"><div class="ico deco"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+          <div data-fit><div class="lead">用本校帳號登入一次</div>
+          <div class="desc">確認右上角姓名與角色徽章正確。</div></div></div><div class="row"><div class="ico deco"><svg viewBox="0 0 24 24"><path d="M4 4h7a2 2 0 0 1 2 2v14a2 2 0 0 0-2-2H4zM20 4h-7a2 2 0 0 0-2 2v14a2 2 0 0 1 2-2h7z"/></svg></div>
+          <div data-fit><div class="lead">按問號走完操作教學</div>
+          <div class="desc">約三到四分鐘，示範不會真的送出申請。</div></div></div><div class="row"><div class="ico deco"><svg viewBox="0 0 24 24"><path d="M12 2 4 5v6c0 5 3.4 8.7 8 11 4.6-2.3 8-6 8-11V5z"/><path d="m9 12 2 2 4-4"/></svg></div>
+          <div data-fit><div class="lead">試送一筆或回覆一筆</div>
+          <div class="desc">有請假就走系統；被邀請就到待辦簽核處理。</div></div></div></div>
+    <div style="margin-top:auto;display:flex;flex-direction:column;gap:18px;">
+      <div class="rule"></div>
+      <div class="takeaway" data-fit>卡住請找領域種子老師或教學組，當週會快速修。</div>
+    </div>
+  </div>
+</section>
+
+<section class="slide"><div class="bracket tl deco"></div><div class="bracket tr deco"></div><div class="bracket bl deco"></div><div class="bracket br deco"></div>
+  <div class="safe" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:40px;">
+    <div style="font-family:var(--display);font-weight:900;font-size:40px;color:var(--accent);">墨</div>
+    <div class="quotebox" data-fit style="max-width:980px;"><p>少傳訊息，多一點秩序。<br>建成國中線上調代課系統，<br>與同仁一起把行政負擔降下來。</p></div>
+    <div class="legend deco"><div class="item"><svg viewBox="0 0 24 24"><path d="M4 4h7a2 2 0 0 1 2 2v14a2 2 0 0 0-2-2H4zM20 4h-7a2 2 0 0 0-2 2v14a2 2 0 0 1 2-2h7z"/></svg><span>A 系統介紹</span></div><div class="item"><svg viewBox="0 0 24 24"><path d="m21 8-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg><span>B 操作手冊</span></div><div class="item"><svg viewBox="0 0 24 24"><path d="M12 2 4 5v6c0 5 3.4 8.7 8 11 4.6-2.3 8-6 8-11V5z"/><path d="m9 12 2 2 4-4"/></svg><span>C 本投影片</span></div><div class="item"><svg viewBox="0 0 24 24"><path d="M12 2v20M4 7l16 10M20 7 4 17"/><path d="m9 4 3 3 3-3M9 20l3-3 3 3M2 9l3 3-3 3M22 9l-3 3 3 3"/></svg><span>可重播教學</span></div></div>
+    <div class="muted" style="font-size:16px;">建成國中　校務數位化　2026</div>
+  </div>
+</section></body></html>

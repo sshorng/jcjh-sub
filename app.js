@@ -6245,25 +6245,41 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       // 三階段：受邀 → 教學組 → 出單；教學組直接核准則略過「對方同意」
       const status = (req && req.status) || 'pending_teacher';
       const name = (req && req.targetTeacherName) || '受邀人';
-      // 直接核准：狀態直接 approved，且從未經過 pending_admin（備註或 note 含直接／或建立後即核准）
-      // 實務：directApprove 送出的單 status=approved，不會有 pending_admin 軌跡；
-      // 用 note/reason 不易判斷，改以：approved 且（備註含「直接」或 createdAt 很新且無對方回覆痕跡）
-      // 更穩：若申請 note 有 admin 直接相關，或 status 為 approved 且 requester 就是操作流程中
-      // 最簡可靠：approved 時若 note 含「直接核准」標記，或 sub 有 directApprove 欄位
+      const createdStamp = req && req.createdAt ? String(req.createdAt).trim() : '';
+      const updatedStamp = req && req.updatedAt ? String(req.updatedAt).trim() : '';
+      // 完成步驟下方顯示用：有時分則 MM/DD HH:mm，否則 MM/DD
+      const formatProgressAt = (stamp) => {
+        if (!stamp) return '';
+        const raw = String(stamp).trim().replace('T', ' ').replace(/\//g, '-');
+        const m = raw.match(/(\d{4})-(\d{1,2})-(\d{1,2})(?:[ ]+(\d{1,2}):(\d{2})(?::\d{2})?)?/);
+        if (m) {
+          const md = `${m[2].padStart(2, '0')}/${m[3].padStart(2, '0')}`;
+          if (m[4] != null) return `${md} ${m[4].padStart(2, '0')}:${m[5]}`;
+          return md;
+        }
+        if (raw.length >= 16) return raw.slice(5, 16).replace('-', '/');
+        if (raw.length >= 10) return raw.slice(5, 10).replace('-', '/');
+        return raw;
+      };
+      const createdAtLabel = formatProgressAt(createdStamp);
+      const updatedAtLabel = formatProgressAt(updatedStamp);
+      // updated 明顯晚於 created 才當成「後續動作時間」（同意／核准）
+      const hasLaterUpdate = !!(updatedStamp && createdStamp && updatedStamp !== createdStamp
+        && String(updatedStamp) > String(createdStamp));
       const noteStr = String((req && req.note) || '');
       const isDirectApprove = status === 'approved' && (
         req.directApprove === true ||
         noteStr.indexOf('[直接核准]') >= 0 ||
         noteStr.indexOf('行政直接核准') >= 0 ||
-        // 活動互代／admin 送出常無 pending_admin：若建立後狀態就是 approved 且沒有 teacher 同意時間
         (req.skipTeacherConfirm === true)
       );
 
       if (isDirectApprove || (status === 'approved' && req && req.forceDirectProgress)) {
+        const atDirect = updatedAtLabel || createdAtLabel;
         return {
           steps: [
-            { key: 'admin', label: '教學組直接核准', short: '直接核准', done: true, current: false, fail: false },
-            { key: 'done', label: '已出單生效', short: '出單', done: true, current: false, fail: false }
+            { key: 'admin', label: '教學組直接核准', short: '直接核准', done: true, current: false, fail: false, at: atDirect },
+            { key: 'done', label: '已出單生效', short: '出單', done: true, current: false, fail: false, at: atDirect }
           ],
           active: 1,
           failed: false,
@@ -6292,14 +6308,10 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       };
       const createdAgeDays = parseAgeDays(req && req.createdAt)
         || parseAgeDays(req && req.requestDate);
-      // 行政等候：優先 updatedAt（教師同意後寫入）；若與 createdAt 相同或更舊則視為無可靠「進行政時間」，不拿送出日當行政逾時
-      const updatedStamp = req && req.updatedAt ? String(req.updatedAt).trim() : '';
-      const createdStamp = req && req.createdAt ? String(req.createdAt).trim() : '';
       let adminWaitAgeDays = 0;
       if (updatedStamp) {
         const uAge = parseAgeDays(updatedStamp);
         const cAge = parseAgeDays(createdStamp);
-        // updatedAt 明顯晚於建立（或無 createdAt）才視為「進行政後」的時鐘
         if (!createdStamp || uAge + 0.02 < cAge) {
           adminWaitAgeDays = uAge;
         }
@@ -6320,21 +6332,18 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
           overdueHint = `已超過 ${Math.floor(adminWaitAgeDays)} 天待行政核准`;
         }
       } else if (status === 'approved') {
-        // 若從未 pending_admin：多半是直接核准 → 兩步顯示
-        // 無法從狀態機 100% 還原時，用「有對方同意過程」判斷：
-        // 有 batch 邀請回覆軌跡較難；簡化：approved 且 note 無直接標記時仍顯示三步全完成
         active = 2;
         summary = '已核准生效，課表已更新';
       } else if (status === 'rejected') {
         return {
-          steps: [{ key: 'rej', label: `${name} 已拒絕`, short: '拒絕', done: true, fail: true, current: false }],
+          steps: [{ key: 'rej', label: `${name} 已拒絕`, short: '拒絕', done: true, fail: true, current: false, at: updatedAtLabel || createdAtLabel }],
           active: 0, failed: true, failLabel: '已拒絕',
           summary: `${name} 老師已拒絕此邀請`,
           overdue: false, overdueHint: ''
         };
       } else if (status === 'admin_rejected') {
         return {
-          steps: [{ key: 'rej', label: '教學組已駁回', short: '駁回', done: true, fail: true, current: false }],
+          steps: [{ key: 'rej', label: '教學組已駁回', short: '駁回', done: true, fail: true, current: false, at: updatedAtLabel || createdAtLabel }],
           active: 0, failed: true, failLabel: '已駁回',
           summary: '教學組已駁回此申請',
           overdue: false, overdueHint: ''
@@ -6342,19 +6351,32 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       } else if (status === 'cancelled' || status === 'withdrawn') {
         const lab = status === 'withdrawn' ? '已撤回' : '已取消';
         return {
-          steps: [{ key: 'can', label: lab, short: lab, done: true, fail: true, current: false }],
+          steps: [{ key: 'can', label: lab, short: lab, done: true, fail: true, current: false, at: updatedAtLabel || createdAtLabel }],
           active: 0, failed: true, failLabel: lab,
           summary: lab,
           overdue: false, overdueHint: ''
         };
       }
       return {
-        steps: steps.map((st, i) => ({
-          ...st,
-          done: i < active || (i === active && status === 'approved'),
-          current: i === active && status !== 'approved',
-          fail: false
-        })),
+        steps: steps.map((st, i) => {
+          const done = i < active || (i === active && status === 'approved');
+          const current = i === active && status !== 'approved';
+          let at = '';
+          if (done) {
+            if (st.key === 'invite') {
+              // 已完成受邀：pending_admin 時 updated≈同意時間；approved 時難還原，改標送出時間
+              if (status === 'pending_admin' && (hasLaterUpdate || updatedAtLabel)) {
+                at = updatedAtLabel || createdAtLabel;
+              } else {
+                at = createdAtLabel;
+              }
+            } else if (st.key === 'admin' || st.key === 'done') {
+              // 核准／出單：優先更新時間，否則送出時間
+              at = (status === 'approved' ? (updatedAtLabel || createdAtLabel) : (updatedAtLabel || createdAtLabel));
+            }
+          }
+          return { ...st, done, current, fail: false, at };
+        }),
         active,
         failed: false,
         summary,

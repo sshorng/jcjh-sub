@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>建成國中線上調代課系統｜分角色操作手冊</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;800;900&display=swap" rel="stylesheet">
+<style>
+:root {
+  --blue: #1e5a8a;
+  --blue-deep: #0f3a5c;
+  --blue-soft: #e8f2fa;
+  --gold: #e8b84a;
+  --gold-soft: #fff8e6;
+  --ink: #1a1a2e;
+  --mute: #5a6070;
+  --line: #d8e2ec;
+  --green: #2a7a4c;
+  --sans: "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: var(--sans);
+  background: #d0dce8;
+  color: var(--ink);
+  line-height: 1.7;
+  letter-spacing: 0.03em;
+}
+section { width: 794px; margin: 24px auto; box-shadow: 0 8px 28px rgba(15,58,92,.14); }
+.cover {
+  background: var(--blue-deep);
+  color: #fff;
+  padding: 64px 56px 48px;
+  min-height: 1123px;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+}
+.cover::before {
+  content: "";
+  position: absolute;
+  right: -60px; bottom: -40px;
+  width: 280px; height: 280px;
+  border-radius: 50%;
+  background: rgba(232,184,74,.1);
+}
+.series { font-size: 12px; letter-spacing: .4em; color: var(--gold); font-weight: 800; position: relative; z-index: 1; }
+.cover h1 { font-size: 42px; font-weight: 900; line-height: 1.2; margin: 22px 0 0; position: relative; z-index: 1; }
+.cover .sub { font-size: 17px; color: rgba(255,255,255,.82); margin-top: 16px; max-width: 560px; position: relative; z-index: 1; }
+.rule { width: 64px; height: 5px; background: var(--gold); margin-top: 28px; border-radius: 3px; position: relative; z-index: 1; }
+.toc {
+  margin-top: 36px;
+  border: 1px solid rgba(255,255,255,.22);
+  border-radius: 12px;
+  padding: 20px 24px;
+  background: rgba(255,255,255,.07);
+  position: relative; z-index: 1;
+}
+.toc-title { font-size: 11px; letter-spacing: .35em; color: var(--gold); font-weight: 800; margin-bottom: 12px; }
+.toc ul { list-style: none; margin: 0; padding: 0; }
+.toc li {
+  font-size: 14px; color: rgba(255,255,255,.88);
+  padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,.1);
+  display: flex; gap: 12px;
+}
+.toc li:last-child { border-bottom: 0; }
+.toc .n { color: var(--gold); font-weight: 800; width: 36px; flex-shrink: 0; }
+.author { margin-top: auto; font-size: 13px; color: rgba(255,255,255,.65); position: relative; z-index: 1; line-height: 1.8; }
+.author b { color: #fff; }
+.page {
+  background: #fff;
+  width: 794px;
+  height: 1123px;
+  padding: 38px 46px 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+.page-inner { flex: 1; min-height: 0; overflow: hidden; }
+.kicker { font-size: 11px; letter-spacing: .4em; color: var(--blue); font-weight: 800; }
+.role-banner {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .15em;
+  padding: 4px 12px;
+  border-radius: 99px;
+  margin-bottom: 6px;
+}
+.role-banner.t { background: #e0f5e8; color: #1b5e20; }
+.role-banner.s { background: #dceeff; color: #0d47a1; }
+.role-banner.a { background: #ffe8c8; color: #8a4b00; }
+h2 { font-size: 26px; font-weight: 900; margin: 6px 0 0; line-height: 1.3; }
+.h-rule { width: 52px; height: 4px; background: var(--gold); margin: 10px 0 14px; border-radius: 2px; }
+h3 {
+  font-size: 16px; font-weight: 800; color: var(--blue-deep);
+  margin: 14px 0 8px; display: flex; align-items: center; gap: 8px;
+}
+h3 .chip {
+  font-size: 11px; background: var(--gold); color: var(--blue-deep);
+  padding: 2px 8px; border-radius: 4px; font-weight: 900;
+}
+p { margin: 6px 0; font-size: 13px; }
+ul { margin: 6px 0; padding-left: 0; }
+li {
+  list-style: none; position: relative; padding-left: 16px;
+  margin: 4px 0; font-size: 13px;
+}
+li::before {
+  content: ""; position: absolute; left: 2px; top: 8px;
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--gold); border: 2px solid var(--blue);
+}
+strong { font-weight: 800; color: var(--blue-deep); }
+.tbl { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 12px; }
+.tbl th { background: var(--blue-deep); color: #fff; text-align: left; padding: 7px 9px; font-weight: 700; }
+.tbl td { border: 1px solid var(--line); padding: 6px 9px; vertical-align: top; }
+.tbl tr:nth-child(even) td { background: var(--blue-soft); }
+.callout {
+  border-radius: 8px; padding: 10px 14px; margin: 10px 0;
+  border-left: 5px solid; font-size: 12.5px;
+}
+.callout.blue { background: var(--blue-soft); border-color: var(--blue); }
+.callout.gold { background: var(--gold-soft); border-color: var(--gold); }
+.callout.green { background: #eef8f1; border-color: var(--green); }
+.callout.red { background: #fff0f0; border-color: #c0392b; }
+.callout .tag {
+  display: block; font-size: 10.5px; font-weight: 800;
+  letter-spacing: .1em; margin-bottom: 3px;
+}
+.callout.blue .tag { color: var(--blue); }
+.callout.gold .tag { color: #9a7400; }
+.callout.green .tag { color: var(--green); }
+.callout.red .tag { color: #c0392b; }
+.step-row { display: flex; gap: 10px; margin: 7px 0; align-items: flex-start; }
+.step-n {
+  flex-shrink: 0; width: 22px; height: 22px;
+  background: var(--blue); color: #fff; border-radius: 50%;
+  font-size: 11px; font-weight: 900;
+  display: flex; align-items: center; justify-content: center; margin-top: 1px;
+}
+.step-t { font-size: 13px; line-height: 1.55; flex: 1; }
+.checklist {
+  border: 1.5px dashed var(--blue);
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: var(--blue-soft);
+  margin: 10px 0;
+}
+.checklist .ct { font-size: 12px; font-weight: 900; color: var(--blue-deep); margin-bottom: 6px; }
+.checklist label {
+  display: block; font-size: 12.5px; margin: 4px 0;
+  padding-left: 4px;
+}
+.checklist label::before { content: "☐ "; color: var(--blue); font-weight: 700; }
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 8px 0; }
+.box {
+  border: 1.5px solid var(--line); border-radius: 10px;
+  padding: 11px 13px; background: #fafcfe;
+}
+.box h4 { margin: 0 0 6px; font-size: 13px; font-weight: 900; color: var(--blue-deep); }
+.box p, .box li { font-size: 12px; margin: 3px 0; }
+.mock {
+  border: 1.5px solid var(--line); border-radius: 10px;
+  overflow: hidden; margin: 10px 0; background: #f4f7fa;
+}
+.mock-bar {
+  background: var(--blue-deep); color: #fff;
+  padding: 7px 12px; font-size: 11.5px; font-weight: 700;
+  display: flex; gap: 10px; flex-wrap: wrap;
+}
+.mock-bar .on { background: rgba(255,255,255,.2); padding: 2px 8px; border-radius: 4px; }
+.mock-body { padding: 10px 12px; font-size: 12px; }
+.mock-row {
+  display: flex; gap: 8px; margin: 5px 0; align-items: center;
+}
+.mock-btn {
+  background: var(--blue); color: #fff; border-radius: 6px;
+  padding: 4px 10px; font-size: 11px; font-weight: 700;
+}
+.mock-btn.out { background: #fff; color: var(--blue); border: 1px solid var(--blue); }
+.mock-btn.ok { background: var(--green); }
+.mock-btn.warn { background: #c0392b; }
+.foot {
+  margin-top: auto; padding: 8px 0 12px;
+  border-top: 2px solid var(--gold);
+  font-size: 10.5px; color: var(--mute);
+  display: flex; justify-content: space-between; flex-shrink: 0;
+}
+@media print {
+  *, *::before, *::after { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  @page { margin: 0; size: A4; }
+  body { background: #fff !important; }
+  section { margin: 0; box-shadow: none; page-break-after: always; }
+  .page { border: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- 封面 -->
+<section class="cover">
+  <div class="series">建成國中　校務數位化</div>
+  <h1>分角色操作手冊<br>教師 · 行政 · 教學組</h1>
+  <p class="sub">依角色逐步操作：登入、申請、簽核、代申請、核准、後台。適合列印或螢幕對照。</p>
+  <div class="rule"></div>
+  <div class="toc">
+    <div class="toc-title">本手冊目錄</div>
+    <ul>
+      <li><span class="n">00</span>共用：登入與介面</li>
+      <li><span class="n">T1</span>教師：申請代課／調課</li>
+      <li><span class="n">T2</span>教師：回覆邀請與歷史</li>
+      <li><span class="n">T3</span>教師：批次代課</li>
+      <li><span class="n">S1</span>行政：全校課表與代申請</li>
+      <li><span class="n">A1</span>教學組：待核准與直接核准</li>
+      <li><span class="n">A2</span>教學組：活動互代與空堂事件</li>
+      <li><span class="n">A3</span>教學組：鐘點結算與教師管理</li>
+      <li><span class="n">FAQ</span>常見問題速查</li>
+    </ul>
+  </div>
+  <div class="author">
+    <b>建成國中線上調代課系統</b><br>
+    使用手冊系列　B｜分角色操作<br>
+    版本 2026　校內推廣用
+  </div>
+</section>
+
+<!-- 00 共用登入 -->
+<section class="page">
+  <div class="page-inner">
+    <div class="kicker">COMMON</div>
+    <h2>共用：登入與介面</h2>
+    <div class="h-rule"></div>
+    <h3><span class="chip">登入</span>第一次使用</h3>
+    <div class="step-row"><div class="step-n">1</div><div class="step-t">用瀏覽器開啟系統網址（建議 Chrome）。</div></div>
+    <div class="step-row"><div class="step-n">2</div><div class="step-t">按<strong>使用 Google 帳號登入</strong>，選擇<strong>本校 Workspace 帳號</strong>。</div></div>
+    <div class="step-row"><div class="step-n">3</div><div class="step-t">登入成功後會載入課表。右上角可見姓名與角色徽章（教師／行政／教學組）。</div></div>
+    <div class="step-row"><div class="step-n">4</div><div class="step-t">建議立刻按右上 <strong>？操作教學</strong> 走一遍（約 3～4 分鐘，不會真送單）。</div></div>
+    <div class="callout red">
+      <span class="tag">登入失敗時</span>
+      出現「非本校網域」：換學校 Google 帳號。<br>
+      按鈕沒反應：改用正式網域或 <strong>localhost</strong>，不要用 127.0.0.1。
+    </div>
+    <h3><span class="chip">介面</span>右上工具列</h3>
+    <table class="tbl">
+      <tr><th>項目</th><th>說明</th></tr>
+      <tr><td>學期</td><td>切換目前學期（影響課表與結算）</td></tr>
+      <tr><td>代申請</td><td>行政專用；未授權會顯示「未授權」</td></tr>
+      <tr><td>模擬身份</td><td>教學組可模擬某教師畫面</td></tr>
+      <tr><td>↻ 同步</td><td>重新抓最新資料</td></tr>
+      <tr><td>？ 操作教學</td><td>重播新手導覽</td></tr>
+      <tr><td>登出</td><td>結束登入</td></tr>
+    </table>
+    <h3><span class="chip">分頁</span>快速對照</h3>
+    <table class="tbl">
+      <tr><th>分頁</th><th>你平常會用到嗎？</th></tr>
+      <tr><td>課表總覽</td><td>全員：申請的起點</td></tr>
+      <tr><td>待辦簽核</td><td>全員：同意／拒絕／核准</td></tr>
+      <tr><td>歷史紀錄</td><td>全員：查已生效、列印</td></tr>
+      <tr><td>班級課表</td><td>行政／教學組</td></tr>
+      <tr><td>後台管理</td><td>僅教學組</td></tr>
+    </table>
+  </div>
+  <div class="foot"><span>B｜操作手冊</span><span>共用</span><span>00</span></div>
+</section>
+
+<!-- T1 教師申請 -->
+<section class="page">
+  <div class="page-inner">
+    <span class="role-banner t">TEACHER</span>
+    <h2>教師：申請代課／調課</h2>
+    <div class="h-rule"></div>
+    <p>最常用流程。目標：把某一節課找人代，或與別人對調節次。</p>
+    <div class="mock">
+      <div class="mock-bar">
+        <span class="on">課表總覽</span>
+        <span>待辦簽核</span>
+        <span>歷史紀錄</span>
+      </div>
+      <div class="mock-body">
+        <div class="mock-row">① 切週次 → ② 點自己有課的格 → ③ 智慧媒合抽屜開啟</div>
+        <div class="mock-row">
+          <span class="mock-btn">找人代課</span>
+          <span class="mock-btn out">節次調課</span>
+          <span class="mock-btn out">模擬</span>
+        </div>
+      </div>
+    </div>
+    <h3><span class="chip">A</span>找人代課（逐步）</h3>
+    <div class="step-row"><div class="step-n">1</div><div class="step-t">進入<strong>課表總覽</strong>，用 ◀ ▶ 或日期切到請假那一週。</div></div>
+    <div class="step-row"><div class="step-n">2</div><div class="step-t">點<strong>自己有課</strong>的格子（綠色／有課內容的格）。</div></div>
+    <div class="step-row"><div class="step-n">3</div><div class="step-t">左側（或抽屜）選<strong>找人代課</strong>。系統列出該節空堂老師，並標同課／同科／同班。</div></div>
+    <div class="step-row"><div class="step-n">4</div><div class="step-t">可搜尋姓名，點選代課人後按<strong>模擬</strong>。</div></div>
+    <div class="step-row"><div class="step-n">5</div><div class="step-t">在<strong>模擬對照</strong>確認雙方課表、連堂、衝堂。填<strong>原因／假別</strong>、選擇<strong>代課鐘點費結算方式</strong>、必要時填行政備註。</div></div>
+    <div class="step-row"><div class="step-n">6</div><div class="step-t">按<strong>確認送出，通知相關人員</strong>。成功後用<strong>LINE 傳送</strong>或複製連結請對方同意。</div></div>
+    <h3><span class="chip">B</span>節次調課（差異）</h3>
+    <ul>
+      <li>選<strong>節次調課</strong>，找可對調的空堂節次（同班為主）。</li>
+      <li>可指定對調到本週／上週／下週／下下週。</li>
+      <li>抽離僅能與抽離對調；巡堂不可調課。</li>
+      <li>綁課會跳出確認提醒。</li>
+    </ul>
+    <div class="callout gold">
+      <span class="tag">生效條件</span>
+      送出 ≠ 生效。必須：<strong>對方同意</strong> → <strong>教學組核准</strong> 後，課表才正式變更。
+    </div>
+  </div>
+  <div class="foot"><span>B｜操作手冊</span><span>教師</span><span>T1</span></div>
+</section>
+
+<!-- T2 教師簽核歷史 -->
+<section class="page">
+  <div class="page-inner">
+    <span class="role-banner t">TEACHER</span>
+    <h2>教師：回覆邀請與歷史</h2>
+    <div class="h-rule"></div>
+    <h3><span class="chip">1</span>別人請你代課／調課時</h3>
+    <div class="step-row"><div class="step-n">1</div><div class="step-t">進入<strong>待辦簽核</strong>（或從 LINE／信件連結進入）。</div></div>
+    <div class="step-row"><div class="step-n">2</div><div class="step-t">在「收到的邀請」查看細節（日期、節次、班級、假別）。</div></div>
+    <div class="step-row"><div class="step-n">3</div><div class="step-t">按<strong>同意</strong>或<strong>拒絕</strong>。同批多筆可<strong>全同意</strong>。</div></div>
+    <div class="step-row"><div class="step-n">4</div><div class="step-t">同意後狀態變「送交教學組」，等教學組核准才算數。</div></div>
+    <div class="mock">
+      <div class="mock-bar"><span class="on">待辦簽核</span></div>
+      <div class="mock-body">
+        <div class="mock-row">📩 收到的邀請 · 王老師 週三第3節 702國文</div>
+        <div class="mock-row">
+          <span class="mock-btn ok">同意</span>
+          <span class="mock-btn warn">拒絕</span>
+          <span class="mock-btn out">全同意</span>
+        </div>
+      </div>
+    </div>
+    <h3><span class="chip">2</span>你送出的申請</h3>
+    <ul>
+      <li>在待辦可看進度，可再按<strong>LINE</strong>提醒對方。</li>
+      <li>尚未完成前可<strong>撤回</strong>。</li>
+      <li>對方拒絕後需重新申請。</li>
+    </ul>
+    <h3><span class="chip">3</span>歷史紀錄與列印</h3>
+    <div class="step-row"><div class="step-n">1</div><div class="step-t">進入<strong>歷史紀錄</strong>，依月份／狀態篩選。</div></div>
+    <div class="step-row"><div class="step-n">2</div><div class="step-t">點列可開詳情。</div></div>
+    <div class="step-row"><div class="step-n">3</div><div class="step-t">需要紙本時選：<strong>列印教師聯</strong>／<strong>班級聯</strong>／<strong>留存聯</strong>。</div></div>
+    <div class="checklist">
+      <div class="ct">教師日常檢查清單</div>
+      <label>請假前一至二天先在系統送單</label>
+      <label>送出後立刻 LINE 對方</label>
+      <label>追蹤是否變「送交教學組」</label>
+      <label>核准後到歷史確認並列印（若校內規定）</label>
+    </div>
+  </div>
+  <div class="foot"><span>B｜操作手冊</span><span>教師</span><span>T2</span></div>
+</section>
+
+<!-- T3 批次 -->
+<section class="page">
+  <div class="page-inner">
+    <span class="role-banner t">TEACHER</span>
+    <h2>教師：批次代課</h2>
+    <div class="h-rule"></div>
+    <p>適合「請半天／一天、多節都要請人代」的情況。</p>
+    <h3><span class="chip">步驟</span>怎麼做</h3>
+    <div class="step-row"><div class="step-n">1</div><div class="step-t">在課表總覽按 <strong>📦 批次代課</strong>（進入批次模式）。</div></div>
+    <div class="step-row"><div class="step-n">2</div><div class="step-t">依序點<strong>同一位教師</strong>（通常是自己）要請假的多個格子。</div></div>
+    <div class="step-row"><div class="step-n">3</div><div class="step-t">按<strong>智慧媒合 (N)</strong>，N 為已選節數。</div></div>
+    <div class="step-row"><div class="step-n">4</div><div class="step-t">選擇：<strong>同一人全代</strong> 或 <strong>每節不同人</strong>。</div></div>
+    <div class="step-row"><div class="step-n">5</div><div class="step-t">模擬 → 填假別／經費 → 批次送出。</div></div>
+    <div class="two-col">
+      <div class="box">
+        <h4>規則</h4>
+        <ul>
+          <li>單次最多 <strong>20</strong> 節</li>
+          <li>每節仍是獨立簽核</li>
+          <li>可批次全同意（對方端）</li>
+        </ul>
+      </div>
+      <div class="box">
+        <h4>小技巧</h4>
+        <ul>
+          <li>先找「同科且當天課少」的人</li>
+          <li>衝堂時會擋；教學組／代申請可強制</li>
+          <li>送完記得逐節追蹤狀態</li>
+        </ul>
+      </div>
+    </div>
+    <div class="callout blue">
+      <span class="tag">假別與經費速記</span>
+      公假、婚喪、產前／分娩、身心調適 → 多為<strong>公費代課</strong>。<br>
+      病假、事假、休假、補休 → 多為<strong>自費代課</strong>。送出前可改。
+    </div>
+    <div class="callout green">
+      <span class="tag">完成標準</span>
+      所有節次狀態為「核准生效」，且課表格子已顯示代課結果。
+    </div>
+  </div>
+  <div class="foot"><span>B｜操作手冊</span><span>教師</span><span>T3</span></div>
+</section>
+
+<!-- S1 行政 -->
+<section class="page">
+  <div class="page-inner">
+    <span class="role-banner s">STAFF</span>
+    <h2>行政：全校課表與代申請</h2>
+    <div class="h-rule"></div>
+    <p>行政角色可看全校課表與班級課表。若教學組在後台勾選你為「行政代申請」，才能代老師送單。</p>
+    <h3><span class="chip">1</span>查全校／班級課表</h3>
+    <div class="step-row"><div class="step-n">1</div><div class="step-t"><strong>課表總覽</strong>：看全校教師週課表、誰在請假／調代中。</div></div>
+    <div class="step-row"><div class="step-n">2</div><div class="step-t"><strong>班級課表</strong>：選班級，看該班課與代調摘要。</div></div>
+    <div class="step-row"><div class="step-n">3</div><div class="step-t">若教學組有開連結，可把班級唯讀連結轉給班導師。</div></div>
+    <h3><span class="chip">2</span>行政代申請（需授權）</h3>
+    <div class="step-row"><div class="step-n">1</div><div class="step-t">確認右上顯示<strong>代申請：可選教師</strong>，不是「未授權」。</div></div>
+    <div class="step-row"><div class="step-n">2</div><div class="step-t">選要代送的教師姓名。</div></div>
+    <div class="step-row"><div class="step-n">3</div><div class="step-t">在課表點該教師有課的格，依智慧媒合流程選人、模擬、送出。</div></div>
+    <div class="step-row"><div class="step-n">4</div><div class="step-t">送出後狀態直接是<strong>送交教學組</strong>（跳過受邀確認）。</div></div>
+    <div class="step-row"><div class="step-n">5</div><div class="step-t">通知教學組核准。你<strong>不能</strong>直接出單生效。</div></div>
+    <div class="callout red">
+      <span class="tag">權限邊界</span>
+      行政<strong>沒有</strong>後台管理、不能核准、不能發活動額度。未在白名單就無法代申請。
+    </div>
+    <div class="checklist">
+      <div class="ct">行政每日建議</div>
+      <label>早上掃一輪課表總覽（紅點／申請中）</label>
+      <label>協助無法登入的老師代送（若已授權）</label>
+      <label>急件用訊息提醒教學組待核准</label>
+      <label>月底協助對歷史與紙本（若校規需要）</label>
+    </div>
+  </div>
+  <div class="foot"><span>B｜操作手冊</span><span>行政</span><span>S1</span></div>
+</section>
+
+<!-- A1 教學組核准 -->
+<section class="page">
+  <div class="page-inner">
+    <span class="role-banner a">ADMIN</span>
+    <h2>教學組：待核准與直接核准</h2>
+    <div class="h-rule"></div>
+    <h3><span class="chip">1</span>一般核准流程</h3>
+    <div class="step-row"><div class="step-n">1</div><div class="step-t">進入<strong>待辦簽核</strong> → 區塊「📝 待核准發放」。</div></div>
+    <div class="step-row"><div class="step-n">2</div><div class="step-t">點列看詳情：雙方課表、假別、經費、備註。</div></div>
+    <div class="step-row"><div class="step-n">3</div><div class="step-t">單筆按<strong>核准</strong>或<strong>駁回</strong>；多筆可用<strong>本頁全選</strong> → <strong>批次核准／批次駁回</strong>。</div></div>
+    <div class="step-row"><div class="step-n">4</div><div class="step-t">核准後課表正式變更，狀態「核准生效」。</div></div>
+    <div class="mock">
+      <div class="mock-bar"><span class="on">待辦簽核 · 待核准</span></div>
+      <div class="mock-body">
+        <div class="mock-row">☑ 王→李 週三3 702 · 病假 · 自費代課</div>
+        <div class="mock-row">
+          <span class="mock-btn ok">批次核准</span>
+          <span class="mock-btn warn">批次駁回</span>
+          <span class="mock-btn out">本頁全選</span>
+        </div>
+      </div>
+    </div>
+    <h3><span class="chip">2</span>教學組直接核准</h3>
+    <p>緊急或已口頭協調完成時使用。</p>
+    <div class="step-row"><div class="step-n">1</div><div class="step-t">以教學組身份走模擬對照（可先模擬身份成該教師，或直接代操作）。</div></div>
+    <div class="step-row"><div class="step-n">2</div><div class="step-t">勾選 <strong>⚡ 教學組直接核准</strong>（可選不寄通知信）。</div></div>
+    <div class="step-row"><div class="step-n">3</div><div class="step-t">送出即 <strong>approved</strong>，課表立刻變更。</div></div>
+    <div class="callout gold">
+      <span class="tag">模擬身份</span>
+      右上 <strong>🧪 模擬身份</strong> 可切成某教師畫面除錯或代操作；完成後按<strong>還原管理員</strong>。
+    </div>
+    <div class="callout blue">
+      <span class="tag">狀態機速記</span>
+      一般：待受邀確認 → 送交教學組 → 核准生效<br>
+      代申請：送交教學組 → 核准生效<br>
+      直接核准：送出即核准生效
+    </div>
+  </div>
+  <div class="foot"><span>B｜操作手冊</span><span>教學組</span><span>A1</span></div>
+</section>
+
+<!-- A2 活動互代 -->
+<section class="page">
+  <div class="page-inner">
+    <span class="role-banner a">ADMIN</span>
+    <h2>教學組：活動互代與空堂事件</h2>
+    <div class="h-rule"></div>
+    <h3><span class="chip">互代</span>活動互代操作</h3>
+    <div class="step-row"><div class="step-n">1</div><div class="step-t">課表總覽按 <strong>🔁 活動互代</strong>。</div></div>
+    <div class="step-row"><div class="step-n">2</div><div class="step-t">設<strong>起日／迄日</strong>（可按「本週」），選<strong>外出班</strong>（可用七／八／九年級快捷）。</div></div>
+    <div class="step-row"><div class="step-n">3</div><div class="step-t">可從<strong>空堂事件</strong>帶入日期與班級（事件須勾「可進互代」）。</div></div>
+    <div class="step-row"><div class="step-n">4</div><div class="step-t">可選帶隊老師（不發放額度）。需要時按<strong>＋發放額度</strong>。</div></div>
+    <div class="step-row"><div class="step-n">5</div><div class="step-t">依媒合建議選代課人：釋出空堂去代 → <strong>扣額度</strong>；本來就空 → <strong>活動公費</strong>；請假老師一律不扣鐘點。</div></div>
+    <div class="step-row"><div class="step-n">6</div><div class="step-t">可<strong>暫定</strong>多筆再批次送出。第 8 節固定<strong>第8節代課</strong>。</div></div>
+    <h3><span class="chip">事件</span>空堂事件設定</h3>
+    <div class="step-row"><div class="step-n">1</div><div class="step-t">後台管理 → <strong>系統設定</strong> → 空堂事件。</div></div>
+    <div class="step-row"><div class="step-n">2</div><div class="step-t">填名稱、起日、迄日（空白＝學期結束）、班級清單。</div></div>
+    <div class="step-row"><div class="step-n">3</div><div class="step-t">鐘點規則：<strong>不調降</strong>（如畢旅）或<strong>調降</strong>（如畢業後）。</div></div>
+    <div class="step-row"><div class="step-n">4</div><div class="step-t">勾選是否可進互代、是否啟用。</div></div>
+    <div class="two-col">
+      <div class="box">
+        <h4>事件會影響</h4>
+        <ul>
+          <li>課表淡化顯示</li>
+          <li>媒合視同空堂</li>
+          <li>月報超鐘調降</li>
+          <li>第8節空堂事件日該班不發</li>
+        </ul>
+      </div>
+      <div class="box">
+        <h4>注意</h4>
+        <ul>
+          <li>扣額度／活動公費僅 admin 可寫</li>
+          <li>同活動不重複發額度</li>
+          <li>額度不足：一般模式擋送</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span>B｜操作手冊</span><span>教學組</span><span>A2</span></div>
+</section>
+
+<!-- A3 結算與管理 -->
+<section class="page">
+  <div class="page-inner">
+    <span class="role-banner a">ADMIN</span>
+    <h2>教學組：鐘點結算與教師管理</h2>
+    <div class="h-rule"></div>
+    <h3><span class="chip">結算</span>月底大鐘點</h3>
+    <div class="step-row"><div class="step-n">1</div><div class="step-t">後台 → <strong>💰 鐘點結算</strong>。</div></div>
+    <div class="step-row"><div class="step-n">2</div><div class="step-t">選結算月份／期間，檢視各教師：排課、基鐘、超時、自費扣、公代、第8節等。</div></div>
+    <div class="step-row"><div class="step-n">3</div><div class="step-t">按<strong>匯出 Excel</strong>（工作表：大鐘點1-7、第8節明細）。</div></div>
+    <p style="font-size:12.5px;color:var(--mute)">單價：1～7／午休超鐘與公代自代 455 元；第8節 500 元。</p>
+    <h3><span class="chip">教師</span>教師管理</h3>
+    <ul>
+      <li>維護 Email、科目、基鐘、互代額度、系統角色。</li>
+      <li>可批次匯入；點互代額度數字可看額度帳本。</li>
+      <li>角色：教師／行政／教學組（管理／主管）。</li>
+    </ul>
+    <h3><span class="chip">其他</span>課表匯入與設定</h3>
+    <table class="tbl">
+      <tr><th>功能</th><th>操作要點</th></tr>
+      <tr><td>課表匯入</td><td>Excel 長表；S1 只清目前學期再寫入</td></tr>
+      <tr><td>編輯基礎課表</td><td>課表主畫面開 ✏️，改格後存檔</td></tr>
+      <tr><td>行政代申請</td><td>系統設定中逐人勾選，勿全開</td></tr>
+      <tr><td>學期管理</td><td>新增／預設／刪除學期</td></tr>
+      <tr><td>全校課表匯出</td><td>期間內 Word（.docx）</td></tr>
+    </table>
+    <div class="checklist">
+      <div class="ct">教學組上線前檢查</div>
+      <label>教師名單 Email 正確、角色正確</label>
+      <label>當學期課表已匯入且抽樣核對</label>
+      <label>基鐘與互代額度已設定</label>
+      <label>行政代申請白名單已勾</label>
+      <label>用 3 筆真實案例跑完整簽核</label>
+    </div>
+  </div>
+  <div class="foot"><span>B｜操作手冊</span><span>教學組</span><span>A3</span></div>
+</section>
+
+<!-- FAQ -->
+<section class="page">
+  <div class="page-inner">
+    <div class="kicker">FAQ</div>
+    <h2>常見問題速查</h2>
+    <div class="h-rule"></div>
+    <table class="tbl">
+      <tr><th style="width:38%">問題</th><th>處理方式</th></tr>
+      <tr><td>無法登入／非本校網域</td><td>改用學校 Google 帳號；確認網域白名單</td></tr>
+      <tr><td>登入按鈕沒反應</td><td>改用 localhost 或正式網域，勿用 127.0.0.1</td></tr>
+      <tr><td>點格子不能申請</td><td>只能點自己的課；行政需代申請授權</td></tr>
+      <tr><td>送出後課表沒變</td><td>等對方同意＋教學組核准（或直接核准）</td></tr>
+      <tr><td>找不到代課人</td><td>看媒合排序；改節次；請行政／教學組協助</td></tr>
+      <tr><td>衝堂無法送出</td><td>換人；教學組或代申請可強制送出</td></tr>
+      <tr><td>額度不足</td><td>一般模式不可送；互代可改活動公費</td></tr>
+      <tr><td>批次太多節</td><td>單批最多 20 節，分批送</td></tr>
+      <tr><td>要重播教學</td><td>右上 ？操作教學</td></tr>
+      <tr><td>資料好像舊的</td><td>按 ↻ 同步；仍錯再通知教學組</td></tr>
+    </table>
+    <h3><span class="chip">路徑</span>建議學習順序</h3>
+    <div class="step-row"><div class="step-n">1</div><div class="step-t">全體：登入 → 操作教學 → 申請一筆代課 → 回覆一筆邀請</div></div>
+    <div class="step-row"><div class="step-n">2</div><div class="step-t">行政：全校課表 → 代申請（若授權）</div></div>
+    <div class="step-row"><div class="step-n">3</div><div class="step-t">教學組：待核准 → 活動互代 → 鐘點結算</div></div>
+    <div class="callout green">
+      <span class="tag">配套文件</span>
+      <strong>A 系統介紹</strong>：全貌與規則。<strong>C 推廣投影片</strong>：說明會用。本手冊適合「邊做邊看」。
+    </div>
+    <div class="callout blue">
+      <span class="tag">一句話給同仁</span>
+      請假：點格子 → 選人 → 模擬 → 送出 → LINE 對方 → 等核准。三到四分鐘可完成第一筆。
+    </div>
+  </div>
+  <div class="foot"><span>B｜操作手冊</span><span>FAQ</span><span>FAQ</span></div>
+</section>
+
+</body>
+</html>
