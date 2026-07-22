@@ -137,33 +137,40 @@ body {
   align-items: center;
   justify-content: center;
   width: 100%;
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  border: 1px solid rgba(0,0,0,0.1);
-  padding: 14px 24px;
-  font-size: 1rem;
-  font-weight: 600;
-  border-radius: 12px;
+  max-width: 280px;
+  background: #fff;
+  color: #1f1f1f;
+  border: 1px solid #747775;
+  padding: 0 12px;
+  height: 40px;
+  font-size: 14px;
+  font-weight: 500;
+  font-family: "Google Sans", Roboto, Arial, sans-serif;
+  border-radius: 4px;
   cursor: pointer;
-  transition: var(--transition-smooth);
-  gap: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+  gap: 10px;
+  box-shadow: none;
+}
+
+.btn-google-official {
+  letter-spacing: 0.15px;
 }
 
 .btn-google:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.06);
-  background: #f8fafc;
+  background: #f8f9fa;
+  box-shadow: 0 1px 2px rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
+  transform: none;
 }
 .btn-google:disabled {
   opacity: 0.7;
   cursor: wait;
-  transform: none;
 }
 
 .btn-google img {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
 }
 
 .domain-hint {
