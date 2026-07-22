@@ -266,13 +266,21 @@ createApp({
           }
         }
       } catch (e) { /* ignore */ }
+      // 清掉 GSI 記住上次帳號用的狀態 cookie（跨路徑）
+      try {
+        const host = String(location.hostname || '');
+        const expire = 'Thu, 01 Jan 1970 00:00:00 GMT';
+        const base = '; path=/; expires=' + expire + '; SameSite=Lax';
+        document.cookie = 'g_state=;' + base;
+        if (host) document.cookie = 'g_state=; domain=' + host + base;
+      } catch (eCookie) { /* ignore */ }
     }
 
     function ensureGsiInitialized() {
       if (!isGoogleGsiReady() || !googleClientId.value) return false;
       if (_gsiInitialized) return true;
       try {
-        // 只顯示官方按鈕，不自動沿用上次帳號、不跳 One Tap
+        // 官方按鈕；不自動沿用上次帳號、不跳 One Tap
         google.accounts.id.initialize({
           client_id: googleClientId.value,
           callback: gsiCredentialBridge,
@@ -290,7 +298,7 @@ createApp({
       }
     }
 
-    /** 渲染登入按鈕；容器空或腳本晚到時可重試 */
+    /** 渲染官方 GSI 登入按鈕；容器空或腳本晚到時可重試 */
     function renderGsiLoginButton(opts) {
       opts = opts || {};
       if (classReadonlyMode.value || user.value) return false;
@@ -310,7 +318,7 @@ createApp({
         return false;
       }
       try {
-        // 只渲染官方按鈕；關掉 One Tap／自動選帳（不跳「以 OOO 身份」）
+        // 每次渲染前再清一次，避免「以先前帳號繼續」
         suppressGsiAutoLogin();
         btnContainer.innerHTML = '';
         google.accounts.id.renderButton(btnContainer, {
@@ -322,7 +330,8 @@ createApp({
           logo_alignment: 'left',
           type: 'standard',
           click_listener: function () {
-            // 選帳／同意常超過 5 秒；僅在「仍無登入且未進同步」才提示，成功登入必須清掉計時
+            // 點擊當下再清一次自動選帳
+            suppressGsiAutoLogin();
             _gsiClickGen += 1;
             const gen = _gsiClickGen;
             try { if (_gsiPopupHintTimer) clearTimeout(_gsiPopupHintTimer); } catch (eT) { /* ignore */ }
@@ -331,8 +340,8 @@ createApp({
               if (gen !== _gsiClickGen) return;
               if (user.value || loading.value) return;
               gsiButtonError.value = '若未出現 Google 登入視窗，請允許此網站的彈出式視窗後再試。';
-              showToast('尚未完成登入：請完成 Google 帳號選擇，或允許彈出式視窗後再按一次', 'info', 5000);
-            }, 12000);
+              showToast('尚未完成登入：請允許彈出式視窗後再按一次', 'info', 5000);
+            }, 8000);
           }
         });
         const ok = btnContainer.childNodes && btnContainer.childNodes.length > 0;
@@ -340,7 +349,6 @@ createApp({
         gsiButtonReady.value = !!ok;
         gsiButtonError.value = ok ? '' : '登入按鈕未顯示，請點重新載入';
         if (ok) {
-          // iframe 渲染後若 origin 不符，點擊常完全無 callback；給本機明確提示
           const host = String(location.hostname || '').toLowerCase();
           if (host === '127.0.0.1' || host === '[::1]') {
             gsiButtonError.value = '目前是 127.0.0.1，GSI 常無反應；請改開 http://localhost:8000/';
@@ -355,7 +363,7 @@ createApp({
       }
     }
 
-      async function setupGoogleSignInUi() {
+    async function setupGoogleSignInUi() {
       if (classReadonlyMode.value) return;
       gsiButtonError.value = '正在載入 Google 登入…';
       gsiButtonReady.value = false;
@@ -364,17 +372,13 @@ createApp({
         gsiButtonError.value = '無法載入 Google 登入元件，請檢查網路後重新整理';
         return;
       }
-      // 等 Vue 畫出登入區（loading 結束後才有 #gsi-button-container）
       await nextTick();
       suppressGsiAutoLogin();
       let tries = 0;
       const tryRender = () => {
         tries++;
         if (user.value || classReadonlyMode.value) return;
-        if (renderGsiLoginButton()) {
-          // 只保留官方「使用 Google 帳號登入」按鈕，不呼叫 prompt()
-          return;
-        }
+        if (renderGsiLoginButton()) return;
         if (tries < 20) {
           if (_gsiWaitTimer) clearTimeout(_gsiWaitTimer);
           _gsiWaitTimer = setTimeout(tryRender, 250);
@@ -390,7 +394,8 @@ createApp({
       gsiButtonError.value = '重新載入中…';
       await setupGoogleSignInUi();
     };
-    /** 不呼叫 prompt()：避免跳出「以先前帳號登入」；票過期改請使用者再按官方按鈕 */
+
+    /** 不呼叫 prompt()：避免「以先前帳號登入」；票過期改請使用者再按官方按鈕 */
     const refreshGoogleIdToken = () => {
       if (_tokenRefreshP) return _tokenRefreshP;
       _tokenRefreshP = Promise.resolve().then(() => {
@@ -6331,9 +6336,9 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       loading.value = false;
     };
 
-    // Google 登入 (GSI 代替)
+    // Google 登入：請點官方 GSI 按鈕
     const loginWithGoogle = () => {
-      showToast("請點擊下方的 Google 官方登入按鈕進行安全驗證。", 'info');
+      showToast('請點擊下方的 Google 官方登入按鈕進行安全驗證。', 'info');
     };
 
 

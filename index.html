@@ -38,7 +38,7 @@
         <p class="login-subtitle">請使用學校 Google 帳號登入系統，<br>即可線上發起調代課並查看每週課表狀況。</p>
         <div class="login-gsi-wrap">
           <div id="gsi-button-container" class="login-gsi-btn"></div>
-          <p v-if="!gsiButtonReady && gsiButtonError" class="login-gsi-status">{{ gsiButtonError }}</p>
+          <p v-if="gsiButtonError" class="login-gsi-status">{{ gsiButtonError }}</p>
           <button
             v-if="!gsiButtonReady"
             type="button"
