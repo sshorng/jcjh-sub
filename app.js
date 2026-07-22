@@ -320,9 +320,21 @@ createApp({
       await setupGoogleSignInUi();
     };
 
+    /**
+     * 只允許已在 Google Console 登記的 origin → 固定 redirect_uri。
+     * 間歇「要求無效」常見原因：本機/正式站混用、尾斜線不一致、預覽網域未授權。
+     */
+    const OAUTH_REDIRECT_BY_ORIGIN = {
+      'https://jcjh-sub.vercel.app': 'https://jcjh-sub.vercel.app/',
+      'http://localhost:8000': 'http://localhost:8000/',
+      'http://127.0.0.1:8000': 'http://localhost:8000/'
+    };
     function getOAuthRedirectUri() {
       try {
-        return String(location.origin || '') + '/';
+        const origin = String(location.origin || '').replace(/\/$/, '');
+        if (OAUTH_REDIRECT_BY_ORIGIN[origin]) return OAUTH_REDIRECT_BY_ORIGIN[origin];
+        // 未知 origin（如 Vercel 預覽網域）不硬猜，避免隨機 invalid_request
+        return '';
       } catch (e) {
         return '';
       }
@@ -339,32 +351,73 @@ createApp({
       } catch (e) { /* ignore */ }
       return String(Date.now()) + Math.random().toString(36).slice(2);
     }
-    function consumeOAuthRedirectToken() {
+    function clearOAuthUrlResidue() {
+      try {
+        const path = location.pathname || '/';
+        const search = String(location.search || '');
+        // 清掉 OAuth 帶回的 query error／hash token
+        const q = new URLSearchParams(search.charAt(0) === '?' ? search.slice(1) : search);
+        let dirty = false;
+        ['error', 'error_description', 'state', 'id_token', 'authuser', 'prompt', 'scope', 'hd'].forEach(function (k) {
+          if (q.has(k)) { q.delete(k); dirty = true; }
+        });
+        const nextSearch = q.toString() ? ('?' + q.toString()) : '';
+        if (dirty || (location.hash && location.hash.length > 1)) {
+          history.replaceState(null, '', path + nextSearch);
+        }
+      } catch (e) { /* ignore */ }
+    }
+    function parseOAuthReturnParams() {
+      // Google 錯誤有時在 hash、有時在 query；成功 id_token 在 hash
+      let fromHash = null;
+      let fromQuery = null;
       try {
         const hash = String(location.hash || '');
-        if (!hash || hash.length < 2) return null;
-        const raw = hash.charAt(0) === '#' ? hash.slice(1) : hash;
-        if (raw.indexOf('id_token=') < 0 && raw.indexOf('error=') < 0) return null;
-        const q = new URLSearchParams(raw);
+        if (hash && hash.length > 1) {
+          const raw = hash.charAt(0) === '#' ? hash.slice(1) : hash;
+          if (raw.indexOf('id_token=') >= 0 || raw.indexOf('error=') >= 0) {
+            fromHash = new URLSearchParams(raw);
+          }
+        }
+      } catch (eH) { /* ignore */ }
+      try {
+        const search = String(location.search || '');
+        if (search && search.length > 1) {
+          const raw = search.charAt(0) === '?' ? search.slice(1) : search;
+          if (raw.indexOf('id_token=') >= 0 || raw.indexOf('error=') >= 0) {
+            fromQuery = new URLSearchParams(raw);
+          }
+        }
+      } catch (eQ) { /* ignore */ }
+      if (!fromHash && !fromQuery) return null;
+      // 合併：hash 優先（id_token 在此）
+      const merged = new URLSearchParams();
+      if (fromQuery) fromQuery.forEach(function (v, k) { merged.set(k, v); });
+      if (fromHash) fromHash.forEach(function (v, k) { merged.set(k, v); });
+      return merged;
+    }
+    function consumeOAuthRedirectToken() {
+      try {
+        gsiLoggingIn.value = false;
+        const q = parseOAuthReturnParams();
+        if (!q) return null;
         const err = q.get('error');
-        try {
-          history.replaceState(null, '', location.pathname + location.search);
-        } catch (eClean) { /* ignore */ }
+        const token = q.get('id_token');
+        clearOAuthUrlResidue();
         if (err) {
           const desc = q.get('error_description') || err;
-          gsiLoggingIn.value = false;
-          // 常見：redirect_uri 未在 Google Console 授權 →「這個應用程式的要求無效」
-          if (err === 'redirect_uri_mismatch' || /redirect/i.test(desc) || err === 'invalid_request') {
-            const uri = getOAuthRedirectUri();
-            gsiButtonError.value = 'Google 拒絕此登入要求。請到 Cloud Console 的 OAuth 用戶端，把「已授權的重新導向 URI」加上：' + uri;
-            showToast('OAuth 設定未完成：請授權重新導向 URI ' + uri, 'error', 9000);
+          const uri = getOAuthRedirectUri() || (String(location.origin || '') + '/');
+          try { console.warn('[OAuth] error', err, desc, 'redirect_uri=', uri); } catch (eC) { /* ignore */ }
+          if (err === 'redirect_uri_mismatch' || err === 'invalid_request' || /redirect|invalid/i.test(desc)) {
+            gsiButtonError.value = 'Google 拒絕登入（' + err + '）。請確認 Console「重新導向 URI」含：' + uri
+              + '（正式站與 localhost 都要；含尾斜線）。目前網址：' + location.origin;
+            showToast('登入被拒：請檢查 OAuth 重新導向 URI 是否含 ' + uri, 'error', 10000);
           } else {
             gsiButtonError.value = '登入未完成：' + desc;
             showToast('Google 登入未完成：' + desc, 'warning', 6000);
           }
           return null;
         }
-        const token = q.get('id_token');
         if (!token) return null;
         const expected = sessionStorage.getItem('jcjh_oauth_nonce');
         try { sessionStorage.removeItem('jcjh_oauth_nonce'); } catch (eN) { /* ignore */ }
@@ -387,14 +440,14 @@ createApp({
         return token;
       } catch (e) {
         console.warn('consumeOAuthRedirectToken', e);
+        gsiLoggingIn.value = false;
         return null;
       }
     }
 
     /**
      * 單一 Google 風格按鈕 + OAuth 整頁導向。
-     * 官方 renderButton 無法設 prompt=select_account，一定會記憶／帶入上次帳號；
-     * 只有 OAuth 的 select_account 能每次強制選帳。
+     * 官方 renderButton 無法設 prompt=select_account；OAuth select_account 可強制選帳。
      */
     const loginWithGoogle = () => {
       if (gsiLoggingIn.value) return;
@@ -402,34 +455,52 @@ createApp({
         showToast('缺少 Google Client ID', 'error');
         return;
       }
-      const redirectUri = getOAuthRedirectUri();
-      if (!redirectUri) {
-        showToast('無法取得目前網址，請重新整理後再試', 'error');
-        return;
-      }
       const host = String(location.hostname || '').toLowerCase();
       if (host === '127.0.0.1' || host === '[::1]') {
-        gsiButtonError.value = '請改開 http://localhost:8000/ 再登入';
+        gsiButtonError.value = '請改開 http://localhost:8000/ 再登入（勿用 127.0.0.1）';
         showToast('請改用 http://localhost:8000/', 'warning', 5000);
+        return;
+      }
+      const redirectUri = getOAuthRedirectUri();
+      if (!redirectUri) {
+        gsiButtonError.value = '目前網域未列入 OAuth 白名單：' + location.origin
+          + '。請用 https://jcjh-sub.vercel.app/ 或 http://localhost:8000/';
+        showToast('請改用正式站或本機 localhost:8000', 'error', 8000);
         return;
       }
       suppressGsiAutoLogin();
       const nonce = makeOAuthNonce();
-      try { sessionStorage.setItem('jcjh_oauth_nonce', nonce); } catch (eS) { /* ignore */ }
+      const state = makeOAuthNonce().slice(0, 16);
+      try {
+        sessionStorage.setItem('jcjh_oauth_nonce', nonce);
+        sessionStorage.setItem('jcjh_oauth_state', state);
+        sessionStorage.setItem('jcjh_oauth_redirect', redirectUri);
+      } catch (eS) { /* ignore */ }
       gsiLoggingIn.value = true;
       gsiButtonError.value = '';
-      try { console.info('[OAuth] redirect_uri=', redirectUri, 'origin=', location.origin); } catch (eL) { /* ignore */ }
-      const params = new URLSearchParams({
-        client_id: googleClientId.value,
-        redirect_uri: redirectUri,
-        response_type: 'id_token',
-        response_mode: 'fragment',
-        scope: 'openid email profile',
-        nonce: nonce,
-        prompt: 'select_account'
-      });
-      location.assign('https://accounts.google.com/o/oauth2/v2/auth?' + params.toString());
+      // 只帶必要參數；多餘參數有時會觸發 Google invalid_request
+      const params = new URLSearchParams();
+      params.set('client_id', googleClientId.value);
+      params.set('redirect_uri', redirectUri);
+      params.set('response_type', 'id_token');
+      params.set('scope', 'openid email profile');
+      params.set('nonce', nonce);
+      params.set('state', state);
+      params.set('prompt', 'select_account');
+      const authUrl = 'https://accounts.google.com/o/oauth2/v2/auth?' + params.toString();
+      try { console.info('[OAuth] go', { redirect_uri: redirectUri, origin: location.origin }); } catch (eL) { /* ignore */ }
+      // 稍延遲再導向，讓 UI 先顯示「正在前往」；失敗返回用 pageshow 解鎖
+      setTimeout(function () {
+        location.assign(authUrl);
+      }, 50);
     };
+
+    // 從 Google 錯誤頁按「上一頁」回來時，解鎖登入鈕
+    try {
+      window.addEventListener('pageshow', function () {
+        try { gsiLoggingIn.value = false; } catch (e) { /* ignore */ }
+      });
+    } catch (ePs) { /* ignore */ }
 
     /** 票過期：請再按登入鈕 */
     const refreshGoogleIdToken = () => {
