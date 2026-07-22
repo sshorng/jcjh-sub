@@ -198,9 +198,8 @@ createApp({
     let _gsiWaitTimer = null;
     let _gsiPopupHintTimer = null;
     let _gsiClickGen = 0;
-    const gsiButtonReady = ref(true);
+    const gsiButtonReady = ref(false);
     const gsiButtonError = ref('');
-    const gsiLoggingIn = ref(false);
 
     function isGoogleGsiReady() {
       return typeof google !== 'undefined'
@@ -258,6 +257,7 @@ createApp({
       }
     }
 
+    /** 不自動帶入本站上次帳號：cancel / disableAutoSelect / 清 g_state */
     function suppressGsiAutoLogin() {
       try {
         if (typeof google !== 'undefined' && google.accounts && google.accounts.id) {
@@ -276,20 +276,11 @@ createApp({
       } catch (eCookie) { /* ignore */ }
     }
 
-    function revokeGoogleSessionHint(email) {
-      try {
-        if (email && isGoogleGsiReady() && typeof google.accounts.id.revoke === 'function') {
-          google.accounts.id.revoke(String(email), function () { /* ignore */ });
-        }
-      } catch (e) { /* ignore */ }
-      suppressGsiAutoLogin();
-    }
-
     function ensureGsiInitialized() {
       if (!isGoogleGsiReady() || !googleClientId.value) return false;
       if (_gsiInitialized) return true;
       try {
-        // 僅供 token 相關輔助；登入 UI 改走 OAuth select_account
+        // 官方按鈕；不自動登入、不 One Tap
         google.accounts.id.initialize({
           client_id: googleClientId.value,
           callback: gsiCredentialBridge,
@@ -307,129 +298,101 @@ createApp({
       }
     }
 
-    /** 登入 UI：單一 Google 風格按鈕（不再用 renderButton，因其無法強制選帳） */
-    function renderGsiLoginButton() {
-      gsiButtonReady.value = true;
-      return true;
+    /** 渲染官方 GSI 登入按鈕 */
+    function renderGsiLoginButton(opts) {
+      opts = opts || {};
+      if (classReadonlyMode.value || user.value) return false;
+      const btnContainer = document.getElementById('gsi-button-container');
+      if (!btnContainer) {
+        gsiButtonReady.value = false;
+        return false;
+      }
+      if (!isGoogleGsiReady()) {
+        gsiButtonReady.value = false;
+        gsiButtonError.value = '正在載入 Google 登入…';
+        return false;
+      }
+      if (!ensureGsiInitialized()) {
+        gsiButtonReady.value = false;
+        gsiButtonError.value = 'Google 登入初始化失敗';
+        return false;
+      }
+      try {
+        suppressGsiAutoLogin();
+        btnContainer.innerHTML = '';
+        google.accounts.id.renderButton(btnContainer, {
+          theme: 'outline',
+          size: 'large',
+          width: 280,
+          text: 'signin_with',
+          shape: 'rectangular',
+          logo_alignment: 'left',
+          type: 'standard',
+          click_listener: function () {
+            _gsiClickGen += 1;
+            const gen = _gsiClickGen;
+            try { if (_gsiPopupHintTimer) clearTimeout(_gsiPopupHintTimer); } catch (eT) { /* ignore */ }
+            try { console.info('[GSI] button clicked', location.origin); } catch (eC) { /* ignore */ }
+            _gsiPopupHintTimer = setTimeout(function () {
+              if (gen !== _gsiClickGen) return;
+              if (user.value || loading.value) return;
+              gsiButtonError.value = '若未出現 Google 登入視窗，請允許此網站的彈出式視窗後再試。';
+              showToast('尚未完成登入：請允許彈出式視窗後再按一次', 'info', 5000);
+            }, 8000);
+          }
+        });
+        const ok = btnContainer.childNodes && btnContainer.childNodes.length > 0;
+        _gsiButtonRendered = !!ok;
+        gsiButtonReady.value = !!ok;
+        gsiButtonError.value = ok ? '' : '登入按鈕未顯示，請點重新載入';
+        if (ok) {
+          const host = String(location.hostname || '').toLowerCase();
+          if (host === '127.0.0.1' || host === '[::1]') {
+            gsiButtonError.value = '目前是 127.0.0.1，GSI 常無反應；請改開 http://localhost:8000/';
+          }
+        }
+        return ok;
+      } catch (e) {
+        console.warn('renderButton 失敗', e);
+        gsiButtonReady.value = false;
+        gsiButtonError.value = '登入按鈕渲染失敗';
+        return false;
+      }
     }
 
     async function setupGoogleSignInUi() {
       if (classReadonlyMode.value) return;
-      gsiButtonReady.value = true;
-      gsiLoggingIn.value = false;
-      const ready = await waitForGoogleGsi(8000);
-      if (ready) {
-        ensureGsiInitialized();
-        suppressGsiAutoLogin();
+      gsiButtonError.value = '正在載入 Google 登入…';
+      gsiButtonReady.value = false;
+      const ready = await waitForGoogleGsi(15000);
+      if (!ready) {
+        gsiButtonError.value = '無法載入 Google 登入元件，請檢查網路後重新整理';
+        return;
       }
+      await nextTick();
+      suppressGsiAutoLogin();
+      let tries = 0;
+      const tryRender = () => {
+        tries++;
+        if (user.value || classReadonlyMode.value) return;
+        if (renderGsiLoginButton()) return;
+        if (tries < 20) {
+          if (_gsiWaitTimer) clearTimeout(_gsiWaitTimer);
+          _gsiWaitTimer = setTimeout(tryRender, 250);
+        } else if (!user.value) {
+          gsiButtonError.value = '登入按鈕未出現，請點下方「重新載入登入按鈕」';
+        }
+      };
+      tryRender();
     }
 
     const reloadGsiLoginButton = async () => {
-      gsiButtonError.value = '';
-      gsiLoggingIn.value = false;
+      _gsiButtonRendered = false;
+      gsiButtonError.value = '重新載入中…';
       await setupGoogleSignInUi();
     };
 
-    function getOAuthRedirectUri() {
-      try {
-        return String(location.origin || '') + '/';
-      } catch (e) {
-        return '';
-      }
-    }
-    function makeOAuthNonce() {
-      try {
-        if (window.crypto && typeof window.crypto.getRandomValues === 'function') {
-          const buf = new Uint8Array(16);
-          window.crypto.getRandomValues(buf);
-          return Array.prototype.map.call(buf, function (b) {
-            return ('0' + b.toString(16)).slice(-2);
-          }).join('');
-        }
-      } catch (e) { /* ignore */ }
-      return String(Date.now()) + Math.random().toString(36).slice(2);
-    }
-    /** 從 #id_token=… 取回導向登入結果 */
-    function consumeOAuthRedirectToken() {
-      try {
-        const hash = String(location.hash || '');
-        if (!hash || hash.length < 2) return null;
-        const raw = hash.charAt(0) === '#' ? hash.slice(1) : hash;
-        if (raw.indexOf('id_token=') < 0 && raw.indexOf('error=') < 0) return null;
-        const q = new URLSearchParams(raw);
-        const err = q.get('error');
-        try {
-          history.replaceState(null, '', location.pathname + location.search);
-        } catch (eClean) { /* ignore */ }
-        if (err) {
-          const desc = q.get('error_description') || err;
-          showToast('Google 登入未完成：' + desc, 'warning', 6000);
-          gsiButtonError.value = '登入未完成，請再按一次';
-          return null;
-        }
-        const token = q.get('id_token');
-        if (!token) return null;
-        const expected = sessionStorage.getItem('jcjh_oauth_nonce');
-        try { sessionStorage.removeItem('jcjh_oauth_nonce'); } catch (eN) { /* ignore */ }
-        if (expected) {
-          try {
-            const payload = JSON.parse(
-              decodeURIComponent(
-                atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))
-                  .split('').map(function (c) {
-                    return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-                  }).join('')
-              )
-            );
-            if (payload && payload.nonce && payload.nonce !== expected) {
-              showToast('登入驗證失敗（nonce），請再試一次', 'error');
-              return null;
-            }
-          } catch (ePay) { /* ignore */ }
-        }
-        return token;
-      } catch (e) {
-        console.warn('consumeOAuthRedirectToken', e);
-        return null;
-      }
-    }
-
-    /** 整頁 OAuth + prompt=select_account：每次都跳出帳號清單，不帶入上次帳號 */
-    const loginWithGoogle = () => {
-      if (gsiLoggingIn.value) return;
-      if (!googleClientId.value) {
-        showToast('缺少 Google Client ID', 'error');
-        return;
-      }
-      const redirectUri = getOAuthRedirectUri();
-      if (!redirectUri) {
-        showToast('無法取得目前網址，請重新整理後再試', 'error');
-        return;
-      }
-      const host = String(location.hostname || '').toLowerCase();
-      if (host === '127.0.0.1' || host === '[::1]') {
-        gsiButtonError.value = '請改開 http://localhost:8000/ 再登入';
-        showToast('請改用 http://localhost:8000/', 'warning', 5000);
-        return;
-      }
-      suppressGsiAutoLogin();
-      const nonce = makeOAuthNonce();
-      try { sessionStorage.setItem('jcjh_oauth_nonce', nonce); } catch (eS) { /* ignore */ }
-      gsiLoggingIn.value = true;
-      gsiButtonError.value = '';
-      const params = new URLSearchParams({
-        client_id: googleClientId.value,
-        redirect_uri: redirectUri,
-        response_type: 'id_token',
-        scope: 'openid email profile',
-        nonce: nonce,
-        // 關鍵：每次強制帳號選擇，不帶入「以 XXX 繼續」
-        prompt: 'select_account'
-      });
-      location.assign('https://accounts.google.com/o/oauth2/v2/auth?' + params.toString());
-    };
-
-    /** 票過期：請使用者再按登入鈕（OAuth select_account） */
+    /** 不呼叫 prompt()：避免「以先前帳號登入」；票過期請再按官方按鈕 */
     const refreshGoogleIdToken = () => {
       if (_tokenRefreshP) return _tokenRefreshP;
       _tokenRefreshP = Promise.resolve().then(() => {
@@ -442,6 +405,10 @@ createApp({
         _tokenRefreshP = null;
       });
       return _tokenRefreshP;
+    };
+
+    const loginWithGoogle = () => {
+      showToast('請點擊下方的 Google 官方登入按鈕進行安全驗證。', 'info');
     };
 
     const {
@@ -6365,9 +6332,13 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       const prevEmail = user.value && user.value.email ? user.value.email : '';
       localStorage.removeItem('jcjh_google_id_token');
       clearSWR();
-      // 撤銷本站記住的 Google 登入關聯，下次必再選帳
-      revokeGoogleSessionHint(prevEmail);
-      gsiLoggingIn.value = false;
+      // 不記憶本站上次帳號：revoke + disableAutoSelect + 清 g_state
+      try {
+        if (prevEmail && isGoogleGsiReady() && typeof google.accounts.id.revoke === 'function') {
+          google.accounts.id.revoke(String(prevEmail), function () { /* ignore */ });
+        }
+      } catch (eRev) { /* ignore */ }
+      suppressGsiAutoLogin();
       resetAppState();
       loading.value = false;
     };
@@ -6751,12 +6722,6 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       // 先解析班級唯讀深連結
       const hasClassLink = applyClassViewFromUrl();
 
-      // OAuth 回傳 #id_token=…（prompt=select_account 整頁導向）
-      const redirectToken = consumeOAuthRedirectToken();
-      if (redirectToken) {
-        try { localStorage.setItem('jcjh_google_id_token', redirectToken); } catch (eR) { /* ignore */ }
-      }
-
       // 檢查是否已有登入之 Google ID Token 快取
       const idToken = localStorage.getItem('jcjh_google_id_token');
       if (idToken && !isTokenExpired(idToken)) {
@@ -6977,7 +6942,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       paginatedMyPending, paginatedMySent, paginatedAdminPending,
       pendingMyPendingTotal, pendingMySentTotal, pendingAdminTotal,
       reportMonthOptions, personalChanges, recommendedExchangeList, displayedExchangeList,
-      loginWithGoogle, logout, gsiButtonReady, gsiButtonError, gsiLoggingIn, reloadGsiLoginButton,
+      loginWithGoogle, logout, gsiButtonReady, gsiButtonError, reloadGsiLoginButton,
       changeWeek,       getPeriodTimeSpan, getWeekDayText, formatDateMMDD,
       timetablePeriods, getPeriodLabel, formatPeriodText, isLunchPeriod, formatClassName, isCombinedClass,
       getClassCellClassForDate, getClassCellClassForClass, getScheduleForDate, weekScheduleGrid, cellFromGrid, handleCellClick, handleClassCellClick,

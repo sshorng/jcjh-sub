@@ -37,16 +37,14 @@
         <h1 class="login-title">建成國中線上調代課系統</h1>
         <p class="login-subtitle">請使用學校 Google 帳號登入系統，<br>即可線上發起調代課並查看每週課表狀況。</p>
         <div class="login-gsi-wrap">
-          <button
-            type="button"
-            class="btn-google"
-            :disabled="gsiLoggingIn"
-            @click="loginWithGoogle"
-          >
-            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="" width="20" height="20">
-            <span>{{ gsiLoggingIn ? '正在前往 Google…' : '使用 Google 帳號登入' }}</span>
-          </button>
+          <div id="gsi-button-container" class="login-gsi-btn"></div>
           <p v-if="gsiButtonError" class="login-gsi-status">{{ gsiButtonError }}</p>
+          <button
+            v-if="!gsiButtonReady"
+            type="button"
+            class="btn btn-secondary login-gsi-retry"
+            @click="reloadGsiLoginButton"
+          >重新載入登入按鈕</button>
         </div>
 
         <p class="domain-hint">
