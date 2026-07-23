@@ -4493,6 +4493,53 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       XLSX.writeFile(wb, `全校大鐘點與第8節費_${reportMonth.value}.xlsx`);
     };
 
+    // 匯出代課代導費 Excel（給幹事作帳備查：含公付與自付兩張逐筆清冊）
+    const exportSubFeeToExcel = async () => {
+      try {
+        if (typeof window.ensureXlsx === 'function') await window.ensureXlsx();
+      } catch (e) {
+        showToast('Excel 模組載入失敗', 'error');
+        return;
+      }
+      if (typeof XLSX === 'undefined') {
+        showToast('Excel 模組未載入', 'error');
+        return;
+      }
+      if (!window.DomainBilling || !window.DomainBilling.buildSubFeeExcelWorkbook) {
+        showToast('計費服務模組未就緒', 'error');
+        return;
+      }
+
+      const res = window.DomainBilling.buildSubFeeExcelWorkbook({
+        reportMonth: reportMonth.value,
+        substitutionRecords: substitutionRecords.value,
+        getTeacherNameByEmail
+      });
+
+      const wb = XLSX.utils.book_new();
+
+      const wsPub = XLSX.utils.aoa_to_sheet(res.pubAoa);
+      wsPub['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 7 } }];
+      wsPub['!cols'] = [
+        { wch: 12 }, { wch: 10 }, { wch: 16 }, { wch: 14 },
+        { wch: 24 }, { wch: 8 },  { wch: 12 }, { wch: 10 }
+      ];
+      XLSX.utils.book_append_sheet(wb, wsPub, res.sheetNamePub);
+
+      const wsSelf = XLSX.utils.aoa_to_sheet(res.selfAoa);
+      wsSelf['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 7 } }];
+      wsSelf['!cols'] = [
+        { wch: 12 }, { wch: 10 }, { wch: 16 }, { wch: 14 },
+        { wch: 24 }, { wch: 8 },  { wch: 12 }, { wch: 10 }
+      ];
+      XLSX.utils.book_append_sheet(wb, wsSelf, res.sheetNameSelf);
+
+      const mParts = String(reportMonth.value || '').split('-');
+      const mNum = mParts.length > 1 ? parseInt(mParts[1], 10) : '';
+      const fileName = `${mNum ? mNum + '月' : ''}代課代導費.xlsx`;
+      XLSX.writeFile(wb, fileName);
+    };
+
     // 全校課表彙整 Word 匯出（後台）：.docx、試算表順序、可選教師
     // export 腳本延後載入：預設區間空，進後台或點「本週」再填
     const schoolExportStart = ref('');
@@ -7094,7 +7141,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       openScheduleEditModal, saveScheduleCell, clearScheduleCell, updateTeacherBaseHours, pickScheduleAttr,
       openAddTeacherModal, openEditTeacherModal, saveTeacher, deleteTeacher,
       handleFileChange, getMappingLabel, importSchedules, toggleSelectAllRecords, loadTeacherClassesForExchange,
-      printSelectedForms, sendSelectedBatchNotices, calculateMonthlyReport, exportReportToExcel,
+      printSelectedForms, sendSelectedBatchNotices, calculateMonthlyReport, exportReportToExcel, exportSubFeeToExcel,
       schoolExportStart, schoolExportEnd, schoolExportIncludeWeekend, schoolExportOnlyChanged,
       schoolExportSelectedEmails, schoolExportTeacherFilter, filteredSchoolExportTeachers,
       isSchoolExportTeacherSelected, toggleSchoolExportTeacher, selectAllSchoolExportTeachers, clearSchoolExportTeachers,

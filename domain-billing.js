@@ -448,6 +448,186 @@ window.DomainBilling = (function () {
     });
   }
 
+  /**
+   * 產出幹事備查專用之「月度代課代導費逐筆清冊」工作表資料
+   * 含「YYY.MM 公付」與「YYY.MM 自付」兩張工作表
+   */
+  function buildSubFeeExcelWorkbook(opts) {
+    var reportMonth = opts.reportMonth || '';
+    var substitutionRecords = opts.substitutionRecords || [];
+    var getTeacherNameByEmail = opts.getTeacherNameByEmail || function (e) { return e || ''; };
+
+    var year = parseInt(reportMonth.slice(0, 4), 10);
+    var month = parseInt(reportMonth.slice(5, 7), 10);
+    if (isNaN(year) || isNaN(month)) {
+      var now = new Date();
+      year = now.getFullYear();
+      month = now.getMonth() + 1;
+    }
+
+    var rocYear = year - 1911;
+    var monthStr = String(month).padStart(2, '0');
+    var rocAcademicYear = month >= 8 ? rocYear : (rocYear - 1);
+    var semesterText = month >= 8 ? '一' : '二';
+    var title = rocAcademicYear + '學年度第' + semesterText + '學期' + month + '月份課務一覽表';
+
+    var sheetNamePub = rocYear + '.' + monthStr + ' 公付';
+    var sheetNameSelf = rocYear + '.' + monthStr + ' 自付';
+
+    var monthPrefix = year + '-' + monthStr;
+    var monthRecords = (substitutionRecords || []).filter(function (r) {
+      if (!r || !r.date) return false;
+      var fee = String(r.subFee || '').trim();
+      if (fee === '扣額度' || fee === '互代不結' || fee === '第8節代課') return false;
+      var p = r.period != null ? Number(r.period) : NaN;
+      if (p === 8 || String(r.period).trim() === '8') return false;
+      var rDate = String(r.date).replace(/\//g, '-');
+      return rDate.indexOf(monthPrefix) === 0;
+    });
+
+    function getOrigTeacherName(r) {
+      var origName = r.originalTeacherName || getTeacherNameByEmail(r.originalTeacherEmail) || '';
+      var isHomeroom = r.className === '代導' || r.subject === '代導' || r.type === 'homeroom';
+      if (isHomeroom) {
+        if (!origName || origName === '導師') {
+          var cls = (r.className !== '代導' ? r.className : '').replace('導師', '');
+          origName = cls ? (cls + '導師') : '導師';
+        }
+      }
+      return origName || '其他';
+    }
+
+    monthRecords.sort(function (a, b) {
+      var na = getOrigTeacherName(a);
+      var nb = getOrigTeacherName(b);
+      if (na !== nb) return na.localeCompare(nb, 'zh-Hant');
+      var da = String(a.date || '');
+      var db = String(b.date || '');
+      if (da !== db) return da.localeCompare(db);
+      var pa = a.period == null ? 0 : Number(a.period);
+      var pb = b.period == null ? 0 : Number(b.period);
+      return pa - pb;
+    });
+
+    function isPublic(r) {
+      var fee = String(r.subFee || '').trim();
+      var reason = String(r.reason || '').trim();
+      if (fee === '公費代課' || fee === '學校移撥' || fee === '活動公費' || fee === '公費' || fee === '代課費') {
+        return true;
+      }
+      if (fee === '自費代課' || fee === '自費') {
+        return false;
+      }
+      if (reason.indexOf('公假自理') >= 0 || reason.indexOf('事假') >= 0 || reason.indexOf('病假') >= 0 || reason.indexOf('補休') >= 0) {
+        return false;
+      }
+      if (reason.indexOf('公假') >= 0 || reason.indexOf('婚假') >= 0 || reason.indexOf('喪假') >= 0 || reason.indexOf('產前假') >= 0 || reason.indexOf('分娩假') >= 0 || reason.indexOf('身心調適假') >= 0) {
+        return true;
+      }
+      return true;
+    }
+
+    var dayMap = ['(日)', '(一)', '(二)', '(三)', '(四)', '(五)', '(六)'];
+    function formatRocDate(dateStr) {
+      if (!dateStr) return '';
+      var clean = String(dateStr).split('T')[0].replace(/\//g, '-');
+      var parts = clean.split('-');
+      if (parts.length < 3) return dateStr;
+      var y = parseInt(parts[0], 10) - 1911;
+      var m = parts[1];
+      var d = parts[2];
+      var dt = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+      var dw = !isNaN(dt.getTime()) ? dayMap[dt.getDay()] : '';
+      return y + '.' + m + '.' + d + dw;
+    }
+
+    function formatPeriodChinese(p) {
+      if (p === null || p === undefined || p === '' || p === '代導') return '';
+      var pStr = String(p).trim();
+      var map = { '1': '一', '2': '二', '3': '三', '4': '四', '5': '五', '6': '六', '7': '七', '8': '八', '0': '午休' };
+      if (map[pStr]) return map[pStr];
+      return pStr;
+    }
+
+    var pubRecords = [];
+    var selfRecords = [];
+    monthRecords.forEach(function (r) {
+      if (isPublic(r)) pubRecords.push(r);
+      else selfRecords.push(r);
+    });
+
+    function buildAoa(records) {
+      var aoa = [];
+      aoa.push([title, null, null, null, null, null, null, null]);
+      aoa.push(['請假\n教師', '假別', '請假\n日期', '請假\n時間', '課務\n(班級-課程)', '節次', '代課\n教師', '合計\n節數']);
+
+      var groups = [];
+      var groupMap = {};
+      records.forEach(function (r) {
+        var origName = r.originalTeacherName || getTeacherNameByEmail(r.originalTeacherEmail) || '';
+        var isHomeroom = r.className === '代導' || r.subject === '代導' || r.type === 'homeroom';
+        if (isHomeroom) {
+          if (!origName || origName === '導師') {
+            var cls = (r.className !== '代導' ? r.className : '').replace('導師', '');
+            origName = cls ? (cls + '導師') : '導師';
+          }
+        }
+        var reason = r.reason || r.subFee || '';
+        var dateRoc = formatRocDate(r.date);
+        var timeStr = r.leaveTime || r.timeRange || (isHomeroom ? '08:00-16:00' : '08:00-16:00');
+        var gKey = (r.requestId || '') + '_' + origName + '_' + reason + '_' + dateRoc + '_' + timeStr;
+        if (!groupMap[gKey]) {
+          groupMap[gKey] = [];
+          groups.push(groupMap[gKey]);
+        }
+        groupMap[gKey].push({
+          origName: origName,
+          reason: reason,
+          dateRoc: dateRoc,
+          timeStr: timeStr,
+          raw: r,
+          isHomeroom: isHomeroom
+        });
+      });
+
+      groups.forEach(function (grp) {
+        grp.forEach(function (item, idx) {
+          var r = item.raw;
+          var courseStr = '';
+          var periodStr = '';
+          if (item.isHomeroom) {
+            courseStr = '代導';
+            periodStr = '';
+          } else {
+            var cls = r.className || '';
+            var subj = r.subject || '';
+            var note = r.note ? '(' + r.note + ')' : '';
+            courseStr = cls + subj + note;
+            periodStr = formatPeriodChinese(r.period);
+          }
+          var actualName = r.actualTeacherName || getTeacherNameByEmail(r.actualTeacherEmail) || r.actualTeacherEmail || '';
+          var count = typeof r.periodCount === 'number' ? r.periodCount : (item.isHomeroom ? 0.8 : 1);
+
+          if (idx === 0) {
+            aoa.push([item.origName, item.reason, item.dateRoc, item.timeStr, courseStr, periodStr, actualName, count]);
+          } else {
+            aoa.push(['', '', '', '', courseStr, periodStr, actualName, count]);
+          }
+        });
+      });
+
+      return aoa;
+    }
+
+    return {
+      title: title,
+      sheetNamePub: sheetNamePub,
+      sheetNameSelf: sheetNameSelf,
+      pubAoa: buildAoa(pubRecords),
+      selfAoa: buildAoa(selfRecords)
+    };
+  }
+
   return {
     FEE_REGULAR: FEE_REGULAR,
     FEE_OVERTIME: FEE_OVERTIME,
@@ -459,6 +639,7 @@ window.DomainBilling = (function () {
     buildPeriod8Payout: buildPeriod8Payout,
     buildMonthlyReportRows: buildMonthlyReportRows,
     toExcelRows: toExcelRows,
-    toPeriod8ExcelRows: toPeriod8ExcelRows
+    toPeriod8ExcelRows: toPeriod8ExcelRows,
+    buildSubFeeExcelWorkbook: buildSubFeeExcelWorkbook
   };
 })();
