@@ -1441,6 +1441,13 @@
             </button>
             <button 
               class="btn btn-pill" 
+              :class="adminSubTab === 'classAway' ? 'btn-primary' : 'btn-secondary'"
+              @click="adminSubTab = 'classAway'"
+            >
+              📭 空堂事件
+            </button>
+            <button 
+              class="btn btn-pill" 
               :class="adminSubTab === 'settings' ? 'btn-primary' : 'btn-secondary'"
               @click="adminSubTab = 'settings'"
             >
@@ -1753,7 +1760,58 @@
             </div>
           </div>
 
-          <!-- 子分頁 4：系統設定（空堂事件 → 學期 → 連線唯讀置底） -->
+                    <!-- 子分頁：空堂事件 -->
+          <div v-if="adminSubTab === 'classAway'">
+                        <div class="card">
+              <div class="card-title">
+                <span>📭 空堂事件</span>
+                <button class="btn btn-primary btn-sm-pad" @click="openAddClassAwayModal">＋ 新增事件</button>
+              </div>
+              <p style="font-size:0.8rem;color:var(--text-secondary);line-height:1.5;margin:0 0 12px 0;">
+                期間內被勾選班級：課表<strong>淡化顯示</strong>，媒合／衝堂／匯出<strong>視同空堂</strong>。
+                鐘點：<strong>不調降</strong>（畢旅）月報超鐘不變；
+                <strong>調降</strong>（畢業）只扣起日之後的週。迄日空白＝學期結束。可進互代者可在活動互代面板選事件帶入。
+              </p>
+              <div class="table-responsive">
+                <table class="custom-table" style="font-size:0.85rem;">
+                  <thead>
+                    <tr>
+                      <th>名稱</th>
+                      <th>起日</th>
+                      <th>迄日</th>
+                      <th>班級</th>
+                      <th>鐘點</th>
+                      <th>互代</th>
+                      <th>啟用</th>
+                      <th>操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="ev in classAwayEvents" :key="ev.id">
+                      <td><strong>{{ ev.name }}</strong></td>
+                      <td>{{ ev.startDate || '—' }}</td>
+                      <td>{{ ev.endDate || '學期結束' }}</td>
+                      <td style="max-width:180px;font-size:0.78rem;">{{ (ev.classes || []).join('、') || '—' }}</td>
+                      <td>{{ ev.billingRule === 'reduce' ? '調降' : '不調降' }}</td>
+                      <td>{{ ev.forMutual ? '是' : '否' }}</td>
+                      <td>{{ ev.enabled !== false ? '是' : '否' }}</td>
+                      <td>
+                        <div style="display:flex;gap:4px;">
+                          <button class="btn btn-secondary btn-xs-tight" @click="openEditClassAwayModal(ev)">編輯</button>
+                          <button class="btn btn-secondary" style="padding:3px 8px;font-size:0.7rem;color:var(--color-danger);" @click="deleteClassAwayEvent(ev)">刪除</button>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr v-if="!classAwayEvents.length">
+                      <td colspan="8" style="text-align:center;padding:20px;color:var(--text-secondary);"><span class="empty-state-title">尚無空堂事件</span><span class="empty-state-hint">畢業／畢旅可新增事件並勾選班級</span></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+<!-- 子分頁 4：系統設定（空堂事件 → 學期 → 連線唯讀置底） -->
           <div v-if="adminSubTab === 'settings'">
             <!-- 行政代申請：指定行政授權（非一鍵全開） -->
             <div class="card mb-16">
@@ -1810,55 +1868,6 @@
                   </label>
                 </li>
               </ul>
-            </div>
-
-            <!-- 空堂事件（畢旅／畢業）置頂 -->
-            <div class="card">
-              <div class="card-title">
-                <span>📭 空堂事件</span>
-                <button class="btn btn-primary btn-sm-pad" @click="openAddClassAwayModal">＋ 新增事件</button>
-              </div>
-              <p style="font-size:0.8rem;color:var(--text-secondary);line-height:1.5;margin:0 0 12px 0;">
-                期間內被勾選班級：課表<strong>淡化顯示</strong>，媒合／衝堂／匯出<strong>視同空堂</strong>。
-                鐘點：<strong>不調降</strong>（畢旅）月報超鐘不變；
-                <strong>調降</strong>（畢業）只扣起日之後的週。迄日空白＝學期結束。可進互代者可在活動互代面板選事件帶入。
-              </p>
-              <div class="table-responsive">
-                <table class="custom-table" style="font-size:0.85rem;">
-                  <thead>
-                    <tr>
-                      <th>名稱</th>
-                      <th>起日</th>
-                      <th>迄日</th>
-                      <th>班級</th>
-                      <th>鐘點</th>
-                      <th>互代</th>
-                      <th>啟用</th>
-                      <th>操作</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="ev in classAwayEvents" :key="ev.id">
-                      <td><strong>{{ ev.name }}</strong></td>
-                      <td>{{ ev.startDate || '—' }}</td>
-                      <td>{{ ev.endDate || '學期結束' }}</td>
-                      <td style="max-width:180px;font-size:0.78rem;">{{ (ev.classes || []).join('、') || '—' }}</td>
-                      <td>{{ ev.billingRule === 'reduce' ? '調降' : '不調降' }}</td>
-                      <td>{{ ev.forMutual ? '是' : '否' }}</td>
-                      <td>{{ ev.enabled !== false ? '是' : '否' }}</td>
-                      <td>
-                        <div style="display:flex;gap:4px;">
-                          <button class="btn btn-secondary btn-xs-tight" @click="openEditClassAwayModal(ev)">編輯</button>
-                          <button class="btn btn-secondary" style="padding:3px 8px;font-size:0.7rem;color:var(--color-danger);" @click="deleteClassAwayEvent(ev)">刪除</button>
-                        </div>
-                      </td>
-                    </tr>
-                    <tr v-if="!classAwayEvents.length">
-                      <td colspan="8" style="text-align:center;padding:20px;color:var(--text-secondary);"><span class="empty-state-title">尚無空堂事件</span><span class="empty-state-hint">畢業／畢旅可新增事件並勾選班級</span></td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
             </div>
 
             <!-- 學期管理 -->
