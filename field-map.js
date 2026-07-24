@@ -174,6 +174,31 @@ window.FieldMap = (function () {
     };
   }
 
+  /** 狀態：中文表頭／舊別名 → 英文碼（前端過濾用） */
+  function normalizeRequestStatus(raw) {
+    const s = String(raw == null ? '' : raw).trim();
+    if (!s) return '';
+    const en = s.toLowerCase();
+    if (en === 'pending_teacher' || en === 'pending_admin' || en === 'approved'
+        || en === 'rejected' || en === 'admin_rejected' || en === 'cancelled' || en === 'withdrawn') {
+      return en;
+    }
+    const map = {
+      '待受邀人簽核': 'pending_teacher',
+      '待行政審核': 'pending_admin',
+      '送交教學組': 'pending_admin',
+      '已核准': 'approved',
+      '核准生效': 'approved',
+      '受邀人已拒絕': 'rejected',
+      '行政已退回': 'admin_rejected',
+      '行政駁回': 'admin_rejected',
+      '已取消': 'cancelled',
+      '已撤銷': 'cancelled',
+      '已撤回': 'withdrawn'
+    };
+    return map[s] || s;
+  }
+
   function mapRequest(r) {
     const targetDay = pick(r, ['對調目標星期', 'targetDayOfWeek']);
     const targetPeriod = pick(r, ['對調目標節次', 'targetPeriod']);
@@ -181,7 +206,7 @@ window.FieldMap = (function () {
       id: pick(r, ['申請單ID', 'id']),
       serial: pick(r, ['單號', 'serial']),
       batchId: pick(r, ['批次ID', 'batchId']) || '',
-      status: pick(r, ['狀態', 'status']),
+      status: normalizeRequestStatus(pick(r, ['狀態', 'status'])),
       requesterEmail: pick(r, ['申請人Email', 'requesterEmail']),
       requesterName: pick(r, ['申請人姓名', 'requesterName']),
       targetTeacherEmail: pick(r, ['受邀人Email', 'targetTeacherEmail']),
