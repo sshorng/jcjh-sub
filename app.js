@@ -3682,6 +3682,33 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         return `${mmdd}(${day})`;
       };
 
+      /** 是否空堂排班／空堂任務（原＝實＝本人） */
+      const isEmptySlotRec = (r) => {
+        if (!r) return false;
+        if (r.isEmptySlotAssign === true) return true;
+        const reason = String(r.reason || '').trim();
+        const note = String(r.note || '');
+        if (reason === '空堂排班' || note.indexOf('[空堂排班]') >= 0) return true;
+        const o = String(r.originalTeacherEmail || '').toLowerCase();
+        const a = String(r.actualTeacherEmail || '').toLowerCase();
+        return !!(o && a && o === a && (reason === '空堂排班' || note.indexOf('空堂') >= 0));
+      };
+      const isMutualRec = (r) => {
+        if (!r) return false;
+        if (isQuotaDeductFee(r.subFee)) return true;
+        const f = String(r.subFee || '');
+        return f === '活動公費' || f === '第8節代課';
+      };
+      /** 事由是否屬「請假」類（否則用「課務異動／代課」） */
+      const isLeaveLikeReason = (reason) => {
+        const s = String(reason || '').trim();
+        if (!s) return true; // 舊資料缺事由，保守當請假
+        if (s === '空堂排班') return false;
+        if (/公假|事假|病假|婚假|喪假|產假|娩假|生理假|家庭照顧|防疫|特休|休假|公差|公出|外出|研習|進修/.test(s)) return true;
+        if (/請假/.test(s)) return true;
+        return false;
+      };
+
       const list = deduped.map(r => {
         const isPast = r.date < todayStr;
         const isRequester = r.originalTeacherEmail && r.originalTeacherEmail.toLowerCase() === email;
@@ -3702,11 +3729,31 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
             const otherName = getTeacherNameByEmail(otherEmail);
             desc = `🔄 與 ${otherName} 老師調課`;
           }
+        } else if (isEmptySlotRec(r)) {
+          // 空堂任務：自己排任務進空堂，不是請假代課
+          const task = String(r.subject || '').trim() || '空堂任務';
+          classLine = fmtClassLine(r.date, r.period, r.className || '', task, '');
+          desc = `📌 空堂任務：${task}`;
         } else {
           classLine = fmtClassLine(r.date, r.period, r.className, r.subject, isRequester ? '' : '上');
-          desc = isRequester
-            ? `🏖️ 請假，由 ${getTeacherNameByEmail(r.actualTeacherEmail)} 老師代課`
-            : `📝 代課：協助 ${getTeacherNameByEmail(r.originalTeacherEmail)} 老師`;
+          const otherSub = getTeacherNameByEmail(r.actualTeacherEmail);
+          const otherLeave = getTeacherNameByEmail(r.originalTeacherEmail);
+          const reason = String(r.reason || '').trim();
+          if (isRequester) {
+            if (isMutualRec(r)) {
+              desc = `🔁 活動互代／外出，由 ${otherSub} 老師代課`;
+            } else if (isLeaveLikeReason(reason)) {
+              desc = `🏖️ 請假，由 ${otherSub} 老師代課`;
+            } else {
+              desc = `📋 課務由 ${otherSub} 老師代課` + (reason ? `（${reason}）` : '');
+            }
+          } else if (isMutualRec(r)) {
+            desc = `🔁 互代：代 ${otherLeave} 老師`;
+          } else if (isLeaveLikeReason(reason)) {
+            desc = `📝 代課：協助 ${otherLeave} 老師`;
+          } else {
+            desc = `📝 代課：${otherLeave} 老師` + (reason ? `（${reason}）` : '');
+          }
         }
 
         let statusClass = 'tag-gray';
@@ -6797,7 +6844,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       const head = cls || '有課';
       if (cell.isPending) {
         if (cell.pendingType === 'substitution_out') {
-          return `${head}\n⏳ 請假申請中\n${cell.pendingText || '待對方或行政確認'}`;
+          return `${head}\n⏳ 代課申請中\n${cell.pendingText || '待對方或行政確認'}`;
         }
         if (cell.pendingType === 'substitution_in') {
           return `${head}\n⏳ 待代課\n${cell.pendingText || '請至待辦簽核'}`;
@@ -6811,14 +6858,20 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         return `${head}\n${cell.pendingText || '申請處理中'}`;
       }
       if (cell.isSubstituted) {
-        return cell.subType === 'exchange'
-          ? `${head}\n⇄ 本節已調出\n${cell.subText || ''}`
-          : `${head}\n➔ 本節請假（已代課）\n${cell.subText || ''}`;
+        if (cell.subType === 'exchange') {
+          return `${head}\n⇄ 本節已調出\n${cell.subText || ''}`;
+        }
+        // 被代課：不一定是請假（公假／活動／課務異動等）
+        return `${head}\n➔ 本節已由他人代課\n${cell.subText || ''}`;
       }
       if (cell.isSubstitutionDuty) {
-        return cell.subType === 'exchange'
-          ? `${head}\n⇄ 本節為調入課\n${cell.subText || ''}`
-          : `${head}\n➔ 本節為代課\n${cell.subText || ''}`;
+        if (cell.subType === 'exchange') {
+          return `${head}\n⇄ 本節為調入課\n${cell.subText || ''}`;
+        }
+        if (cell.isEmptySlotAssign) {
+          return `${head}\n📌 本節為空堂任務\n${cell.subText || ''}`;
+        }
+        return `${head}\n➔ 本節為代課\n${cell.subText || ''}`;
       }
       return head;
     };

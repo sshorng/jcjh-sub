@@ -268,11 +268,15 @@ function generateFormHtml(g, currentType, ctx) {
   if (currentType === 'Teacher') {
     // 教師聯：只給「對方／代課教師」；不顯示假別、費用
     titleLabel = `教師聯 (給 ${subName} 老師)`;
-    descHtml = `<div style="line-height: 1.3; font-size: 0.75rem; color: #1e293b;"><strong>${leaveNames}</strong> 老師請假，由 <strong>${subName}</strong> 老師代課。共計 <strong>${g.periods.length}</strong> 節：<ul style="margin:2px 0 0 14px;padding:0;">${periodListHtml}</ul></div>`;
+    // 事由不一定是請假（公假／活動／課務異動等）
+    const reasonBrief = (reasonsStr && reasonsStr !== '—' && reasonsStr !== '請假')
+      ? `因 <strong>${reasonsStr}</strong>，`
+      : '';
+    descHtml = `<div style="line-height: 1.3; font-size: 0.75rem; color: #1e293b;"><strong>${leaveNames}</strong> 老師${reasonBrief}由 <strong>${subName}</strong> 老師代課。共計 <strong>${g.periods.length}</strong> 節：<ul style="margin:2px 0 0 14px;padding:0;">${periodListHtml}</ul></div>`;
     remarkHtml = `
-      <li>請請假教師上校務系統完成請假程序。</li>
+      <li>若屬請假，請原任課教師上校務系統完成請假程序。</li>
       <li>實際上課老師請確實於教室日誌上簽名。</li>
-      <li>請請假教師確實向代課教師轉達各班上課進度。</li>
+      <li>請原任課教師向代課教師轉達各班上課進度。</li>
     `;
   } else if (currentType === 'Class') {
     // 班級聯：不顯示假別、費用、摘要句（僅節次清單）
