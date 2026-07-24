@@ -291,7 +291,7 @@ function generateFormHtml(g, currentType, ctx) {
     }
     remarkHtml = `
       <li>本聯由教學組存查核帳。</li>
-      ${isMutualCover ? '<li>扣額度：不計入代課費與請假扣減鐘點，並扣代課老師互代額度。</li>' : ''}
+      ${isMutualCover ? '<li>扣額度：不計入代課費與請假扣減鐘點，並扣代課老師折抵額度。</li>' : ''}
     `;
   }
 

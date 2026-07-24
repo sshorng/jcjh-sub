@@ -646,7 +646,7 @@ window.GasApi = (function () {
       }
     }
 
-    /** 互代額度帳本歷程（email 可選；管理員可查他人） */
+    /** 折抵額度帳本歷程（email 可選；管理員可查他人） */
     async function fetchMutualQuotaLedger(options) {
       options = options || {};
       const semesterId = options.semesterId || opts.getSemesterId();
@@ -657,7 +657,7 @@ window.GasApi = (function () {
       try {
         return await postJson('getMutualQuotaLedger', {
           email: options.email || options.teacherEmail || '',
-          limit: options.limit != null ? options.limit : 80
+          limit: options.limit != null ? options.limit : 50
         });
       } finally {
         opts.getSemesterId = prevGet;

@@ -505,6 +505,57 @@
         assert('pending 索引疊加代出', ov && ov.isPending && ov.pendingType === 'substitution_out');
       }
 
+      // ── 空堂排班 ──
+      if (window.DomainActivityCover) {
+        var DAC = window.DomainActivityCover;
+        assert('空堂可排：null', DAC.isEmptySlotAssignable(null) === true);
+        assert('空堂可排：巡堂', DAC.isEmptySlotAssignable({ isPatrol: true, attr: '巡堂' }) === true);
+        assert('空堂可排：調開／被代', DAC.isEmptySlotAssignable({ isSubstituted: true, className: '701', subject: '國文' }) === true);
+        assert('空堂不可：有班', DAC.isEmptySlotAssignable({ className: '701', subject: '國文' }) === false);
+        assert('空堂不可：已代義務', DAC.isEmptySlotAssignable({ isSubstitutionDuty: true }) === false);
+        assert('額度0需還節', DAC.quotaZeroNeedsRepay(0) === true);
+        assert('額度0.5不足1需還節', DAC.quotaZeroNeedsRepay(0.5) === true);
+        assert('額度1不需還節', DAC.quotaZeroNeedsRepay(1) === false);
+        assert('釋出1節＝0.5', DAC.slotsToEarnQuota(1) === 0.5);
+        assert('釋出3節＝1.5', DAC.slotsToEarnQuota(3) === 1.5);
+        assert('餘額0.5不可扣', DAC.canSpendQuota(0.5) === false);
+        assert('餘額1可扣', DAC.canSpendQuota(1) === true);
+        var ep = DAC.buildEmptySlotPayload({
+          date: '2026-07-23', period: 3, dayOfWeek: 4,
+          teacherEmail: 't@x', teacherName: '測試',
+          taskName: '段考巡堂', className: '', note: '',
+          semesterId: 'S1', requestId: 'req_t', serial: 'SUB9999'
+        });
+        assert('payload 扣額度', ep.request['經費來源'] === '扣額度');
+        assert('payload 不寄信', ep.skipNotify === true);
+        assert('payload 同人', ep.request['申請人Email'] === 't@x' && ep.request['受邀人Email'] === 't@x');
+        assert('payload 科目任務名', ep.request['科目'] === '段考巡堂');
+        assert('payload 班級可空', ep.request['班級'] === '');
+        assert('payload 事由', ep.request['請假事由'] === '空堂排班');
+      }
+      if (window.DomainSchedule && window.DomainSchedule.resolveApprovedSchedule) {
+        var emptyCell = window.DomainSchedule.resolveApprovedSchedule({
+          teacherEmail: 't@x',
+          dateStr: '2026-07-23',
+          period: 3,
+          dayOfWeek: 4,
+          allSchedules: [],
+          periodSubs: [{
+            originalTeacherEmail: 't@x',
+            actualTeacherEmail: 't@x',
+            type: 'substitution',
+            reason: '空堂排班',
+            subject: '段考巡堂',
+            className: '',
+            subFee: '扣額度',
+            note: '[直接核准] [空堂排班]'
+          }],
+          allSubs: [],
+          helpers: { getTeacherNameByEmail: function (e) { return e; }, isClassAway: function () { return false; }, isSingleWeek: function () { return true; } }
+        });
+        assert('課表顯示空堂任務', emptyCell && emptyCell.isEmptySlotAssign && emptyCell.subject === '段考巡堂');
+      }
+
       // ── 媒合：外出班當空堂；僅活動互代往上排 ──
       if (window.DomainMatch && window.DomainMatch.isSlotFreeForMatch) {
         assert('空堂事件當空', window.DomainMatch.isSlotFreeForMatch({ className: '901', isClassAway: true }, {}) === true);

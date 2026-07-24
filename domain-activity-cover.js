@@ -1,24 +1,47 @@
 /**
  * 活動互代／外出班釋出空堂（純邏輯）
  * 規則：
- * - 1–7 節額度 > 0 → 扣額度（不結鐘點＋扣互代額度 1）
- * - 1–7 節額度＝0 → 活動公費（可領代課費）
+ * - 釋出：未上到 1 節 → 發放額度 0.5
+ * - 1–7 節額度 ≥ 1 → 扣額度（不結鐘點＋扣折抵額度 1）；不足 1 → 活動公費
  * - 第8節 → 第8節代課（計畫經費，不吃額度）
  * - 請假老師（活動公假）一律不扣鐘點
  */
 window.DomainActivityCover = (function () {
   var ACTIVITY_PUBLIC_FEE = '活動公費';
-  // 活動／一般共用：不結鐘點＋從互代額度扣 1
+  // 活動／一般共用：不結鐘點＋從折抵額度扣 1
   var QUOTA_DEDUCT_FEE = '扣額度';
   // 別名：舊程式碼仍可能讀 MUTUAL_COVER_FEE，值與扣額度相同
   var MUTUAL_COVER_FEE = QUOTA_DEDUCT_FEE;
-  // 第8節：計畫經費，一律給代課老師；不吃互代額度；月報另欄統計
+  // 第8節：計畫經費，一律給代課老師；不吃折抵額度；月報另欄統計
   var PERIOD8_FEE = '第8節代課';
+  /** 釋出 1 節 → 發放額度 */
+  var EARN_PER_SLOT = 0.5;
+  /** 扣額度：滿 1 才可扣，每節扣 1 */
+  var SPEND_PER_PERIOD = 1;
 
   function isQuotaDeductFee(fee) {
     var f = String(fee || '');
     // 讀取相容舊資料「互代不結」；寫入一律用「扣額度」
     return f === QUOTA_DEDUCT_FEE || f === '互代不結';
+  }
+
+  function parseQuota(v) {
+    if (v === undefined || v === null || v === '') return 0;
+    var n = parseFloat(v);
+    if (isNaN(n) || n < 0) return 0;
+    // 避免 0.1+0.2 浮點雜訊
+    return Math.round(n * 1000) / 1000;
+  }
+
+  function slotsToEarnQuota(slotCount) {
+    var n = parseInt(slotCount, 10) || 0;
+    if (n < 0) n = 0;
+    return parseQuota(n * EARN_PER_SLOT);
+  }
+
+  /** 餘額是否夠扣一節（須滿 1） */
+  function canSpendQuota(remaining) {
+    return parseQuota(remaining) + 1e-9 >= SPEND_PER_PERIOD;
   }
 
   function normalizeClass(c) {
@@ -227,44 +250,47 @@ window.DomainActivityCover = (function () {
         var t = opts.teachers[i];
         if (t && emailKey(t.email) === em) {
           if (t.mutualQuota !== undefined && t.mutualQuota !== null && t.mutualQuota !== '') {
-            sheetQuota = parseInt(t.mutualQuota, 10);
-            if (isNaN(sheetQuota)) sheetQuota = 0;
+            sheetQuota = parseQuota(t.mutualQuota);
           }
           break;
         }
       }
     }
-    var total = countReleasedSlotsForTeacher(teacherEmail, opts);
-    var used = countUsedMutualAsSub(teacherEmail, opts);
+    var totalSlots = countReleasedSlotsForTeacher(teacherEmail, opts);
+    var total = slotsToEarnQuota(totalSlots); // 額度單位（節×0.5）
+    var used = countUsedMutualAsSub(teacherEmail, opts); // 已扣節數（每節 1）
     var pendingDraft = countPendingDraftMutual(teacherEmail, opts);
     if (sheetQuota !== null) {
-      // sheet 額度已在送出時扣過；媒合時再扣暫定
-      var remSheet = Math.max(0, sheetQuota - pendingDraft);
+      // sheet 額度已在送出時扣過；媒合時再扣暫定（每暫定 1）
+      var remSheet = parseQuota(Math.max(0, sheetQuota - pendingDraft * SPEND_PER_PERIOD));
       return {
         totalReleased: total,
+        totalSlots: totalSlots,
         usedMutual: used,
         pendingDraft: pendingDraft,
         remaining: remSheet,
-        overQuota: remSheet <= 0,
+        overQuota: !canSpendQuota(remSheet),
         source: 'sheet'
       };
     }
-    var rem = Math.max(0, total - used - pendingDraft);
+    var rem = parseQuota(Math.max(0, total - used * SPEND_PER_PERIOD - pendingDraft * SPEND_PER_PERIOD));
     return {
       totalReleased: total,
+      totalSlots: totalSlots,
       usedMutual: used,
       pendingDraft: pendingDraft,
       remaining: rem,
-      overQuota: rem <= 0,
+      overQuota: !canSpendQuota(rem),
       source: 'computed'
     };
   }
 
   /**
-   * 依活動期間＋外出班，為每位教師計算建議寫回的互代額度
-   * mode: 'set' 覆寫為本次釋出；'add' 累加到現有額度
+   * 依活動期間＋外出班，為每位教師計算建議寫回的折抵額度
+   * mode: 'set' 覆寫為本次釋出額度；'add' 累加
+   * 釋出：1 節 → 0.5 額度（released）；releasedSlots＝堂數
    * excludeEmails / leaderEmails: 帶隊／請假外出 → 不寫入額度
-   * @returns {Array<{email, name, released, prevQuota, nextQuota, skipped, skipReason}>}
+   * @returns {Array<{email, name, released, releasedSlots, prevQuota, nextQuota, skipped, skipReason}>}
    */
   function buildQuotaRecalcRows(opts) {
     opts = opts || {};
@@ -292,9 +318,9 @@ window.DomainActivityCover = (function () {
     teachers.forEach(function (t) {
       if (!t || !t.email) return;
       var em = emailKey(t.email);
-      var released = countReleasedSlotsForTeacher(t.email, opts);
-      var prev = parseInt(t.mutualQuota, 10);
-      if (isNaN(prev)) prev = 0;
+      var releasedSlots = countReleasedSlotsForTeacher(t.email, opts);
+      var released = slotsToEarnQuota(releasedSlots); // 額度 0.5／節
+      var prev = parseQuota(t.mutualQuota);
       var isLeader = !!exclude[em];
       var next = prev;
       var skipped = false;
@@ -304,13 +330,14 @@ window.DomainActivityCover = (function () {
         skipReason = '帶隊外出';
         next = prev;
       } else {
-        next = mode === 'add' ? (prev + released) : released;
+        next = mode === 'add' ? parseQuota(prev + released) : released;
         if (next < 0) next = 0;
       }
       rows.push({
         email: t.email,
         name: t.name || '',
         released: released,
+        releasedSlots: releasedSlots,
         prevQuota: prev,
         nextQuota: next,
         skipped: skipped,
@@ -325,12 +352,12 @@ window.DomainActivityCover = (function () {
   }
 
   /**
-   * 依「剩餘釋出節數」決定經費（1–7 節）
-   * remaining > 0 → 扣額度；否則 → 活動公費
+   * 依剩餘額度決定經費（1–7 節）
+   * remaining ≥ 1 → 扣額度；否則 → 活動公費
    * 第8節請用 resolveActivityFee（計畫經費，不走額度）
    */
   function feeByReleaseBalance(remainingBefore, isReleasedThisSlot) {
-    if (remainingBefore > 0) return QUOTA_DEDUCT_FEE;
+    if (canSpendQuota(remainingBefore)) return QUOTA_DEDUCT_FEE;
     return ACTIVITY_PUBLIC_FEE;
   }
 
@@ -402,7 +429,7 @@ window.DomainActivityCover = (function () {
 
   /**
    * 批次：依序為每節計算經費，並遞減各代課老師餘額
-   * 第8節：固定第8節代課，不扣互代額度
+   * 第8節：固定第8節代課，不扣折抵額度
    * @param {Array} slots [{ subTeacherEmail, dateStr, period, dayOfWeek }]
    * @param {object} ctx
    * @returns {Array<{ fee, remainingBefore, remainingAfter, totalReleased, usedMutual }>}
@@ -435,7 +462,7 @@ window.DomainActivityCover = (function () {
       var remainingBefore = bal.remaining;
       var fee = feeByReleaseBalance(remainingBefore, false);
       if (isQuotaDeductFee(fee)) {
-        bal.remaining = Math.max(0, bal.remaining - 1);
+        bal.remaining = parseQuota(Math.max(0, bal.remaining - SPEND_PER_PERIOD));
         bal.usedMutual = (bal.usedMutual || 0) + 1;
       }
       return {
@@ -493,7 +520,7 @@ window.DomainActivityCover = (function () {
     return f === QUOTA_DEDUCT_FEE || f === ACTIVITY_PUBLIC_FEE || f === PERIOD8_FEE;
   }
 
-  /** 送出後是否應扣互代額度：經費為「扣額度」即扣 */
+  /** 送出後是否應扣折抵額度：經費為「扣額度」即扣 */
   function shouldDeductQuota(fee, activityMode) {
     return isQuotaDeductFee(fee);
   }
@@ -879,11 +906,105 @@ window.DomainActivityCover = (function () {
     };
   }
 
+  /** 空堂排班事由（固定；課表／額度辨識用） */
+  var EMPTY_SLOT_REASON = '空堂排班';
+
+  /**
+   * 該格是否可排「空堂任務」
+   * 可：真的空、巡堂、調開／被代課（isSubstituted，本人已釋出時段）
+   * 不可：進行中申請、已是空堂任務、代課義務（isSubstitutionDuty）、一般有課
+   * @param {object|null} cell getScheduleForDate 結果
+   */
+  function isEmptySlotAssignable(cell) {
+    if (!cell) return true;
+    if (cell.isPending) return false;
+    if (cell.isEmptySlotAssign) return false;
+    // 已排代課義務（代別人的課）→ 非空堂
+    if (cell.isSubstitutionDuty) return false;
+    // 調出／請假被代：本人該節已釋出，可排巡堂等空堂任務
+    if (cell.isSubstituted) return true;
+    if (window.DomainSchedule && window.DomainSchedule.isPatrolCell
+        && window.DomainSchedule.isPatrolCell(cell)) {
+      return true;
+    }
+    if (cell.isPatrol || cell.attr === '巡堂') return true;
+    // 有實質班科＝有課
+    var cn = String(cell.className || '').trim();
+    var subj = String(cell.subject || '').trim();
+    if (cn && cn !== '巡堂') return false;
+    if (subj && subj !== '巡堂') return false;
+    return true;
+  }
+
+  function quotaZeroNeedsRepay(remaining) {
+    // 不足 1 即無法扣一節 → 視為需另還／改公費
+    return !canSpendQuota(remaining);
+  }
+
+  /**
+   * 組空堂排班申請列（Sheets 中文欄位）
+   * @param {object} opts
+   * @param {string} opts.date
+   * @param {number} opts.period
+   * @param {number} opts.dayOfWeek
+   * @param {string} opts.teacherEmail
+   * @param {string} opts.teacherName
+   * @param {string} opts.taskName 任務名稱（寫入科目）
+   * @param {string} [opts.className] 班級可選
+   * @param {string} [opts.note]
+   * @param {string} opts.semesterId
+   * @param {string} opts.requestId
+   * @param {string} opts.serial
+   */
+  function buildEmptySlotPayload(opts) {
+    opts = opts || {};
+    var task = String(opts.taskName || '').trim();
+    var cls = String(opts.className || '').trim();
+    var em = String(opts.teacherEmail || '').trim().toLowerCase();
+    var nm = String(opts.teacherName || '').trim() || em;
+    var noteBase = String(opts.note || '').trim();
+    var noteOut = noteBase ? ('[直接核准] [空堂排班] ' + noteBase) : '[直接核准] [空堂排班]';
+    var newRequest = {
+      "學期代號": opts.semesterId || '',
+      "申請單ID": opts.requestId,
+      "單號": opts.serial,
+      "異動類型": 'substitution',
+      "申請人Email": em,
+      "申請人姓名": nm,
+      "受邀人Email": em,
+      "受邀人姓名": nm,
+      "異動日期": String(opts.date || '').slice(0, 10),
+      "異動節次": parseInt(opts.period, 10) || 0,
+      "異動星期": parseInt(opts.dayOfWeek, 10) || 0,
+      "班級": cls,
+      "科目": task,
+      "請假事由": EMPTY_SLOT_REASON,
+      "經費來源": QUOTA_DEDUCT_FEE,
+      "備註": noteOut,
+      "狀態": 'approved',
+      directApprove: true,
+      isProxySubmit: false,
+      isEmptySlotAssign: true
+    };
+    return {
+      request: newRequest,
+      directApprove: true,
+      skipNotify: true,
+      newRequest: newRequest
+    };
+  }
+
   return {
     MUTUAL_COVER_FEE: MUTUAL_COVER_FEE, // === 扣額度
     ACTIVITY_PUBLIC_FEE: ACTIVITY_PUBLIC_FEE,
     QUOTA_DEDUCT_FEE: QUOTA_DEDUCT_FEE,
     PERIOD8_FEE: PERIOD8_FEE,
+    EARN_PER_SLOT: EARN_PER_SLOT,
+    SPEND_PER_PERIOD: SPEND_PER_PERIOD,
+    EMPTY_SLOT_REASON: EMPTY_SLOT_REASON,
+    parseQuota: parseQuota,
+    slotsToEarnQuota: slotsToEarnQuota,
+    canSpendQuota: canSpendQuota,
     isQuotaDeductFee: isQuotaDeductFee,
     shouldDeductQuota: shouldDeductQuota,
     isPeriod8: isPeriod8,
@@ -913,6 +1034,9 @@ window.DomainActivityCover = (function () {
     isPublicSubPayout: isPublicSubPayout,
     toggleAwayClass: toggleAwayClass,
     toggleAwayGrade: toggleAwayGrade,
-    buildStats: buildStats
+    buildStats: buildStats,
+    isEmptySlotAssignable: isEmptySlotAssignable,
+    quotaZeroNeedsRepay: quotaZeroNeedsRepay,
+    buildEmptySlotPayload: buildEmptySlotPayload
   };
 })();

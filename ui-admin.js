@@ -720,7 +720,10 @@ window.UiAdmin = (function () {
           '授課科目': teacher.subject,
           '基本鐘點': (hours === 0 || hours === '0') ? 0 : (parseInt(hours, 10) || 16),
           '系統角色': teacher.role || 'teacher',
-          '互代額度': parseInt(teacher.mutualQuota, 10) || 0
+          '折抵額度': (function () {
+            var n = parseFloat(teacher.mutualQuota);
+            return isNaN(n) || n < 0 ? 0 : Math.round(n * 1000) / 1000;
+          })()
         };
         await callGasApi('saveTeacher', reqPayload);
         var i = teachersList.value.findIndex(function (t) { return t.email === email; });
@@ -753,7 +756,10 @@ window.UiAdmin = (function () {
         subject: t.subject,
         role: t.role,
         baseHours: t.baseHours,
-        mutualQuota: parseInt(t.mutualQuota, 10) || 0
+        mutualQuota: (function () {
+          var n = parseFloat(t.mutualQuota);
+          return isNaN(n) || n < 0 ? 0 : Math.round(n * 1000) / 1000;
+        })()
       };
       showTeacherModal.value = true;
     }
@@ -769,7 +775,10 @@ window.UiAdmin = (function () {
         '基本鐘點': (teacherForm.value.baseHours === 0 || teacherForm.value.baseHours === '0')
           ? 0
           : (parseInt(teacherForm.value.baseHours, 10) || 16),
-        '互代額度': parseInt(teacherForm.value.mutualQuota, 10) || 0
+        '折抵額度': (function () {
+          var n = parseFloat(teacherForm.value.mutualQuota);
+          return isNaN(n) || n < 0 ? 0 : Math.round(n * 1000) / 1000;
+        })()
       };
       try {
         await callGasApi('saveTeacher', reqPayload);

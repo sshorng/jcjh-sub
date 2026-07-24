@@ -2694,7 +2694,9 @@ td.table-empty {
 #confirm-box {
   background: var(--bg-card, rgba(255,255,255,0.95));
   border-radius: 20px; padding: 30px 34px;
-  max-width: 420px; width: 90%;
+  max-width: 520px; width: 92%;
+  max-height: min(88vh, 720px);
+  display: flex; flex-direction: column;
   box-shadow: 0 24px 80px rgba(0,0,0,0.22);
   border: 1.5px solid rgba(255,255,255,0.6);
   animation: confirmPop 0.28s cubic-bezier(.34,1.56,.64,1);
@@ -2708,10 +2710,13 @@ td.table-empty {
   color: var(--text-primary, #1e293b); margin-bottom: 10px;
 }
 #confirm-msg {
-  font-size: 0.9rem; color: var(--text-secondary, #475569);
-  line-height: 1.65; margin-bottom: 26px; white-space: pre-wrap;
+  font-size: 0.88rem; color: var(--text-secondary, #475569);
+  line-height: 1.55; margin-bottom: 18px; white-space: pre-wrap;
+  overflow-y: auto; flex: 1 1 auto; min-height: 0;
+  max-height: min(58vh, 480px);
+  font-variant-numeric: tabular-nums;
 }
-#confirm-actions { display: flex; gap: 10px; justify-content: flex-end; }
+#confirm-actions { display: flex; gap: 10px; justify-content: flex-end; flex-shrink: 0; }
 #confirm-cancel {
   padding: 9px 22px; border-radius: 10px;
   border: 1.5px solid var(--border-color, #e2e8f0);
@@ -3499,13 +3504,19 @@ td.table-empty {
   margin-bottom: 16px;
   box-sizing: border-box;
 }
-.direct-approve-main {
+.direct-approve-main,
+.direct-approve-row {
   display: flex;
   align-items: flex-start;
   gap: 12px;
   cursor: pointer;
   user-select: none;
   margin: 0;
+  flex-wrap: nowrap;
+}
+.direct-approve-row > span {
+  flex: 1;
+  min-width: 0;
 }
 .direct-approve-check {
   width: 20px;
@@ -3531,6 +3542,7 @@ td.table-empty {
   color: #1d4ed8;
   font-size: 0.95rem;
   line-height: 1.35;
+  white-space: nowrap;
 }
 .direct-approve-desc {
   font-size: 0.78rem;
@@ -4201,7 +4213,7 @@ td.table-empty {
   font-size: 0.85rem;
 }
 
-/* 後台：互代額度可點開歷程 */
+/* 後台：折抵額度可點開歷程 */
 .quota-balance-btn {
   appearance: none;
   border: 1px solid transparent;
@@ -4246,6 +4258,7 @@ td.table-empty {
   font-size: 0.9rem;
 }
 .quota-ledger-table-wrap { max-height: min(55vh, 420px); overflow: auto; }
+.quota-ledger-table-wrap.is-refreshing { opacity: 0.55; pointer-events: none; }
 .quota-ledger-table { font-size: 0.82rem; }
 .quota-ledger-table th { white-space: nowrap; }
 .quota-ledger-time { white-space: nowrap; font-size: 0.78rem; color: var(--text-secondary); }

@@ -199,7 +199,7 @@ window.UiTimetable = (function () {
       if (awayOn || cell.isClassAway) return 'is-away-class' + batchCls;
       if (cell.isPatrol || cell.attr === '巡堂') return 'is-patrol' + batchCls;
       if (cell.isPullOut || cell.attr === '抽離') return 'is-pullout has-class' + batchCls;
-      if (cell.attr === '兼課') return 'is-overtime' + batchCls;
+      // 兼課：外觀與一般課相同，僅課名後標（兼）
       if (cell.attr === '實支') return 'is-elastic' + batchCls;
       return 'has-class' + batchCls;
     }
@@ -466,7 +466,20 @@ window.UiTimetable = (function () {
       }
 
       var cell = getScheduleForDate(teacherEmail, dateStr, period, dayOfWeek);
-      if (!cell) return;
+
+      // 調代課／進行中：先開資訊框（空堂排班改由詳情內按鈕）
+      // 真的空堂／巡堂：admin 可直接開空堂排班
+      if (!cell) {
+        var canEmpty0 = !!(isAdmin && isAdmin.value);
+        if (!canEmpty0 && clickDeps.canOperateOnTeacherEmail) {
+          canEmpty0 = !!clickDeps.canOperateOnTeacherEmail(teacherEmail);
+        }
+        if (canEmpty0 && clickDeps.openEmptySlotAssign) {
+          clickDeps.openEmptySlotAssign(teacherEmail, dayOfWeek, period, dateStr, null);
+          return;
+        }
+        return;
+      }
 
       if (isMutualCover.value && !batchSelectMode.value) {
         if (!isMutualLead(teacherEmail)) {
@@ -560,24 +573,37 @@ window.UiTimetable = (function () {
         return;
       }
 
-      if (cell.subRecord) {
-        var reqId = cell.subRecord.requestId;
-        detailSubRecord.value = cell.subRecord;
-        var resolved = resolveDetailRequest(reqId, cell.subRecord);
-        if (resolved) {
-          detailRequest.value = resolved;
+      // 調出／代課／調入：一律先開調代課資訊（含 isSubstituted）
+      if (cell.subRecord || cell.isSubstituted) {
+        if (cell.subRecord) {
+          var reqId = cell.subRecord.requestId;
+          detailSubRecord.value = cell.subRecord;
+          var resolved = resolveDetailRequest(reqId, cell.subRecord);
+          if (resolved) {
+            detailRequest.value = resolved;
+          } else {
+            detailRequest.value = {
+              id: 'N/A', serial: '---', type: 'substitution',
+              requestDate: cell.subRecord.date
+            };
+          }
         } else {
+          detailSubRecord.value = null;
           detailRequest.value = {
             id: 'N/A', serial: '---', type: 'substitution',
-            requestDate: cell.subRecord.date
+            requestDate: dateStr
           };
         }
         showDetailModal.value = true;
         return;
       }
 
-      // 巡堂：不算鐘點、不開代課／調課流程（請私下代巡）
+      // 巡堂：admin 可空堂排班；其餘提示
       if (cell.isPatrol || cell.attr === '巡堂') {
+        if (isAdmin && isAdmin.value && clickDeps.openEmptySlotAssign) {
+          clickDeps.openEmptySlotAssign(teacherEmail, dayOfWeek, period, dateStr, cell);
+          return;
+        }
         showToast('本節為【巡堂】：不計鐘點、不需系統代課；若要請人代巡，請私下安排或互換', 'info');
         return;
       }
@@ -998,8 +1024,7 @@ window.UiTimetable = (function () {
           return 'has-substitution';
         }
         if (entries.some(function (e) { return e.attr === '巡堂' || e.isPatrol; })) return 'is-patrol';
-        // 第8節／輔導：與一般課同色
-        if (entries.some(function (e) { return e.attr === '兼課'; })) return 'is-overtime';
+        // 兼課：外觀與一般課相同，僅課名後標（兼）
         if (entries.some(function (e) { return e.attr === '實支'; })) return 'is-elastic';
         return 'has-class';
       },

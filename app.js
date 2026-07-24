@@ -96,8 +96,10 @@ function showConfirm(msg, title = '請確認', opts = {}) {
     if (noteWrap && noteEl) {
       if (opts.withNote) {
         noteWrap.classList.add('is-open');
-        noteEl.value = '';
+        noteEl.value = opts.noteDefault != null ? String(opts.noteDefault) : '';
         noteEl.placeholder = opts.notePlaceholder || '備註（選填）';
+        const noteLab = noteWrap.querySelector('label');
+        if (noteLab) noteLab.textContent = opts.noteLabel || '備註（選填）';
       } else {
         noteWrap.classList.remove('is-open');
         noteEl.value = '';
@@ -833,9 +835,17 @@ createApp({
             leaveDay,
             subs
           );
+          // 空堂排班：班科以申請單為準（無基礎課可疊）
+          const emptyAssign = !!(req.isEmptySlotAssign
+            || String(req.reason || '').trim() === '空堂排班'
+            || String(req.note || '').indexOf('[空堂排班]') >= 0);
           // 有效課優先（調入再代課／對調時申請單 className 可能是舊基礎課）
-          const leaveCls = ((leaveCell && leaveCell.className) || req.className || '');
-          const leaveSubj = ((leaveCell && leaveCell.subject) || req.subject || '');
+          const leaveCls = emptyAssign
+            ? (req.className || '')
+            : ((leaveCell && leaveCell.className) || req.className || '');
+          const leaveSubj = emptyAssign
+            ? (req.subject || '')
+            : ((leaveCell && leaveCell.subject) || req.subject || '');
           subs.push({
             id: req.id,
             date: req.requestDate,
@@ -849,7 +859,8 @@ createApp({
             printed: req.printed,
             subFee: req.subFee,
             reason: req.reason,
-            note: req.note
+            note: req.note,
+            isEmptySlotAssign: emptyAssign
           });
         } else if (req.type === 'exchange' || req.type === '對調') {
           // 請假節若已是「代課／調入義務」（空堂代生物），再調出必須寫生物，不可回退基礎數學
@@ -1431,7 +1442,7 @@ createApp({
     const PERIOD8_FEE = (window.DomainActivityCover && window.DomainActivityCover.PERIOD8_FEE) || '第8節代課';
     const MUTUAL_PANEL_LS_KEY = 'jcjh_mutual_panel_draft_v1';
     const mutualAwayClasses = ref([]);
-    // 帶隊／請假外出教師（重算額度時排除，不寫入互代額度）
+    // 帶隊／請假外出教師（重算額度時排除，不寫入折抵額度）
     const mutualLeadEmails = ref([]);
     // 活動互代：先寫單不寄信（稍後用 LINE 手動通知）
     const mutualSkipNotify = ref(true);
@@ -1559,13 +1570,14 @@ createApp({
       });
       Object.keys(deductMap).forEach(em => {
         const t = lookupTeacher(em);
-        const prev = t ? (parseInt(t.mutualQuota, 10) || 0) : 0;
-        const next = Math.max(0, prev - deductMap[em]);
+        const prev = t ? (parseFloat(t.mutualQuota) || 0) : 0;
+        // 每節扣 1；畫面樂觀更新（不足 1 時後端不會扣）
+        const next = Math.round(Math.max(0, prev - deductMap[em]) * 1000) / 1000;
         patchLocalMutualQuota(t ? t.email : em, next);
       });
     };
     /**
-     * 申請作廢時樂觀還原互代額度（後端已寫回試算表；此處只更新畫面）
+     * 申請作廢時樂觀還原折抵額度（後端已寫回試算表；此處只更新畫面）
      * 請傳入「改狀態前」的申請單；已作廢狀態不重複加回
      * @param {object|object[]} reqs 前端申請單或 sheet 列
      */
@@ -1587,8 +1599,9 @@ createApp({
       Object.keys(addMap).forEach(em => {
         const t = lookupTeacher(em);
         if (!t) return;
-        const prev = parseInt(t.mutualQuota, 10) || 0;
-        patchLocalMutualQuota(t.email, prev + addMap[em]);
+        const prev = parseFloat(t.mutualQuota) || 0;
+        const next = Math.round((prev + addMap[em]) * 1000) / 1000;
+        patchLocalMutualQuota(t.email, next);
       });
     };
     const selectedClass = ref('');
@@ -3560,10 +3573,11 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       const lines = Object.keys(counts).map(em => {
         const t = lookupTeacher(em);
         const name = (t && t.name) || getTeacherNameByEmail(em) || em;
-        const before = t ? (parseInt(t.mutualQuota, 10) || 0) : 0;
+        const before = t ? (parseFloat(t.mutualQuota) || 0) : 0;
         const deduct = counts[em];
-        const short = before < deduct;
-        const after = short ? before : (before - deduct);
+        // 須餘額 ≥ 本次扣節數（每節 1）；0.5 不夠扣 1
+        const short = before + 1e-9 < deduct;
+        const after = short ? before : Math.round((before - deduct) * 1000) / 1000;
         return { email: em, name, before, deduct, after: Math.max(0, after), short };
       });
       return lines.length ? lines : null;
@@ -3605,7 +3619,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
           showToast('找不到可用額度，已改為活動公費', 'info');
           return true;
         }
-        showToast('找不到代課老師的互代額度，請改用自費代課或其他經費', 'warning');
+        showToast('找不到代課老師的折抵額度，請改用自費代課或其他經費', 'warning');
         return false;
       }
       const shorts = lines.filter(q => q.short);
@@ -4416,7 +4430,8 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         detailRequest, detailSubRecord, showDetailModal, resolveDetailRequest,
         getTeacherNameByEmail, exchangeTargetDate, exchangeWeekOffset, exchangePeriodId, exchangeTeacherEmail,
         canOperateOnTeacherEmail: canOperateOnTeacherEmail,
-        ensureProxyTargetForTeacher: ensureProxyTargetForTeacher
+        ensureProxyTargetForTeacher: ensureProxyTargetForTeacher,
+        openEmptySlotAssign: openEmptySlotAssign
       }, teacherEmail, dayOfWeek, period, dateStr);
     };
 
@@ -4682,6 +4697,301 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       }
       if (res.warning) showToast(res.warning, 'info');
       showToast(`已下載：${res.fileName}（${res.teacherCount} 位教師 × ${res.dayCount} 天）`, 'success');
+    };
+
+    // 活動輪值通知單（套版 Word）：從空堂事件列一鍵匯出
+    const ensureActivityCoverReady = async () => {
+      if (typeof window.ensureJSZip === 'function') {
+        await window.ensureJSZip();
+      }
+      if (typeof window.ensureExportActivityCover === 'function') {
+        await window.ensureExportActivityCover();
+      }
+      if (!window.ExportActivityCover || !window.ExportActivityCover.exportWord) {
+        throw new Error('輪值通知單匯出模組尚未載入');
+      }
+      if (!(window.JSZip || (typeof JSZip !== 'undefined' && JSZip))) {
+        throw new Error('JSZip 未載入');
+      }
+    };
+    const exportActivityCoverWord = async (evArg) => {
+      if (!isAdmin.value) {
+        showToast('僅管理員可匯出輪值通知單', 'warning');
+        return;
+      }
+      try {
+        await ensureActivityCoverReady();
+      } catch (e) {
+        showToast((e && e.message) || '匯出模組載入失敗', 'error');
+        return;
+      }
+      let ev = evArg && typeof evArg === 'object' && evArg.id != null ? evArg : null;
+      if (!ev && evArg) {
+        const id = String(evArg || '');
+        ev = (classAwayEvents.value || []).find(e => e && String(e.id) === id) || null;
+      }
+      if (!ev) {
+        showToast('請從空堂事件列點「匯出輪值單」', 'warning');
+        return;
+      }
+      const startDate = String(ev.startDate || '').slice(0, 10);
+      let endDate = String(ev.endDate || ev.startDate || '').slice(0, 10);
+      if (!startDate) {
+        showToast('此事件沒有起日，無法匯出', 'warning');
+        return;
+      }
+      if (!endDate) endDate = startDate;
+      const activityName = String(ev.name || '').trim() || '活動';
+      const grade = window.ExportActivityCover.gradesFromClasses
+        ? window.ExportActivityCover.gradesFromClasses(ev.classes || [])
+        : '';
+      const awayClasses = (ev.classes || []).slice();
+      // 僅活動互代經費（扣額度／活動公費／第8節代課）；排除一般公費／自費
+      const isActFee = (fee, period) => {
+        const f = String(fee || '').trim();
+        const p = parseInt(period, 10) || 0;
+        if (f === '扣額度' || f === '互代不結' || f === '活動公費' || f === '第8節代課') return true;
+        if (p === 8 && (!f || f === '計畫經費' || f.indexOf('第8') >= 0)) return true;
+        return false;
+      };
+      const allReqs = (requestsList.value || []).filter((r) => {
+        if (!r || r.type === 'exchange') return false;
+        const st = String(r.status || '').toLowerCase();
+        if (st === 'cancelled' || st === 'rejected' || st === 'admin_rejected' || st === 'withdrawn') return false;
+        const p = parseInt(r.requestPeriod != null ? r.requestPeriod : r.period, 10) || 0;
+        return isActFee(r.subFee, p);
+      });
+
+      // OO＝釋出堂數（與「＋發放額度」合計釋出同口徑：非帶隊、有外出班課之釋出加總）
+      // XX＝1～7 扣額度已排（export 內算）；尚有＝OO−XX
+      let demand = 0;
+      const dac = window.DomainActivityCover;
+      if (dac && dac.buildQuotaRecalcRows) {
+        try {
+          const leaders = [];
+          // 帶隊：期間內有活動互代申請的請假端（與面板帶隊近似；無面板時不排除）
+          // 發放額度用面板 mutualLeadEmails；匯出從事件無帶隊名單 → 不排除，與「全校釋出」一致
+          // 若畫面互代面板有勾帶隊，優先用該名單（與發放額度完全一致）
+          try {
+            if (mutualLeadEmails && mutualLeadEmails.value && mutualLeadEmails.value.length) {
+              mutualLeadEmails.value.forEach((e) => {
+                const em = String(e || '').toLowerCase();
+                if (em) leaders.push(em);
+              });
+            }
+          } catch (eL) { /* ignore */ }
+          const rows = dac.buildQuotaRecalcRows({
+            mode: 'add',
+            teachers: teachersList.value || [],
+            awayClasses,
+            startDate,
+            endDate,
+            allSchedules: allSchedules.value || [],
+            excludeEmails: leaders
+          });
+          // 輪值單 OO＝釋出堂數（節），非額度 0.5 單位
+          demand = (rows || []).reduce((sum, r) => {
+            if (!r || r.skipped) return sum;
+            const slots = r.releasedSlots != null ? parseInt(r.releasedSlots, 10) : 0;
+            if (slots > 0) return sum + slots;
+            // 後備：若僅有額度 released（0.5／節）→ 還原堂數
+            const earn = parseFloat(r.released) || 0;
+            return sum + Math.round(earn / 0.5);
+          }, 0);
+        } catch (eRel) { /* ignore */ }
+      }
+
+      const res = await window.ExportActivityCover.exportWord({
+        startDate,
+        endDate,
+        activityName,
+        grade,
+        requests: allReqs,
+        demand,
+        getTeacherName: (em) => getTeacherNameByEmail(em),
+        onlyActivityFee: true
+      });
+      if (!res || !res.ok) {
+        showToast((res && res.error) || '匯出失敗', 'warning');
+        return;
+      }
+      if (res.warning) showToast(res.warning, 'info');
+      const p8 = res.period8Count ? `，第8節附註 ${res.period8Count} 筆` : '';
+      showToast(`已下載：${res.fileName}（釋出 ${res.demand}／扣額度安排 ${res.arranged}／尚有 ${res.remaining}${p8}）`, 'success');
+    };
+
+    // 段考監考表：與全校課表共用 schoolExportStart/End；標題在點匯出後再輸入
+    // 預設標題依學期代號：114-1 → 114學年度第一學期；114-2 → 第二學期
+    const buildDefaultInvigilationTitle = () => {
+      const sid = String(currentSemester.value || '').trim();
+      const m = sid.match(/^(\d{2,3})\s*[-_]?\s*([12])$/);
+      let semesterPart = '';
+      if (m) {
+        const termZh = m[2] === '2' ? '第二' : '第一';
+        semesterPart = m[1] + '學年度' + termZh + '學期';
+      } else {
+        const sem = (semestersList.value || []).find(s => s && s.id === sid);
+        const name = sem && sem.name ? String(sem.name).trim() : '';
+        // 學期名稱常見「114學年度第1學期」→ 正規成「第一／第二」
+        if (name) {
+          semesterPart = name
+            .replace(/第\s*1\s*學期/, '第一學期')
+            .replace(/第\s*2\s*學期/, '第二學期')
+            .replace(/\s+/g, '');
+        } else {
+          semesterPart = sid || '本學期';
+        }
+      }
+      return '臺北市立建成國民中學' + semesterPart + '第一次段考監考表';
+    };
+    const invigilationExportTitle = ref('');
+    const ensureInvigilationExportReady = async () => {
+      if (typeof window.ensureExcelJS === 'function') {
+        await window.ensureExcelJS();
+      }
+      // 多份分發打 ZIP 用
+      if (typeof window.ensureJSZip === 'function') {
+        try { await window.ensureJSZip(); } catch (eZ) { /* 單份可不需 */ }
+      }
+      if (typeof window.ensureExportInvigilation === 'function') {
+        await window.ensureExportInvigilation();
+      }
+      if (!window.ExportInvigilation || !window.ExportInvigilation.exportWorkbook) {
+        throw new Error('監考表匯出模組尚未載入');
+      }
+      if (!(window.ExcelJS || (typeof ExcelJS !== 'undefined' && ExcelJS))) {
+        throw new Error('ExcelJS 未載入（套版需要）');
+      }
+    };
+    const exportInvigilationWorkbook = async () => {
+      if (!isAdmin.value) {
+        showToast('僅管理員可匯出監考表', 'warning');
+        return;
+      }
+      if (!schoolExportStart.value || !schoolExportEnd.value) {
+        showToast('請先選擇起迄日期', 'warning');
+        return;
+      }
+      const defaultTitle = buildDefaultInvigilationTitle();
+      const titleResult = await showConfirm(
+        '將匯出「全校監考表 × 每人一份」。\n請確認或修改標題後按確認匯出。',
+        '匯出監考表',
+        {
+          withNote: true,
+          noteLabel: '監考表標題',
+          notePlaceholder: defaultTitle,
+          noteDefault: defaultTitle
+        }
+      );
+      if (!titleResult || !titleResult.ok) return;
+      const title = (titleResult.note || '').trim() || defaultTitle;
+      invigilationExportTitle.value = title;
+
+      try {
+        await ensureInvigilationExportReady();
+      } catch (e) {
+        showToast('匯出模組載入失敗：' + (e && e.message ? e.message : e), 'error');
+        return;
+      }
+      // 全校表內容＝全體教師；分發份數＝下方勾選（少勾可大幅加速）
+      const teachers = (teachersList.value || []).filter(t => t && t.email);
+      if (!teachers.length) {
+        showToast('尚無教師名單', 'warning');
+        return;
+      }
+      const selectedSet = {};
+      (schoolExportSelectedEmails.value || []).forEach(e => {
+        selectedSet[String(e || '').toLowerCase()] = 1;
+      });
+      let recipients = teachers.filter(t => selectedSet[String(t.email || '').toLowerCase()]);
+      if (!recipients.length) {
+        showToast('請在下方勾選要分發的教師（至少一位）', 'warning');
+        return;
+      }
+      loading.value = true;
+      loadingMessage.value = '產生監考表中…';
+      try {
+        // dayOfWeek：系統課表為 1=一…7=日；同時備援 Date.getDay()(0=日)
+        const getCellFn = (email, dateStr, period, dayOfWeek) => {
+          let cell = null;
+          if (typeof getScheduleForDate === 'function') {
+            cell = getScheduleForDate(email, dateStr, period, dayOfWeek);
+          } else if (typeof getApprovedScheduleForDate === 'function') {
+            cell = getApprovedScheduleForDate(email, dateStr, period, dayOfWeek);
+          }
+          // 若空，改試 JS getDay（0=日）再查一次
+          if (!cell && dateStr) {
+            const d = new Date(String(dateStr).replace(/-/g, '/') + (String(dateStr).indexOf('T') >= 0 ? '' : ''));
+            const gd = !Number.isNaN(d.getTime()) ? d.getDay() : null;
+            if (gd != null && gd !== dayOfWeek) {
+              if (typeof getScheduleForDate === 'function') {
+                cell = getScheduleForDate(email, dateStr, period, gd);
+              } else if (typeof getApprovedScheduleForDate === 'function') {
+                cell = getApprovedScheduleForDate(email, dateStr, period, gd);
+              }
+            }
+          }
+          // 仍空：直接掃基礎課表補巡堂（attr／班／科＝巡堂）
+          if (!cell && Array.isArray(allSchedules.value)) {
+            const em = String(email || '').toLowerCase();
+            const p = parseInt(period, 10);
+            const dow = parseInt(dayOfWeek, 10);
+            const hit = allSchedules.value.find((s) => {
+              if (!s || String(s.teacherEmail || '').toLowerCase() !== em) return false;
+              if (parseInt(s.period, 10) !== p) return false;
+              if (parseInt(s.dayOfWeek, 10) !== dow) return false;
+              const a = String(s.attr || '').trim();
+              const cn = String(s.className || '').trim();
+              const sub = String(s.subject || '').trim();
+              return a === '巡堂' || a.indexOf('巡堂') >= 0 || cn === '巡堂' || sub === '巡堂';
+            });
+            if (hit) {
+              cell = {
+                className: '巡堂',
+                subject: '巡堂',
+                attr: '巡堂',
+                isPatrol: true,
+                teacherEmail: email,
+                dayOfWeek: dayOfWeek,
+                period: period
+              };
+            }
+          }
+          return cell;
+        };
+        const res = await window.ExportInvigilation.exportWorkbook({
+          title: title,
+          startDate: schoolExportStart.value,
+          endDate: schoolExportEnd.value,
+          teachers: teachers,
+          recipients: recipients,
+          getCell: getCellFn,
+          requests: requestsList.value || [],
+          allSchedules: allSchedules.value || [],
+          onProgress: (p) => {
+            if (p && p.message) loadingMessage.value = p.message;
+          }
+        });
+        if (!res || !res.ok) {
+          showToast((res && res.error) || '匯出失敗', 'warning');
+          return;
+        }
+        if (res.warning) showToast(res.warning, 'info');
+        showToast(
+          '已下載：' + res.fileName
+          + '（表內全校 ' + res.teacherCount + ' 人 × 分發 ' + res.copyCount + ' 份 × '
+          + res.dayCount + ' 日；異動 '
+          + (res.changedMarked != null ? res.changedMarked : '?')
+          + ' 格、基礎巡堂 '
+          + (res.patrolCount != null ? res.patrolCount : '?') + ' 格）',
+          'success'
+        );
+      } catch (err) {
+        console.error(err);
+        showToast('監考表匯出失敗：' + (err && err.message ? err.message : err), 'error');
+      } finally {
+        loading.value = false;
+      }
     };
 
     // 將日期字串轉為該週週一 YYYY-MM-DD
@@ -6197,7 +6507,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
           : (teachersList.value || []).find(x =>
               x.email && String(x.email).toLowerCase() === String(req.targetTeacherEmail || '').toLowerCase()
             );
-        const q = t ? (parseInt(t.mutualQuota, 10) || 0) : 0;
+        const q = t ? (parseFloat(t.mutualQuota) || 0) : 0;
         if (q <= 0) flags.push({ key: 'quota0', label: '額度不足', level: 'danger' });
       } else if (!isEx && (req.subFee === '公費代課' || req.subFee === '學校移撥' || req.subFee === ACTIVITY_PUBLIC_FEE || req.subFee === '活動公費')) {
         flags.push({ key: 'public', label: '公費', level: 'info' });
@@ -6619,13 +6929,14 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     bindFlagModal(showClassAwayModal, () => { showClassAwayModal.value = false; }, '空堂事件');
     bindFlagModal(showBatchPrintPrompt, () => { dismissBatchPrintPrompt(); }, '批次列印');
 
-    // ── 後台：互代額度歷程（額度帳本）──
+    // ── 後台：折抵額度歷程（額度帳本）──
     const showQuotaLedgerModal = ref(false);
     const quotaLedgerLoading = ref(false);
     const quotaLedgerTeacher = ref(null); // { email, name, balance, sheetQuota }
     const quotaLedgerRows = ref([]);
-    /** 前端短快取：同師 60 秒內再開不重打 GAS */
+    /** 前端快取：同師 3 分鐘內再開不重打 GAS */
     const _quotaLedgerCache = Object.create(null);
+    const QUOTA_LEDGER_CACHE_MS = 180000;
     try {
       window.__quotaLedgerCacheBust = function () {
         Object.keys(_quotaLedgerCache).forEach(function (k) { delete _quotaLedgerCache[k]; });
@@ -6642,37 +6953,57 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         return;
       }
       const emKey = String(t.email).toLowerCase();
+      // 先開 modal＋顯示名單餘額，體感較快
       showQuotaLedgerModal.value = true;
       quotaLedgerTeacher.value = {
         email: t.email,
         name: t.name || t.email,
-        balance: parseInt(t.mutualQuota, 10) || 0,
-        sheetQuota: parseInt(t.mutualQuota, 10) || 0
+        balance: parseFloat(t.mutualQuota) || 0,
+        sheetQuota: parseFloat(t.mutualQuota) || 0
       };
       const hit = _quotaLedgerCache[emKey];
-      if (hit && (Date.now() - hit.ts) < 60000) {
+      if (hit && (Date.now() - hit.ts) < QUOTA_LEDGER_CACHE_MS) {
         quotaLedgerRows.value = hit.rows;
         if (hit.meta) quotaLedgerTeacher.value = hit.meta;
         quotaLedgerLoading.value = false;
         return;
       }
-      quotaLedgerLoading.value = true;
-      quotaLedgerRows.value = [];
+      // 有舊資料先顯示，背景刷新；無資料才清空＋ loading
+      const hasStale = !!(hit && hit.rows && hit.rows.length);
+      if (hasStale) {
+        quotaLedgerRows.value = hit.rows;
+        if (hit.meta) quotaLedgerTeacher.value = Object.assign({}, hit.meta, {
+          balance: parseFloat(t.mutualQuota) || hit.meta.balance,
+          sheetQuota: parseFloat(t.mutualQuota) || hit.meta.sheetQuota
+        });
+      } else {
+        quotaLedgerRows.value = [];
+      }
+      quotaLedgerLoading.value = !hasStale;
       try {
-        const res = await fetchMutualQuotaLedger({ email: t.email, limit: 80 });
-        const rows = (res && res.ledger) || [];
+        const res = await fetchMutualQuotaLedger({ email: t.email, limit: 50 });
+        // 後端已倒序；前端再保險排一次
+        const rows = ((res && res.ledger) || []).slice().sort((a, b) => {
+          const ta = String((a && a.time) || '').replace('T', ' ').trim();
+          const tb = String((b && b.time) || '').replace('T', ' ').trim();
+          if (tb !== ta) return tb < ta ? -1 : 1;
+          const ida = String((a && a.id) || '');
+          const idb = String((b && b.id) || '');
+          if (idb !== ida) return idb < ida ? -1 : 1;
+          return 0;
+        });
         const meta = {
           email: (res && res.email) || t.email,
           name: (res && res.name) || t.name || t.email,
-          balance: res && res.balance != null ? res.balance : (parseInt(t.mutualQuota, 10) || 0),
-          sheetQuota: res && res.sheetQuota != null ? res.sheetQuota : (parseInt(t.mutualQuota, 10) || 0)
+          balance: res && res.balance != null ? res.balance : (parseFloat(t.mutualQuota) || 0),
+          sheetQuota: res && res.sheetQuota != null ? res.sheetQuota : (parseFloat(t.mutualQuota) || 0)
         };
         quotaLedgerRows.value = rows;
         quotaLedgerTeacher.value = meta;
         _quotaLedgerCache[emKey] = { ts: Date.now(), rows: rows, meta: meta };
       } catch (e) {
         console.error(e);
-        showToast('載入額度歷程失敗：' + (e && e.message ? e.message : e), 'error');
+        if (!hasStale) showToast('載入額度歷程失敗：' + (e && e.message ? e.message : e), 'error');
       } finally {
         quotaLedgerLoading.value = false;
       }
@@ -6689,6 +7020,167 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       return '';
     };
     bindFlagModal(showQuotaLedgerModal, () => { showQuotaLedgerModal.value = false; }, '額度歷程');
+
+    // ── 空堂排班（扣額度；預設不寄信；班級可選）──
+    const showEmptySlotModal = ref(false);
+    const emptySlotForm = ref({
+      teacherEmail: '',
+      teacherName: '',
+      dateStr: '',
+      dayOfWeek: 1,
+      period: 1,
+      taskName: '',
+      className: '',
+      note: '',
+      quota: 0
+    });
+    const openEmptySlotAssign = (teacherEmail, dayOfWeek, period, dateStr, cell) => {
+      if (!isAdmin.value) {
+        showToast('僅教學組可使用空堂排班', 'warning');
+        return;
+      }
+      if (isMutualCover.value) {
+        showToast('請先關閉活動互代模式再使用空堂排班', 'info');
+        return;
+      }
+      if (batchSelectMode.value) {
+        showToast('請先結束批次選取再使用空堂排班', 'info');
+        return;
+      }
+      const DAC0 = DAC();
+      if (DAC0 && DAC0.isEmptySlotAssignable && cell && !DAC0.isEmptySlotAssignable(cell)) {
+        showToast('此格非空堂，無法空堂排班', 'warning');
+        return;
+      }
+      const t = lookupTeacher(teacherEmail);
+      const q = t ? (parseFloat(t.mutualQuota) || 0) : 0;
+      const isPatrolCell = !!(cell && (cell.isPatrol || cell.attr === '巡堂'));
+      const freedBySub = !!(cell && cell.isSubstituted);
+      emptySlotForm.value = {
+        teacherEmail: String(teacherEmail || '').trim().toLowerCase(),
+        teacherName: getTeacherNameByEmail(teacherEmail) || teacherEmail,
+        dateStr: String(dateStr || '').slice(0, 10),
+        dayOfWeek: parseInt(dayOfWeek, 10) || 1,
+        period: parseInt(period, 10) || 1,
+        taskName: (isPatrolCell || freedBySub) ? '巡堂' : '',
+        className: '',
+        note: freedBySub ? '調開／被代後空堂排班' : '',
+        quota: q
+      };
+      showEmptySlotModal.value = true;
+    };
+    /** 詳情框：原授課老師該節已調開／被代 → 開空堂排班 */
+    const openEmptySlotFromDetail = () => {
+      const sub = detailSubRecord.value;
+      if (!sub || !sub.originalTeacherEmail) {
+        showToast('找不到原課老師，無法空堂排班', 'warning');
+        return;
+      }
+      const dateStr = String(sub.date || (detailRequest.value && detailRequest.value.requestDate) || '').slice(0, 10);
+      const period = parseInt(sub.period != null ? sub.period : (detailRequest.value && detailRequest.value.requestPeriod), 10) || 0;
+      let dayOfWeek = parseInt(sub.dayOfWeek, 10);
+      if (!dayOfWeek && dateStr) {
+        const d = new Date(dateStr.replace(/-/g, '/'));
+        if (!Number.isNaN(d.getTime())) dayOfWeek = d.getDay() === 0 ? 7 : d.getDay();
+      }
+      if (!dateStr || !period) {
+        showToast('缺少日期或節次', 'warning');
+        return;
+      }
+      showDetailModal.value = false;
+      openEmptySlotAssign(
+        sub.originalTeacherEmail,
+        dayOfWeek || 1,
+        period,
+        dateStr,
+        { isSubstituted: true }
+      );
+    };
+    const closeEmptySlotModal = () => {
+      showEmptySlotModal.value = false;
+    };
+    const emptySlotQuotaZero = computed(() => {
+      const DAC0 = DAC();
+      if (DAC0 && DAC0.quotaZeroNeedsRepay) {
+        return DAC0.quotaZeroNeedsRepay(emptySlotForm.value.quota);
+      }
+      return (parseInt(emptySlotForm.value.quota, 10) || 0) <= 0;
+    });
+    const executeEmptySlotAssign = async () => {
+      if (!isAdmin.value) {
+        showToast('僅教學組可使用空堂排班', 'warning');
+        return;
+      }
+      const f = emptySlotForm.value;
+      const task = String(f.taskName || '').trim();
+      if (!task) {
+        showToast('請填寫任務名稱（例如：段考巡堂）', 'info');
+        return;
+      }
+      if (!f.teacherEmail || !f.dateStr || !f.period) {
+        showToast('缺少日期／節次／老師', 'warning');
+        return;
+      }
+      if (emptySlotQuotaZero.value) {
+        const ok = await showConfirm(
+          f.teacherName + ' 老師目前折抵額度為 0。\n仍要排入並扣額度？\n（送出後請安排由他人還一節）',
+          '額度為 0'
+        );
+        if (!ok) return;
+      }
+      if (isSubmitting.value) {
+        showToast('送出中，請稍候…', 'info');
+        return;
+      }
+      isSubmitting.value = true;
+      loading.value = true;
+      loadingMessage.value = '正在送出空堂排班…';
+      try {
+        const requestId = 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        const serial = 'SUB' + (1000 + Math.floor(Math.random() * 9000));
+        const DAC0 = DAC();
+        if (!DAC0 || !DAC0.buildEmptySlotPayload) {
+          throw new Error('空堂排班模組未載入');
+        }
+        const built = DAC0.buildEmptySlotPayload({
+          date: f.dateStr,
+          period: f.period,
+          dayOfWeek: f.dayOfWeek,
+          teacherEmail: f.teacherEmail,
+          teacherName: f.teacherName,
+          taskName: task,
+          className: String(f.className || '').trim(),
+          note: f.note,
+          semesterId: currentSemester.value,
+          requestId: requestId,
+          serial: serial
+        });
+        await callGasApi('submitRequest', {
+          request: built.request,
+          directApprove: true,
+          skipNotify: true
+        });
+        optimisticUpsertRequest(sheetRequestToFront(built.newRequest));
+        await deductMutualQuotaForRows([built.newRequest]);
+        softRefreshInBackground({ delay: 2500 });
+        showEmptySlotModal.value = false;
+        const qTip = emptySlotQuotaZero.value
+          ? '（額度為 0，請安排他人還一節）'
+          : '（已扣 1 額度）';
+        showToast(
+          '已排入「' + task + '」→ ' + f.teacherName + '　'
+          + f.dateStr + ' 第' + f.period + '節' + qTip + '　未寄系統信',
+          'success'
+        );
+      } catch (err) {
+        console.error('空堂排班失敗：', err);
+        showToast('空堂排班失敗：' + (err && err.message ? err.message : String(err)), 'error');
+      } finally {
+        loading.value = false;
+        isSubmitting.value = false;
+      }
+    };
+    bindFlagModal(showEmptySlotModal, () => { showEmptySlotModal.value = false; }, '空堂排班');
 
     // 預設公費：公假／婚假／喪假／產前假/分娩假／身心調適假
     const PUBLIC_FEE_REASONS = ['公假', '婚假', '喪假', '產前假/分娩假', '身心調適假'];
@@ -7103,6 +7595,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       isScheduleEditMode, showScheduleEditModal, scheduleForm,
       showTeacherModal, teacherModalMode, teacherForm,
       showQuotaLedgerModal, quotaLedgerLoading, quotaLedgerTeacher, quotaLedgerRows, openQuotaLedger, closeQuotaLedger, quotaTypeClass,
+      showEmptySlotModal, emptySlotForm, emptySlotQuotaZero, openEmptySlotAssign, openEmptySlotFromDetail, closeEmptySlotModal, executeEmptySlotAssign,
       reportMonth, reportWeeksCount, monthlyReportData,
       excelData, excelHeaders, mappingFields, importPreview, runImportPreview, downloadScheduleTemplate, downloadCurrentSchedules,
       directApproveMode, googleClientId, gasApiUrl, saveClientSettings,
@@ -7146,6 +7639,8 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       schoolExportSelectedEmails, schoolExportTeacherFilter, filteredSchoolExportTeachers,
       isSchoolExportTeacherSelected, toggleSchoolExportTeacher, selectAllSchoolExportTeachers, clearSchoolExportTeachers,
       setSchoolExportThisWeek, exportSchoolTimetableWord,
+      exportActivityCoverWord,
+      invigilationExportTitle, exportInvigilationWorkbook,
       devSwitchUser, restoreAdmin,
       getTeacherNameByEmail, getTeacherSubjectByEmail, getRealTeacherName, startSecondSub,
       changeHistoryPage, openHistoryEditModal, saveHistoryEdit, onHistoryEditDateChange, changePendingPage,

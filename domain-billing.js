@@ -71,6 +71,45 @@ window.DomainBilling = (function () {
     return p >= 1 && p <= 7;
   }
 
+  /** 日期 → 課表星期（1=一…7=日） */
+  function dayOfWeekFromDate(dateStr) {
+    var d = new Date(String(dateStr || '').replace(/-/g, '/'));
+    if (Number.isNaN(d.getTime())) return 0;
+    var wd = d.getDay(); // 0日…6六
+    return wd === 0 ? 7 : wd;
+  }
+
+  /**
+   * 請假那堂是否為「兼課」屬性（對照基礎課表：原任＋星期＋節次＋班級）
+   * 公費代課僅在原堂為兼課時才沖自己超鐘
+   */
+  function isConcurrentLeaveSlot(rec, allSchedules) {
+    if (!rec) return false;
+    var em = emailKey(rec.originalTeacherEmail);
+    if (!em) return false;
+    var p = parseInt(rec.period, 10);
+    if (!p) return false;
+    var dow = dayOfWeekFromDate(rec.date);
+    if (!dow) return false;
+    var cn = String(rec.className || '').trim();
+    var list = allSchedules || [];
+    var i;
+    var hitAny = false;
+    for (i = 0; i < list.length; i++) {
+      var s = list[i];
+      if (!s) continue;
+      if (emailKey(s.teacherEmail) !== em) continue;
+      if (parseInt(s.dayOfWeek, 10) !== dow) continue;
+      if (parseInt(s.period, 10) !== p) continue;
+      var scn = String(s.className || '').trim();
+      if (cn && scn && scn !== cn && scn.indexOf(cn) < 0 && cn.indexOf(scn) < 0) continue;
+      hitAny = true;
+      if (String(s.attr || '').trim() === '兼課') return true;
+    }
+    // 找不到課表列：不當兼課（不沖超鐘）
+    return false;
+  }
+
   /**
    * 第8節：有上有拿、沒上沒拿、誰上誰拿
    * - 空堂事件（keep／reduce 皆）當日該班第8 → 不發
@@ -325,10 +364,15 @@ window.DomainBilling = (function () {
       var selfPaidDeduction = leaveRecords.filter(function (r) {
         return r.subFee === '自費代課';
       }).length;
+      // 全部公費請假（學校仍付代課費）
       var pubLeaveRecords = leaveRecords.filter(function (r) {
         return r.subFee === '公費代課' || r.subFee === '學校移撥';
       });
       var pubLeaveCount = pubLeaveRecords.length;
+      // 公費扣超鐘：僅原堂屬性為「兼課」才沖自己超時
+      var pubConcurrentLeaveRecords = pubLeaveRecords.filter(function (r) {
+        return isConcurrentLeaveSlot(r, allSchedules);
+      });
 
       var selfPaidByWeek = {};
       leaveRecords.filter(function (r) { return r.subFee === '自費代課'; }).forEach(function (r) {
@@ -336,7 +380,7 @@ window.DomainBilling = (function () {
         selfPaidByWeek[wk] = (selfPaidByWeek[wk] || 0) + 1;
       });
       var pubByWeek = {};
-      pubLeaveRecords.forEach(function (r) {
+      pubConcurrentLeaveRecords.forEach(function (r) {
         var wk = getWeekKey(r.date);
         pubByWeek[wk] = (pubByWeek[wk] || 0) + 1;
       });
@@ -351,6 +395,7 @@ window.DomainBilling = (function () {
         var remaining = Math.max(0, weeklyOvertime - selfInWeek);
         publicOvertimeUsed += Math.min(remaining, pubInWeek);
       });
+      // 學校公付節數：全部公費請假 − 已沖超鐘（兼課公費）的部分
       var schoolPublicPayout = Math.max(0, pubLeaveCount - publicOvertimeUsed);
 
       var pubSubRecords = monthlyRecords.filter(function (r) {

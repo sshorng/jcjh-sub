@@ -33,6 +33,15 @@ window.FieldMap = (function () {
     return Number.isNaN(n) ? fallback : n;
   }
 
+  /** 折抵額度可為 0.5 倍數 */
+  function asFloat(v, fallback) {
+    if (v === undefined || v === null || v === '') return fallback;
+    if (v === 0 || v === '0') return 0;
+    const n = parseFloat(v);
+    if (Number.isNaN(n)) return fallback;
+    return Math.round(n * 1000) / 1000;
+  }
+
   function mapSemester(s) {
     return {
       id: pick(s, ['學期代號', 'id']),
@@ -109,8 +118,8 @@ window.FieldMap = (function () {
       subject: pick(t, ['授課科目', '任課科目', 'subject']) || '',
       role: normalizeRole(pick(t, ['系統角色', 'role']) || 'teacher'),
       baseHours: asInt(pick(t, ['基本鐘點', 'baseHours']), 16),
-      // 互代額度：活動釋出可寫回；送出扣額度時扣 1；可手動調整
-      mutualQuota: asInt(pick(t, ['互代額度', 'mutualQuota']), 0)
+      // 折抵額度：釋出 1 節＝0.5；扣額度須滿 1 才扣 1
+      mutualQuota: asFloat(pick(t, ['折抵額度', 'mutualQuota']), 0)
     };
   }
 
@@ -123,6 +132,12 @@ window.FieldMap = (function () {
     } else {
       cn = '';
     }
+    let subj = String(pick(s, ['科目', 'subject']) || '').trim();
+    let attr = String(pick(s, ['課堂屬性', 'attr']) || '').trim();
+    // 基礎課表常見：科目或班級寫「巡堂」、屬性空白 → 正規成 attr=巡堂
+    if ((!attr || attr === '一般') && (cn === '巡堂' || subj === '巡堂')) {
+      attr = '巡堂';
+    }
     return {
       id: pick(s, ['課表ID', 'id']),
       teacherEmail: pick(s, ['教師Email', 'teacherEmail']),
@@ -130,8 +145,8 @@ window.FieldMap = (function () {
       dayOfWeek: asInt(pick(s, ['星期', 'dayOfWeek']), 0),
       period: asInt(pick(s, ['節次', 'period']), 0),
       className: cn,
-      subject: pick(s, ['科目', 'subject']) || '',
-      attr: pick(s, ['課堂屬性', 'attr']) || '',
+      subject: subj,
+      attr: attr,
       restriction: pick(s, ['調課限制', 'restriction']) || ''
     };
   }
@@ -150,7 +165,12 @@ window.FieldMap = (function () {
       printed: asBool(pick(sub, ['是否已印', 'printed'])),
       subFee: pick(sub, ['經費來源', 'subFee']) || '',
       reason: pick(sub, ['請假事由', 'reason']) || '',
-      note: pick(sub, ['備註', 'note']) || ''
+      note: pick(sub, ['備註', 'note']) || '',
+      isEmptySlotAssign: (function () {
+        const reason = String(pick(sub, ['請假事由', 'reason']) || '').trim();
+        const note = String(pick(sub, ['備註', 'note']) || '');
+        return reason === '空堂排班' || note.indexOf('[空堂排班]') >= 0 || sub.isEmptySlotAssign === true;
+      })()
     };
   }
 
@@ -199,6 +219,12 @@ window.FieldMap = (function () {
         if (em) return true;
         const n = String(pick(r, ['備註', 'note']) || '');
         return n.indexOf('[行政代申請') >= 0;
+      })(),
+      isEmptySlotAssign: (function () {
+        if (r.isEmptySlotAssign === true) return true;
+        const reason = String(pick(r, ['請假事由', 'reason']) || '').trim();
+        const note = String(pick(r, ['備註', 'note']) || '');
+        return reason === '空堂排班' || note.indexOf('[空堂排班]') >= 0;
       })()
     };
   }
@@ -207,7 +233,7 @@ window.FieldMap = (function () {
   function teacherToSheet(t, semesterId) {
     const subject = t.subject || t["授課科目"] || t["任課科目"] || '';
     const quota = t.mutualQuota !== undefined ? t.mutualQuota
-      : (t["互代額度"] !== undefined ? t["互代額度"] : 0);
+      : (t["折抵額度"] !== undefined ? t["折抵額度"] : 0);
     return {
       "學期代號": semesterId || t.semesterId || '',
       "教師Email": t.email || t["教師Email"],
@@ -228,7 +254,7 @@ window.FieldMap = (function () {
         }
         return 16;
       })(),
-      "互代額度": parseInt(quota, 10) || 0
+      "折抵額度": parseInt(quota, 10) || 0
     };
   }
 
@@ -337,6 +363,7 @@ window.FieldMap = (function () {
     pick,
     asBool,
     asInt,
+    asFloat,
     normalizeRole,
     mapSemester,
     mapClassAwayEvent,

@@ -5,13 +5,21 @@
 window.DomainSchedule = (function () {
   /** 課堂屬性＝巡堂（顯示、不算鐘點、不可調出、可當空堂） */
   function isPatrolAttr(attr) {
-    return String(attr || '').trim() === '巡堂';
+    var a = String(attr || '').trim();
+    return a === '巡堂' || a.indexOf('巡堂') >= 0;
   }
 
+  /**
+   * 巡堂格：屬性／旗標，或班／科欄寫「巡堂」（基礎課表常見只填科目、屬性空白）
+   */
   function isPatrolCell(cell) {
     if (!cell || cell.isSubstituted || cell.isPending) return false;
     if (cell.isPatrol) return true;
-    return isPatrolAttr(cell.attr);
+    if (isPatrolAttr(cell.attr)) return true;
+    var cn = String(cell.className || '').trim();
+    var subj = String(cell.subject || '').trim();
+    if (cn === '巡堂' || subj === '巡堂') return true;
+    return false;
   }
 
   /** 課堂屬性＝抽離（不進班級課表；調課僅可與另一節抽離互調，不可與一般課） */
@@ -133,6 +141,40 @@ window.DomainSchedule = (function () {
       });
 
       const emailLower = teacherEmail.toLowerCase();
+
+      // 空堂排班：原＝實＝本人（扣額度任務，非請假調出）
+      for (var se = 0; se < periodSubs.length; se++) {
+        var selfRec = periodSubs[se];
+        if (!selfRec) continue;
+        var oEm = String(selfRec.originalTeacherEmail || '').toLowerCase();
+        var aEm = String(selfRec.actualTeacherEmail || '').toLowerCase();
+        if (oEm !== emailLower || aEm !== emailLower) continue;
+        var tSelf = selfRec.type;
+        if (tSelf && tSelf !== 'substitution' && tSelf !== '代課') continue;
+        var reasonSelf = String(selfRec.reason || '').trim();
+        var noteSelf = String(selfRec.note || '');
+        var isEmptyAssign = reasonSelf === '空堂排班'
+          || noteSelf.indexOf('[空堂排班]') >= 0
+          || !!(selfRec.isEmptySlotAssign);
+        if (!isEmptyAssign) continue;
+        var feeSelf = String(selfRec.subFee || '');
+        var mutualSelf = feeSelf === '扣額度' || feeSelf === '互代不結';
+        return {
+          className: String(selfRec.className || '').trim(),
+          subject: String(selfRec.subject || '').trim() || '空堂任務',
+          teacherEmail: teacherEmail,
+          dayOfWeek: dayOfWeek,
+          period: period,
+          isSubstitutionDuty: true,
+          isEmptySlotAssign: true,
+          subType: 'substitution',
+          isElastic: false,
+          isMutualCover: mutualSelf,
+          subText: '📌 ' + (String(selfRec.subject || '').trim() || '空堂任務'),
+          subRecord: selfRec,
+          isClassAway: false
+        };
+      }
 
       if (forwardMap[emailLower]) {
         var path = [];
@@ -356,15 +398,20 @@ window.DomainSchedule = (function () {
     if (base.attr === '單週' && !h.isSingleWeek(dateStr)) return null;
     if (base.attr === '雙週' && h.isSingleWeek(dateStr)) return null;
     // 空堂事件：不刪格（畫面淡化）；標 isClassAway 供媒合／匯出／模擬當空堂
-    var patrol = isPatrolAttr(base.attr);
+    var baseCn = String(base.className || '').trim();
+    var baseSubj = String(base.subject || '').trim();
+    var patrol = isPatrolAttr(base.attr)
+      || baseCn === '巡堂'
+      || baseSubj === '巡堂';
     var pullOut = isPullOutAttr(base.attr);
     return Object.assign({}, base, {
       isElastic: base.attr === '實支',
       isPatrol: patrol,
       isPullOut: pullOut,
       // 顯示用：巡堂格固定文案
-      className: patrol ? (base.className || '巡堂') : base.className,
+      className: patrol ? (baseCn && baseCn !== '巡堂' ? baseCn : '巡堂') : base.className,
       subject: patrol ? '巡堂' : base.subject,
+      attr: patrol ? (base.attr || '巡堂') : base.attr,
       isClassAway: !!(h.isClassAway && h.isClassAway(base.className, dateStr))
     });
   }
@@ -507,10 +554,30 @@ window.DomainSchedule = (function () {
       }
     }
 
-    // 2. 代課／調入（空堂或已調出）
+    // 2. 代課／調入（空堂或已調出）；空堂排班：原＝實＝本人
     if (!cell || cell.isSubstituted) {
       var pSub = findSubIn();
       if (pSub) {
+        var sameSelf = pSub.requesterEmail && pSub.targetTeacherEmail
+          && String(pSub.requesterEmail).toLowerCase() === String(pSub.targetTeacherEmail).toLowerCase()
+          && String(pSub.requesterEmail).toLowerCase() === emailLower;
+        var emptyPend = sameSelf && (
+          String(pSub.reason || '').trim() === '空堂排班'
+          || String(pSub.note || '').indexOf('[空堂排班]') >= 0
+          || pSub.isEmptySlotAssign
+        );
+        if (emptyPend) {
+          return {
+            className: pSub.className || '',
+            subject: pSub.subject || '空堂任務',
+            teacherEmail: teacherEmail,
+            isPending: true,
+            isEmptySlotAssign: true,
+            pendingType: 'empty_slot_assign',
+            pendingText: '📌 待核 ' + (pSub.subject || '空堂任務'),
+            pendingRecord: pSub
+          };
+        }
         return {
           className: pSub.className,
           subject: pSub.subject,

@@ -182,11 +182,11 @@ function getHeadersForSheet(sheetName) {
   const defaults = {
     "學期設定": ["學期代號", "學期名稱", "開始日期", "結束日期", "結算日期", "是否預設"],
     // 表頭與前端 FieldMap / 寫入 Key 對齊；field-map.js 讀取時另支援舊別名（任課科目、原任課教師Email）
-    "教師名單": ["學期代號", "教師Email", "教師姓名", "授課科目", "系統角色", "基本鐘點", "互代額度"],
+    "教師名單": ["學期代號", "教師Email", "教師姓名", "授課科目", "系統角色", "基本鐘點", "折抵額度"],
     "教師課表": ["學期代號", "課表ID", "教師Email", "教師姓名", "星期", "節次", "班級", "科目", "課堂屬性", "調課限制"],
     "申請單": ["學期代號", "申請單ID", "單號", "批次ID", "狀態", "申請人Email", "申請人姓名", "受邀人Email", "受邀人姓名", "代申請人Email", "代申請人姓名", "班級", "科目", "異動日期", "異動星期", "異動節次", "異動類型", "對調目標日期", "對調目標星期", "對調目標節次", "經費來源", "請假事由", "是否已印", "備註", "建立時間", "更新時間"],
     "空堂事件": ["學期代號", "事件ID", "事件名稱", "起日", "迄日", "班級清單", "鐘點規則", "可進互代", "啟用", "備註"],
-    // 額度帳本（單表）：流水即真相；包剩餘＝同包ID異動加總；教師名單「互代額度」為快取
+    // 額度帳本（單表）：流水即真相；包剩餘＝同包ID異動加總；教師名單「折抵額度」為快取
     // 索引鍵＝學期代號|教師Email（小寫），讀歷程可先 filter 再掃
     "額度帳本": ["學期代號", "流水ID", "時間", "教師Email", "教師姓名", "異動", "餘額後", "類型", "包ID", "事件ID", "事件名稱", "起日", "迄日", "申請單ID", "操作者", "備註", "索引鍵"],
     "系統設定": ["設定名稱", "設定值"]
@@ -800,7 +800,7 @@ function slimTeacherRows_(rows) {
       "授課科目": t["授課科目"] || t["任課科目"] || t.subject || "",
       "系統角色": normalizeRole_(t["系統角色"] || t.role || "teacher"),
       "基本鐘點": t["基本鐘點"] != null && t["基本鐘點"] !== "" ? t["基本鐘點"] : (t.baseHours != null ? t.baseHours : 16),
-      "互代額度": t["互代額度"] != null && t["互代額度"] !== "" ? t["互代額度"] : (t.mutualQuota != null ? t.mutualQuota : 0)
+      "折抵額度": t["折抵額度"] != null && t["折抵額度"] !== "" ? t["折抵額度"] : (t.mutualQuota != null ? t.mutualQuota : 0)
     };
   });
 }
@@ -884,6 +884,115 @@ function isQuotaDeductFee_(fee) {
   return f === "扣額度" || f === "互代不結";
 }
 
+/** 星期數字 → 中文（1=一…7=日；0 亦當日） */
+function quotaDowZh_(dow) {
+  var n = parseInt(dow, 10);
+  if (isNaN(n) || n < 0) n = 0;
+  var map = { 0: "日", 1: "一", 2: "二", 3: "三", 4: "四", 5: "五", 6: "六", 7: "日" };
+  return map[n] || "";
+}
+
+/** 日期 → M/D（例 10/13） */
+function quotaMdLabel_(dateStr) {
+  var s = String(dateStr || "").trim().slice(0, 10);
+  if (!s) return "";
+  var p = s.split(/[-/]/);
+  if (p.length < 3) return s;
+  var m = parseInt(p[1], 10);
+  var d = parseInt(p[2], 10);
+  if (isNaN(m) || isNaN(d)) return s;
+  return m + "/" + d;
+}
+
+/**
+ * 扣額度帳本：事件名稱＋備註
+ * 1) 活動互代：事件名＝空堂事件（包上／備註帶入）；備註＝10/13四王小明（代誰）
+ * 2) 空堂排班：事件名＝空堂任務；備註＝10/13四（不加人名）
+ * 3) 其他代課：事件名＝代課；備註＝10/13四請假老師
+ * @returns {{ eventId: string, eventName: string, note: string, kind: string }}
+ */
+function buildQuotaSpendMeta_(req, pack) {
+  req = req || {};
+  pack = pack || {};
+  var reason = String(req["請假事由"] || req.reason || "").trim();
+  var noteRaw = String(req["備註"] || req.note || "").trim();
+  var fee = String(req["經費來源"] || req.subFee || "").trim();
+  var leaveName = String(req["申請人姓名"] || req.requesterName || "").trim();
+  var leaveEm = String(req["申請人Email"] || req.requesterEmail || "").toLowerCase().trim();
+  var subEm = String(req["受邀人Email"] || req.targetTeacherEmail || "").toLowerCase().trim();
+  var dateStr = String(req["異動日期"] || req.requestDate || req.date || "").slice(0, 10);
+  var dow = req["異動星期"] != null ? req["異動星期"] : req.requestPeriodDay;
+  if ((dow == null || dow === "") && dateStr) {
+    try {
+      var dt = new Date(dateStr.replace(/-/g, "/") + " 00:00:00");
+      if (!isNaN(dt.getTime())) {
+        var w = dt.getDay(); // 0日
+        dow = w === 0 ? 7 : w;
+      }
+    } catch (eD) {}
+  }
+  var md = quotaMdLabel_(dateStr);
+  var zh = quotaDowZh_(dow);
+  var when = md + zh; // 10/13四
+
+  var isEmptyAssign = reason === "空堂排班"
+    || noteRaw.indexOf("[空堂排班]") >= 0
+    || req.isEmptySlotAssign === true
+    || (leaveEm && subEm && leaveEm === subEm && noteRaw.indexOf("空堂") >= 0);
+
+  // 活動互代：優先帳本包上的空堂事件名（發放時寫入）；備註「畢旅 起日～」可備援
+  var packEventName = String(pack.eventName || "").trim();
+  var packEventId = String(pack.eventId || "").trim();
+  var reservedNames = { "代課": 1, "加課": 1, "空堂任務": 1, "手動調整": 1, "申請扣額度": 1 };
+  var activityName = "";
+  if (packEventName && !reservedNames[packEventName]) {
+    activityName = packEventName;
+  } else {
+    var noteClean = noteRaw
+      .replace(/\[直接核准\]/g, "")
+      .replace(/\[空堂排班\]/g, "")
+      .replace(/\[行政代申請[^\]]*\]/g, "")
+      .trim();
+    // 活動互代統一備註常以事件名開頭（如「畢旅 2026-07-15～…」）
+    if (noteClean && (reason === "公假" || fee === "活動公費" || noteClean.indexOf("～") >= 0 || noteClean.indexOf("~") >= 0)) {
+      var firstTok = noteClean.split(/\s+/)[0] || "";
+      if (firstTok && !reservedNames[firstTok] && firstTok.indexOf("行政") < 0 && !/^\d/.test(firstTok)) {
+        activityName = firstTok;
+      }
+    }
+  }
+
+  var eventId = packEventId;
+  var eventName = "";
+  var note = "";
+  var kind = "sub";
+
+  if (isEmptyAssign) {
+    kind = "add";
+    eventName = "空堂任務";
+    if (!eventId) eventId = "evt_empty_slot";
+    note = when || "空堂任務";
+  } else if (activityName) {
+    kind = "activity";
+    eventName = activityName;
+    // 代誰：請假／帶隊老師姓名
+    note = when + (leaveName || "");
+  } else {
+    kind = "sub";
+    eventName = "代課";
+    if (!eventId) eventId = "evt_sub";
+    note = when + (leaveName || "");
+  }
+
+  if (!note) note = eventName || "扣額度";
+  return {
+    eventId: eventId || "",
+    eventName: eventName || "代課",
+    note: note,
+    kind: kind
+  };
+}
+
 /** 已作廢狀態：不應再還額度（防重複操作） */
 function isTerminalQuotaStatus_(status) {
   var s = String(status || "").toLowerCase().trim();
@@ -922,15 +1031,32 @@ function ensureQuotaSheets_() {
   }
 }
 
-/** 讀帳本列（單表）；同次請求內記憶體快取，避免 spend 每人重讀 */
+/** 讀帳本列（單表）；請求內 mem + ScriptCache，避免每次開歷程整表重讀 */
 var _quotaLedgerMem_ = { key: "", rows: null, ts: 0 };
 /** 本請求是否已 backfill（寫入路徑才寫表） */
 var _quotaIndexBackfillDone_ = false;
+var CACHE_TTL_QLEDGER_ = 180; // 學期帳本列快取（寫入會 bust）
+function quotaLedgerCacheKey_(semesterId) {
+  return "jcjh_qled_all_" + String(semesterId || "");
+}
 function getQuotaLedgerRows_(semesterId) {
   var sid = String(semesterId || "");
   var now = Date.now();
-  if (_quotaLedgerMem_.key === sid && _quotaLedgerMem_.rows && (now - _quotaLedgerMem_.ts) < 8000) {
+  if (_quotaLedgerMem_.key === sid && _quotaLedgerMem_.rows && (now - _quotaLedgerMem_.ts) < 15000) {
     return _quotaLedgerMem_.rows;
+  }
+  // ScriptCache：跨請求共用，開歷程不必每次 getDataRange
+  if (sid) {
+    try {
+      var cached = getCacheChunked(quotaLedgerCacheKey_(sid));
+      if (cached) {
+        var parsed = JSON.parse(cached);
+        if (parsed && Array.isArray(parsed)) {
+          _quotaLedgerMem_ = { key: sid, rows: parsed, ts: now };
+          return parsed;
+        }
+      }
+    } catch (eQc) { /* ignore */ }
   }
   // 不呼叫 ensureQuotaSheets_（getTableData 找不到表會回 []）
   var all = getTableData(QUOTA_LEDGER_SHEET_) || [];
@@ -941,6 +1067,11 @@ function getQuotaLedgerRows_(semesterId) {
     return String(r["學期代號"] || "") === sid;
   });
   _quotaLedgerMem_ = { key: sid, rows: rows, ts: now };
+  if (sid) {
+    try {
+      putCacheChunked(quotaLedgerCacheKey_(sid), JSON.stringify(rows), CACHE_TTL_QLEDGER_);
+    } catch (eQp) { /* 過大則略過快取，仍回 rows */ }
+  }
   return rows;
 }
 
@@ -984,6 +1115,11 @@ function backfillQuotaLedgerIndexKeys_() {
 function bustQuotaLedgerMem_() {
   _quotaLedgerMem_ = { key: "", rows: null, ts: 0 };
 }
+function bustQuotaLedgerScriptCache_(semesterId) {
+  var sid = String(semesterId || "");
+  if (!sid) return;
+  try { removeCacheChunked(quotaLedgerCacheKey_(sid)); } catch (eB) {}
+}
 /**
  * 額度寫入後：清教師快取＋歷程快取（不必清課表）
  * emails：可選，受影響教師 email 陣列；有則精準清 jcjh_qled_sid_email_limit
@@ -993,14 +1129,13 @@ function invalidateQuotaCaches_(semesterId, emails) {
   removeCacheChunked("jcjh_teachers_" + sid);
   removeCacheChunked("jcjh_meta_" + sid);
   bustQuotaLedgerMem_();
+  bustQuotaLedgerScriptCache_(sid);
   try {
     var cache = CacheService.getScriptCache();
-    // 舊版誤用的 prefix key（無法列舉，留 remove 相容）
     cache.remove("jcjh_qled_" + sid);
-    // 精準清分師歷程（常見 limit：80／200）
     var list = Array.isArray(emails) ? emails : [];
     var seen = {};
-    var limits = [80, 200];
+    var limits = [40, 50, 80, 200];
     list.forEach(function (raw) {
       var em = String(raw || "").toLowerCase().trim();
       if (!em || seen[em]) return;
@@ -1049,9 +1184,9 @@ function batchEarnMutualQuota_(semesterId, earnList, meta) {
   allLedger.forEach(function (r) {
     var em = String(r["教師Email"] || "").toLowerCase().trim();
     if (!em) return;
-    var d = parseInt(r["異動"], 10);
+    var d = parseFloat(r["異動"]);
     if (isNaN(d)) d = 0;
-    teacherBal[em] = (teacherBal[em] || 0) + d;
+    teacherBal[em] = Math.round(((teacherBal[em] || 0) + d) * 1000) / 1000;
     var typ = String(r["類型"] || "").trim().toLowerCase();
     var rid = String(r["事件ID"] || "").trim();
     // 只認明確的 earn；事件ID 必須相符
@@ -1068,9 +1203,9 @@ function batchEarnMutualQuota_(semesterId, earnList, meta) {
     var em = String(t["教師Email"] || t.email || "").toLowerCase().trim();
     if (!em) return;
     tMap[em] = t;
-    var q = parseInt(t["互代額度"] != null ? t["互代額度"] : t.mutualQuota, 10);
+    var q = parseFloat(t["折抵額度"] != null ? t["折抵額度"] : t.mutualQuota);
     if (isNaN(q) || q < 0) q = 0;
-    sheetQuota[em] = q;
+    sheetQuota[em] = Math.round(q * 1000) / 1000;
   });
 
   var ledgerRows = [];
@@ -1083,8 +1218,10 @@ function batchEarnMutualQuota_(semesterId, earnList, meta) {
 
   (earnList || []).forEach(function (item) {
     var em = String(item.email || "").toLowerCase().trim();
-    var released = parseInt(item.released != null ? item.released : item.earn, 10) || 0;
-    if (!em || released <= 0) return;
+    // 釋出額度可為 0.5 倍數（前端已 ×0.5）
+    var released = parseFloat(item.released != null ? item.released : item.earn);
+    if (isNaN(released) || released <= 0) return;
+    released = Math.round(released * 1000) / 1000;
     var packId = makeQuotaPackId_(sid, eventId, em);
     var hadEarn = !!earnedKey[em];
     if (hadEarn && !forceAdd) {
@@ -1195,18 +1332,29 @@ function appendQuotaLedgerRowsFast_(rows) {
     // setValues(row, col, numRows, numCols) — 第三參數是列數
     sheet.getRange(start + i, 1, block.length, headers.length).setValues(block);
   }
-  // 寫入後同步記憶體快取（同請求後續 spend 可讀到新列）
+  // 寫入後同步記憶體快取（同請求後續 spend 可讀到新列）；並 bust ScriptCache
+  var sidTouched = {};
   if (_quotaLedgerMem_ && _quotaLedgerMem_.rows && _quotaLedgerMem_.key) {
     var sidM = _quotaLedgerMem_.key;
     rows.forEach(function (r) {
       if (String(r["學期代號"] || "") === sidM) _quotaLedgerMem_.rows.push(r);
+      var s = String(r["學期代號"] || "");
+      if (s) sidTouched[s] = 1;
     });
     _quotaLedgerMem_.ts = Date.now();
+  } else {
+    rows.forEach(function (r) {
+      var s = String(r["學期代號"] || "");
+      if (s) sidTouched[s] = 1;
+    });
   }
+  Object.keys(sidTouched).forEach(function (s) {
+    bustQuotaLedgerScriptCache_(s);
+  });
 }
 
 /**
- * 只更新教師名單「互代額度」欄（本學期列），一次讀 key＋一欄寫回
+ * 只更新教師名單「折抵額度」欄（本學期列），一次讀 key＋一欄寫回
  * @param {string} semesterId
  * @param {Object} balByEmail email(lower) -> number
  */
@@ -1219,13 +1367,13 @@ function patchTeacherMutualQuotaColumn_(semesterId, balByEmail) {
   if (!sheet) throw new Error("找不到工作表「教師名單」");
   var headers = getHeadersForSheet("教師名單");
   var emailCol = headers.indexOf("教師Email") + 1;
-  var quotaCol = headers.indexOf("互代額度") + 1;
+   var quotaCol = headers.indexOf("折抵額度") + 1;
   var semCol = headers.indexOf("學期代號") + 1;
   if (emailCol < 1 || quotaCol < 1) {
     // 後備
     var list = [];
     emails.forEach(function (em) {
-      list.push({ "教師Email": em, "互代額度": balByEmail[em], "學期代號": semesterId });
+      list.push({ "教師Email": em, "折抵額度": balByEmail[em], "學期代號": semesterId });
     });
     saveRows("教師名單", list, "教師Email");
     return;
@@ -1244,9 +1392,13 @@ function patchTeacherMutualQuotaColumn_(semesterId, balByEmail) {
     var em = String(emailVals[r][0] || "").toLowerCase().trim();
     if (!em || want[em] === undefined) continue;
     if (semVals && String(semVals[r][0] || "") !== sid) continue;
-    var q = parseInt(want[em], 10);
+    var q = parseFloat(want[em]);
     if (isNaN(q) || q < 0) q = 0;
-    if (parseInt(quotaVals[r][0], 10) !== q) {
+    q = Math.round(q * 1000) / 1000;
+    var curQ = parseFloat(quotaVals[r][0]);
+    if (isNaN(curQ)) curQ = 0;
+    curQ = Math.round(curQ * 1000) / 1000;
+    if (curQ !== q) {
       quotaVals[r][0] = q;
       changed = true;
     }
@@ -1305,10 +1457,10 @@ function sumTeacherLedgerBalance_(semesterId, email) {
   var sum = 0;
   getQuotaLedgerRows_(sid).forEach(function (r) {
     if (String(r["教師Email"] || "").toLowerCase().trim() !== em) return;
-    var d = parseInt(r["異動"], 10);
+    var d = parseFloat(r["異動"]);
     if (!isNaN(d)) sum += d;
   });
-  return Math.max(0, sum);
+  return Math.max(0, Math.round(sum * 1000) / 1000);
 }
 
 /**
@@ -1340,10 +1492,12 @@ function buildPackagesFromLedger_(semesterId, emailFilter) {
       };
     }
     var p = byPack[packId];
-    var d = parseInt(r["異動"], 10) || 0;
-    p.remaining += d;
-    if (d > 0) p.earned += d;
-    if (d < 0) p.used += (-d);
+    var d = parseFloat(r["異動"]);
+    if (isNaN(d)) d = 0;
+    d = Math.round(d * 1000) / 1000;
+    p.remaining = Math.round((p.remaining + d) * 1000) / 1000;
+    if (d > 0) p.earned = Math.round((p.earned + d) * 1000) / 1000;
+    if (d < 0) p.used = Math.round((p.used + (-d)) * 1000) / 1000;
     if (r["事件ID"] && !p.eventId) p.eventId = r["事件ID"];
     if (r["事件名稱"] && !p.eventName) p.eventName = r["事件名稱"];
     if (r["起日"] && !p.startDate) p.startDate = r["起日"];
@@ -1359,7 +1513,7 @@ function buildPackagesFromLedger_(semesterId, emailFilter) {
   });
 }
 
-/** 寫回教師名單互代額度快取（單人 → 走欄位批次） */
+/** 寫回教師名單折抵額度快取（單人 → 走欄位批次） */
 function writeTeacherQuotaCache_(semesterId, email, balance, name) {
   var em = String(email || "").toLowerCase().trim();
   var sid = String(semesterId || "");
@@ -1398,9 +1552,10 @@ function buildTeacherPackStateFromLedger_(semesterId) {
     if (!em) return;
     if (!byEmail[em]) byEmail[em] = { bal: 0, packs: {}, name: "" };
     var st = byEmail[em];
-    var d = parseInt(r["異動"], 10);
+    var d = parseFloat(r["異動"]);
     if (isNaN(d)) d = 0;
-    st.bal += d;
+    d = Math.round(d * 1000) / 1000;
+    st.bal = Math.round((st.bal + d) * 1000) / 1000;
     if (r["教師姓名"]) st.name = r["教師姓名"];
     var pid = String(r["包ID"] || "").trim() || ("nopack_" + em);
     if (!st.packs[pid]) {
@@ -1422,11 +1577,11 @@ function buildTeacherPackStateFromLedger_(semesterId) {
   });
   Object.keys(byEmail).forEach(function (em) {
     var st = byEmail[em];
-    st.bal = Math.max(0, st.bal);
+    st.bal = Math.max(0, Math.round(st.bal * 1000) / 1000);
     var list = [];
     Object.keys(st.packs).forEach(function (pid) {
       var p = st.packs[pid];
-      p.remaining = Math.max(0, p.remaining);
+      p.remaining = Math.max(0, Math.round((p.remaining || 0) * 1000) / 1000);
       if (p.remaining > 0) list.push(p);
     });
     list.sort(function (a, b) {
@@ -1439,103 +1594,127 @@ function buildTeacherPackStateFromLedger_(semesterId) {
 
 /**
  * 批次扣額度：一次讀帳本、一次 append、一次改教師欄（送出申請熱路徑）
+ * 逐筆申請寫 spend：事件名／備註依活動互代、代課、空堂任務區分
  */
 function spendMutualQuotaForRequests_(reqs, operatorEmail) {
   var list = Array.isArray(reqs) ? reqs : (reqs ? [reqs] : []);
   if (!list.length) return { spentTeachers: 0, shortList: [] };
   try { backfillQuotaLedgerIndexKeys_(); } catch (eBfS) {}
-  var map = {};
+
+  // 只留扣額度申請；維持傳入順序
+  var spendReqs = [];
   var sid = "";
   list.forEach(function (r) {
     if (!r || !isQuotaDeductFee_(r["經費來源"])) return;
     var em = String(r["受邀人Email"] || "").toLowerCase().trim();
     if (!em) return;
     if (!sid) sid = String(r["學期代號"] || "");
-    if (!map[em]) {
-      map[em] = {
-        n: 0,
-        name: r["受邀人姓名"] || "",
-        requestIds: []
-      };
-    }
-    map[em].n += 1;
-    if (r["申請單ID"]) map[em].requestIds.push(r["申請單ID"]);
+    spendReqs.push(r);
   });
-  var emails = Object.keys(map);
-  if (!emails.length) return { spentTeachers: 0, shortList: [] };
+  if (!spendReqs.length) return { spentTeachers: 0, shortList: [] };
   if (!sid) sid = String((list[0] && list[0]["學期代號"]) || "");
 
   var state = buildTeacherPackStateFromLedger_(sid);
-  // 名單現值後備（快取）
   var teachersAll = getSemesterTeachersCached_(sid) || [];
   var sheetQ = {};
   teachersAll.forEach(function (t) {
     var em = String(t["教師Email"] || t.email || "").toLowerCase().trim();
     if (!em) return;
-    var sq = parseInt(t["互代額度"] != null ? t["互代額度"] : t.mutualQuota, 10) || 0;
+    var sq = parseFloat(t["折抵額度"] != null ? t["折抵額度"] : t.mutualQuota);
+    if (isNaN(sq) || sq < 0) sq = 0;
+    sq = Math.round(sq * 1000) / 1000;
     sheetQ[em] = sq;
     if (!state[em]) state[em] = { bal: sq, packList: [], name: t["教師姓名"] || t.name || "" };
     else if (!state[em].name && (t["教師姓名"] || t.name)) state[em].name = t["教師姓名"] || t.name;
   });
 
+  // 執行期餘額／包列表（同批多筆共用）
+  var runBal = {};
+  var runPacks = {};
+  Object.keys(state).forEach(function (em) {
+    var st = state[em];
+    var b = typeof st.bal === "number" ? st.bal : (sheetQ[em] || 0);
+    if (isNaN(b) || b < 0) b = 0;
+    runBal[em] = Math.round(b * 1000) / 1000;
+    runPacks[em] = (st.packList || []).map(function (p) {
+      return {
+        packageId: p.packageId,
+        eventId: p.eventId || "",
+        eventName: p.eventName || "",
+        remaining: p.remaining || 0
+      };
+    });
+  });
+
   var ledgerRows = [];
   var finalBal = {};
   var shortList = [];
+  var shortMap = {};
   var now = quotaNowStr_();
   var seq = 0;
+  var touched = {};
 
-  emails.forEach(function (em) {
-    var info = map[em];
-    var need = info.n;
-    var st = state[em] || { bal: sheetQ[em] || 0, packList: [], name: info.name };
-    var packs = (st.packList || []).slice();
-    var left = need;
-    var bal = typeof st.bal === "number" ? st.bal : (sheetQ[em] || 0);
-    if (bal < 0) bal = 0;
+  spendReqs.forEach(function (req) {
+    var em = String(req["受邀人Email"] || "").toLowerCase().trim();
+    if (!em) return;
+    if (runBal[em] == null) {
+      runBal[em] = sheetQ[em] || 0;
+      runPacks[em] = [];
+    }
+    var bal = runBal[em];
+    var packs = runPacks[em] || [];
+    var subName = String(req["受邀人姓名"] || "").trim()
+      || (state[em] && state[em].name) || "";
+    var reqId = String(req["申請單ID"] || req.id || "").trim();
 
-    function pushSpend(use, pack, noteExtra) {
-      if (use <= 0) return;
-      bal = Math.max(0, bal - use);
-      seq++;
-      ledgerRows.push({
-        "學期代號": sid,
-        "流水ID": "ql_" + Date.now() + "_" + seq + "_" + Math.random().toString(36).substr(2, 4),
-        "時間": now,
-        "教師Email": em,
-        "教師姓名": info.name || st.name || "",
-        "異動": -use,
-        "餘額後": bal,
-        "類型": "spend",
-        "包ID": (pack && pack.packageId) || ("pkg_short_" + em),
-        "事件ID": (pack && pack.eventId) || "",
-        "事件名稱": (pack && pack.eventName) || "",
-        "起日": "",
-        "迄日": "",
-        "申請單ID": info.requestIds[0] || "",
-        "操作者": operatorEmail || "",
-        "備註": noteExtra || ("申請扣額度 ×" + use)
-      });
+    // 選 FIFO 包（有餘額 ≥1 優先；否則總餘額）
+    var pack = null;
+    var pi;
+    for (pi = 0; pi < packs.length; pi++) {
+      if (Math.floor(packs[pi].remaining || 0) >= 1) {
+        pack = packs[pi];
+        break;
+      }
+    }
+    // 須餘額 ≥ 1 才扣
+    if (bal + 1e-9 < 1) {
+      if (!shortMap[em]) {
+        shortMap[em] = { email: em, name: subName, short: 0, spent: 0 };
+        shortList.push(shortMap[em]);
+      }
+      shortMap[em].short += 1;
+      return;
     }
 
-    packs.forEach(function (p) {
-      if (left <= 0) return;
-      var use = Math.min(p.remaining || 0, left);
-      if (use <= 0) return;
-      pushSpend(use, p, "申請扣額度 ×" + use);
-      p.remaining -= use;
-      left -= use;
-    });
-    // 無包但名單／帳本總餘額仍有：整筆扣（相容舊資料）
-    if (left > 0 && bal > 0) {
-      var use2 = Math.min(bal, left);
-      pushSpend(use2, { packageId: "pkg_balance_" + em }, "申請扣額度 ×" + use2 + "（總餘額）");
-      left -= use2;
-    }
-    if (left > 0) {
-      // 不足：前端活動互代應已轉公費；不強扣成負
-      shortList.push({ email: em, name: info.name, short: left, spent: need - left });
-    }
+    var meta = buildQuotaSpendMeta_(req, pack || {});
+    bal = Math.round(Math.max(0, bal - 1) * 1000) / 1000;
+    runBal[em] = bal;
     finalBal[em] = bal;
+    touched[em] = true;
+    if (pack) {
+      pack.remaining = Math.round(Math.max(0, (pack.remaining || 0) - 1) * 1000) / 1000;
+    }
+    if (shortMap[em]) shortMap[em].spent += 1;
+
+    seq++;
+    ledgerRows.push({
+      "學期代號": sid,
+      "流水ID": "ql_" + Date.now() + "_" + seq + "_" + Math.random().toString(36).substr(2, 4),
+      "時間": now,
+      "教師Email": em,
+      "教師姓名": subName,
+      "異動": -1,
+      "餘額後": bal,
+      "類型": "spend",
+      "包ID": (pack && pack.packageId) || ("pkg_balance_" + em),
+      "事件ID": meta.eventId || (pack && pack.eventId) || "",
+      "事件名稱": meta.eventName,
+      "起日": String(req["異動日期"] || req.requestDate || "").slice(0, 10),
+      "迄日": "",
+      "申請單ID": reqId,
+      "操作者": operatorEmail || "",
+      "備註": meta.note
+    });
   });
 
   if (ledgerRows.length) {
@@ -1545,6 +1724,7 @@ function spendMutualQuotaForRequests_(reqs, operatorEmail) {
   if (Object.keys(finalBal).length) {
     patchTeacherMutualQuotaColumn_(sid, finalBal);
   }
+  var emails = Object.keys(touched);
   invalidateQuotaCaches_(sid, emails);
   return { spentTeachers: emails.length, shortList: shortList, wrote: ledgerRows.length };
 }
@@ -1585,7 +1765,9 @@ function restoreMutualQuotaForRequests_(reqs) {
   teachersAll.forEach(function (t) {
     var em = String(t["教師Email"] || t.email || "").toLowerCase().trim();
     if (!em) return;
-    sheetQ[em] = parseInt(t["互代額度"] != null ? t["互代額度"] : t.mutualQuota, 10) || 0;
+    var sqR = parseFloat(t["折抵額度"] != null ? t["折抵額度"] : t.mutualQuota);
+    if (isNaN(sqR) || sqR < 0) sqR = 0;
+    sheetQ[em] = Math.round(sqR * 1000) / 1000;
   });
 
   // 最近 spend 包
@@ -1683,7 +1865,9 @@ function upsertActivityQuotaPackage_(o) {
   var sid = String(o.semesterId || "");
   var em = String(o.email || "").toLowerCase().trim();
   var eventId = String(o.eventId || "").trim();
-  var released = parseInt(o.released, 10) || 0;
+  var released = parseFloat(o.released);
+  if (isNaN(released) || released <= 0) return null;
+  released = Math.round(released * 1000) / 1000;
   if (!sid || !em || released <= 0) return null;
   if (!eventId) {
     eventId = "evt_" + String(o.startDate || "") + "_" + String(o.endDate || "") + "_" + String(o.awayKey || "manual");
@@ -1695,9 +1879,13 @@ function upsertActivityQuotaPackage_(o) {
   var packRem = 0;
   getQuotaLedgerRows_(sid).forEach(function (r) {
     if (String(r["包ID"] || "") !== packId) return;
-    if (String(r["類型"] || "") === "earn" || (parseInt(r["異動"], 10) || 0) > 0) hadEarn = true;
-    packRem += parseInt(r["異動"], 10) || 0;
+    var dR = parseFloat(r["異動"]);
+    if (isNaN(dR)) dR = 0;
+    dR = Math.round(dR * 1000) / 1000;
+    if (String(r["類型"] || "") === "earn" || dR > 0) hadEarn = true;
+    packRem += dR;
   });
+  packRem = Math.round(packRem * 1000) / 1000;
   if (hadEarn && mode === "add" && !o.forceAdd) {
     return {
       packageId: packId,
@@ -2171,7 +2359,7 @@ function buildMatchCandidates_(semesterId, opts) {
       subject: String(t["授課科目"] || t.subject || "").trim(),
       role: String(t["系統角色"] || t.role || "teacher"),
       baseHours: t["基本鐘點"] != null ? t["基本鐘點"] : (t.baseHours != null ? t.baseHours : 16),
-      mutualQuota: t["互代額度"] != null ? t["互代額度"] : (t.mutualQuota != null ? t.mutualQuota : 0),
+      mutualQuota: t["折抵額度"] != null ? t["折抵額度"] : (t.mutualQuota != null ? t.mutualQuota : 0),
       todayPeriodCount: busy,
       isSameCourse: isSameCourse,
       isSameSubject: isSameSubject,
@@ -2265,7 +2453,7 @@ function buildFullSemesterPayload_(semesterId, opts) {
   const windowDays = opts.windowDays != null ? opts.windowDays : 14;
   const requestsOnly = opts.requestsOnly === true || opts.requestsOnly === "true" || opts.requestsOnly === 1;
   const teachersOnly = opts.teachersOnly === true || opts.teachersOnly === "true" || opts.teachersOnly === 1;
-  // 額度發放後：只回教師（互代額度），跳過申請／課表讀取
+  // 額度發放後：只回教師（折抵額度），跳過申請／課表讀取
   if (teachersOnly) {
     return {
       success: true,
@@ -2636,21 +2824,33 @@ function handleReadAction_(postData) {
     return ContentService.createTextOutput(histJson).setMimeType(ContentService.MimeType.JSON);
   }
 
-  // 互代額度歷程：讀「額度帳本」列（管理員可查任一師；教師僅自己）
+  // 折抵額度歷程：讀「額度帳本」列（管理員可查任一師；教師僅自己）
   if (action === "getMutualQuotaLedger") {
-    var teachersL = getSemesterTeachersCached_(semesterId);
-    var isAdminL = resolveIsAdmin_(readerEmail, teachersL);
     var targetEmail = String(reqData.email || reqData.teacherEmail || postData.email || "").toLowerCase().trim();
     if (!targetEmail) targetEmail = readerEmail;
-    if (!isAdminL && targetEmail !== readerEmail) {
-      return ContentService.createTextOutput(JSON.stringify({
-        success: false,
-        error: "僅能查看自己的額度歷程"
-      })).setMimeType(ContentService.MimeType.JSON);
+    // 權限：先快路徑（查自己免整包教師）；查他人才載教師名單
+    var isSelfLed = targetEmail === readerEmail;
+    var teachersL = null;
+    var isAdminL = false;
+    if (!isSelfLed) {
+      teachersL = getSemesterTeachersCached_(semesterId);
+      isAdminL = resolveIsAdmin_(readerEmail, teachersL);
+      if (!isAdminL) {
+        return ContentService.createTextOutput(JSON.stringify({
+          success: false,
+          error: "僅能查看自己的額度歷程"
+        })).setMimeType(ContentService.MimeType.JSON);
+      }
+    } else {
+      // 自己：輕量確認是否 admin（顯示用姓名可後補）
+      try {
+        teachersL = getSemesterTeachersCached_(semesterId);
+        isAdminL = resolveIsAdmin_(readerEmail, teachersL);
+      } catch (eT) { teachersL = []; }
     }
-    var limitL = parseInt(reqData.limit != null ? reqData.limit : 80, 10) || 80;
-    if (limitL > 200) limitL = 200;
-    // 短快取 45s（同師連續點開）
+    var limitL = parseInt(reqData.limit != null ? reqData.limit : 50, 10) || 50;
+    if (limitL > 120) limitL = 120;
+    // 分師結果快取 120s（寫入會精準 bust）
     var ledCacheKey = "jcjh_qled_" + semesterId + "_" + targetEmail + "_" + limitL;
     try {
       var ledCached = CacheService.getScriptCache().get(ledCacheKey);
@@ -2658,7 +2858,7 @@ function handleReadAction_(postData) {
         return ContentService.createTextOutput(ledCached).setMimeType(ContentService.MimeType.JSON);
       }
     } catch (eLedC) {}
-    // 走 getQuotaLedgerRows_（學期 mem 快取）；再 filter 教師
+    // 走 getQuotaLedgerRows_（ScriptCache＋mem）；再 filter 教師
     var sidL = String(semesterId || "");
     var idxKeyL = makeQuotaLedgerIndexKey_(sidL, targetEmail);
     var balSum = 0;
@@ -2671,13 +2871,20 @@ function handleReadAction_(postData) {
         var em = String(r["教師Email"] || "").toLowerCase().trim();
         if (em !== targetEmail) return;
       }
-      var d = parseInt(r["異動"], 10);
+      var d = parseFloat(r["異動"]);
       if (isNaN(d)) d = 0;
-      balSum += d;
+      balSum = Math.round((balSum + d) * 1000) / 1000;
       rowsL.push(r);
     });
+    // 時間倒序（新→舊）；同秒再以流水ID 倒序
     rowsL.sort(function (a, b) {
-      return String(b["時間"] || "").localeCompare(String(a["時間"] || ""));
+      var ta = String(a["時間"] || "").replace("T", " ").trim();
+      var tb = String(b["時間"] || "").replace("T", " ").trim();
+      if (tb !== ta) return tb < ta ? -1 : 1;
+      var ida = String(a["流水ID"] || "");
+      var idb = String(b["流水ID"] || "");
+      if (idb !== ida) return idb < ida ? -1 : 1;
+      return 0;
     });
     if (rowsL.length > limitL) rowsL = rowsL.slice(0, limitL);
     var typeLabel = function (t) {
@@ -2689,15 +2896,19 @@ function handleReadAction_(postData) {
       return t || "—";
     };
     var ledger = rowsL.map(function (r) {
-      var d = parseInt(r["異動"], 10);
+      var d = parseFloat(r["異動"]);
       if (isNaN(d)) d = 0;
+      d = Math.round(d * 1000) / 1000;
+      var ba = parseFloat(r["餘額後"]);
+      if (isNaN(ba)) ba = 0;
+      ba = Math.round(ba * 1000) / 1000;
       return {
         id: r["流水ID"] || "",
         time: r["時間"] || "",
         email: r["教師Email"] || "",
         name: r["教師姓名"] || "",
         delta: d,
-        balanceAfter: parseInt(r["餘額後"], 10) || 0,
+        balanceAfter: ba,
         type: r["類型"] || "",
         typeLabel: typeLabel(r["類型"]),
         packageId: r["包ID"] || "",
@@ -2711,20 +2922,31 @@ function handleReadAction_(postData) {
       };
     });
     var balance = Math.max(0, balSum);
-    var tHit = (teachersL || []).find(function (t) {
-      return String(t["教師Email"] || t.email || "").toLowerCase() === targetEmail;
-    });
+    var tHit = null;
+    if (teachersL && teachersL.length) {
+      tHit = teachersL.find(function (t) {
+        return String(t["教師Email"] || t.email || "").toLowerCase() === targetEmail;
+      });
+    }
+    var sheetQLed = balance;
+    if (tHit) {
+      var sqL = parseFloat(tHit["折抵額度"] != null ? tHit["折抵額度"] : tHit.mutualQuota);
+      if (isNaN(sqL) || sqL < 0) sqL = 0;
+      sheetQLed = Math.round(sqL * 1000) / 1000;
+    }
+    // 名單餘額優先（與畫面教師列表一致）；帳本加總作備援
+    if (tHit && sheetQLed != null) balance = sheetQLed;
     var outLed = {
       success: true,
       email: targetEmail,
-      name: tHit ? (tHit["教師姓名"] || tHit.name || "") : "",
+      name: tHit ? (tHit["教師姓名"] || tHit.name || "") : (ledger[0] && ledger[0].name) || "",
       balance: balance,
-      sheetQuota: tHit ? (parseInt(tHit["互代額度"] != null ? tHit["互代額度"] : tHit.mutualQuota, 10) || 0) : balance,
+      sheetQuota: sheetQLed,
       ledger: ledger,
       count: ledger.length
     };
     var outLedJson = JSON.stringify(outLed);
-    try { CacheService.getScriptCache().put(ledCacheKey, outLedJson, 45); } catch (eLedP) {}
+    try { CacheService.getScriptCache().put(ledCacheKey, outLedJson, 120); } catch (eLedP) {}
     return ContentService.createTextOutput(outLedJson).setMimeType(ContentService.MimeType.JSON);
   }
 
@@ -3063,18 +3285,18 @@ function doPost(e) {
         var em = String(t["教師Email"] || t.email || "").toLowerCase().trim();
         if (!em) return;
         tMap[em] = t;
-        var sq = parseInt(t["互代額度"] != null ? t["互代額度"] : t.mutualQuota, 10);
+        var sq = parseFloat(t["折抵額度"] != null ? t["折抵額度"] : t.mutualQuota);
         if (isNaN(sq) || sq < 0) sq = 0;
-        sheetQ[em] = sq;
+        sheetQ[em] = Math.round(sq * 1000) / 1000;
       });
       // 一次掃帳本：每人餘額
       var balMap = {};
       getQuotaLedgerRows_(sidAdj).forEach(function (r) {
         var em = String(r["教師Email"] || "").toLowerCase().trim();
         if (!em) return;
-        var d = parseInt(r["異動"], 10);
+        var d = parseFloat(r["異動"]);
         if (isNaN(d)) d = 0;
-        balMap[em] = (balMap[em] || 0) + d;
+        balMap[em] = Math.round(((balMap[em] || 0) + d) * 1000) / 1000;
       });
       var ledgerRows = [];
       var finalBal = {};
@@ -3088,8 +3310,10 @@ function doPost(e) {
         if (prev == null || isNaN(prev)) prev = sheetQ[em] || 0;
         if (prev === 0 && (sheetQ[em] || 0) > 0) prev = sheetQ[em];
         if (prev < 0) prev = 0;
-        var q = parseInt(item.mutualQuota != null ? item.mutualQuota : item["互代額度"], 10);
+        prev = Math.round(prev * 1000) / 1000;
+        var q = parseFloat(item.mutualQuota != null ? item.mutualQuota : item["折抵額度"]);
         if (isNaN(q) || q < 0) q = 0;
+        q = Math.round(q * 1000) / 1000;
         var delta = q - prev;
         if (delta === 0) {
           finalBal[em] = q;
@@ -3384,7 +3608,7 @@ function doPost(e) {
       
     } else if (action === "deleteSubstitutionRecord") {
       if (!isAdmin) throw new Error("無管理員權限！");
-      // 若有 requestId，將申請單狀態改回 cancelled；扣額度單還原互代額度
+      // 若有 requestId，將申請單狀態改回 cancelled；扣額度單還原折抵額度
       if (reqData.requestId && reqData.requestId !== "N/A") {
         var targetReq = findRowByKey_("申請單", "申請單ID", reqData.requestId);
         if (targetReq) {

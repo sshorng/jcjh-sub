@@ -470,7 +470,7 @@
                     請先勾選「帶隊老師」。需求＝期間內課表應代節（不含巡堂／外出班）；尚缺＝需求−已送出−暫定。
                   </div>
                   <div class="mutual-quota-note">
-                    ＊額度寫在「教師名單」；明細在試算表「額度帳本」。同活動不重複發放；扣額度 FIFO。帶隊不發放。1–7節：餘額&gt;0→扣額度；不足→活動公費。第8節不吃額度。
+                    ＊額度寫在「教師名單」；明細在試算表「額度帳本」。同活動不重複發放；扣額度 FIFO。帶隊不發放。釋出：未上 1 節＝0.5。1–7節：餘額≥1→扣額度（扣 1）；不足 1→活動公費。第8節不吃額度。
                   </div>
                   <label class="mutual-skip-label">
                     <input type="checkbox" v-model="mutualSkipNotify" class="chk-md">
@@ -643,7 +643,7 @@
                                     <span v-if="isCombinedClass(slot.cell.className)" class="cell-badge tag-combined" title="併班">併班</span>
                                   </div>
                                   <div class="cell-subject">
-                                    {{ slot.cell.subject }}
+                                    {{ slot.cell.subject }}<span v-if="slot.cell.attr === '兼課'" title="兼課">（兼）</span>
                                     <span v-if="slot.isAwayLabel" class="away-class-badge">班外出</span>
                                   </div>
                                   <div v-if="slot.draft" class="cell-sub-text mutual-draft-label">
@@ -659,8 +659,8 @@
                                     class="cell-badge"
                                     :class="slot.cell.subType === 'exchange' ? 'tag-warning' : (slot.cell.isMutualCover ? 'tag-purple' : 'tag-red')"
                                   >{{ slot.cell.subType === 'exchange' ? '調出' : (slot.cell.isMutualCover ? '互代/外出' : '請假') }}</span>
-                                  <span v-if="slot.cell.isSubstitutionDuty" class="cell-badge" :class="slot.cell.isMutualCover ? 'tag-purple' : 'tag-green'">
-                                    {{ slot.cell.subType === 'exchange' ? '調入' : (slot.cell.isMutualCover ? '互代' : '代課') }}
+                                  <span v-if="slot.cell.isSubstitutionDuty" class="cell-badge" :class="slot.cell.isEmptySlotAssign ? 'tag-purple' : (slot.cell.isMutualCover ? 'tag-purple' : 'tag-green')">
+                                    {{ slot.cell.subType === 'exchange' ? '調入' : (slot.cell.isEmptySlotAssign ? '空堂任務' : (slot.cell.isMutualCover ? '互代' : '代課')) }}
                                   </span>
                                   <span v-if="slot.cell.isElastic" class="cell-badge tag-green badge-elastic">實支</span>
                                   <span v-if="slot.cell.attr === '單週'" class="cell-badge tag-week">單週</span>
@@ -864,7 +864,7 @@
                                   :class="{ 'is-match-source': isMatchSourceEntry(entry, dayIdx+1, period), 'is-match-hover': isMatchHoverEntry(entry, dayIdx+1, period), 'is-readonly': classReadonlyMode }"
                                   @click.stop="handleClassCellClick(selectedClass, dayIdx+1, period, entry)">
                                   <div class="cell-subject">
-                                    {{ entry.subject }}
+                                    {{ entry.subject }}<span v-if="entry.attr === '兼課'" title="兼課">（兼）</span>
                                     <span v-if="entry.attr === '單週' || entry.attr === '雙週'" style="font-size:0.65rem;color:var(--text-muted);margin-left:2px;">({{ entry.attr }})</span>
                                     <span v-if="entry._isCombined || isCombinedClass(entry.className)" class="cell-badge tag-combined" title="併班">併班</span>
                                   </div>
@@ -1458,21 +1458,16 @@
               :class="adminSubTab === 'schoolExport' ? 'btn-primary' : 'btn-secondary'"
               @click="adminSubTab = 'schoolExport'"
             >
-              📄 全校課表匯出
+              📄 課表匯出
             </button>
           </div>
 
-          <!-- 子分頁：全校課表彙整 Word 匯出 -->
+          <!-- 子分頁：課表匯出（共用日期） -->
           <div v-if="adminSubTab === 'schoolExport'">
             <div class="card">
               <div class="card-title">
-                <span>📄 全校課表彙整（.docx）</span>
+                <span>📄 課表匯出</span>
               </div>
-              <p style="font-size:0.85rem;color:var(--text-secondary);line-height:1.55;margin:0 0 14px 0;">
-                列＝教師（試算表順序）；欄＝每日第 1～8 節；格內填<strong>實際上課班級</strong>；
-                調出／被代課與<strong>空堂事件班</strong>留白；代課／調入仍顯示班級；
-                <span style="background:#d1d5db;padding:1px 6px;border-radius:3px;">灰底</span>＝調代課異動或空堂事件班。橫向 A4、窄邊界。
-              </p>
               <div class="report-toolbar" style="flex-wrap:wrap;gap:12px;align-items:flex-end;">
                 <div class="form-group m-0-min-140">
                   <label class="form-label">起日</label>
@@ -1489,17 +1484,20 @@
                 </label>
                 <label class="label-check-82">
                   <input type="checkbox" v-model="schoolExportOnlyChanged" class="chk-md">
-                  <span>只匯出期間內有異動的教師</span>
+                  <span>只匯出有異動教師</span>
                 </label>
                 <button type="button" class="btn btn-success" style="padding:10px 16px;" @click="exportSchoolTimetableWord">
-                  💾 匯出 Word（.docx）
+                  匯出全校課表（.docx）
+                </button>
+                <button type="button" class="btn btn-primary" style="padding:10px 16px;" @click="exportInvigilationWorkbook">
+                  匯出監考表（.xlsx）
                 </button>
               </div>
 
               <div style="margin-top:16px;border-top:1px solid var(--border-color);padding-top:12px;">
                 <div class="flex-wrap-gap-8-mb">
                   <strong style="font-size:0.88rem;">選擇教師</strong>
-                  <span class="text-xs-muted-78">已選 {{ schoolExportSelectedEmails.length }}／{{ teachersList.length }}</span>
+                  <span class="text-xs-muted-78">已選 {{ schoolExportSelectedEmails.length }}／{{ teachersList.length }}（課表勾選列；監考＝分發份數）</span>
                   <button type="button" class="btn btn-secondary p-3-10-75" @click="selectAllSchoolExportTeachers">全選</button>
                   <button type="button" class="btn btn-secondary p-3-10-75" @click="clearSchoolExportTeachers">全不選</button>
                   <input
@@ -1525,9 +1523,6 @@
                     <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" :title="t.subject || ''">{{ t.name }}</span>
                   </label>
                 </div>
-                <p style="font-size:0.75rem;color:var(--text-muted);margin:10px 0 0 0;">
-                  順序與試算表「教師名單」相同。建議一次約一週；期間太長表格會很寬。
-                </p>
               </div>
             </div>
           </div>
@@ -1573,7 +1568,7 @@
                       <th title="排課 − 基鐘（每週）">超時/週</th>
                       <th title="畢業等 reduce：只扣起日後週 × 1～7">空堂調降</th>
                       <th title="自己請假且自費代課，扣自己超時">自費扣</th>
-                      <th title="自己請假且公費代課，沖自己超時">公費扣</th>
+                      <th title="自己請假且公費代課、且原堂為兼課，才沖自己超時">公費扣</th>
                       <th title="本月實得超時節數" class="billing-th-result">實得超時</th>
                       <th title="實得超時 × 455" class="billing-th-result">超鐘點費</th>
                       <th title="代他人且經費為公費／活動公費">公代節</th>
@@ -1632,7 +1627,7 @@
                     <th>Email (帳號)</th>
                     <th>科目</th>
                     <th>基本鐘點 (基鐘)</th>
-                    <th title="可用餘額；點數字可看額度帳本歷程">互代額度</th>
+                    <th title="可用餘額；點數字可看額度帳本歷程">折抵額度</th>
                     <th>系統角色</th>
                     <th style="width: 130px;">操作</th>
                   </tr>
@@ -1771,6 +1766,7 @@
                 期間內被勾選班級：課表<strong>淡化顯示</strong>，媒合／衝堂／匯出<strong>視同空堂</strong>。
                 鐘點：<strong>不調降</strong>（畢旅）月報超鐘不變；
                 <strong>調降</strong>（畢業）只扣起日之後的週。迄日空白＝學期結束。可進互代者可在活動互代面板選事件帶入。
+                各事件可匯出<strong>活動輪值通知單</strong>（只匯已送出；第1～7節入表、第8節附註）。
               </p>
               <div class="table-responsive">
                 <table class="custom-table" style="font-size:0.85rem;">
@@ -1796,7 +1792,8 @@
                       <td>{{ ev.forMutual ? '是' : '否' }}</td>
                       <td>{{ ev.enabled !== false ? '是' : '否' }}</td>
                       <td>
-                        <div style="display:flex;gap:4px;">
+                        <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                          <button class="btn btn-success btn-xs-tight" @click="exportActivityCoverWord(ev)" title="匯出教師代理遺留課務輪值通知單">匯出輪值單</button>
                           <button class="btn btn-secondary btn-xs-tight" @click="openEditClassAwayModal(ev)">編輯</button>
                           <button class="btn btn-secondary" style="padding:3px 8px;font-size:0.7rem;color:var(--color-danger);" @click="deleteClassAwayEvent(ev)">刪除</button>
                         </div>
@@ -2126,7 +2123,7 @@
                           <template v-if="isBatchMatchFlow && !isBatchPerSlotMode">
                             全節可代 <span class="text-secondary">(參考日已排: {{ t.todayPeriodCount }}節)</span>
                             <span v-if="isMutualCover" class="text-mutual-sub">
-                              互代額度：{{ typeof t.remainingReleased === 'number' ? t.remainingReleased : (t.mutualQuota || 0) }}
+                              折抵額度：{{ typeof t.remainingReleased === 'number' ? t.remainingReleased : (t.mutualQuota || 0) }}
                               <span v-if="t.pendingDraft" class="text-violet-soft">（已暫定佔 {{ t.pendingDraft }}）</span>
                               <span v-if="t.suggestedFee" :style="{color: (t.suggestedFee==='扣額度' || t.suggestedFee==='互代不結') ? '#6b21a8' : '#b45309'}"> → {{ t.suggestedFee === '互代不結' ? '扣額度' : t.suggestedFee }}</span>
                             </span>
@@ -2136,7 +2133,7 @@
                             <span v-else>空堂</span>
                             <span class="text-secondary"> (當日已排: {{ t.todayPeriodCount }}節)</span>
                             <span v-if="isMutualCover" class="text-mutual-sub">
-                              互代額度：{{ typeof t.remainingReleased === 'number' ? t.remainingReleased : (t.mutualQuota || 0) }}
+                              折抵額度：{{ typeof t.remainingReleased === 'number' ? t.remainingReleased : (t.mutualQuota || 0) }}
                               <span v-if="t.pendingDraft" class="text-violet-soft">（已暫定佔 {{ t.pendingDraft }}）</span>
                               <span v-if="t.suggestedFee" :style="{color: (t.suggestedFee==='扣額度' || t.suggestedFee==='互代不結') ? '#6b21a8' : '#b45309'}">
                                 → {{ t.suggestedFee === '互代不結' ? '扣額度' : t.suggestedFee }}
@@ -2277,7 +2274,7 @@
             <div v-if="isAdmin && !(isProxySubmitActive && pendingRequestData.leaveTeacher && user && String(pendingRequestData.leaveTeacher).toLowerCase() !== String(user.email || '').toLowerCase())" class="direct-approve-box">
               <label class="direct-approve-row">
                 <input type="checkbox" class="direct-approve-check" v-model="directApproveMode">
-                <span>
+                <span class="direct-approve-text">
                   <div class="direct-approve-title">⚡ 教學組直接核准</div>
                   <div class="direct-approve-desc">勾選後送出即生效並更新課表；未勾選則需對方同意後再送行政審核。</div>
                 </span>
@@ -2425,7 +2422,7 @@
                     <template v-if="!isPeriod8FeeLocked">
                       <option v-if="!isMutualCover" value="自費代課">自費代課</option>
                       <option v-if="!isMutualCover" value="公費代課">公費代課</option>
-                      <option v-if="isAdmin" value="扣額度">扣額度（不結鐘點＋扣互代額度）</option>
+                      <option v-if="isAdmin" value="扣額度">扣額度（不結鐘點＋扣折抵額度）</option>
                       <option v-if="isMutualCover" value="活動公費">活動公費（可領代課費）</option>
                       <option v-if="isAdmin || isMutualCover || pendingRequestData.subFee === '第8節代課'" value="第8節代課">第8節代課（計畫經費）</option>
                       <option v-if="!isAdmin && !isMutualCover && (pendingRequestData.subFee === '扣額度' || pendingRequestData.subFee === '互代不結')" value="扣額度">扣額度</option>
@@ -2439,7 +2436,7 @@
                     v-if="quotaDeductPreview && quotaDeductPreview.length"
                     style="margin-top:8px;padding:8px 10px;background:#f5f3ff;border:1px solid #c4b5fd;border-radius:8px;font-size:0.78rem;color:#5b21b6;line-height:1.55;"
                   >
-                    <div style="font-weight:700;margin-bottom:4px;">互代額度預覽（扣額度）</div>
+                    <div style="font-weight:700;margin-bottom:4px;">折抵額度預覽（扣額度）</div>
                     <div v-for="q in quotaDeductPreview" :key="q.email">
                       {{ q.name }}：目前 <strong>{{ q.before }}</strong>
                       → 扣 <strong>{{ q.deduct }}</strong>
@@ -2805,9 +2802,9 @@
               <input type="number" class="form-input" placeholder="導師為12節、專任為16節" v-model.number="teacherForm.baseHours">
             </div>
             <div class="form-group">
-              <label class="form-label">互代額度（可用餘額）</label>
-              <input type="number" class="form-input" min="0" placeholder="0" v-model.number="teacherForm.mutualQuota">
-              <span style="font-size:0.72rem;color:var(--text-muted);display:block;margin-top:4px;">此欄為可用餘額（快取）。建議用活動面板「＋發放額度」；手動改會寫入帳本調整列。</span>
+              <label class="form-label">折抵額度（可用餘額）</label>
+              <input type="number" class="form-input" min="0" step="0.5" placeholder="0" v-model.number="teacherForm.mutualQuota">
+              <span style="font-size:0.72rem;color:var(--text-muted);display:block;margin-top:4px;">可用餘額（可 0.5）。釋出 1 節＝0.5；扣額度須滿 1 才扣 1。建議用活動面板「＋發放額度」；手動改會寫入帳本調整列。</span>
             </div>
           </div>
           <div class="modal-footer">
@@ -3227,6 +3224,17 @@
               >
                 🔄 再次調代課
               </button>
+
+              <!-- 調開／被代後：原課老師該節已空，可另排空堂任務 -->
+              <button
+                v-if="isAdmin && detailSubRecord && detailSubRecord.originalTeacherEmail"
+                class="btn btn-primary"
+                style="padding: 6px 12px; font-size: 0.8rem; margin: 0;"
+                type="button"
+                @click="openEmptySlotFromDetail"
+              >
+                📌 空堂排班
+              </button>
             </div>
           </div>
         </div>
@@ -3312,7 +3320,57 @@
         </div>
       </div>
 
-      <!-- 互代額度歷程 Modal（後台教師管理） -->
+      <!-- 空堂排班 Modal（扣額度；預設不寄信；班級可選） -->
+      <div v-if="showEmptySlotModal" class="modal-overlay" @click.self="closeEmptySlotModal">
+        <div class="modal-card" role="dialog" aria-modal="true" aria-label="空堂排班" style="max-width:440px;">
+          <div class="modal-header">
+            <h3>📌 空堂排班</h3>
+            <button type="button" class="btn-close" @click="closeEmptySlotModal" aria-label="關閉">&times;</button>
+          </div>
+          <div class="modal-body" style="display:flex;flex-direction:column;gap:12px;">
+            <p style="margin:0;font-size:0.8rem;color:var(--text-secondary);line-height:1.45;">
+              將任務排入老師的<strong>空堂</strong>，經費固定<strong>扣額度</strong>，預設<strong>不寄信</strong>。常用於段考巡堂等。
+            </p>
+            <div style="background:#f8fafc;border:1px solid var(--border-color);border-radius:8px;padding:10px 12px;font-size:0.85rem;">
+              <div><strong>{{ emptySlotForm.teacherName }}</strong>
+                <span style="color:var(--text-muted);font-size:0.78rem;">（額度 {{ emptySlotForm.quota }}）</span>
+              </div>
+              <div style="margin-top:4px;color:var(--text-secondary);">
+                {{ emptySlotForm.dateStr }}　週{{ getWeekDayText(emptySlotForm.dayOfWeek) }}{{ formatPeriodText(emptySlotForm.period) }}
+              </div>
+            </div>
+            <div v-if="emptySlotQuotaZero" style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 12px;font-size:0.8rem;color:#b91c1c;">
+              ⚠️ 折抵額度為 0：仍可送出，但請安排<strong>由他人還一節</strong>。
+            </div>
+            <div class="form-group" style="margin:0;">
+              <label class="form-label">任務名稱 *</label>
+              <input type="text" class="form-input" v-model="emptySlotForm.taskName" placeholder="例如：段考巡堂、考場巡堂" maxlength="40">
+            </div>
+            <div class="form-group" style="margin:0;">
+              <label class="form-label">班級（選填）</label>
+              <input type="text" class="form-input" v-model="emptySlotForm.className" placeholder="可不填；要綁班再填，如 701" maxlength="20">
+            </div>
+            <div class="form-group" style="margin:0;">
+              <label class="form-label">備註（選填）</label>
+              <input type="text" class="form-input" v-model="emptySlotForm.note" placeholder="可空白" maxlength="80">
+            </div>
+            <p style="margin:0;font-size:0.72rem;color:var(--text-muted);">
+              送出＝直接核准寫入課表　·　扣 1 折抵額度　·　不寄系統信
+            </p>
+          </div>
+          <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;">
+            <button type="button" class="btn btn-secondary" @click="closeEmptySlotModal">取消</button>
+            <button
+              type="button"
+              class="btn btn-primary"
+              :disabled="isSubmitting || loading"
+              @click="executeEmptySlotAssign"
+            >確認排入並扣額度</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 折抵額度歷程 Modal（後台教師管理） -->
       <div v-if="showQuotaLedgerModal" class="modal-overlay" @click.self="closeQuotaLedger">
         <div class="modal-card quota-ledger-modal" role="dialog" aria-modal="true" aria-label="額度歷程">
           <div class="modal-header">
@@ -3327,8 +3385,8 @@
           <div class="modal-body">
             <p class="quota-ledger-hint">資料來自試算表「額度帳本」（發放／扣用／還原／手動調整）。</p>
             <div v-if="quotaLedgerLoading" class="quota-ledger-loading">載入中…</div>
-            <div v-else-if="!quotaLedgerRows.length" class="quota-ledger-empty">尚無歷程列</div>
-            <div v-else class="table-responsive quota-ledger-table-wrap">
+            <div v-if="!quotaLedgerLoading && !quotaLedgerRows.length" class="quota-ledger-empty">尚無歷程列</div>
+            <div v-if="quotaLedgerRows.length" class="table-responsive quota-ledger-table-wrap" :class="{ 'is-refreshing': quotaLedgerLoading }">
               <table class="custom-table quota-ledger-table">
                 <thead>
                   <tr>
@@ -3377,10 +3435,10 @@
   <!-- App Main JS Logic -->
 
   <!-- 模組：對照/工具/API/領域/列印/主程式 -->
-  <script src="field-map.js"></script>
+  <script src="field-map.js?v=patrol1"></script>
   <script src="date-utils.js"></script>
   <script src="gas-api.js"></script>
-  <script src="domain-schedule.js"></script>
+  <script src="domain-schedule.js?v=patrol1"></script>
   <script src="domain-match.js"></script>
   <script src="domain-activity-cover.js"></script>
   <script src="domain-billing.js"></script>
@@ -3418,6 +3476,42 @@
         if (window.ExportSchoolTimetable) return Promise.resolve();
         if (!_exportP) _exportP = loadScript('export-school-timetable.js');
         return _exportP;
+      };
+      var _activityCoverP = null;
+      window.ensureExportActivityCover = function () {
+        if (window.ExportActivityCover) return Promise.resolve();
+        if (!_activityCoverP) _activityCoverP = loadScript('export-activity-cover.js?t=' + Date.now());
+        return _activityCoverP;
+      };
+      var _invigP = null;
+      var _excelJsP = null;
+      window.ensureExportInvigilation = function () {
+        // 每次匯出強制重載，避免瀏覽器快取舊版字型邏輯
+        try { delete window.ExportInvigilation; } catch (eDel) { window.ExportInvigilation = undefined; }
+        _invigP = loadScript('export-invigilation.js?t=' + Date.now());
+        return _invigP;
+      };
+      window.ensureExcelJS = function () {
+        if (window.ExcelJS || (typeof ExcelJS !== 'undefined' && ExcelJS)) return Promise.resolve();
+        if (!_excelJsP) {
+          _excelJsP = loadScript('https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js').then(function () {
+            if (typeof ExcelJS !== 'undefined' && !window.ExcelJS) window.ExcelJS = ExcelJS;
+          });
+        }
+        return _excelJsP;
+      };
+      var _jszipP = null;
+      window.ensureJSZip = function () {
+        if (window.JSZip || (typeof JSZip !== 'undefined' && JSZip)) {
+          if (typeof JSZip !== 'undefined' && !window.JSZip) window.JSZip = JSZip;
+          return Promise.resolve();
+        }
+        if (!_jszipP) {
+          _jszipP = loadScript('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js').then(function () {
+            if (typeof JSZip !== 'undefined' && !window.JSZip) window.JSZip = JSZip;
+          });
+        }
+        return _jszipP;
       };
       window.ensureXlsx = function () {
         if (typeof XLSX !== 'undefined') return Promise.resolve();

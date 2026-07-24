@@ -55,7 +55,16 @@ window.ExportSchoolTimetable = (function () {
   }
 
   function isChangedCell(cell) {
-    return !!(cell && (cell.isSubstituted || cell.isSubstitutionDuty));
+    return !!(cell && (cell.isSubstituted || cell.isSubstitutionDuty || cell.isEmptySlotAssign));
+  }
+
+  function isEmptySlotAssignCell(cell) {
+    if (!cell) return false;
+    if (cell.isEmptySlotAssign) return true;
+    var reason = String(cell.reason || (cell.subRecord && cell.subRecord.reason) || '').trim();
+    if (reason === '空堂排班') return true;
+    var note = String(cell.note || (cell.subRecord && cell.subRecord.note) || '');
+    return note.indexOf('[空堂排班]') >= 0;
   }
 
   /**
@@ -63,6 +72,7 @@ window.ExportSchoolTimetable = (function () {
    * - 無課 → 空白
    * - 調出／被代課（isSubstituted）→ 空白
    * - 空堂事件班（isClassAway 或 isClassAway 回呼）→ 空白（畢旅／畢業班不在）
+   * - 空堂排班（段考巡堂等）→ 有班「班·任務名」、無班「任務名」
    * - 調入／代課值班 → 顯示實際上課班級
    * - 一般課 → 班級
    */
@@ -70,6 +80,13 @@ window.ExportSchoolTimetable = (function () {
     opts = opts || {};
     if (!cell) return '';
     if (cell.isSubstituted) return '';
+    // 空堂排班：任務寫入匯出（可無班級）
+    if (isEmptySlotAssignCell(cell) || (cell.isSubstitutionDuty && isEmptySlotAssignCell(cell))) {
+      var task = String(cell.subject || '').trim() || '空堂任務';
+      var cn0 = String(cell.className || '').trim();
+      if (cn0 && cn0 !== '巡堂') return cn0 + '·' + task;
+      return task;
+    }
     var cn = String(cell.className || '').trim();
     if (!cn) return '';
     // 空堂事件：學生班不在 → 匯出留白

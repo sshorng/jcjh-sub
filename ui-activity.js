@@ -526,7 +526,11 @@ window.UiMutualPanelState = (function () {
       });
       if (i < 0) return;
       list[i] = Object.assign({}, list[i], {
-        mutualQuota: Math.max(0, parseInt(nextQuota, 10) || 0)
+        mutualQuota: (function () {
+          var n = parseFloat(nextQuota);
+          if (isNaN(n) || n < 0) n = 0;
+          return Math.round(n * 1000) / 1000;
+        })()
       });
       teachersList.value = list;
     }
@@ -596,7 +600,7 @@ window.UiMutualPanelState = (function () {
 
     async function recalculateMutualQuotasFromActivity() {
       if (!isAdmin.value) {
-        showToast('僅管理員可發放互代額度', 'warning');
+        showToast('僅管理員可發放折抵額度', 'warning');
         return;
       }
       var dac = DAC();
@@ -637,23 +641,48 @@ window.UiMutualPanelState = (function () {
         showToast('請先在上方選取空堂事件（事件名稱會寫入額度帳本）', 'warning');
         return;
       }
-      var sample = changed.slice(0, 5).map(function (r) {
-        return (r.name || r.email) + '：釋出 ' + r.released + '（目前餘額 ' + r.prevQuota + '）';
+      // 全列名單（依釋出多→少、再姓名），並加總釋出節數
+      var sorted = changed.slice().sort(function (a, b) {
+        if ((b.released || 0) !== (a.released || 0)) return (b.released || 0) - (a.released || 0);
+        return String(a.name || a.email).localeCompare(String(b.name || b.email), 'zh-Hant');
+      });
+      var totalReleased = sorted.reduce(function (sum, r) {
+        return sum + (parseFloat(r.released) || 0);
+      }, 0);
+      totalReleased = Math.round(totalReleased * 1000) / 1000;
+      var fmtQ = function (n) {
+        var x = Math.round((parseFloat(n) || 0) * 1000) / 1000;
+        return (x % 1 === 0) ? String(x) : String(x);
+      };
+      var totalSlots = sorted.reduce(function (sum, r) {
+        return sum + (parseInt(r.releasedSlots, 10) || 0);
+      }, 0);
+      var listLines = sorted.map(function (r, i) {
+        var nm = r.name || r.email || '（無名）';
+        var rel = parseFloat(r.released) || 0;
+        var slots = parseInt(r.releasedSlots, 10) || 0;
+        var prev = parseFloat(r.prevQuota) || 0;
+        var next = (typeof r.nextQuota === 'number') ? r.nextQuota : (prev + rel);
+        return (i + 1) + '. ' + nm + '　釋出 ' + slots + ' 節→＋' + fmtQ(rel)
+          + '　（餘額 ' + fmtQ(prev) + '→' + fmtQ(next) + '）';
       }).join('\n');
       var skipTip = skippedLeaders.length
         ? '\n已排除帶隊 ' + skippedLeaders.length + ' 人：'
-          + skippedLeaders.slice(0, 5).map(function (r) { return r.name || r.email; }).join('、')
-          + (skippedLeaders.length > 5 ? '…' : '')
+          + skippedLeaders.map(function (r) { return r.name || r.email; }).join('、')
         : '';
       var ok = await showConfirm(
         '將寫入「額度帳本」並更新教師名單餘額（同活動不重複）\n'
+        + '規則：未上 1 節＝發 0.5；扣額度須滿 1 才扣 1\n'
         + '空堂事件：' + eventName + '\n'
         + '期間：' + mutualActivityStart.value + '～' + mutualActivityEnd.value + '\n'
         + '外出班：' + mutualAwayClasses.value.length + ' 班\n'
-        + '發放 ' + changed.length + ' 位教師' + skipTip + '\n\n'
-        + sample + (changed.length > 5 ? '\n…' : '') + '\n\n'
+        + '發放 ' + sorted.length + ' 位教師　·　合計釋出 ' + totalSlots + ' 節　·　合計額度 ＋' + fmtQ(totalReleased)
+        + skipTip + '\n\n'
+        + '── 全名單 ──\n'
+        + listLines + '\n\n'
+        + '合計：' + sorted.length + ' 人／' + totalSlots + ' 節／額度 ＋' + fmtQ(totalReleased) + '\n\n'
         + '確定發放？\n（若本活動已發放過，將略過已發者）',
-        '發放互代額度'
+        '發放折抵額度'
       );
       if (!ok) return;
       loading.value = true;
@@ -689,7 +718,7 @@ window.UiMutualPanelState = (function () {
             var t = (teachersList.value || []).find(function (x) {
               return x.email && String(x.email).toLowerCase() === String(r.email).toLowerCase();
             });
-            var prev = t ? (parseInt(t.mutualQuota, 10) || 0) : 0;
+            var prev = t ? (parseFloat(t.mutualQuota) || 0) : 0;
             patchLocalMutualQuota(r.email, prev + (src ? (src.released || 0) : 0));
           });
         }
