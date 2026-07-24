@@ -379,15 +379,20 @@ function scanRequestsFromSheet_(semesterId, opts) {
     if (!row) continue;
     if (iSem != null && sid && String(row[iSem] || "") !== sid) continue;
     allCount++;
-    var st = iSt != null ? String(row[iSt] || "").toLowerCase().trim() : "";
+    // 試算表可能存中文狀態（待行政審核）；須先轉英文再比
+    var stRaw = iSt != null ? String(row[iSt] || "").trim() : "";
+    var st = String(translateStatusToEn(stRaw) || stRaw).toLowerCase().trim();
     if (mode === "pending") {
       if (st !== "pending_teacher" && st !== "pending_admin") continue;
     } else if (mode === "window") {
       if (st === "pending_teacher" || st === "pending_admin") {
-        // keep
+        // keep：進行中一律保留（不論中英文狀態欄）
       } else if (cutoffYmd) {
         var dWin = iDate != null ? String(row[iDate] || "").slice(0, 10) : "";
         if (!dWin && iCreated != null) dWin = String(row[iCreated] || "").slice(0, 10);
+        // 日期欄若為 Date 物件，slice 會失效；轉字串
+        if (dWin && dWin.indexOf("T") >= 0) dWin = dWin.slice(0, 10);
+        if (dWin && dWin.length > 10) dWin = dWin.slice(0, 10);
         if (dWin && dWin < cutoffYmd) continue;
       }
     } else if (mode === "month") {
@@ -4301,16 +4306,27 @@ function doPost(e) {
 
 // ----------------- 狀態與類型中英文對照翻譯 -----------------
 function translateStatusToEn(zhStatus) {
+  var s = String(zhStatus == null ? "" : zhStatus).trim();
+  // 已是英文碼：直接回傳
+  var en = s.toLowerCase();
+  if (en === "pending_teacher" || en === "pending_admin" || en === "approved"
+      || en === "rejected" || en === "admin_rejected" || en === "cancelled" || en === "withdrawn") {
+    return en;
+  }
   const map = {
     "待受邀人簽核": "pending_teacher",
     "待行政審核": "pending_admin",
+    "送交教學組": "pending_admin",
     "已核准": "approved",
+    "核准生效": "approved",
     "受邀人已拒絕": "rejected",
     "行政已退回": "admin_rejected",
+    "行政駁回": "admin_rejected",
     "已取消": "cancelled",
+    "已撤銷": "cancelled",
     "已撤回": "withdrawn"
   };
-  return map[zhStatus] || zhStatus;
+  return map[s] || s;
 }
 
 function translateStatusToZh(enStatus) {
