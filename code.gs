@@ -342,36 +342,76 @@ function getTableData(sheetName) {
 }
 
 /**
- * 只取出「進行中」申請（pending_teacher／pending_admin）
- * 仍需讀申請單表一次，但不組 historyAll 全量快取、payload 只含 pending
+ * 申請單欄位掃描：先用 raw 欄位過濾，命中才 rowArrayToObject_（減少物件化成本）
+ * opts.mode: 'pending' | 'window' | 'month' | 'all'
+ * opts.cutoffYmd: window 用 YYYY-MM-DD
+ * opts.monthStr: month 用 YYYY-MM
+ * @returns {{ rows: Object[], allCount: number }}
  */
-function getPendingRequestsFromSheet_(semesterId) {
+function scanRequestsFromSheet_(semesterId, opts) {
+  opts = opts || {};
+  var mode = opts.mode || "all";
   var sid = String(semesterId || "");
+  var cutoffYmd = opts.cutoffYmd ? String(opts.cutoffYmd).slice(0, 10) : "";
+  var monthStr = opts.monthStr ? String(opts.monthStr).slice(0, 7) : "";
   var ss = getSpreadsheet();
   var sheet = ss.getSheetByName("申請單");
-  if (!sheet) return [];
+  if (!sheet) return { rows: [], allCount: 0 };
   var values = sheet.getDataRange().getValues();
-  if (values.length <= 1) return [];
+  if (values.length <= 1) return { rows: [], allCount: 0 };
   var headers = values[0];
-  var statusCol = -1;
-  var semCol = -1;
+  var col = {};
   var hi;
   for (hi = 0; hi < headers.length; hi++) {
     var h = String(headers[hi] || "").trim();
-    if (h === "狀態") statusCol = hi;
-    else if (h === "學期代號") semCol = hi;
+    if (h) col[h] = hi;
   }
+  var iSem = col["學期代號"];
+  var iSt = col["狀態"];
+  var iDate = col["異動日期"];
+  var iTgt = col["對調目標日期"];
+  var iCreated = col["建立時間"];
   var out = [];
-  for (var i = 1; i < values.length; i++) {
+  var allCount = 0;
+  var i;
+  for (i = 1; i < values.length; i++) {
     var row = values[i];
     if (!row) continue;
-    if (semCol >= 0 && sid && String(row[semCol] || "") !== sid) continue;
-    var st = statusCol >= 0 ? String(row[statusCol] || "").toLowerCase().trim() : "";
-    if (st !== "pending_teacher" && st !== "pending_admin") continue;
+    if (iSem != null && sid && String(row[iSem] || "") !== sid) continue;
+    allCount++;
+    var st = iSt != null ? String(row[iSt] || "").toLowerCase().trim() : "";
+    if (mode === "pending") {
+      if (st !== "pending_teacher" && st !== "pending_admin") continue;
+    } else if (mode === "window") {
+      if (st === "pending_teacher" || st === "pending_admin") {
+        // keep
+      } else if (cutoffYmd) {
+        var dWin = iDate != null ? String(row[iDate] || "").slice(0, 10) : "";
+        if (!dWin && iCreated != null) dWin = String(row[iCreated] || "").slice(0, 10);
+        if (dWin && dWin < cutoffYmd) continue;
+      }
+    } else if (mode === "month") {
+      if (!monthStr) continue;
+      var d1 = iDate != null ? String(row[iDate] || "").slice(0, 7) : "";
+      var d2 = iTgt != null ? String(row[iTgt] || "").slice(0, 7) : "";
+      var d3 = iCreated != null ? String(row[iCreated] || "").slice(0, 7) : "";
+      if (d1 !== monthStr && d2 !== monthStr && d3 !== monthStr) continue;
+    }
+    // mode === 'all'：學期內全收
     var obj = rowArrayToObject_("申請單", headers, row);
     if (obj) out.push(obj);
   }
-  return out;
+  return { rows: out, allCount: allCount };
+}
+
+/** 只取出進行中申請（pending） */
+function getPendingRequestsFromSheet_(semesterId) {
+  return scanRequestsFromSheet_(semesterId, { mode: "pending" }).rows;
+}
+
+/** 指定月份申請（歷史 tab；不建 historyAll） */
+function getMonthRequestsFromSheet_(semesterId, monthStr) {
+  return scanRequestsFromSheet_(semesterId, { mode: "month", monthStr: monthStr }).rows;
 }
 
 // 欄位別名讀取
@@ -906,13 +946,17 @@ function getSemesterRequestsCached_(semesterId, historyAll, windowDays) {
       if (parsed && parsed.rows) return parsed;
     } catch (e) {}
   }
-  var allRequests = getTableData("申請單").filter(function (req) { return req["學期代號"] === semesterId; });
-  var list = allRequests;
-  if (!historyAll) {
-    var cutoffYmd = requestWindowCutoffYmd_(windowDays);
-    list = allRequests.filter(function (req) { return requestInWindow_(req, cutoffYmd); });
+  // H2：欄位先濾再物件化（不再 getTableData 全物件再 filter）
+  var scanned;
+  if (historyAll) {
+    scanned = scanRequestsFromSheet_(sid, { mode: "all" });
+  } else {
+    scanned = scanRequestsFromSheet_(sid, {
+      mode: "window",
+      cutoffYmd: requestWindowCutoffYmd_(windowDays)
+    });
   }
-  var pack = { allCount: allRequests.length, rows: list };
+  var pack = { allCount: scanned.allCount, rows: scanned.rows };
   try {
     putCacheChunked(key, JSON.stringify(pack), historyAll ? Math.min(CACHE_TTL_REQ_, 60) : CACHE_TTL_REQ_);
   } catch (e2) {}
@@ -2872,14 +2916,8 @@ function handleReadAction_(postData) {
         return ContentService.createTextOutput(histCached).setMimeType(ContentService.MimeType.JSON);
       }
     }
-    // 走申請全學期快取，再 filter 月份（勿每次全表）
-    var packH = getSemesterRequestsCached_(semesterId, true, 14);
-    var monthRows = (packH.rows || []).filter(function (req) {
-      var d1 = String(req["異動日期"] || "").slice(0, 7);
-      var d2 = String(req["對調目標日期"] || "").slice(0, 7);
-      var d3 = String(req["建立時間"] || "").slice(0, 7);
-      return d1 === monthStr || d2 === monthStr || d3 === monthStr;
-    });
+    // H1：只掃該月列（不建 historyAll 全量包）
+    var monthRows = getMonthRequestsFromSheet_(semesterId, monthStr);
     if (!isAdminH) {
       monthRows = monthRows.filter(function (req) {
         return requestVisibleToReader_(req, readerEmail, false);

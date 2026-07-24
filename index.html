@@ -3435,20 +3435,20 @@
   <!-- App Main JS Logic -->
 
   <!-- 模組：defer 依文件順序執行，不擋 HTML 解析；billing/print/export 另延後 -->
-  <script defer src="field-map.js?v=opt1"></script>
-  <script defer src="date-utils.js?v=opt1"></script>
-  <script defer src="gas-api.js?v=opt1"></script>
-  <script defer src="domain-schedule.js?v=opt1"></script>
-  <script defer src="domain-match.js?v=opt1"></script>
-  <script defer src="domain-activity-cover.js?v=opt1"></script>
-  <script defer src="domain-class-away.js?v=opt1"></script>
-  <script defer src="fee-utils.js?v=opt1"></script>
-  <script defer src="ui-activity.js?v=opt1"></script>
-  <script defer src="ui-request.js?v=opt1"></script>
-  <script defer src="ui-timetable.js?v=opt1"></script>
-  <script defer src="ui-approval.js?v=opt1"></script>
-  <script defer src="ui-admin.js?v=opt1"></script>
-  <script defer src="app.js?v=opt1"></script>
+  <script defer src="field-map.js?v=opt2"></script>
+  <script defer src="date-utils.js?v=opt2"></script>
+  <script defer src="gas-api.js?v=opt2"></script>
+  <script defer src="domain-schedule.js?v=opt2"></script>
+  <script defer src="domain-match.js?v=opt2"></script>
+  <!-- domain-activity-cover：活動互代／空堂任務時 ensureDomainActivityCover -->
+  <script defer src="domain-class-away.js?v=opt2"></script>
+  <script defer src="fee-utils.js?v=opt2"></script>
+  <script defer src="ui-activity.js?v=opt2"></script>
+  <script defer src="ui-request.js?v=opt2"></script>
+  <script defer src="ui-timetable.js?v=opt2"></script>
+  <script defer src="ui-approval.js?v=opt2"></script>
+  <script defer src="ui-admin.js?v=opt2"></script>
+  <script defer src="app.js?v=opt2"></script>
   <script>
     (function () {
       function loadScript(src) {
@@ -3465,32 +3465,39 @@
       var _exportP = null;
       var _xlsxP = null;
       var _billingP = null;
+      var _domainActivityP = null;
       window.ensureDomainBilling = function () {
         if (window.DomainBilling) return Promise.resolve();
-        if (!_billingP) _billingP = loadScript('domain-billing.js?v=opt1');
+        if (!_billingP) _billingP = loadScript('domain-billing.js?v=opt2');
         return _billingP;
+      };
+      /** 活動互代／額度／空堂任務邏輯（首屏不載） */
+      window.ensureDomainActivityCover = function () {
+        if (window.DomainActivityCover) return Promise.resolve();
+        if (!_domainActivityP) _domainActivityP = loadScript('domain-activity-cover.js?v=opt2');
+        return _domainActivityP;
       };
       window.ensurePrintHelper = function () {
         if (typeof window.generateFormHtml === 'function') return Promise.resolve();
-        if (!_printP) _printP = loadScript('print-helper.js?v=opt1');
+        if (!_printP) _printP = loadScript('print-helper.js?v=opt2');
         return _printP;
       };
       window.ensureExportSchoolTimetable = function () {
         if (window.ExportSchoolTimetable) return Promise.resolve();
-        if (!_exportP) _exportP = loadScript('export-school-timetable.js?v=opt1');
+        if (!_exportP) _exportP = loadScript('export-school-timetable.js?v=opt2');
         return _exportP;
       };
       var _activityCoverP = null;
       window.ensureExportActivityCover = function () {
         if (window.ExportActivityCover) return Promise.resolve();
-        if (!_activityCoverP) _activityCoverP = loadScript('export-activity-cover.js?v=opt1');
+        if (!_activityCoverP) _activityCoverP = loadScript('export-activity-cover.js?v=opt2');
         return _activityCoverP;
       };
       var _invigP = null;
       var _excelJsP = null;
       window.ensureExportInvigilation = function () {
         if (window.ExportInvigilation) return Promise.resolve();
-        if (!_invigP) _invigP = loadScript('export-invigilation.js?v=opt1');
+        if (!_invigP) _invigP = loadScript('export-invigilation.js?v=opt2');
         return _invigP;
       };
       window.ensureExcelJS = function () {

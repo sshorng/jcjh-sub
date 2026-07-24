@@ -711,12 +711,16 @@ createApp({
      * 從「已組裝的 substitution 列 + 基礎課表」解析教師在該日該節的有效班科
      * 支援多段調代鏈：沿 original→actual 走到目前 email，班科取鏈上第一筆有值的 record／起點基礎課
      */
-    const resolveCellFromBaseAndSubs = (email, dateStr, period, dayOfWeek, subsSoFar) => {
+    /**
+     * 從「已組裝的 substitution 列 + 基礎課表」解析有效班科
+     * slotSubs：同日同節的 edge 陣列（建議由 slotIndex 提供，避免每次 filter 全表）
+     */
+    const resolveCellFromBaseAndSubs = (email, dateStr, period, dayOfWeek, subsSoFar, slotSubsOpt) => {
       if (!email || period == null || period === '') return null;
       const em = String(email).toLowerCase();
       const p = parseInt(period, 10);
       const dateKey = String(dateStr || '');
-      const slotSubs = (subsSoFar || []).filter(s =>
+      const slotSubs = slotSubsOpt || (subsSoFar || []).filter(s =>
         s && String(s.date) === dateKey && parseInt(s.period, 10) === p
       );
 
@@ -809,8 +813,49 @@ createApp({
       return base;
     };
 
+    /** 已核准集合指紋：未變則 recompute 可略過 convert（H5） */
+    let _approvedConvertSig = '';
+    const approvedConvertSig = (requests) => {
+      const parts = [];
+      (requests || []).forEach((r) => {
+        if (!r || r.status !== 'approved') return;
+        parts.push([
+          r.id || '',
+          r.type || '',
+          r.requestDate || r.date || '',
+          r.requestPeriod != null ? r.requestPeriod : (r.period || ''),
+          r.targetDate || '',
+          r.targetPeriod != null ? r.targetPeriod : '',
+          r.requesterEmail || '',
+          r.targetTeacherEmail || '',
+          r.className || '',
+          r.subject || '',
+          r.subFee || '',
+          r.printed ? '1' : '0',
+          r.updatedAt || r.createdAt || ''
+        ].join('\x1f'));
+      });
+      parts.sort();
+      return parts.join('\x1e');
+    };
+
     const convertRequestsToSubstitutions = (requests) => {
       const subs = [];
+      // date|period → edges（邊組邊查，避免 resolve 每次 O(n) filter）
+      const slotIndex = Object.create(null);
+      const slotKey = (dateStr, period) => String(dateStr || '') + '|' + (parseInt(period, 10) || 0);
+      const pushSub = (rec) => {
+        if (!rec) return;
+        subs.push(rec);
+        const k = slotKey(rec.date, rec.period);
+        if (!slotIndex[k]) slotIndex[k] = [];
+        slotIndex[k].push(rec);
+      };
+      const resolveAt = (email, dateStr, period, dayOfWeek) =>
+        resolveCellFromBaseAndSubs(
+          email, dateStr, period, dayOfWeek, subs, slotIndex[slotKey(dateStr, period)] || []
+        );
+
       const approved = (requests || []).filter(r => r && r.status === 'approved');
       // 建立時間優先，讓較早核准的調入可被後續對調引用
       approved.sort((a, b) => {
@@ -828,12 +873,11 @@ createApp({
             const d = new Date(String(req.requestDate).replace(/-/g, '/'));
             if (!Number.isNaN(d.getTime())) leaveDay = d.getDay() === 0 ? 7 : d.getDay();
           }
-          const leaveCell = resolveCellFromBaseAndSubs(
+          const leaveCell = resolveAt(
             req.requesterEmail,
             req.requestDate,
             req.requestPeriod,
-            leaveDay,
-            subs
+            leaveDay
           );
           // 空堂排班：班科以申請單為準（無基礎課可疊）
           const emptyAssign = !!(req.isEmptySlotAssign
@@ -846,7 +890,7 @@ createApp({
           const leaveSubj = emptyAssign
             ? (req.subject || '')
             : ((leaveCell && leaveCell.subject) || req.subject || '');
-          subs.push({
+          pushSub({
             id: req.id,
             date: req.requestDate,
             period: req.requestPeriod,
@@ -884,11 +928,11 @@ createApp({
               || (typeof getTeacherSubjectByEmail === 'function' ? getTeacherSubjectByEmail(email) : '')
               || '';
           };
-          const leaveEff = resolveCellFromBaseAndSubs(
-            req.requesterEmail, req.requestDate, req.requestPeriod, leaveDay, subs
+          const leaveEff = resolveAt(
+            req.requesterEmail, req.requestDate, req.requestPeriod, leaveDay
           );
-          const targetEff = resolveCellFromBaseAndSubs(
-            req.targetTeacherEmail, req.targetDate, req.targetPeriod, dayNum, subs
+          const targetEff = resolveAt(
+            req.targetTeacherEmail, req.targetDate, req.targetPeriod, dayNum
           );
           // 對調＝時間互換、各自帶自己的班科到新時段（不用教師專長欄覆寫）
           // 僅「代課義務」再對調：帶來的是義務班科
@@ -918,7 +962,7 @@ createApp({
               || '');
 
           // _1：目標日 — 原師＝受邀人（調出），實師＝申請人（帶來自己請假節的班科）
-          subs.push({
+          pushSub({
             id: req.id + '_1',
             date: req.targetDate,
             period: req.targetPeriod,
@@ -935,7 +979,7 @@ createApp({
           });
 
           // _2：請假日 — 原師＝申請人（調出），實師＝受邀人（帶來自己目標節的班科）
-          subs.push({
+          pushSub({
             id: req.id + '_2',
             date: req.requestDate,
             period: req.requestPeriod,
@@ -1457,6 +1501,14 @@ createApp({
     const mutualActivityStart = ref('');
     const mutualActivityEnd = ref('');
     const DAC = () => window.DomainActivityCover;
+    /** 活動互代領域：首次用到再載 domain-activity-cover.js */
+    const ensureDAC = async () => {
+      if (window.DomainActivityCover) return window.DomainActivityCover;
+      if (typeof window.ensureDomainActivityCover === 'function') {
+        await window.ensureDomainActivityCover();
+      }
+      return window.DomainActivityCover || null;
+    };
     // ── 活動互代面板狀態（ui-activity.js → UiMutualPanelState）──
     // 延後 create：需 currentWeekDates / getScheduleForDate / softRefresh 就緒
     let _mutualPanelApi = null;
@@ -1467,6 +1519,10 @@ createApp({
       if (!window.UiMutualPanelState) {
         console.error('UiMutualPanelState 未載入');
         return null;
+      }
+      // 同步路徑：若尚未載入 DAC，先觸發背景載入（常數有 fallback）
+      if (!window.DomainActivityCover && typeof window.ensureDomainActivityCover === 'function') {
+        window.ensureDomainActivityCover().catch(function () {});
       }
       _mutualPanelApi = window.UiMutualPanelState.create({
         showToast, showConfirm, callGasApi, isAdmin, loading, loadingMessage,
@@ -1488,7 +1544,11 @@ createApp({
     const setMutualActivityThisWeek = () => { const a = getMutualPanelApi(); if (a) a.setMutualActivityThisWeek(); };
     const activityBalanceCtx = (extra) => { const a = getMutualPanelApi(); return a ? a.activityBalanceCtx(extra) : {}; };
     const patchLocalMutualQuota = (email, nextQuota) => { const a = getMutualPanelApi(); if (a) a.patchLocalMutualQuota(email, nextQuota); };
-    const recalculateMutualQuotasFromActivity = async () => { const a = getMutualPanelApi(); if (a) await a.recalculateMutualQuotasFromActivity(); };
+    const recalculateMutualQuotasFromActivity = async () => {
+      await ensureDAC();
+      const a = getMutualPanelApi();
+      if (a) await a.recalculateMutualQuotasFromActivity();
+    };
     const toggleMutualLead = (email) => { const a = getMutualPanelApi(); if (a) a.toggleMutualLead(email); };
     const isMutualLead = (email) => { const a = getMutualPanelApi(); return a ? a.isMutualLead(email) : false; };
 
@@ -4826,7 +4886,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       // OO＝釋出堂數（與「＋發放額度」合計釋出同口徑：非帶隊、有外出班課之釋出加總）
       // XX＝1～7 扣額度已排（export 內算）；尚有＝OO−XX
       let demand = 0;
-      const dac = window.DomainActivityCover;
+      const dac = await ensureDAC();
       if (dac && dac.buildQuotaRecalcRows) {
         try {
           const leaders = [];
@@ -5427,6 +5487,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         requestsList.value = sortedAll;
         // 關鍵：動態從 requestsList 轉換出 substitutionRecords（公開唯讀也需要）
         substitutionRecords.value = convertRequestsToSubstitutions(sortedAll);
+        _approvedConvertSig = approvedConvertSig(sortedAll);
         bumpRequestsWatermarkFromRows(sortedAll);
         if (user.value) {
           // 模擬身份時用被模擬者 Email（user.value.email），不用 JWT 原帳
@@ -5552,9 +5613,14 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         ? all.filter(r => r.status === 'pending_admin')
         : [];
       allPendingRequests.value = all.filter(r => r.status === 'pending_teacher' || r.status === 'pending_admin');
-      
-      substitutionRecords.value = convertRequestsToSubstitutions(all);
-      clearScheduleCache();
+
+      // H5：已核准集合未變時略過 convert（pending 狀態變更最常見）
+      const sig = approvedConvertSig(all);
+      if (sig !== _approvedConvertSig) {
+        substitutionRecords.value = convertRequestsToSubstitutions(all);
+        _approvedConvertSig = sig;
+        clearScheduleCache();
+      }
     };
 
     const sheetRequestToFront = (nr) => window.FieldMap.mapRequest(nr);
@@ -7101,7 +7167,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       note: '',
       quota: 0
     });
-    const openEmptySlotAssign = (teacherEmail, dayOfWeek, period, dateStr, cell) => {
+    const openEmptySlotAssign = async (teacherEmail, dayOfWeek, period, dateStr, cell) => {
       if (!isAdmin.value) {
         showToast('僅教學組可使用空堂排班', 'warning');
         return;
@@ -7114,7 +7180,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         showToast('請先結束批次選取再使用空堂排班', 'info');
         return;
       }
-      const DAC0 = DAC();
+      const DAC0 = await ensureDAC();
       if (DAC0 && DAC0.isEmptySlotAssignable && cell && !DAC0.isEmptySlotAssignable(cell)) {
         showToast('此格非空堂，無法空堂排班', 'warning');
         return;
@@ -7178,6 +7244,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         showToast('僅教學組可使用空堂排班', 'warning');
         return;
       }
+      await ensureDAC();
       const f = emptySlotForm.value;
       const task = String(f.taskName || '').trim();
       if (!task) {
@@ -7294,7 +7361,11 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         batchSubFee.value = PERIOD8_FEE;
       }
     );
-    const setMutualCover = (on) => { const a = getMutualPanelApi(); if (a) a.setMutualCover(on); };
+    const setMutualCover = async (on) => {
+      if (on) await ensureDAC();
+      const a = getMutualPanelApi();
+      if (a) a.setMutualCover(on);
+    };
     const mutualDraftKey = (leaveEmail, dateStr, period) =>
       (window.UiMutualPanelState && window.UiMutualPanelState.mutualDraftKey)
         ? window.UiMutualPanelState.mutualDraftKey(leaveEmail, dateStr, period)
@@ -7345,7 +7416,11 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         successFlowMode
       });
     };
-    const toggleMutualCover = () => { const a = getMutualPanelApi(); if (a) a.toggleMutualCover(); };
+    const toggleMutualCover = async () => {
+      if (!isMutualCover.value) await ensureDAC();
+      const a = getMutualPanelApi();
+      if (a) a.toggleMutualCover();
+    };
 
     // 面板勾選變更時自動暫存
     watch(mutualSkipNotify, () => { persistMutualPanelDraft(); });
