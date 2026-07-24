@@ -13,8 +13,8 @@
 
 
   
-  <!-- Vue 3（鎖版 CDN）；SheetJS 延後載入（P2：匯入／月報匯出才 ensureXlsx） -->
-  <script src="https://cdn.jsdelivr.net/npm/vue@3.5.16/dist/vue.global.prod.js"></script>
+  <!-- Vue 3（鎖版 CDN，defer 不擋 HTML 解析）；SheetJS 延後 ensureXlsx -->
+  <script defer src="https://cdn.jsdelivr.net/npm/vue@3.5.16/dist/vue.global.prod.js"></script>
 </head>
 <body>
 
@@ -3434,24 +3434,21 @@
 
   <!-- App Main JS Logic -->
 
-  <!-- 模組：對照/工具/API/領域/列印/主程式 -->
-  <script src="field-map.js?v=patrol1"></script>
-  <script src="date-utils.js"></script>
-  <script src="gas-api.js"></script>
-  <script src="domain-schedule.js?v=patrol1"></script>
-  <script src="domain-match.js"></script>
-  <script src="domain-activity-cover.js"></script>
-  <script src="domain-billing.js"></script>
-  <script src="domain-class-away.js"></script>
-  <script src="fee-utils.js"></script>
-  <!-- 方案甲 v2：活動／申請／課表／簽核／後台 五 UI 大線 -->
-  <script src="ui-activity.js"></script>
-  <script src="ui-request.js"></script>
-  <script src="ui-timetable.js"></script>
-  <script src="ui-approval.js"></script>
-  <script src="ui-admin.js"></script>
-  <!-- print / export / xlsx 延後載入（P1–P3）：首屏不擋 -->
-  <script src="app.js"></script>
+  <!-- 模組：defer 依文件順序執行，不擋 HTML 解析；billing/print/export 另延後 -->
+  <script defer src="field-map.js?v=opt1"></script>
+  <script defer src="date-utils.js?v=opt1"></script>
+  <script defer src="gas-api.js?v=opt1"></script>
+  <script defer src="domain-schedule.js?v=opt1"></script>
+  <script defer src="domain-match.js?v=opt1"></script>
+  <script defer src="domain-activity-cover.js?v=opt1"></script>
+  <script defer src="domain-class-away.js?v=opt1"></script>
+  <script defer src="fee-utils.js?v=opt1"></script>
+  <script defer src="ui-activity.js?v=opt1"></script>
+  <script defer src="ui-request.js?v=opt1"></script>
+  <script defer src="ui-timetable.js?v=opt1"></script>
+  <script defer src="ui-approval.js?v=opt1"></script>
+  <script defer src="ui-admin.js?v=opt1"></script>
+  <script defer src="app.js?v=opt1"></script>
   <script>
     (function () {
       function loadScript(src) {
@@ -3467,28 +3464,33 @@
       var _printP = null;
       var _exportP = null;
       var _xlsxP = null;
+      var _billingP = null;
+      window.ensureDomainBilling = function () {
+        if (window.DomainBilling) return Promise.resolve();
+        if (!_billingP) _billingP = loadScript('domain-billing.js?v=opt1');
+        return _billingP;
+      };
       window.ensurePrintHelper = function () {
         if (typeof window.generateFormHtml === 'function') return Promise.resolve();
-        if (!_printP) _printP = loadScript('print-helper.js');
+        if (!_printP) _printP = loadScript('print-helper.js?v=opt1');
         return _printP;
       };
       window.ensureExportSchoolTimetable = function () {
         if (window.ExportSchoolTimetable) return Promise.resolve();
-        if (!_exportP) _exportP = loadScript('export-school-timetable.js');
+        if (!_exportP) _exportP = loadScript('export-school-timetable.js?v=opt1');
         return _exportP;
       };
       var _activityCoverP = null;
       window.ensureExportActivityCover = function () {
         if (window.ExportActivityCover) return Promise.resolve();
-        if (!_activityCoverP) _activityCoverP = loadScript('export-activity-cover.js?t=' + Date.now());
+        if (!_activityCoverP) _activityCoverP = loadScript('export-activity-cover.js?v=opt1');
         return _activityCoverP;
       };
       var _invigP = null;
       var _excelJsP = null;
       window.ensureExportInvigilation = function () {
-        // 每次匯出強制重載，避免瀏覽器快取舊版字型邏輯
-        try { delete window.ExportInvigilation; } catch (eDel) { window.ExportInvigilation = undefined; }
-        _invigP = loadScript('export-invigilation.js?t=' + Date.now());
+        if (window.ExportInvigilation) return Promise.resolve();
+        if (!_invigP) _invigP = loadScript('export-invigilation.js?v=opt1');
         return _invigP;
       };
       window.ensureExcelJS = function () {

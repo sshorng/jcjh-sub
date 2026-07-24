@@ -2684,7 +2684,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         [substitutionRecords, teachersList, allSchedules, reportMonth, reportWeeksCount, adminSubTab, activeTab],
         () => {
           if (activeTab.value === 'admin' && adminSubTab.value === 'billing') {
-            calculateMonthlyReport();
+            calculateMonthlyReport(); // async 延後載入 billing
           }
         }
       );
@@ -4460,8 +4460,20 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
 
 
     /** 批次一次全部同意／全部拒絕 */
-    // 月底大鐘點統計（domain-billing）
-    const calculateMonthlyReport = () => {
+    // 月底大鐘點統計（domain-billing 延後載入）
+    const ensureBillingReady = async () => {
+      if (typeof window.ensureDomainBilling === 'function') {
+        await window.ensureDomainBilling();
+      }
+      if (!window.DomainBilling) throw new Error('大鐘點模組未載入');
+    };
+    const calculateMonthlyReport = async () => {
+      try {
+        await ensureBillingReady();
+      } catch (e) {
+        monthlyReportData.value = [];
+        return;
+      }
       monthlyReportData.value = window.DomainBilling.buildMonthlyReportRows({
         teachers: teachersList.value,
         allSchedules: allSchedules.value,
@@ -4478,6 +4490,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     // 匯出 Excel：1～7 一表＋第8節明細一表（誰上誰拿）
     const exportReportToExcel = async () => {
       try {
+        await ensureBillingReady();
         if (typeof window.ensureXlsx === 'function') await window.ensureXlsx();
       } catch (e) {
         showToast('Excel 模組載入失敗', 'error');
@@ -4487,7 +4500,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         showToast('Excel 模組未載入', 'error');
         return;
       }
-      if (!monthlyReportData.value || !monthlyReportData.value.length) calculateMonthlyReport();
+      if (!monthlyReportData.value || !monthlyReportData.value.length) await calculateMonthlyReport();
       const data = window.DomainBilling.toExcelRows(monthlyReportData.value);
       const ws = XLSX.utils.json_to_sheet(data);
       const wb = XLSX.utils.book_new();
@@ -4511,6 +4524,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     // 匯出代課代導費 Excel（給幹事作帳備查：含公付與自付兩張逐筆清冊）
     const exportSubFeeToExcel = async () => {
       try {
+        await ensureBillingReady();
         if (typeof window.ensureXlsx === 'function') await window.ensureXlsx();
       } catch (e) {
         showToast('Excel 模組載入失敗', 'error');

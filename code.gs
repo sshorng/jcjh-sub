@@ -37,32 +37,24 @@ var CACHE_TTL_PENDING_ = parseInt(getConfig_("CACHE_TTL_PENDING", "45"), 10) || 
 var CACHE_TTL_MATCH_ = parseInt(getConfig_("CACHE_TTL_MATCH", "45"), 10) || 45; // 媒合候選短快取
 
 function getAllowedHdList_() {
-  // 系統設定可覆寫
+  // 系統設定可覆寫（走 mem 快取，勿每次整表）
   try {
-    var raw = getTableData("系統設定");
-    for (var i = 0; i < raw.length; i++) {
-      var name = String(raw[i]["設定名稱"] || raw[i]["設定鍵"] || "");
-      if (name === "allowedHd" && raw[i]["設定值"]) {
-        return String(raw[i]["設定值"]).split(",").map(function (s) { return s.trim().toLowerCase(); }).filter(Boolean);
-      }
+    var map = buildSettingsMap_();
+    if (map && map.allowedHd) {
+      return String(map.allowedHd).split(",").map(function (s) { return s.trim().toLowerCase(); }).filter(Boolean);
     }
   } catch (e) {}
   return String(ALLOWED_HD_).split(",").map(function (s) { return s.trim().toLowerCase(); }).filter(Boolean);
 }
 
 function getSuperAdminEmails_() {
-  var list = [];
   try {
-    var raw = getTableData("系統設定");
-    for (var i = 0; i < raw.length; i++) {
-      var name = String(raw[i]["設定名稱"] || raw[i]["設定鍵"] || "");
-      if (name === "superAdminEmails" && raw[i]["設定值"]) {
-        list = String(raw[i]["設定值"]).split(",").map(function (s) { return s.trim().toLowerCase(); }).filter(Boolean);
-        break;
-      }
+    var map = buildSettingsMap_();
+    if (map && map.superAdminEmails) {
+      return String(map.superAdminEmails).split(",").map(function (s) { return s.trim().toLowerCase(); }).filter(Boolean);
     }
   } catch (e) {}
-  return list;
+  return [];
 }
 
 /** 系統角色正規化：admin／staff／teacher */
@@ -147,6 +139,7 @@ function upsertSystemSetting_(key, value) {
   var k = String(key || "").trim();
   if (!k) return;
   saveRows("系統設定", [{ "設定名稱": k, "設定值": value == null ? "" : String(value) }], "設定名稱");
+  bustSettingsMapCache_();
 }
 
 /** 申請單是否與讀者相關（含行政代送） */
@@ -313,20 +306,72 @@ function rowArrayToObject_(sheetName, headers, row) {
   return hasValue ? obj : null;
 }
 
-// 讀取工作表並轉換為物件陣列（二維陣列一次性讀取）
+// 同一次 doPost／doGet 內表資料 mem 快取（避免系統設定／申請單重複整表讀）
+var _tableDataMem_ = {}; // sheetName -> rows[]
+function bustTableDataMem_(sheetName) {
+  if (sheetName) {
+    try { delete _tableDataMem_[sheetName]; } catch (e) { _tableDataMem_[sheetName] = undefined; }
+    return;
+  }
+  _tableDataMem_ = {};
+}
+
+// 讀取工作表並轉換為物件陣列（二維陣列一次性讀取；請求內 mem）
 function getTableData(sheetName) {
+  var name = String(sheetName || "");
+  if (name && _tableDataMem_[name]) return _tableDataMem_[name];
   const ss = getSpreadsheet();
-  let sheet = ss.getSheetByName(sheetName);
-  if (!sheet) return [];
+  let sheet = ss.getSheetByName(name);
+  if (!sheet) {
+    if (name) _tableDataMem_[name] = [];
+    return [];
+  }
   const values = sheet.getDataRange().getValues();
-  if (values.length <= 1) return [];
+  if (values.length <= 1) {
+    if (name) _tableDataMem_[name] = [];
+    return [];
+  }
   const headers = values[0];
   const data = [];
   for (let i = 1; i < values.length; i++) {
-    const obj = rowArrayToObject_(sheetName, headers, values[i]);
+    const obj = rowArrayToObject_(name, headers, values[i]);
     if (obj) data.push(obj);
   }
+  if (name) _tableDataMem_[name] = data;
   return data;
+}
+
+/**
+ * 只取出「進行中」申請（pending_teacher／pending_admin）
+ * 仍需讀申請單表一次，但不組 historyAll 全量快取、payload 只含 pending
+ */
+function getPendingRequestsFromSheet_(semesterId) {
+  var sid = String(semesterId || "");
+  var ss = getSpreadsheet();
+  var sheet = ss.getSheetByName("申請單");
+  if (!sheet) return [];
+  var values = sheet.getDataRange().getValues();
+  if (values.length <= 1) return [];
+  var headers = values[0];
+  var statusCol = -1;
+  var semCol = -1;
+  var hi;
+  for (hi = 0; hi < headers.length; hi++) {
+    var h = String(headers[hi] || "").trim();
+    if (h === "狀態") statusCol = hi;
+    else if (h === "學期代號") semCol = hi;
+  }
+  var out = [];
+  for (var i = 1; i < values.length; i++) {
+    var row = values[i];
+    if (!row) continue;
+    if (semCol >= 0 && sid && String(row[semCol] || "") !== sid) continue;
+    var st = statusCol >= 0 ? String(row[statusCol] || "").toLowerCase().trim() : "";
+    if (st !== "pending_teacher" && st !== "pending_admin") continue;
+    var obj = rowArrayToObject_("申請單", headers, row);
+    if (obj) out.push(obj);
+  }
+  return out;
 }
 
 // 欄位別名讀取
@@ -481,6 +526,12 @@ function saveRows(sheetName, rowsToSave, keyName) {
     // 新增多列：numRows = toAppend.length
     sheet.getRange(start, 1, toAppend.length, headers.length).setValues(toAppend);
   }
+  // 寫入後清該表 mem（同請求後續讀取才會看到新資料）
+  bustTableDataMem_(sheetName);
+  if (sheetName === "系統設定") bustSettingsMapCache_();
+  if (sheetName === "申請單") {
+    // pending 快取另由 invalidateRequestCaches_ 清；此處只清表 mem
+  }
 }
 
 // 全量覆寫後備（僅在 key 欄異常時使用）
@@ -505,6 +556,8 @@ function saveRowsFullRewrite_(sheetName, rowsToSave, keyName) {
   });
   sheet.clearContents();
   sheet.getRange(1, 1, values.length, headers.length).setValues(values);
+  bustTableDataMem_(sheetName);
+  if (sheetName === "系統設定") bustSettingsMapCache_();
 }
 
 // 刪除特定行（增量：只刪對應列，由下往上刪避免位移）
@@ -526,6 +579,8 @@ function deleteRows(sheetName, keyName, keyValue) {
       sheet.deleteRow(i + 2);
     }
   }
+  bustTableDataMem_(sheetName);
+  if (sheetName === "系統設定") bustSettingsMapCache_();
 }
 
 /**
@@ -1988,13 +2043,37 @@ function toLocalTimeStr(date) {
 }
 
 // ----------------- 主入口：doGet 讀取 -----------------
+/** 系統設定 map：請求內 mem + ScriptCache（少改、常讀） */
+var _settingsMapMem_ = { map: null, ts: 0 };
+var CACHE_TTL_SETTINGS_ = 300;
+function bustSettingsMapCache_() {
+  _settingsMapMem_ = { map: null, ts: 0 };
+  try { removeCacheChunked("jcjh_settings_map"); } catch (e) {}
+  bustTableDataMem_("系統設定");
+}
 function buildSettingsMap_() {
+  var now = Date.now();
+  if (_settingsMapMem_.map && (now - _settingsMapMem_.ts) < 60000) {
+    return _settingsMapMem_.map;
+  }
+  try {
+    var cached = getCacheChunked("jcjh_settings_map");
+    if (cached) {
+      var parsed = JSON.parse(cached);
+      if (parsed && typeof parsed === "object") {
+        _settingsMapMem_ = { map: parsed, ts: now };
+        return parsed;
+      }
+    }
+  } catch (eC) {}
   const rawSettings = getTableData("系統設定");
   const settings = {};
   rawSettings.forEach(function (s) {
     var key = s["設定名稱"] !== undefined ? s["設定名稱"] : s["設定鍵"];
     if (key) settings[key] = s["設定值"];
   });
+  _settingsMapMem_ = { map: settings, ts: now };
+  try { putCacheChunked("jcjh_settings_map", JSON.stringify(settings), CACHE_TTL_SETTINGS_); } catch (eP) {}
   return settings;
 }
 
@@ -2757,12 +2836,8 @@ function handleReadAction_(postData) {
       }
     }
     if (!pending) {
-      // 走申請快取（historyAll 含進行中；勿每次全表 getTableData）
-      var packP = getSemesterRequestsCached_(semesterId, true, 14);
-      pending = (packP.rows || []).filter(function (req) {
-        var st = String(req["狀態"] || "").toLowerCase();
-        return st === "pending_teacher" || st === "pending_admin";
-      });
+      // 只掃出 pending 列（不建 historyAll 全量快取）
+      pending = getPendingRequestsFromSheet_(semesterId);
       try { putCacheChunked(pendingKey, JSON.stringify(pending), CACHE_TTL_PENDING_); } catch (pPut) {}
     }
     if (!isAdminP) {
