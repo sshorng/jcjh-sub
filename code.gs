@@ -834,6 +834,7 @@ function invalidateRequestCaches_(semesterId) {
   removeCacheChunked("jcjh_data_" + sid + "_teacher");
   removeCacheChunked("jcjh_req_" + sid + "_all");
   removeCacheChunked("jcjh_pending_" + sid + "_a");
+  removeCacheChunked("jcjh_pending_v2_" + sid + "_a");
   // 媒合快取：代次戳失效（不逐 key 刪）
   try {
     CacheService.getScriptCache().put("jcjh_match_gen_" + sid, String(Date.now()), 3600);
@@ -2128,8 +2129,9 @@ function buildSettingsMap_() {
 
 /** 申請單時間窗：未結案一律保留；已結案只留近 N 天（異動日或建立時間） */
 function requestInWindow_(req, cutoffYmd) {
-  var st = String(req["狀態"] || req.status || "").toLowerCase();
-  // 進行中：一律帶回（待簽核／待核准）
+  var stRaw = String(req["狀態"] || req.status || "").trim();
+  var st = String(translateStatusToEn(stRaw) || stRaw).toLowerCase();
+  // 進行中：一律帶回（待簽核／待核准；含中文狀態）
   if (st === "pending_teacher" || st === "pending_admin") return true;
   // historyAll：呼叫端可跳過此函式
   var dateStr = String(req["異動日期"] || req.requestDate || "").slice(0, 10);
@@ -2876,18 +2878,26 @@ function handleReadAction_(postData) {
   if (action === "getPendingOnly") {
     var teachersP = getSemesterTeachersCached_(semesterId);
     var isAdminP = resolveIsAdmin_(readerEmail, teachersP);
-    var pendingKey = "jcjh_pending_" + semesterId + "_a";
+    // v2：中文狀態掃描修正後換 key，避免舊空陣列快取鎖 45s
+    var pendingKey = "jcjh_pending_v2_" + semesterId + "_a";
     var pending = null;
     if (scope !== "fresh") {
       var pendingCached = getCacheChunked(pendingKey);
       if (pendingCached) {
-        try { pending = JSON.parse(pendingCached); } catch (pE) { pending = null; }
+        try {
+          var parsedP = JSON.parse(pendingCached);
+          if (Array.isArray(parsedP)) pending = parsedP;
+        } catch (pE) { pending = null; }
       }
     }
-    if (!pending) {
-      // 只掃出 pending 列（不建 historyAll 全量快取）
+    if (pending === null) {
+      // 只掃出 pending 列（中文狀態已 translateStatusToEn）
       pending = getPendingRequestsFromSheet_(semesterId);
-      try { putCacheChunked(pendingKey, JSON.stringify(pending), CACHE_TTL_PENDING_); } catch (pPut) {}
+      try {
+        // 空結果只快取 12 秒，避免誤掃／舊 bug 鎖死待辦
+        var pTtl = (pending && pending.length) ? CACHE_TTL_PENDING_ : 12;
+        putCacheChunked(pendingKey, JSON.stringify(pending || []), pTtl);
+      } catch (pPut) {}
     }
     if (!isAdminP) {
       pending = (pending || []).filter(function (req) {

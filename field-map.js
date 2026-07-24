@@ -390,6 +390,7 @@ window.FieldMap = (function () {
     asInt,
     asFloat,
     normalizeRole,
+    normalizeRequestStatus,
     mapSemester,
     mapClassAwayEvent,
     mapTeacher,

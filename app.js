@@ -2421,28 +2421,47 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       try {
         const res = await fetchPendingOnly({ semesterId: currentSemester.value });
         const rows = (res && res.requests) || [];
+        const normSt = (s) => {
+          if (window.FieldMap && window.FieldMap.normalizeRequestStatus) {
+            return window.FieldMap.normalizeRequestStatus(s);
+          }
+          return String(s || '').toLowerCase();
+        };
+        const isOpenPending = (st) => {
+          const n = normSt(st);
+          return n === 'pending_teacher' || n === 'pending_admin';
+        };
         const serverPendingById = {};
         const mappedPending = rows.map(r => {
           const m = window.FieldMap.mapRequest(r);
           if (m && m.id) serverPendingById[m.id] = m;
           return m;
-        });
+        }).filter(Boolean);
+        // 伺服器回 0 筆、本地仍有進行中 → 可能掃描失敗或空快取，勿全部幽靈取消
+        const localOpenN = (requestsList.value || []).filter(r => r && isOpenPending(r.status)).length;
+        if (mappedPending.length === 0 && localOpenN > 0) {
+          console.warn('pendingOnly 回空但本地有進行中', localOpenN, '筆，略過幽靈取消');
+          return false;
+        }
         const next = [];
         const seen = {};
         let ghosted = false;
         (requestsList.value || []).forEach(r => {
           if (!r || !r.id) return;
-          const st = String(r.status || '').toLowerCase();
-          if (st === 'pending_teacher' || st === 'pending_admin') {
+          if (isOpenPending(r.status)) {
             if (serverPendingById[r.id]) {
               // 伺服器仍進行中：合併
               next.push(Object.assign({}, r, serverPendingById[r.id]));
               seen[r.id] = 1;
-            } else {
-              // J：幽靈 pending（伺服器已無）→ 標 cancelled，清待辦紅點；後續 delta／全窗補真實狀態
+            } else if (mappedPending.length > 0) {
+              // 伺服器有回其他 pending、唯獨本筆消失 → 才幽靈取消（已核准／已駁回）
               next.push(Object.assign({}, r, { status: 'cancelled' }));
               seen[r.id] = 1;
               ghosted = true;
+            } else {
+              // 伺服器空包：保留本地，交給後續 delta／全量
+              next.push(r);
+              seen[r.id] = 1;
             }
           } else {
             next.push(r);
@@ -5495,10 +5514,16 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
           mySentRequests.value = sortedAll.filter(r => isMySentRequest(r, email));
           myPendingRequests.value = sortedAll.filter(r => r.targetTeacherEmail && r.targetTeacherEmail.toLowerCase() === email && r.status === 'pending_teacher');
           // 待核准僅教學組；模擬成行政／教師時清空，避免誤以為「我的送出」
+          const stOf = (r) => (window.FieldMap && window.FieldMap.normalizeRequestStatus)
+            ? window.FieldMap.normalizeRequestStatus(r && r.status)
+            : String((r && r.status) || '').toLowerCase();
           adminPendingRequests.value = (userRole.value === 'admin')
-            ? sortedAll.filter(r => r.status === 'pending_admin')
+            ? sortedAll.filter(r => stOf(r) === 'pending_admin')
             : [];
-          allPendingRequests.value = sortedAll.filter(r => r.status === 'pending_teacher' || r.status === 'pending_admin');
+          allPendingRequests.value = sortedAll.filter(r => {
+            const s = stOf(r);
+            return s === 'pending_teacher' || s === 'pending_admin';
+          });
         } else {
           mySentRequests.value = [];
           myPendingRequests.value = [];
@@ -5604,15 +5629,21 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       const email = effectiveUserEmail.value || String(user.value.email || '').toLowerCase().trim();
       const all = sortRequestListDesc(requestsList.value || []);
       requestsList.value = all;
+      const stOf = (r) => (window.FieldMap && window.FieldMap.normalizeRequestStatus)
+        ? window.FieldMap.normalizeRequestStatus(r && r.status)
+        : String((r && r.status) || '').toLowerCase();
       mySentRequests.value = all.filter(r => isMySentRequest(r, email));
       myPendingRequests.value = all.filter(r =>
         r.targetTeacherEmail && String(r.targetTeacherEmail).toLowerCase() === email
-        && r.status === 'pending_teacher'
+        && stOf(r) === 'pending_teacher'
       );
       adminPendingRequests.value = (userRole.value === 'admin')
-        ? all.filter(r => r.status === 'pending_admin')
+        ? all.filter(r => stOf(r) === 'pending_admin')
         : [];
-      allPendingRequests.value = all.filter(r => r.status === 'pending_teacher' || r.status === 'pending_admin');
+      allPendingRequests.value = all.filter(r => {
+        const s = stOf(r);
+        return s === 'pending_teacher' || s === 'pending_admin';
+      });
 
       // H5：已核准集合未變時略過 convert（pending 狀態變更最常見）
       const sig = approvedConvertSig(all);
