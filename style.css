@@ -228,8 +228,9 @@ body {
   align-items: center;
   justify-content: center;
   color: white;
-  font-size: 0.78rem;
+  font-size: 0.85rem;
   font-weight: 700;
+  letter-spacing: -0.5px;
 }
 
 .nav-menu {
@@ -4015,6 +4016,167 @@ td.table-empty {
 @keyframes softSyncPulse {
   0%, 100% { opacity: 0.65; }
   50% { opacity: 1; }
+}
+
+/* ── 導覽列：學期／代申請／模擬下拉（A1 收斂 inline）── */
+.nav-item-readonly {
+  cursor: default;
+}
+.user-name-guest {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+.nav-semester-select {
+  padding: 4px 8px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  max-width: 130px;
+}
+.nav-semester-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  padding: 4px 8px;
+}
+.nav-action-btn {
+  padding: 4px 8px;
+  font-size: 0.8rem;
+}
+.nav-dropdown-panel {
+  position: absolute;
+  top: 32px;
+  right: 0;
+  z-index: 1000;
+  width: 240px;
+  max-height: 320px;
+  overflow: hidden;
+  padding: 8px;
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-premium);
+  background: white;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.nav-dropdown-panel-wide {
+  width: 260px;
+  max-height: 340px;
+}
+.nav-dropdown-search {
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 0.78rem;
+}
+.nav-dropdown-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  max-height: 260px;
+}
+.nav-dropdown-item {
+  padding: 8px;
+  cursor: pointer;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.nav-dropdown-item-action {
+  padding: 8px;
+  cursor: pointer;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--color-primary);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 4px;
+}
+.nav-dropdown-empty {
+  padding: 12px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+.badge-mini-tag {
+  font-size: 0.7rem;
+  padding: 2px 4px;
+}
+.nav-pos-rel {
+  position: relative;
+}
+.link-view-all {
+  font-size: 0.7rem;
+  color: var(--color-primary);
+}
+.text-right-mt-6 {
+  text-align: right;
+  margin-top: 6px;
+}
+.week-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: center;
+  min-width: 180px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.empty-state-center {
+  text-align: center;
+  padding: 40px;
+  color: var(--text-secondary);
+}
+.empty-state-muted {
+  text-align: center;
+  padding: 40px;
+  color: var(--text-muted);
+}
+.stack-col-12 {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.toolbar-row-mb {
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.form-control-week-date {
+  padding: 4px 8px;
+  font-size: 0.8rem;
+  max-width: 130px;
+  margin-left: 8px;
+}
+.badge-status-xs {
+  font-size: 0.65rem;
+  padding: 1px 4px;
+}
+.risk-tag-xs {
+  font-size: 0.68rem;
+  padding: 1px 4px;
+}
+.card-title-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.btn-sm-78-ml {
+  padding: 4px 10px;
+  font-size: 0.78rem;
+  margin-left: 8px;
+}
+.loading-msg {
+  font-weight: 600;
+  color: var(--text-secondary);
 }
 
 /* ── 課表格輕量樣式 ── */

@@ -3169,12 +3169,13 @@ function handleReadAction_(postData) {
       if (!historyAllFlag) {
         try {
           var ttl = (readerIsAdmin || readerIsStaff) ? CACHE_TTL_FULL_ : CACHE_TTL_TEACHER_FULL_;
-          putCacheChunked(fullSharedKey, JSON.stringify(fullShared), ttl);
-          // 教師／admin 底包內容相同時互寫，提高命中
+          var fullSharedJson = JSON.stringify(fullShared);
+          putCacheChunked(fullSharedKey, fullSharedJson, ttl);
+          // 教師／admin 底包內容相同時互寫，提高命中（共用字串，少 stringify 一次）
           if (readerIsAdmin || readerIsStaff) {
             putCacheChunked(
               "jcjh_data_" + semesterId + "_teacher_w" + wDays,
-              JSON.stringify(fullShared),
+              fullSharedJson,
               CACHE_TTL_TEACHER_FULL_
             );
           }
@@ -3273,6 +3274,7 @@ function doPost(e) {
 
     const lock = LockService.getScriptLock();
     lock.waitLock(10000);
+    beginDeferredMails_();
     try {
     let cacheKey = "jcjh_data_" + semesterId;
     
@@ -3637,8 +3639,8 @@ function doPost(e) {
       targetReq["狀態"] = "approved";
       if (reqData.note) targetReq["備註"] = reqData.note;
       saveRows("申請單", [targetReq], "申請單ID");
-      // 待審核准一律寄通知信
-      try { sendAdminApproveEmail_(targetReq, currentUrl); } catch(ignE) { logError_("sendAdminApproveEmail", ignE); }
+      // 待審核准一律寄通知信（鎖外）
+      queueMail_("sendAdminApproveEmail", function () { sendAdminApproveEmail_(targetReq, currentUrl); });
       invalidateSemesterCaches_(semesterId);
 
     } else if (action === "adminApproveBatch") {
@@ -3664,8 +3666,8 @@ function doPost(e) {
       });
       if (!apToSave.length) throw new Error("找不到可核准的申請單");
       saveRows("申請單", apToSave, "申請單ID");
-      // 通知：同受邀人合併
-      try {
+      // 通知：同受邀人合併（鎖外）
+      queueMail_("adminApproveBatchMail", function () {
         var apBySub = {};
         apToSave.forEach(function (r) {
           var em = String(r["受邀人Email"] || "").toLowerCase().trim();
@@ -3675,12 +3677,10 @@ function doPost(e) {
         });
         Object.keys(apBySub).forEach(function (em) {
           var g = apBySub[em];
-          try {
-            if (g.length === 1) sendAdminApproveEmail_(g[0], currentUrl);
-            else sendAdminApproveBatchEmail_(g, currentUrl);
-          } catch (apMailE) { logError_("adminApproveBatchMail", apMailE); }
+          if (g.length === 1) sendAdminApproveEmail_(g[0], currentUrl);
+          else sendAdminApproveBatchEmail_(g, currentUrl);
         });
-      } catch (apMailOuter) { logError_("adminApproveBatchMailOuter", apMailOuter); }
+      });
       invalidateSemesterCaches_(semesterId);
       return ContentService.createTextOutput(JSON.stringify({
         success: true,
@@ -3696,7 +3696,7 @@ function doPost(e) {
       try { restoreMutualQuotaForRequests_(targetReq); } catch (qE) { logError_("restoreMutualQuota_adminReject", qE); }
       targetReq["狀態"] = "admin_rejected";
       saveRows("申請單", [targetReq], "申請單ID");
-      try { sendAdminRejectEmail_(targetReq, currentUrl); } catch(ignE) { logError_("sendAdminRejectEmail", ignE); }
+      queueMail_("sendAdminRejectEmail", function () { sendAdminRejectEmail_(targetReq, currentUrl); });
       invalidateSemesterCaches_(semesterId);
 
     } else if (action === "adminRejectBatch") {
@@ -3721,11 +3721,9 @@ function doPost(e) {
       try { restoreMutualQuotaForRequests_(rjToSave); } catch (qE) { logError_("restoreMutualQuota_adminRejectBatch", qE); }
       rjToSave.forEach(function (row) { row["狀態"] = "admin_rejected"; });
       saveRows("申請單", rjToSave, "申請單ID");
-      try {
-        rjToSave.forEach(function (r) {
-          try { sendAdminRejectEmail_(r, currentUrl); } catch (rjMailE) { logError_("adminRejectBatchMail", rjMailE); }
-        });
-      } catch (rjOuter) { logError_("adminRejectBatchMailOuter", rjOuter); }
+      queueMail_("adminRejectBatchMail", function () {
+        rjToSave.forEach(function (r) { sendAdminRejectEmail_(r, currentUrl); });
+      });
       invalidateSemesterCaches_(semesterId);
       return ContentService.createTextOutput(JSON.stringify({
         success: true,
@@ -3990,9 +3988,9 @@ function doPost(e) {
         || isProxyOne || statusOne === "pending_admin";
       if (!skipNotifyOne) {
         if (statusOne === "approved") {
-          try { sendAdminApproveEmail_(reqData.request, currentUrl); } catch(ignE) { logError_("sendAdminApproveEmail", ignE); }
+          queueMail_("sendAdminApproveEmail", function () { sendAdminApproveEmail_(reqData.request, currentUrl); });
         } else if (statusOne === "pending_teacher") {
-          try { sendSubInviteEmail_(reqData.request, currentUrl); } catch(ignE) { logError_("sendSubInviteEmail", ignE); }
+          queueMail_("sendSubInviteEmail", function () { sendSubInviteEmail_(reqData.request, currentUrl); });
         }
         // pending_admin：不寄信，等 adminApprove 再通知
       }
@@ -4060,7 +4058,7 @@ function doPost(e) {
       var skipNotifyBatch = reqData.skipNotify === true || reqData.skipNotify === "true"
         || isProxyBatch || finalStatus === "pending_admin";
       if (!skipNotifyBatch) {
-        try {
+        queueMail_("submitRequestBatchMail", function () {
           var byInvitee = {};
           rows.forEach(function (r) {
             var em = String(r["受邀人Email"] || r.targetTeacherEmail || "").toLowerCase();
@@ -4082,10 +4080,7 @@ function doPost(e) {
               }
             });
           }
-          // pending_admin：不寄信，等 adminApprove 再通知
-        } catch (ignBatchMail) {
-          logError_("submitRequestBatchMail", ignBatchMail);
-        }
+        });
       }
       invalidateSemesterCaches_(semesterId);
       return ContentService.createTextOutput(JSON.stringify({
@@ -4146,60 +4141,49 @@ function doPost(e) {
         if (validEm(e2)) estRecipients[e2] = 1;
       });
 
-      // 已核准：整批一次走批次核准信（內部分 cover／leave 雙方）
-      if (approvedRows.length) {
-        try {
-          if (approvedRows.length === 1) {
-            sendAdminApproveEmail_(approvedRows[0], currentUrl);
-            // 單筆：雙方各一封（同人則 1）
-            var a0 = approvedRows[0];
-            var ae1 = normEm(a0["申請人Email"] || a0.requesterEmail);
-            var ae2 = normEm(a0["受邀人Email"] || a0.targetTeacherEmail);
-            var n0 = 0;
-            if (validEm(ae1)) n0++;
-            if (validEm(ae2) && ae2 !== ae1) n0++;
-            mailCount += n0 || 1;
-          } else {
-            sendAdminApproveBatchEmail_(approvedRows, currentUrl);
-            // 批次：一人一封（申請人／受邀人去重）
-            var byP = {};
-            approvedRows.forEach(function (r) {
-              var c = normEm(r["受邀人Email"] || r.targetTeacherEmail);
-              var l = normEm(r["申請人Email"] || r.requesterEmail);
-              if (validEm(c)) byP[c] = 1;
-              if (validEm(l)) byP[l] = 1;
-            });
-            mailCount += Object.keys(byP).length;
-          }
-          sent++;
-        } catch (eMailA) {
-          failed++;
-          logError_("sendBatchNotices_approved", eMailA);
-        }
+      // 預估 mailCount（實際寄信鎖外，不阻塞其他寫入）
+      if (approvedRows.length === 1) {
+        var a0e = approvedRows[0];
+        var ae1e = normEm(a0e["申請人Email"] || a0e.requesterEmail);
+        var ae2e = normEm(a0e["受邀人Email"] || a0e.targetTeacherEmail);
+        var n0e = 0;
+        if (validEm(ae1e)) n0e++;
+        if (validEm(ae2e) && ae2e !== ae1e) n0e++;
+        mailCount += n0e || 1;
+        sent++;
+      } else if (approvedRows.length > 1) {
+        var byPe = {};
+        approvedRows.forEach(function (r) {
+          var c = normEm(r["受邀人Email"] || r.targetTeacherEmail);
+          var l = normEm(r["申請人Email"] || r.requesterEmail);
+          if (validEm(c)) byPe[c] = 1;
+          if (validEm(l)) byPe[l] = 1;
+        });
+        mailCount += Object.keys(byPe).length;
+        sent++;
       }
+      var bySubPe = {};
+      pendingRows.forEach(function (r) {
+        var em = normEm(r["受邀人Email"] || r.targetTeacherEmail);
+        if (!validEm(em)) return;
+        if (!bySubPe[em]) bySubPe[em] = [];
+        bySubPe[em].push(r);
+      });
+      mailCount += Object.keys(bySubPe).length;
+      sent += Object.keys(bySubPe).length;
 
-      // 待簽核：只寄受邀人（依受邀人合併）
-      if (pendingRows.length) {
-        var bySubP = {};
-        pendingRows.forEach(function (r) {
-          var em = normEm(r["受邀人Email"] || r.targetTeacherEmail);
-          if (!validEm(em)) return;
-          if (!bySubP[em]) bySubP[em] = [];
-          bySubP[em].push(r);
+      queueMail_("sendBatchNotices", function () {
+        if (approvedRows.length === 1) {
+          sendAdminApproveEmail_(approvedRows[0], currentUrl);
+        } else if (approvedRows.length > 1) {
+          sendAdminApproveBatchEmail_(approvedRows, currentUrl);
+        }
+        Object.keys(bySubPe).forEach(function (em) {
+          var group = bySubPe[em];
+          if (group.length === 1) sendSubInviteEmail_(group[0], currentUrl);
+          else sendSubInviteBatchEmail_(group, currentUrl);
         });
-        Object.keys(bySubP).forEach(function (em) {
-          try {
-            var group = bySubP[em];
-            if (group.length === 1) sendSubInviteEmail_(group[0], currentUrl);
-            else sendSubInviteBatchEmail_(group, currentUrl);
-            mailCount += 1;
-            sent++;
-          } catch (eMailP) {
-            failed++;
-            logError_("sendBatchNotices_pending", eMailP);
-          }
-        });
-      }
+      });
 
       return ContentService.createTextOutput(JSON.stringify({
         success: true,
@@ -4232,9 +4216,9 @@ function doPost(e) {
       }
       saveRows("申請單", [targetReq], "申請單ID");
       if (reqData.response === "agree") {
-        try { sendRespondAgreeEmail_(targetReq, currentUrl); } catch (ignE) { logError_("sendRespondAgreeEmail", ignE); }
+        queueMail_("sendRespondAgreeEmail", function () { sendRespondAgreeEmail_(targetReq, currentUrl); });
       } else {
-        try { sendRespondRejectEmail_(targetReq, currentUrl); } catch (ignE) { logError_("sendRespondRejectEmail", ignE); }
+        queueMail_("sendRespondRejectEmail", function () { sendRespondRejectEmail_(targetReq, currentUrl); });
       }
       invalidateSemesterCaches_(semesterId);
 
@@ -4255,15 +4239,13 @@ function doPost(e) {
       var newStatus = resp === "agree" ? "pending_admin" : "rejected";
       peers.forEach(function (r) { r["狀態"] = newStatus; });
       saveRows("申請單", peers, "申請單ID");
-      try {
+      queueMail_("respondToBatchMail", function () {
         if (resp === "agree") {
           sendRespondAgreeBatchEmail_(peers, currentUrl);
         } else {
           sendRespondRejectBatchEmail_(peers, currentUrl);
         }
-      } catch (ignBatchResp) {
-        logError_("respondToBatchMail", ignBatchResp);
-      }
+      });
       invalidateSemesterCaches_(semesterId);
       return ContentService.createTextOutput(JSON.stringify({
         success: true,
@@ -4307,8 +4289,11 @@ function doPost(e) {
       .setMimeType(ContentService.MimeType.JSON);
     } finally {
       try { lock.releaseLock(); } catch (ign) {}
+      // P1：放鎖後再寄信（return 的 JSON 已就緒，寄信失敗不影響寫入結果）
+      try { flushDeferredMails_(); } catch (ignM) { logError_("flushDeferredMails_", ignM); }
     }
   } catch (err) {
+    try { flushDeferredMails_(); } catch (ignM2) {}
     return ContentService.createTextOutput(JSON.stringify({ success: false, error: err.toString() }))
       .setMimeType(ContentService.MimeType.JSON);
   }
@@ -4425,6 +4410,26 @@ function _mimeEncodeSubject_(subject) {
     } catch (e2) {
       return s;
     }
+  }
+}
+
+/** P1：寫入鎖內只排隊寄信，放鎖後再寄（避免多人簽核卡 10 秒） */
+var _deferredMails_ = null;
+function beginDeferredMails_() {
+  _deferredMails_ = [];
+}
+function queueMail_(label, fn) {
+  if (!_deferredMails_) {
+    try { fn(); } catch (e) { logError_(label || "mail", e); }
+    return;
+  }
+  _deferredMails_.push({ label: label || "mail", fn: fn });
+}
+function flushDeferredMails_() {
+  var jobs = _deferredMails_ || [];
+  _deferredMails_ = null;
+  for (var i = 0; i < jobs.length; i++) {
+    try { jobs[i].fn(); } catch (e) { logError_(jobs[i].label, e); }
   }
 }
 

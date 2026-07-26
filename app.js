@@ -7051,47 +7051,132 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       '其他'
     ];
 
-    // ── 後台匯入／教師／課表編輯（ui-admin.js → UiAdmin）──
-    const {
-      showImportTeachersModal, teacherExcelData, teacherExcelHeaders, teacherMappingFields,
-      teacherImportPreview, runTeacherImportPreview,
-      showScheduleEditModal, scheduleForm,
-      showTeacherModal, teacherModalMode, teacherForm,
-      excelData, excelHeaders, mappingFields,
-      importSchedules, importPreview, runImportPreview, downloadScheduleTemplate, downloadCurrentSchedules,
-      openScheduleEditModal, pickScheduleAttr, getSchedule,
-      saveScheduleCell, clearScheduleCell, updateTeacherBaseHours,
-      openAddTeacherModal, openEditTeacherModal, saveTeacher, deleteTeacher,
-      handleTeacherExcelChange, importTeachersBatch, handleFileChange, getMappingLabel,
-      openHistoryEditModal, saveHistoryEdit, onHistoryEditDateChange
-    } = window.UiAdmin.create({
-      ref,
-      callGasApi,
-      callGasApiWithProgress,
-      showToast,
-      showConfirm,
-      loading,
-      loadingMessage,
-      softRefreshInBackground,
-      clearScheduleCache,
-      loadWeeklyData,
-      getTeacherNameByEmail,
-      currentSemester,
-      teachersList,
-      allSchedules,
-      leaveReasonOptions,
-      historyEditForm,
-      showHistoryEditModal,
-      requestsList
+    // ── 後台匯入／教師／課表編輯（ui-admin.js lazy：教師首屏不載）──
+    const showImportTeachersModal = ref(false);
+    const teacherExcelData = ref([]);
+    const teacherExcelHeaders = ref([]);
+    const teacherMappingFields = ref({ name: '', email: '', subject: '', baseHours: '', role: '' });
+    const teacherImportPreview = ref(null);
+    const showScheduleEditModal = ref(false);
+    const scheduleForm = ref({
+      id: null, teacherEmail: '', teacherName: '', dayOfWeek: 1, period: 1,
+      className: '', subject: '', attr: '基本', restriction: ''
     });
+    const showTeacherModal = ref(false);
+    const teacherModalMode = ref('add');
+    const teacherForm = ref({ email: '', name: '', subject: '', role: 'teacher', baseHours: 16, mutualQuota: 0 });
+    const excelData = ref([]);
+    const excelHeaders = ref([]);
+    const mappingFields = ref({
+      teacherName: '', teacherEmail: '', subject: '', dayOfWeek: '',
+      period: '', className: '', attr: '', restriction: ''
+    });
+    const importPreview = ref(null);
 
-    // 後台／列印等 modal：UiAdmin／UiApproval 就緒後綁 Esc＋焦點陷阱
-    bindFlagModal(showImportTeachersModal, () => { showImportTeachersModal.value = false; }, '匯入教師');
-    bindFlagModal(showTeacherModal, () => { showTeacherModal.value = false; }, '教師資料');
-    bindFlagModal(showScheduleEditModal, () => { showScheduleEditModal.value = false; }, '編輯課表');
-    bindFlagModal(showHistoryEditModal, () => { showHistoryEditModal.value = false; }, '編輯歷史');
+    let _uiAdminApi = null;
+    let _uiAdminModalsBound = false;
+    const ensureUiAdminApi = async () => {
+      if (_uiAdminApi) return _uiAdminApi;
+      if (typeof window.ensureUiAdmin === 'function') {
+        await window.ensureUiAdmin();
+      }
+      if (!window.UiAdmin || !window.UiAdmin.create) {
+        throw new Error('後台模組未載入');
+      }
+      _uiAdminApi = window.UiAdmin.create({
+        ref,
+        callGasApi,
+        callGasApiWithProgress,
+        showToast,
+        showConfirm,
+        loading,
+        loadingMessage,
+        softRefreshInBackground,
+        clearScheduleCache,
+        loadWeeklyData,
+        getTeacherNameByEmail,
+        currentSemester,
+        teachersList,
+        allSchedules,
+        leaveReasonOptions,
+        historyEditForm,
+        showHistoryEditModal,
+        requestsList,
+        // 注入既有 ref，模板持續綁定同一物件
+        showImportTeachersModal,
+        teacherExcelData,
+        teacherExcelHeaders,
+        teacherMappingFields,
+        teacherImportPreview,
+        showScheduleEditModal,
+        scheduleForm,
+        showTeacherModal,
+        teacherModalMode,
+        teacherForm,
+        excelData,
+        excelHeaders,
+        mappingFields,
+        importPreview
+      });
+      if (!_uiAdminModalsBound) {
+        _uiAdminModalsBound = true;
+        bindFlagModal(showImportTeachersModal, () => { showImportTeachersModal.value = false; }, '匯入教師');
+        bindFlagModal(showTeacherModal, () => { showTeacherModal.value = false; }, '教師資料');
+        bindFlagModal(showScheduleEditModal, () => { showScheduleEditModal.value = false; }, '編輯課表');
+        bindFlagModal(showHistoryEditModal, () => { showHistoryEditModal.value = false; }, '編輯歷史');
+      }
+      return _uiAdminApi;
+    };
+    const needUiAdmin = async (fnName, ...args) => {
+      try {
+        const api = await ensureUiAdminApi();
+        if (!api || typeof api[fnName] !== 'function') {
+          showToast('後台功能未就緒', 'error');
+          return;
+        }
+        return await api[fnName](...args);
+      } catch (e) {
+        showToast((e && e.message) || '後台模組載入失敗', 'error');
+      }
+    };
+    const runTeacherImportPreview = (...a) => needUiAdmin('runTeacherImportPreview', ...a);
+    const importSchedules = (...a) => needUiAdmin('importSchedules', ...a);
+    const runImportPreview = (...a) => needUiAdmin('runImportPreview', ...a);
+    const downloadScheduleTemplate = (...a) => needUiAdmin('downloadScheduleTemplate', ...a);
+    const downloadCurrentSchedules = (...a) => needUiAdmin('downloadCurrentSchedules', ...a);
+    const openScheduleEditModal = (...a) => needUiAdmin('openScheduleEditModal', ...a);
+    const pickScheduleAttr = (...a) => needUiAdmin('pickScheduleAttr', ...a);
+    const getSchedule = (...a) => {
+      if (_uiAdminApi && typeof _uiAdminApi.getSchedule === 'function') return _uiAdminApi.getSchedule(...a);
+      return null;
+    };
+    const saveScheduleCell = (...a) => needUiAdmin('saveScheduleCell', ...a);
+    const clearScheduleCell = (...a) => needUiAdmin('clearScheduleCell', ...a);
+    const updateTeacherBaseHours = (...a) => needUiAdmin('updateTeacherBaseHours', ...a);
+    const openAddTeacherModal = (...a) => needUiAdmin('openAddTeacherModal', ...a);
+    const openEditTeacherModal = (...a) => needUiAdmin('openEditTeacherModal', ...a);
+    const saveTeacher = (...a) => needUiAdmin('saveTeacher', ...a);
+    const deleteTeacher = (...a) => needUiAdmin('deleteTeacher', ...a);
+    const handleTeacherExcelChange = (...a) => needUiAdmin('handleTeacherExcelChange', ...a);
+    const importTeachersBatch = (...a) => needUiAdmin('importTeachersBatch', ...a);
+    const handleFileChange = (...a) => needUiAdmin('handleFileChange', ...a);
+    const getMappingLabel = (...a) => {
+      if (_uiAdminApi && typeof _uiAdminApi.getMappingLabel === 'function') return _uiAdminApi.getMappingLabel(...a);
+      return String(a[0] || '');
+    };
+    const openHistoryEditModal = (...a) => needUiAdmin('openHistoryEditModal', ...a);
+    const saveHistoryEdit = (...a) => needUiAdmin('saveHistoryEdit', ...a);
+    const onHistoryEditDateChange = (...a) => needUiAdmin('onHistoryEditDateChange', ...a);
+
     bindFlagModal(showClassAwayModal, () => { showClassAwayModal.value = false; }, '空堂事件');
     bindFlagModal(showBatchPrintPrompt, () => { dismissBatchPrintPrompt(); }, '批次列印');
+
+    // 管理員進後台時預載 ui-admin（不擋首屏）
+    watch([isAdmin, activeTab], ([adm, tab]) => {
+      if (adm && tab === 'admin' && typeof window.ensureUiAdmin === 'function') {
+        ensureUiAdminApi().catch(function () {});
+      }
+    });
 
     // ── 後台：折抵額度歷程（額度帳本）──
     const showQuotaLedgerModal = ref(false);

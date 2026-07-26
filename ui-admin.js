@@ -23,30 +23,36 @@ window.UiAdmin = (function () {
     var showHistoryEditModal = deps.showHistoryEditModal;
     var requestsList = deps.requestsList;
 
-    var showImportTeachersModal = ref(false);
-    var teacherExcelData = ref([]);
-    var teacherExcelHeaders = ref([]);
-    var teacherMappingFields = ref({ name: '', email: '', subject: '', baseHours: '', role: '' });
-    var teacherImportPreview = ref(null);
+    // 可注入既有 ref（app.js lazy 載入時共用同一組 ref，模板不需重建）
+    function useRef(key, init) {
+      var existing = deps[key];
+      if (existing && typeof existing === 'object' && 'value' in existing) return existing;
+      return ref(init);
+    }
+    var showImportTeachersModal = useRef('showImportTeachersModal', false);
+    var teacherExcelData = useRef('teacherExcelData', []);
+    var teacherExcelHeaders = useRef('teacherExcelHeaders', []);
+    var teacherMappingFields = useRef('teacherMappingFields', { name: '', email: '', subject: '', baseHours: '', role: '' });
+    var teacherImportPreview = useRef('teacherImportPreview', null);
 
-    var showScheduleEditModal = ref(false);
-    var scheduleForm = ref({
+    var showScheduleEditModal = useRef('showScheduleEditModal', false);
+    var scheduleForm = useRef('scheduleForm', {
       id: null, teacherEmail: '', teacherName: '', dayOfWeek: 1, period: 1,
       className: '', subject: '', attr: '基本', restriction: ''
     });
 
-    var showTeacherModal = ref(false);
-    var teacherModalMode = ref('add');
-    var teacherForm = ref({ email: '', name: '', subject: '', role: 'teacher', baseHours: 16, mutualQuota: 0 });
+    var showTeacherModal = useRef('showTeacherModal', false);
+    var teacherModalMode = useRef('teacherModalMode', 'add');
+    var teacherForm = useRef('teacherForm', { email: '', name: '', subject: '', role: 'teacher', baseHours: 16, mutualQuota: 0 });
 
-    var excelData = ref([]);
-    var excelHeaders = ref([]);
-    var mappingFields = ref({
+    var excelData = useRef('excelData', []);
+    var excelHeaders = useRef('excelHeaders', []);
+    var mappingFields = useRef('mappingFields', {
       teacherName: '', teacherEmail: '', subject: '', dayOfWeek: '',
       period: '', className: '', attr: '', restriction: ''
     });
     /** 乾跑預覽結果 */
-    var importPreview = ref(null);
+    var importPreview = useRef('importPreview', null);
 
     var weekMapImport = {
       '一': 1, '二': 2, '三': 3, '四': 4, '五': 5,

@@ -175,6 +175,32 @@
     padding: 0;
   }
 
+  /* 背景同步：窄螢幕改短標，避免擠掉重整鈕 */
+  .nav-soft-sync {
+    font-size: 0.65rem;
+    padding: 2px 6px;
+    max-width: 4.5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .nav-action-btn {
+    padding: 3px 6px;
+    font-size: 0.72rem;
+    min-height: 28px;
+  }
+  .nav-semester-select {
+    max-width: 88px;
+    padding: 2px 4px;
+    font-size: 0.72rem;
+  }
+  .nav-dropdown-panel,
+  .nav-dropdown-panel-wide {
+    width: min(280px, calc(100vw - 24px));
+    right: 0;
+    left: auto;
+  }
+
   /* 導航選單：可左右滑，避免字被壓扁 */
   .nav-menu {
     width: 100%;
@@ -187,17 +213,22 @@
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+  .nav-menu::-webkit-scrollbar {
+    display: none;
   }
 
   .nav-item {
     flex: 0 0 auto;
     text-align: center;
-    padding: 8px 8px;
+    padding: 8px 10px;
     min-height: 36px;
     font-size: 0.82rem;
     white-space: nowrap;
     background: transparent;
     border-bottom-width: 2px;
+    touch-action: manipulation;
   }
 
   .main-content {
