@@ -639,7 +639,7 @@
                                     <span v-if="isCombinedClass(slot.cell.className)" class="cell-badge tag-combined" title="併班">併班</span>
                                   </div>
                                   <div class="cell-subject">
-                                    {{ slot.cell.subject }}<span v-if="slot.cell.attr === '兼課'" title="兼課">（兼）</span>
+                                    {{ slot.cell.subject }}<span v-if="slot.cell.attr === '超鐘點'" title="超鐘點">（超）</span>
                                     <span v-if="slot.isAwayLabel" class="away-class-badge">班外出</span>
                                   </div>
                                   <div v-if="slot.draft" class="cell-sub-text mutual-draft-label">
@@ -860,7 +860,7 @@
                                   :class="{ 'is-match-source': isMatchSourceEntry(entry, dayIdx+1, period), 'is-match-hover': isMatchHoverEntry(entry, dayIdx+1, period), 'is-readonly': classReadonlyMode }"
                                   @click.stop="handleClassCellClick(selectedClass, dayIdx+1, period, entry)">
                                   <div class="cell-subject">
-                                    {{ entry.subject }}<span v-if="entry.attr === '兼課'" title="兼課">（兼）</span>
+                                    {{ entry.subject }}<span v-if="entry.attr === '超鐘點'" title="超鐘點">（超）</span>
                                     <span v-if="entry.attr === '單週' || entry.attr === '雙週'" style="font-size:0.65rem;color:var(--text-muted);margin-left:2px;">({{ entry.attr }})</span>
                                     <span v-if="entry._isCombined || isCombinedClass(entry.className)" class="cell-badge tag-combined" title="併班">併班</span>
                                   </div>
@@ -1559,12 +1559,12 @@
                     <tr class="billing-th-cols">
                       <th class="billing-sticky-name">姓名</th>
                       <th>科目</th>
-                      <th title="每週 1～7＋午休；基本／一般／兼課／抽離（不含巡堂／第8）">排課</th>
+                      <th title="每週 1～7＋午休；基本／一般／超鐘點／抽離（不含巡堂／第8）">排課</th>
                       <th title="教師基本授課鐘點">基鐘</th>
                       <th title="排課 − 基鐘（每週）">超時/週</th>
                       <th title="畢業等 reduce：只扣起日後週 × 1～7">空堂調降</th>
                       <th title="自己請假且自費代課，扣自己超時">自費扣</th>
-                      <th title="自己請假且公費代課、且原堂為兼課，才沖自己超時">公費扣</th>
+                      <th title="自己請假且公費代課、且原堂為超鐘點，才沖自己超時">公費扣</th>
                       <th title="本月實得超時節數" class="billing-th-result">實得超時</th>
                       <th title="實得超時 × 455" class="billing-th-result">超鐘點費</th>
                       <th title="代他人且經費為公費／活動公費">公代節</th>
@@ -3283,7 +3283,7 @@
               <select class="form-select" v-model="scheduleForm.attr">
                 <option value="一般">一般／基本（計鐘點）</option>
                 <option value="基本">基本（計鐘點，同一般）</option>
-                <option value="兼課">兼課（計鐘點，多為超鐘點）</option>
+                <option value="超鐘點">超鐘點（計鐘點）</option>
                 <option value="巡堂">巡堂（不計鐘點、不可調課、可當空堂）</option>
                 <option v-if="parseInt(scheduleForm.period, 10) === 8" value="單週">單週（僅第8節輔導）</option>
                 <option v-if="parseInt(scheduleForm.period, 10) === 8" value="雙週">雙週（僅第8節輔導）</option>
@@ -3291,7 +3291,7 @@
                 <option value="抽離">抽離（不進班級課表；計週鐘點；可另勾綁課）</option>
               </select>
               <span class="text-xs-muted-70">
-                1～7 節無單雙週。兼課／抽離／午休皆計週鐘點。巡堂、第8 不計。抽離一律不進班級課表（含併班）；調課僅可與抽離互調。午休可排特教／資優等。單／雙週僅第 8 節。
+                1～7 節無單雙週。超鐘點／抽離／午休皆計週鐘點。巡堂、第8 不計。抽離一律不進班級課表（含併班）；調課僅可與抽離互調。午休可排特教／資優等。單／雙週僅第 8 節。
               </span>
             </div>
             <div class="form-group" style="flex-direction: row; align-items: center; gap: 8px;">

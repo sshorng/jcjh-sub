@@ -199,7 +199,7 @@ window.UiTimetable = (function () {
       if (awayOn || cell.isClassAway) return 'is-away-class' + batchCls;
       if (cell.isPatrol || cell.attr === '巡堂') return 'is-patrol' + batchCls;
       if (cell.isPullOut || cell.attr === '抽離') return 'is-pullout has-class' + batchCls;
-      // 兼課：外觀與一般課相同，僅課名後標（兼）
+      // 超鐘點：外觀與一般課相同，僅課名後標（超）
       if (cell.attr === '實支') return 'is-elastic' + batchCls;
       return 'has-class' + batchCls;
     }
@@ -1024,7 +1024,7 @@ window.UiTimetable = (function () {
           return 'has-substitution';
         }
         if (entries.some(function (e) { return e.attr === '巡堂' || e.isPatrol; })) return 'is-patrol';
-        // 兼課：外觀與一般課相同，僅課名後標（兼）
+        // 超鐘點：外觀與一般課相同，僅課名後標（超）
         if (entries.some(function (e) { return e.attr === '實支'; })) return 'is-elastic';
         return 'has-class';
       },

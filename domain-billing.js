@@ -47,7 +47,7 @@ window.DomainBilling = (function () {
   /**
    * 是否計入「每週排課鐘點」
    * - 節次：1–7 或 午休 45
-   * - 屬性：基本／一般／兼課／抽離（空屬性視同一般）
+   * - 屬性：基本／一般／超鐘點／抽離（空屬性視同一般）
    * - 不含：巡堂、第8、輔導（第8）、單雙週輔導
    */
   function isWeeklyHoursSlot(s) {
@@ -57,7 +57,7 @@ window.DomainBilling = (function () {
       && window.DateUtils.isLunchPeriod(s.period));
     if (!(isLunch || (p >= 1 && p <= 7))) return false;
     var a = String(s.attr || '').trim();
-    if (!a || a === '一般' || a === '基本' || a === '兼課' || a === '抽離') return true;
+    if (!a || a === '一般' || a === '基本' || a === '超鐘點' || a === '抽離') return true;
     // 舊匯入可能寫「實支」仍計（與有課同）
     if (a === '實支') return true;
     return false;
@@ -80,8 +80,8 @@ window.DomainBilling = (function () {
   }
 
   /**
-   * 請假那堂是否為「兼課」屬性（對照基礎課表：原任＋星期＋節次＋班級）
-   * 公費代課僅在原堂為兼課時才沖自己超鐘
+   * 請假那堂是否為「超鐘點」屬性（對照基礎課表：原任＋星期＋節次＋班級）
+   * 公費代課僅在原堂為超鐘點時才沖自己超鐘
    */
   function isConcurrentLeaveSlot(rec, allSchedules) {
     if (!rec) return false;
@@ -104,9 +104,9 @@ window.DomainBilling = (function () {
       var scn = String(s.className || '').trim();
       if (cn && scn && scn !== cn && scn.indexOf(cn) < 0 && cn.indexOf(scn) < 0) continue;
       hitAny = true;
-      if (String(s.attr || '').trim() === '兼課') return true;
+      if (String(s.attr || '').trim() === '超鐘點') return true;
     }
-    // 找不到課表列：不當兼課（不沖超鐘）
+    // 找不到課表列：不當超鐘點（不沖超鐘）
     return false;
   }
 
@@ -340,7 +340,7 @@ window.DomainBilling = (function () {
         ? 0
         : (parseInt(t.baseHours, 10) || 16);
 
-      // 週鐘點：1–7＋午休(45)；基本／一般／兼課／抽離皆計；巡堂／第8／輔導單雙週不算
+      // 週鐘點：1–7＋午休(45)；基本／一般／超鐘點／抽離皆計；巡堂／第8／輔導單雙週不算
       var weeklyPeriods = allSchedules.filter(function (s) {
         return emailKey(s.teacherEmail) === em && isWeeklyHoursSlot(s);
       }).length;
@@ -369,7 +369,7 @@ window.DomainBilling = (function () {
         return r.subFee === '公費代課' || r.subFee === '學校移撥';
       });
       var pubLeaveCount = pubLeaveRecords.length;
-      // 公費扣超鐘：僅原堂屬性為「兼課」才沖自己超時
+      // 公費扣超鐘：僅原堂屬性為「超鐘點」才沖自己超時
       var pubConcurrentLeaveRecords = pubLeaveRecords.filter(function (r) {
         return isConcurrentLeaveSlot(r, allSchedules);
       });
@@ -395,7 +395,7 @@ window.DomainBilling = (function () {
         var remaining = Math.max(0, weeklyOvertime - selfInWeek);
         publicOvertimeUsed += Math.min(remaining, pubInWeek);
       });
-      // 學校公付節數：全部公費請假 − 已沖超鐘（兼課公費）的部分
+      // 學校公付節數：全部公費請假 − 已沖超鐘（超鐘點公費）的部分
       var schoolPublicPayout = Math.max(0, pubLeaveCount - publicOvertimeUsed);
 
       var pubSubRecords = monthlyRecords.filter(function (r) {
