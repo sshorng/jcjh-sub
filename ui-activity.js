@@ -1097,6 +1097,7 @@ window.UiBatchSubmit = (function () {
     var showConfirm = deps.showConfirm;
     var getScheduleForDate = deps.getScheduleForDate;
     var getTeacherNameByEmail = deps.getTeacherNameByEmail;
+    var getLeaveTimeDefaults = deps.getLeaveTimeDefaults;
     var isMutualCover = deps.isMutualCover;
     var mutualAwayClasses = deps.mutualAwayClasses;
     var mutualSkipNotify = deps.mutualSkipNotify;
@@ -1262,6 +1263,13 @@ window.UiBatchSubmit = (function () {
         proxyByName = '';
       }
       var doDirectApprove = !!(isAdmin.value && directApproveMode.value && !proxyActive);
+      var leaveTimeDefaults = typeof getLeaveTimeDefaults === 'function'
+        ? getLeaveTimeDefaults(leaveEmail)
+        : { type: '全天', start: '08:00', end: '16:00', range: '08:00~16:00' };
+      var leaveTimeType = pendingRequestData.value.leaveTimeType || leaveTimeDefaults.type;
+      var leaveTimeStart = pendingRequestData.value.leaveTimeStart || leaveTimeDefaults.start;
+      var leaveTimeEnd = pendingRequestData.value.leaveTimeEnd || leaveTimeDefaults.end;
+      var leaveTime = pendingRequestData.value.leaveTime || (leaveTimeStart + '~' + leaveTimeEnd);
       var batchStatus = doDirectApprove
         ? 'approved'
         : (proxyActive ? 'pending_admin' : 'pending_teacher');
@@ -1290,6 +1298,8 @@ window.UiBatchSubmit = (function () {
           "班級": s.className,
           "科目": s.subject,
           "請假事由": reason,
+          "請假時間類型": leaveTimeType,
+          "請假時間": leaveTime,
           "經費來源": feeForSlot(s, i),
           "備註": noteOut,
           "狀態": batchStatus,
@@ -1426,6 +1436,7 @@ window.UiBatchPanel = (function () {
     var showToast = deps.showToast;
     var showConfirm = deps.showConfirm;
     var getTeacherNameByEmail = deps.getTeacherNameByEmail;
+    var getLeaveTimeDefaults = deps.getLeaveTimeDefaults;
     var getScheduleForDate = deps.getScheduleForDate;
     var formatDateMMDD = deps.formatDateMMDD;
     var isAdmin = deps.isAdmin;
@@ -1800,6 +1811,9 @@ window.UiBatchPanel = (function () {
         }
       });
 
+      var leaveTimeDefaults = typeof getLeaveTimeDefaults === 'function'
+        ? getLeaveTimeDefaults(leaveEmail)
+        : { type: '全天', start: '08:00', end: '16:00', range: '08:00~16:00' };
       pendingRequestData.value = {
         mode: 'substitution',
         leaveTeacher: leaveEmail,
@@ -1825,6 +1839,10 @@ window.UiBatchPanel = (function () {
           return '自費代課';
         })(),
         note: '',
+        leaveTimeType: leaveTimeDefaults.type,
+        leaveTimeStart: leaveTimeDefaults.start,
+        leaveTimeEnd: leaveTimeDefaults.end,
+        leaveTime: leaveTimeDefaults.range,
         isBatch: true,
         batchCount: batchSlots.value.length,
         isPerSlot: false
@@ -1924,6 +1942,9 @@ window.UiBatchPanel = (function () {
 
       const groups = groupBatchSlotsBySub(batchSlots.value);
       batchCompareViewEmail.value = groups.length ? groups[0].subEmail : '';
+      var leaveTimeDefaults = typeof getLeaveTimeDefaults === 'function'
+        ? getLeaveTimeDefaults(leaveEmail)
+        : { type: '全天', start: '08:00', end: '16:00', range: '08:00~16:00' };
       pendingRequestData.value = {
         mode: 'substitution',
         leaveTeacher: leaveEmail,
@@ -1941,6 +1962,10 @@ window.UiBatchPanel = (function () {
         reason: isMutualCover.value ? '公假' : '',
         subFee: isMutualCover.value ? ACTIVITY_PUBLIC_FEE : '自費代課',
         note: '',
+        leaveTimeType: leaveTimeDefaults.type,
+        leaveTimeStart: leaveTimeDefaults.start,
+        leaveTimeEnd: leaveTimeDefaults.end,
+        leaveTime: leaveTimeDefaults.range,
         isBatch: true,
         batchCount: batchSlots.value.length,
         isPerSlot: true,
@@ -1963,7 +1988,7 @@ window.UiBatchPanel = (function () {
       }
       await window.UiBatchSubmit.executeBatchSubmit({
         batchSlots, pendingRequestData, batchAssignMode, batchReason, batchNote, batchSubTeacher, batchSubFee,
-        showToast, showConfirm, getScheduleForDate, getTeacherNameByEmail,
+        showToast, showConfirm, getScheduleForDate, getTeacherNameByEmail, getLeaveTimeDefaults,
         isMutualCover, mutualAwayClasses, mutualSkipNotify, isAdmin, isQuotaDeductFee,
         QUOTA_DEDUCT_FEE, ACTIVITY_PUBLIC_FEE, PERIOD8_FEE, defaultSubFeeForReason, assertQuotaDeductAllowed,
         loading, loadingMessage, isSubmitting: deps.isSubmitting, currentSemester, directApproveMode, directApproveSkipNotify,

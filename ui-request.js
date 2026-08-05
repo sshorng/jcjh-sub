@@ -78,6 +78,10 @@ window.UiSubmitHelpers = (function () {
         return false;
       }
     }
+    if (pending.mode === 'substitution' && (!pending.leaveTimeType || !pending.leaveTimeStart || !pending.leaveTimeEnd || pending.leaveTimeStart >= pending.leaveTimeEnd)) {
+      showToast('請填寫有效的請假時間（可選全天／上午／下午或自行修改）', 'info');
+      return false;
+    }
     if (pending.mode === 'substitution' && !pending.subFee) {
       showToast('請選擇代課鐘點費結算方式！', 'info');
       return false;
@@ -228,6 +232,8 @@ window.UiSubmitHelpers = (function () {
       "班級": pending.cls,
       "科目": pending.subject,
       "請假事由": pending.reason,
+      "請假時間類型": pending.leaveTimeType || '',
+      "請假時間": pending.leaveTime || ((pending.leaveTimeStart && pending.leaveTimeEnd) ? (pending.leaveTimeStart + '~' + pending.leaveTimeEnd) : ''),
       "經費來源": finalFeeType || '無',
       "備註": noteOut,
       "狀態": initialStatus,
@@ -376,6 +382,7 @@ window.UiSubmitHelpers = (function () {
     var pendingRequestData = deps.pendingRequestData;
     var showMatchModal = deps.showMatchModal;
     var showCompareModal = deps.showCompareModal;
+    var getLeaveTimeDefaults = deps.getLeaveTimeDefaults;
 
     var consecFn = function (teacherEmail, dateStr, addPeriod, removePeriod) {
       return getConsecutiveStatus(
@@ -441,6 +448,9 @@ window.UiSubmitHelpers = (function () {
 
     var leaveEmail = activeCell.value.teacherEmail;
     var curDate = inputRequestDate.value;
+    var leaveTimeDefaults = mode === 'substitution' && typeof getLeaveTimeDefaults === 'function'
+      ? getLeaveTimeDefaults(leaveEmail)
+      : { type: '', start: '', end: '', range: '' };
     var timeKey = (window.DateUtils && window.DateUtils.encodeTimeKey)
       ? window.DateUtils.encodeTimeKey(activeCell.value.dayOfWeek, activeCell.value.period)
       : (String(activeCell.value.dayOfWeek) + '-' + String(activeCell.value.period));
@@ -561,6 +571,10 @@ window.UiSubmitHelpers = (function () {
       subB: subBVal,
       subBClass: classBVal,
       note: '',
+      leaveTimeType: mode === 'substitution' ? leaveTimeDefaults.type : '',
+      leaveTimeStart: mode === 'substitution' ? leaveTimeDefaults.start : '',
+      leaveTimeEnd: mode === 'substitution' ? leaveTimeDefaults.end : '',
+      leaveTime: mode === 'substitution' ? leaveTimeDefaults.range : '',
       mutualPreview: !!isMutualCover.value
     };
 

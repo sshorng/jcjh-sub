@@ -15,6 +15,7 @@ window.UiApproval = (function () {
     var restoreMutualQuotaForRows = deps.restoreMutualQuotaForRows || function () {};
     var optimisticPatchRequestStatus = deps.optimisticPatchRequestStatus;
     var softRefreshInBackground = deps.softRefreshInBackground || function () {};
+    var loadHomeroomRecords = deps.loadHomeroomRecords || function () {};
     var formatRequestSummary = deps.formatRequestSummary || function () { return ''; };
     var formatApproveBatchRiskSummary = deps.formatApproveBatchRiskSummary || function () { return ''; };
     var getApproveRiskFlags = deps.getApproveRiskFlags || function () { return []; };
@@ -317,9 +318,13 @@ window.UiApproval = (function () {
         // 批次核准：只在 batch 結束打一次；單筆延後對齊
         // 核准後課表異動：用 requestsOnly（含已核准列），勿只拉 pending
         if (!opts.skipSoftRefresh) softRefreshInBackground({ delay: 2800, requestsOnly: true });
+        loadHomeroomRecords({ silent: true });
       } catch (e) {
         console.error('核准出單失敗：', e);
-        if (!silent) showToast('核准失敗：' + e.message, 'error');
+        if (!silent) {
+          var errMsg = e && e.message ? String(e.message) : String(e || '未知錯誤');
+          await showConfirm('核准出單失敗：\n\n' + errMsg + '\n\n（系統將保持待簽核狀態，請檢查數據後再試。）', '⚠️ 核准失敗警示', { alertOnly: true });
+        }
         throw e;
       } finally {
         if (!silent) loading.value = false;
@@ -350,7 +355,10 @@ window.UiApproval = (function () {
         if (!opts.skipSoftRefresh) softRefreshInBackground({ delay: 2800 });
       } catch (e) {
         console.error(e);
-        if (!silent) showToast('駁回失敗：' + e.message, 'error');
+        if (!silent) {
+          var errMsg = e && e.message ? String(e.message) : String(e || '未知錯誤');
+          await showConfirm('駁回簽核失敗：\n\n' + errMsg, '⚠️ 駁回失敗警示', { alertOnly: true });
+        }
         throw e;
       } finally {
         if (!silent) loading.value = false;
@@ -431,6 +439,7 @@ window.UiApproval = (function () {
       );
       // 整批只對齊一次（核准＝課表異動）
       if (ok > 0) softRefreshInBackground({ delay: 1200, requestsOnly: true });
+      if (ok > 0) loadHomeroomRecords({ silent: true });
       if (ok > 0 && printIds.length > 0) {
         lastBatchPrintIds.value = printIds;
         showBatchPrintPrompt.value = true;

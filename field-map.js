@@ -116,6 +116,7 @@ window.FieldMap = (function () {
       email: pick(t, ['教師Email', 'email']),
       name: pick(t, ['教師姓名', 'name']),
       subject: pick(t, ['授課科目', '任課科目', 'subject']) || '',
+      jobTitle: String(pick(t, ['職務', '職稱', 'jobTitle']) || ''),
       role: normalizeRole(pick(t, ['系統角色', 'role']) || 'teacher'),
       baseHours: asInt(pick(t, ['基本鐘點', 'baseHours']), 16),
       // 折抵額度：釋出 1 節＝0.5；扣額度須滿 1 才扣 1
@@ -166,6 +167,8 @@ window.FieldMap = (function () {
       subFee: pick(sub, ['經費來源', 'subFee']) || '',
       reason: pick(sub, ['請假事由', 'reason']) || '',
       note: pick(sub, ['備註', 'note']) || '',
+      leaveTimeType: pick(sub, ['請假時間類型', 'leaveTimeType']) || '',
+      leaveTime: pick(sub, ['請假時間', 'leaveTime', 'timeRange']) || '',
       isEmptySlotAssign: (function () {
         const reason = String(pick(sub, ['請假事由', 'reason']) || '').trim();
         const note = String(pick(sub, ['備註', 'note']) || '');
@@ -222,6 +225,8 @@ window.FieldMap = (function () {
       targetPeriod: targetPeriod === undefined || targetPeriod === null || targetPeriod === '' ? null : asInt(targetPeriod, null),
       subFee: pick(r, ['經費來源', 'subFee']) || '',
       reason: pick(r, ['請假事由', 'reason']) || '',
+      leaveTimeType: pick(r, ['請假時間類型', 'leaveTimeType']) || '',
+      leaveTime: pick(r, ['請假時間', 'leaveTime', 'timeRange']) || '',
       note: pick(r, ['備註', 'note']) || '',
       printed: asBool(pick(r, ['是否已印', 'printed'])),
       createdAt: pick(r, ['建立時間', 'createdAt']) || '',
@@ -265,6 +270,7 @@ window.FieldMap = (function () {
       "教師姓名": t.name || t["教師姓名"],
       "授課科目": subject,
       "任課科目": subject,
+      "職務": t.jobTitle || t["職務"] || t["職稱"] || "",
       "系統角色": normalizeRole(t.role || t["系統角色"] || 'teacher'),
       "基本鐘點": (function () {
         if (t.baseHours === 0 || t.baseHours === '0') return 0;
@@ -280,6 +286,31 @@ window.FieldMap = (function () {
         return 16;
       })(),
       "折抵額度": parseInt(quota, 10) || 0
+    };
+  }
+
+  /** 代導紀錄：Sheets → 前端 */
+  function mapHomeroomRecord(r) {
+    return {
+      id: String(pick(r, ['代導紀錄ID', 'id']) || ''),
+      semesterId: String(pick(r, ['學期代號', 'semesterId']) || ''),
+      sourceRequestId: String(pick(r, ['來源申請單ID', 'sourceRequestId']) || ''),
+      originalTeacherEmail: String(pick(r, ['原導師Email', 'originalTeacherEmail']) || '').toLowerCase(),
+      originalTeacherName: String(pick(r, ['原導師姓名', 'originalTeacherName']) || ''),
+      className: String(pick(r, ['班級', 'className']) || ''),
+      date: String(pick(r, ['代導日期', 'date']) || '').slice(0, 10),
+      leaveTimeType: String(pick(r, ['請假時間類型', 'leaveTimeType']) || ''),
+      leaveTime: String(pick(r, ['請假時間', 'leaveTime', 'timeRange']) || ''),
+      actualTeacherEmail: String(pick(r, ['代導教師Email', 'actualTeacherEmail']) || '').toLowerCase(),
+      actualTeacherName: String(pick(r, ['代導教師姓名', 'actualTeacherName']) || ''),
+      periodCount: asFloat(pick(r, ['代導節數', 'periodCount']), 1),
+      feeAmount: asFloat(pick(r, ['鐘點費', 'feeAmount']), 455),
+      status: String(pick(r, ['狀態', 'status']) || ''),
+      enabled: pick(r, ['啟用', 'enabled']) === undefined || pick(r, ['啟用', 'enabled']) === '' ? true : asBool(pick(r, ['啟用', 'enabled'])),
+      createdAt: String(pick(r, ['建立時間', 'createdAt']) || ''),
+      updatedAt: String(pick(r, ['更新時間', 'updatedAt']) || ''),
+      operatorEmail: String(pick(r, ['操作者', 'operatorEmail']) || ''),
+      note: String(pick(r, ['備註', 'note']) || '')
     };
   }
 
@@ -300,6 +331,8 @@ window.FieldMap = (function () {
       "異動類型": opts.type,
       "經費來源": opts.subFee || '無',
       "請假事由": opts.reason || '',
+      "請假時間類型": opts.leaveTimeType || '',
+      "請假時間": opts.leaveTime || '',
       "是否已印": opts.printed === true || opts.printed === 'TRUE' ? 'TRUE' : 'FALSE',
       "備註": opts.note || ''
     };
@@ -396,6 +429,7 @@ window.FieldMap = (function () {
     mapTeacher,
     mapSchedule,
     mapSubstitution,
+    mapHomeroomRecord,
     mapRequest,
     teacherToSheet,
     substitutionToSheet,

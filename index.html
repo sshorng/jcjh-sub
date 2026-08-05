@@ -1544,9 +1544,67 @@
                   <label class="form-label">授課週數</label>
                   <input type="number" class="form-input p-9-12" min="1" max="6" v-model.number="reportWeeksCount" @change="calculateMonthlyReport">
                 </div>
-                <p class="billing-toolbar-hint">Excel 含「大鐘點1-7」與「第8節明細」兩張工作表</p>
+                <p class="billing-toolbar-hint">Excel 含「大鐘點1-7」與「第8節明細」與「代導公付」清冊</p>
               </div>
 
+              <div v-if="isAdmin" class="card" style="margin:14px 0;padding:16px;background:#fffdf6;border:1px solid #ebd9a2;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,0.03);">
+                <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid #f2e4bd;">
+                  <div style="display:flex;align-items:center;flex-wrap:wrap;gap:10px;">
+                    <strong style="font-size:1.02rem;color:#5a4310;">👩‍🏫 本月代導紀錄與費用管理（{{ reportMonth || '全期' }}）</strong>
+                    <span class="status-badge" style="background:#e8f4ff;color:#1864ab;font-size:0.78rem;">共 {{ currentMonthHomeroomRecords.length }} 筆</span>
+                    <span class="status-badge" style="background:#e6fcf5;color:#0ca678;font-size:0.78rem;">已指定 {{ currentMonthHomeroomAssignedCount }} 筆</span>
+                    <span v-if="currentMonthHomeroomPendingCount > 0" class="status-badge status-pending-admin" style="font-size:0.78rem;">待指定 {{ currentMonthHomeroomPendingCount }} 筆</span>
+                    <span style="font-size:0.9rem;font-weight:bold;color:#c92a2a;margin-left:4px;">小計 NT$ {{ currentMonthHomeroomFeeTotal }} 元</span>
+                  </div>
+                  <button type="button" class="btn btn-secondary" style="padding:6px 12px;font-size:0.82rem;background:#fff;border:1px solid #d9b86c;color:#6b4e0a;" @click="openManualHomeroomModal">
+                    ➕ 手動新增代導費
+                  </button>
+                </div>
+
+                <div v-if="homeroomRecordsLoading" style="font-size:0.84rem;color:var(--text-secondary);padding:8px 0;">正在同步最新代導清冊…</div>
+                <div v-else-if="currentMonthHomeroomRecords.length === 0" style="font-size:0.84rem;color:var(--text-secondary);padding:10px 0;">
+                  目前本月份尚無代導紀錄。若有導師無課或已調課請假，可點選上方「➕ 手動新增代導費」補建。
+                </div>
+                <div v-else style="display:flex;flex-direction:column;gap:10px;">
+                  <div v-for="r in currentMonthHomeroomRecords" :key="r.id" style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:10px 12px;background:#fff;border:1px solid #f0e2b8;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.02);">
+                    <div style="flex:1;min-width:260px;font-size:0.85rem;">
+                      <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
+                        <span style="font-weight:bold;color:#2b2b2b;">{{ r.date }}</span>
+                        <span style="background:#f1f3f5;padding:2px 6px;border-radius:4px;font-weight:600;color:#495057;">{{ r.className || '導師班' }}</span>
+                        <strong>{{ r.originalTeacherName || r.originalTeacherEmail }}</strong>
+                        <span v-if="r.sourceRequestId === 'manual'" class="status-badge" style="background:#fff3bf;color:#f59f00;font-size:0.72rem;padding:1px 5px;">手動建立</span>
+                      </div>
+                      <div style="font-size:0.78rem;color:var(--text-secondary);">
+                        請假時間：{{ r.leaveTimeType || '' }} {{ r.leaveTime || '—' }}｜鐘點費：1節（NT$ {{ r.feeAmount || 455 }}）
+                        <span v-if="r.note" style="margin-left:6px;color:#868e96;">({{ r.note }})</span>
+                      </div>
+                    </div>
+
+                    <div style="display:flex;align-items:center;gap:8px;">
+                      <div v-if="!r.actualTeacherEmail" style="display:flex;align-items:center;gap:6px;">
+                        <input 
+                          type="text" 
+                          class="form-input" 
+                          style="width:180px;padding:6px 10px;font-size:0.82rem;" 
+                          placeholder="— 搜尋或選擇代導教師 —" 
+                          :list="'dl-hr-cand-'+r.id"
+                          :value="getTeacherNameByEmail(homeroomAssignSelections[r.id])"
+                          @input="onHomeroomInputSelect(r, $event.target.value)"
+                        >
+                        <datalist :id="'dl-hr-cand-'+r.id">
+                          <option v-for="t in getHomeroomCoverCandidates(r)" :key="'hr-cand-opt-'+r.id+'-'+t.email" :value="t.name + '（' + (t.subject || '教師') + '）'"></option>
+                        </datalist>
+                        <button type="button" class="btn btn-primary" style="padding:6px 12px;font-size:0.8rem;" :disabled="homeroomRecordsLoading || loading || !homeroomAssignSelections[r.id]" @click="assignHomeroomTeacher(r)">{{ homeroomRecordsLoading || loading ? '⏳ 存檔中...' : '指定存檔' }}</button>
+                      </div>
+                      <div v-else style="font-size:0.83rem;color:#0ca678;font-weight:600;display:flex;align-items:center;gap:8px;">
+                        <span>✅ 代導：{{ r.actualTeacherName || r.actualTeacherEmail }}</span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" style="padding:2px 6px;font-size:0.75rem;" title="重新指定代導教師" @click="r.actualTeacherEmail = ''; homeroomAssignSelections[r.id] = '';">修改</button>
+                      </div>
+                      <button type="button" class="btn btn-sm btn-outline-danger" style="padding:4px 8px;font-size:0.78rem;margin-left:4px;" title="撤銷這筆代導紀錄" @click="deleteHomeroomRecord(r)">撤銷</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
               <div class="report-table-container billing-table-wrap">
                 <table class="custom-table billing-table">
                   <thead>
@@ -1622,6 +1680,7 @@
                     <th>姓名</th>
                     <th>Email (帳號)</th>
                     <th>科目</th>
+                    <th>職務</th>
                     <th>基本鐘點 (基鐘)</th>
                     <th title="可用餘額；點數字可看額度帳本歷程">折抵額度</th>
                     <th>系統角色</th>
@@ -1633,6 +1692,7 @@
                     <td><strong>{{ t.name }}</strong></td>
                     <td>{{ t.email }}</td>
                     <td>{{ t.subject }}</td>
+                    <td>{{ t.jobTitle || '—' }}</td>
                     <td>
                       <!-- 基礎基本鐘點設定 -->
                       <input 
@@ -2404,6 +2464,22 @@
                   </select>
                 </div>
 
+                <div v-if="pendingRequestData.mode === 'substitution'" class="form-group" style="grid-column:1 / -1;">
+                  <label class="form-label">請假時間（代課清冊）</label>
+                  <div style="display:flex;flex-wrap:wrap;gap:7px;align-items:center;">
+                    <button type="button" class="btn btn-secondary" style="padding:6px 10px;font-size:0.78rem;" @click="setLeaveTimePreset('全天')">全天（{{ getLeaveTimePresetRange(pendingRequestData.leaveTeacher, '全天') }}）</button>
+                    <button type="button" class="btn btn-secondary" style="padding:6px 10px;font-size:0.78rem;" @click="setLeaveTimePreset('上午')">上午（{{ getLeaveTimePresetRange(pendingRequestData.leaveTeacher, '上午') }}）</button>
+                    <button type="button" class="btn btn-secondary" style="padding:6px 10px;font-size:0.78rem;" @click="setLeaveTimePreset('下午')">下午（{{ getLeaveTimePresetRange(pendingRequestData.leaveTeacher, '下午') }}）</button>
+                  </div>
+                  <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px;">
+                    <input type="time" class="form-input" style="width:125px;" v-model="pendingRequestData.leaveTimeStart" @change="updatePendingLeaveTime">
+                    <span>至</span>
+                    <input type="time" class="form-input" style="width:125px;" v-model="pendingRequestData.leaveTimeEnd" @change="updatePendingLeaveTime">
+                    <span style="font-size:0.78rem;color:var(--text-secondary);">目前：{{ pendingRequestData.leaveTimeType || '—' }}（{{ pendingRequestData.leaveTime || '—' }}）</span>
+                  </div>
+                  <small style="display:block;margin-top:5px;color:var(--text-muted);">行政人員預設全天 08:00~17:00；非行政預設全天 08:00~16:00，時間可自行修改。</small>
+                </div>
+
                 <!-- 鐘點費 (僅代課模式；第8節鎖定計畫經費) -->
                 <div class="form-group" data-tour="compare-fee" v-if="pendingRequestData.mode === 'substitution'">
                   <label class="form-label text-success">代課鐘點費結算方式</label>
@@ -2476,6 +2552,28 @@
               </div>
 
               <!-- 舊的管理員簽核模式已移至最上方顯眼處 -->
+            </div>
+
+            <!-- 送出前先問對方 LINE 範本 -->
+            <div v-if="askFirstLineText && !pendingRequestData.isBatch" data-tour="ask-first-line" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:14px;margin-top:14px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+                <span style="font-weight:600;color:#15803d;font-size:0.85rem;">💬 送出前先問對方（LINE 範本）</span>
+                <div class="flex-gap-6-shrink">
+                  <button type="button" class="btn btn-secondary" style="padding:4px 10px;font-size:0.75rem;line-height:1.2;" @click="copyLineMessage(askFirstLineText)">📋 複製</button>
+                  <button type="button" class="btn btn-success" style="padding:4px 10px;font-size:0.75rem;line-height:1.2;background:#06c755;border-color:#05b04b;" @click="sendLineMessage(askFirstLineText)">💬 LINE 傳送</button>
+                </div>
+              </div>
+              <textarea
+                readonly
+                class="form-input"
+                rows="7"
+                style="width:100%;font-family:monospace;font-size:0.78rem;background:#f8fafc;border:1px solid #d1fae5;border-radius:6px;padding:8px;resize:none;line-height:1.4;"
+                :value="askFirstLineText"
+                @focus="$event.target.select()"
+              ></textarea>
+              <span style="font-size:0.72rem;color:#166534;display:block;margin-top:6px;line-height:1.4;">
+                * 送出前先傳 LINE 詢問對方意願，對方同意後再送出申請，核准成功率更高。
+              </span>
             </div>
 
           </div>
@@ -2697,6 +2795,13 @@
                     </select>
                   </div>
                   <div class="form-group mb-0">
+                    <label class="form-label text-xs">職務（選填）</label>
+                    <select class="form-select btn-input-sm" v-model="teacherMappingFields.jobTitle">
+                      <option value="">--無／不填--</option>
+                      <option v-for="h in teacherExcelHeaders" :key="h" :value="h">{{ h }}</option>
+                    </select>
+                  </div>
+                  <div class="form-group mb-0">
                     <label class="form-label text-xs">基本鐘點 (選填)</label>
                     <select class="form-select btn-input-sm" v-model="teacherMappingFields.baseHours">
                       <option value="">--預設 16 節--</option>
@@ -2784,6 +2889,10 @@
             <div class="form-group">
               <label class="form-label">授課科目</label>
               <input type="text" class="form-input" placeholder="國文" v-model="teacherForm.subject">
+            </div>
+            <div class="form-group">
+              <label class="form-label">職務（含「導師」即列入代導費）</label>
+              <input type="text" class="form-input" placeholder="例如：七年級導師、行政教師" v-model="teacherForm.jobTitle">
             </div>
             <div class="form-group">
               <label class="form-label">系統角色</label>
@@ -3002,6 +3111,19 @@
                 <option value="" disabled>請選擇假別...</option>
                 <option v-for="r in leaveReasonOptions" :key="'he-r-'+r" :value="r">{{ r }}</option>
               </select>
+            </div>
+            <div class="form-group m-0" v-if="historyEditForm.type !== 'exchange' && historyEditForm.type !== '對調'">
+              <label class="form-label">請假時間（代課清冊）</label>
+              <div style="display:flex;gap:8px;align-items:center;">
+                <select class="form-select" style="width:110px;" v-model="historyEditForm.leaveTimeType">
+                  <option value="">未填</option>
+                  <option value="全天">全天</option>
+                  <option value="上午">上午</option>
+                  <option value="下午">下午</option>
+                  <option value="自訂">自訂</option>
+                </select>
+                <input type="text" class="form-input" placeholder="如 08:00~16:00" v-model="historyEditForm.leaveTime">
+              </div>
             </div>
             <div class="form-group m-0" v-if="historyEditForm.type !== 'exchange' && historyEditForm.type !== '對調'">
               <label class="form-label">經費類別</label>
@@ -3362,6 +3484,79 @@
               :disabled="isSubmitting || loading"
               @click="executeEmptySlotAssign"
             >確認排入並扣額度</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 手動新增代導費 Modal -->
+      <div v-if="showManualHomeroomModal" class="modal-overlay" @click.self="showManualHomeroomModal = false">
+        <div class="modal-card" role="dialog" aria-modal="true" aria-label="手動新增代導費" style="max-width:480px;">
+          <div class="modal-header">
+            <h3>➕ 手動新增代導費</h3>
+            <button type="button" class="btn-close" @click="showManualHomeroomModal = false" aria-label="關閉">&times;</button>
+          </div>
+          <div class="modal-body" style="display:flex;flex-direction:column;gap:12px;">
+            <p style="margin:0;font-size:0.82rem;color:var(--text-secondary);line-height:1.45;">
+              常用於導師無課或已調課請假、系統未自動產生代課單時，手動補建一筆代導費（每筆 1 節 / NT$ 455 元）。
+            </p>
+
+            <div class="form-group" style="margin:0;">
+              <label class="form-label">請假導師 *</label>
+              <select class="form-select" v-model="manualHomeroomForm.leaveEmail" @change="onManualHomeroomLeaveTeacherChange">
+                <option value="">請選擇原導師…</option>
+                <option v-for="t in homeroomTeachersList" :key="'manual-hr-t-'+t.email" :value="t.email">
+                  {{ t.name }}（{{ t.jobTitle }}）
+                </option>
+              </select>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+              <div class="form-group" style="margin:0;">
+                <label class="form-label">代導日期 *</label>
+                <input type="date" class="form-input" v-model="manualHomeroomForm.date">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label class="form-label">請假時間類型</label>
+                <select class="form-select" v-model="manualHomeroomForm.leaveTimeType">
+                  <option value="全天">全天</option>
+                  <option value="上午">上午</option>
+                  <option value="下午">下午</option>
+                  <option value="自訂">自訂</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-group" style="margin:0;">
+              <label class="form-label">請假時間區間</label>
+              <input type="text" class="form-input" v-model="manualHomeroomForm.leaveTime" placeholder="例如：08:00~16:00">
+            </div>
+
+            <div class="form-group" style="margin:0;">
+              <label class="form-label">代導教師（選填，留空為待指定）</label>
+              <input 
+                type="text" 
+                class="form-input" 
+                style="width:100%;padding:6px 10px;font-size:0.82rem;" 
+                placeholder="— 搜尋或選擇代導教師 —" 
+                list="dl-manual-cover-teachers"
+                :value="getTeacherNameByEmail(manualHomeroomForm.actualTeacherEmail)"
+                @input="onManualCoverTeacherInput($event.target.value)"
+              >
+              <datalist id="dl-manual-cover-teachers">
+                <option v-for="t in teachersListDetails" :key="'man-opt-'+t.email" :value="t.name + '（' + (t.subject || '教師') + '）'"></option>
+              </datalist>
+            </div>
+
+            <div class="form-group" style="margin:0;">
+              <label class="form-label">備註（選填）</label>
+              <input type="text" class="form-input" v-model="manualHomeroomForm.note" placeholder="例如：導師無課請假手動補建">
+            </div>
+          </div>
+          <div class="modal-footer" style="margin-top:10px;">
+            <button type="button" class="btn btn-secondary" :disabled="homeroomRecordsLoading || loading" @click="showManualHomeroomModal = false">取消</button>
+            <button type="button" class="btn btn-primary" :disabled="homeroomRecordsLoading || loading || !manualHomeroomForm.leaveEmail || !manualHomeroomForm.date" @click="saveManualHomeroomRecord">
+              {{ homeroomRecordsLoading || loading ? '⏳ 儲存中...' : '💾 建立代導紀錄' }}
+            </button>
           </div>
         </div>
       </div>

@@ -23,6 +23,26 @@ window.UiAdmin = (function () {
     var showHistoryEditModal = deps.showHistoryEditModal;
     var requestsList = deps.requestsList;
 
+    var executeOptimisticAction = deps.executeOptimisticAction || async function (opts) {
+      opts = opts || {};
+      var snapshot = null;
+      if (typeof opts.optimistic === 'function') snapshot = opts.optimistic();
+      try {
+        var res = typeof opts.apiCall === 'function' ? await opts.apiCall() : null;
+        if (typeof opts.onSuccess === 'function') opts.onSuccess(res);
+        if (opts.successMessage) showToast(opts.successMessage, 'success', 3000);
+        return res;
+      } catch (err) {
+        console.error('背景同步失敗：', err);
+        if (typeof opts.rollback === 'function') opts.rollback(snapshot);
+        var errMsg = err && err.message ? String(err.message) : String(err || '未知錯誤');
+        var title = opts.errorTitle || '⚠️ 背景同步失敗警示';
+        var msg = (opts.errorMessagePrefix ? (opts.errorMessagePrefix + '：\n\n') : '') + errMsg + '\n\n（系統已嘗試還原本地資料，請檢查網路或數據後再試。）';
+        await showConfirm(msg, title, { alertOnly: true });
+        throw err;
+      }
+    };
+
     // 可注入既有 ref（app.js lazy 載入時共用同一組 ref，模板不需重建）
     function useRef(key, init) {
       var existing = deps[key];
@@ -32,7 +52,7 @@ window.UiAdmin = (function () {
     var showImportTeachersModal = useRef('showImportTeachersModal', false);
     var teacherExcelData = useRef('teacherExcelData', []);
     var teacherExcelHeaders = useRef('teacherExcelHeaders', []);
-    var teacherMappingFields = useRef('teacherMappingFields', { name: '', email: '', subject: '', baseHours: '', role: '' });
+    var teacherMappingFields = useRef('teacherMappingFields', { name: '', email: '', subject: '', jobTitle: '', baseHours: '', role: '' });
     var teacherImportPreview = useRef('teacherImportPreview', null);
 
     var showScheduleEditModal = useRef('showScheduleEditModal', false);
@@ -43,7 +63,7 @@ window.UiAdmin = (function () {
 
     var showTeacherModal = useRef('showTeacherModal', false);
     var teacherModalMode = useRef('teacherModalMode', 'add');
-    var teacherForm = useRef('teacherForm', { email: '', name: '', subject: '', role: 'teacher', baseHours: 16, mutualQuota: 0 });
+    var teacherForm = useRef('teacherForm', { email: '', name: '', subject: '', jobTitle: '', role: 'teacher', baseHours: 16, mutualQuota: 0 });
 
     var excelData = useRef('excelData', []);
     var excelHeaders = useRef('excelHeaders', []);
@@ -750,7 +770,7 @@ window.UiAdmin = (function () {
 
     function openAddTeacherModal() {
       teacherModalMode.value = 'add';
-      teacherForm.value = { email: '', name: '', subject: '', role: 'teacher', baseHours: 16, mutualQuota: 0 };
+      teacherForm.value = { email: '', name: '', subject: '', jobTitle: '', role: 'teacher', baseHours: 16, mutualQuota: 0 };
       showTeacherModal.value = true;
     }
 
@@ -760,6 +780,7 @@ window.UiAdmin = (function () {
         email: t.email,
         name: t.name,
         subject: t.subject,
+        jobTitle: t.jobTitle || '',
         role: t.role,
         baseHours: t.baseHours,
         mutualQuota: (function () {
@@ -777,6 +798,7 @@ window.UiAdmin = (function () {
         '教師Email': email,
         '教師姓名': teacherForm.value.name.trim(),
         '授課科目': teacherForm.value.subject.trim(),
+        '職務': String(teacherForm.value.jobTitle || '').trim(),
         '系統角色': teacherForm.value.role,
         '基本鐘點': (teacherForm.value.baseHours === 0 || teacherForm.value.baseHours === '0')
           ? 0
@@ -841,7 +863,7 @@ window.UiAdmin = (function () {
           teacherExcelHeaders.value = Object.keys(sheetData[0]);
           teacherExcelData.value = sheetData;
           teacherImportPreview.value = null;
-          teacherMappingFields.value = { name: '', email: '', subject: '', baseHours: '', role: '' };
+          teacherMappingFields.value = { name: '', email: '', subject: '', jobTitle: '', baseHours: '', role: '' };
           teacherExcelHeaders.value.forEach(function (h) {
             var low = h.toLowerCase();
             if (!teacherMappingFields.value.name &&
@@ -856,6 +878,10 @@ window.UiAdmin = (function () {
             if (!teacherMappingFields.value.subject &&
                 (h.indexOf('科目') >= 0 || h.indexOf('領域') >= 0 || h.indexOf('專長') >= 0 || low.indexOf('subject') >= 0)) {
               teacherMappingFields.value.subject = h;
+            }
+            if (!teacherMappingFields.value.jobTitle &&
+                (h.indexOf('職務') >= 0 || h.indexOf('職稱') >= 0 || low.indexOf('job') >= 0 || low.indexOf('title') >= 0)) {
+              teacherMappingFields.value.jobTitle = h;
             }
             if (!teacherMappingFields.value.baseHours &&
                 (h.indexOf('基本') >= 0 || h.indexOf('基鐘') >= 0 || h.indexOf('鐘點') >= 0 ||
@@ -888,6 +914,9 @@ window.UiAdmin = (function () {
         var name = String(row[teacherMappingFields.value.name] || '').trim();
         var email = String(row[teacherMappingFields.value.email] || '').trim().toLowerCase();
         var subject = String(row[teacherMappingFields.value.subject] || '').trim();
+        var jobTitle = teacherMappingFields.value.jobTitle
+          ? String(row[teacherMappingFields.value.jobTitle] || '').trim()
+          : '';
         var lineNo = i + 2;
         var snippet = [name, email, subject].filter(Boolean).join('｜') || '（空列）';
         if (!name && !email && !subject) continue;
@@ -950,6 +979,7 @@ window.UiAdmin = (function () {
           '教師Email': email,
           '教師姓名': name,
           '授課科目': subject,
+          '職務': jobTitle,
           '基本鐘點': baseHours,
           '系統角色': role,
           _isUpdate: exists
@@ -1025,6 +1055,7 @@ window.UiAdmin = (function () {
             '教師Email': r['教師Email'],
             '教師姓名': r['教師姓名'],
             '授課科目': r['授課科目'],
+            '職務': r['職務'] || '',
             '基本鐘點': r['基本鐘點'],
             '系統角色': r['系統角色']
           };
@@ -1181,6 +1212,8 @@ window.UiAdmin = (function () {
         targetDayOfWeek: src.targetDayOfWeek || dayOfWeekFromDateStr(tgtDate),
         targetPeriod: parseInt(src.targetPeriod || rec.targetPeriod || 1, 10) || 1,
         reason: reason,
+        leaveTimeType: src.leaveTimeType || rec.leaveTimeType || '',
+        leaveTime: src.leaveTime || rec.leaveTime || '',
         subFee: isEx ? '無' : (src.subFee || rec.subFee || '自費代課'),
         note: src.note || rec.note || '',
         printed: !!(src.printed != null ? src.printed : rec.printed)
@@ -1238,6 +1271,8 @@ window.UiAdmin = (function () {
           targetDayOfWeek: isEx ? (form.targetDayOfWeek || dayOfWeekFromDateStr(form.targetDate)) : '',
           targetPeriod: isEx ? (parseInt(form.targetPeriod, 10) || 1) : '',
           reason: form.reason || '',
+          leaveTimeType: isEx ? '' : (form.leaveTimeType || ''),
+          leaveTime: isEx ? '' : (form.leaveTime || ''),
           subFee: isEx ? '無' : (form.subFee || '自費代課'),
           note: form.note || '',
           printed: !!form.printed

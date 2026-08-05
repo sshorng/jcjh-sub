@@ -707,6 +707,9 @@ createApp({
     const teachersList = ref([]); // 所有教師 [{email, name, subject, role, baseHours}]
     const allSchedules = ref([]); // 基礎課表 [{id, teacherEmail, teacherName, dayOfWeek, period, className, subject, attr}]
     const substitutionRecords = ref([]);
+    const homeroomRecords = ref([]);
+    const homeroomAssignSelections = ref({});
+    const homeroomRecordsLoading = ref(false);
     /**
      * 從「已組裝的 substitution 列 + 基礎課表」解析教師在該日該節的有效班科
      * 支援多段調代鏈：沿 original→actual 走到目前 email，班科取鏈上第一筆有值的 record／起點基礎課
@@ -831,6 +834,8 @@ createApp({
           r.className || '',
           r.subject || '',
           r.subFee || '',
+          r.leaveTimeType || '',
+          r.leaveTime || '',
           r.printed ? '1' : '0',
           r.updatedAt || r.createdAt || ''
         ].join('\x1f'));
@@ -903,6 +908,8 @@ createApp({
             printed: req.printed,
             subFee: req.subFee,
             reason: req.reason,
+            leaveTimeType: req.leaveTimeType || '',
+            leaveTime: req.leaveTime || '',
             note: req.note,
             isEmptySlotAssign: emptyAssign
           });
@@ -975,6 +982,8 @@ createApp({
             printed: req.printed,
             subFee: '無',
             reason: req.reason,
+            leaveTimeType: req.leaveTimeType || '',
+            leaveTime: req.leaveTime || '',
             note: req.note
           });
 
@@ -992,6 +1001,8 @@ createApp({
             printed: req.printed,
             subFee: '無',
             reason: req.reason,
+            leaveTimeType: req.leaveTimeType || '',
+            leaveTime: req.leaveTime || '',
             note: req.note
           });
         }
@@ -2200,6 +2211,39 @@ ${leaveLine}`;
       return text;
     };
 
+    /** 取姓名後兩字（先剔除括號註記，避免尾巴被切到） */
+    const shortTeacherName = (fullName) => {
+      const base = String(fullName || '').replace(/[（(].*$/, '').trim();
+      return base.length > 2 ? base.slice(-2) : base;
+    };
+
+    /**
+     * 送出前「先問對方」LINE 範本：只有詢問，沒有同意／拒絕連結（尚未送出）
+     * opts: { targetName, isExchange, dateA, dayA, periodA, classA, subjectA,
+     *         dateB, dayB, periodB, classB, subjectB, reason, leaveTime }
+     */
+    const buildAskFirstLineText = (opts) => {
+      const name = opts.targetName || '老師';
+      const requester = opts.requesterName ? opts.requesterName + '老師' : '我';
+      const footer = `\n\n如您方便，我再送出申請，再麻煩您確認一下喔～非常感謝！`;
+      if (opts.isExchange) {
+        const dayA = getWeekDayText(opts.dayA);
+        const dayB = getWeekDayText(opts.dayB);
+        const lineA = `${opts.dateA || ''}（${dayA}）第 ${opts.periodA || ''} 節 ${opts.classA || ''} ${opts.subjectA || ''}`.replace(/\s+/g, ' ').trim();
+        const lineB = `${opts.dateB || ''}（${dayB}）第 ${opts.periodB || ''} 節 ${opts.classB || ''} ${opts.subjectB || ''}`.replace(/\s+/g, ' ').trim();
+        return `${name}老師您好！
+想跟您調課，${requester}的 ${lineA}，想與您的 ${lineB} 對調，不知是否方便？${footer}`;
+      }
+      const dayA = getWeekDayText(opts.dayA);
+      const line = `${opts.dateA || ''}（${dayA}）第 ${opts.periodA || ''} 節 ${opts.classA || ''} ${opts.subjectA || ''}`.replace(/\s+/g, ' ').trim();
+      let text = `${name}老師您好！
+想請問您，${line}，不知是否方便幫${requester}代課？`;
+      const extra = [];
+      if (opts.reason) extra.push(`假別／事由：${opts.reason}`);
+      if (extra.length) text += `\n（${extra.join('，')}）`;
+      return text + footer;
+    };
+
     /**
      * 批次 LINE：一則訊息只含「該受邀人」的節次
      * 若該人只有 1 節 → 改用一般單節邀請格式（不出現批次用語）
@@ -2333,7 +2377,46 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     };
     const pendingRequestData = ref({
       mode: '', leaveTeacher: '', subTeacher: '', cls: '', subject: '', date: '', timeKey: '',
-      reason: '', subFee: '', dateB: '', timeB: '', subB: '', note: ''
+      reason: '', subFee: '', dateB: '', timeB: '', subB: '', note: '',
+      leaveTimeType: '', leaveTimeStart: '', leaveTimeEnd: '', leaveTime: ''
+    });
+    // 送出前「先問對方」LINE 範本：依當前申請資料即時更新（批次暫不提供）
+    const askFirstLineText = computed(() => {
+      const p = pendingRequestData.value || {};
+      if (!p.mode || p.isBatch) return '';
+      const targetEmail = String(p.subTeacher || '').trim();
+      if (!targetEmail) return '';
+      // 非本人申請（行政代申請／教學組直接核准等）：受話對象是「請假老師」而非「我」
+      const asProxy = !!(
+        p.leaveTeacher
+        && user.value
+        && String(p.leaveTeacher).toLowerCase() !== String(user.value.email || '').toLowerCase()
+      );
+      const tkA = (window.DateUtils && window.DateUtils.decodeTimeKey)
+        ? window.DateUtils.decodeTimeKey(p.timeKey)
+        : { day: parseInt(String(p.timeKey || '').charAt(0), 10), period: parseInt(String(p.timeKey || '').slice(-1), 10) };
+      const opts = {
+        targetName: shortTeacherName(getTeacherNameByEmail(targetEmail) || targetEmail),
+        requesterName: asProxy ? shortTeacherName(getTeacherNameByEmail(p.leaveTeacher) || p.leaveTeacher) : '',
+        isExchange: p.mode === 'exchange',
+        dateA: p.date,
+        dayA: tkA.day,
+        periodA: tkA.period,
+        classA: p.cls,
+        subjectA: p.subject,
+        reason: p.reason
+      };
+      if (p.mode === 'exchange') {
+        const tkB = (window.DateUtils && window.DateUtils.decodeTimeKey)
+          ? window.DateUtils.decodeTimeKey(p.timeB)
+          : { day: parseInt(String(p.timeB || '').charAt(0), 10), period: parseInt(String(p.timeB || '').slice(-1), 10) };
+        opts.dateB = p.dateB;
+        opts.dayB = tkB.day;
+        opts.periodB = tkB.period;
+        opts.classB = p.subBClass || '';
+        opts.subjectB = p.subB || '';
+      }
+      return buildAskFirstLineText(opts);
     });
     const selectedRecordIds = ref([]);
     const showDevDropdown = ref(false);
@@ -2710,6 +2793,8 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       targetDayOfWeek: 1,
       targetPeriod: 1,
       reason: '',
+      leaveTimeType: '',
+      leaveTime: '',
       subFee: '自費代課',
       note: '',
       printed: false
@@ -2857,6 +2942,41 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
 
     const isAdmin = computed(() => userRole.value === 'admin');
     const isStaff = computed(() => userRole.value === 'staff');
+    const getLeaveTimeDefaults = (leaveEmail) => {
+      const t = lookupTeacher(leaveEmail);
+      const isAdministrative = !!(t && (t.role === 'admin' || t.role === 'staff'));
+      const end = isAdministrative ? '17:00' : '16:00';
+      return { type: '全天', start: '08:00', end, range: '08:00~' + end };
+    };
+    const getLeaveTimePresetRange = (leaveEmail, type) => {
+      const d = getLeaveTimeDefaults(leaveEmail);
+      if (type === '上午') return d.start + '~12:00';
+      if (type === '下午') return '12:00~' + d.end;
+      return d.range;
+    };
+    const setLeaveTimePreset = (type) => {
+      const p = pendingRequestData.value || {};
+      if (p.mode !== 'substitution') return;
+      const d = getLeaveTimeDefaults(p.leaveTeacher);
+      const start = type === '下午' ? '12:00' : d.start;
+      const end = type === '上午' ? '12:00' : d.end;
+      pendingRequestData.value = Object.assign({}, p, {
+        leaveTimeType: type,
+        leaveTimeStart: start,
+        leaveTimeEnd: end,
+        leaveTime: start + '~' + end
+      });
+    };
+    const updatePendingLeaveTime = () => {
+      const p = pendingRequestData.value || {};
+      if (p.mode !== 'substitution') return;
+      const start = String(p.leaveTimeStart || '').trim();
+      const end = String(p.leaveTimeEnd || '').trim();
+      pendingRequestData.value = Object.assign({}, p, {
+        leaveTimeType: '自訂',
+        leaveTime: start && end ? (start + '~' + end) : ''
+      });
+    };
     const isSimulating = computed(() => !!originalUser.value);
     /** 目前登入者是否在「可代申請」白名單（Email） */
     const isProxySubmitGranted = computed(() => {
@@ -3256,6 +3376,330 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     });
 
     const teachersListDetails = computed(() => teachersList.value);
+    const pendingHomeroomRecords = computed(() => {
+      return (homeroomRecords.value || [])
+        .filter(r => r && r.enabled !== false && String(r.status || '').toLowerCase() !== 'cancelled')
+        .filter(r => !r.actualTeacherEmail);
+    });
+    const getHomeroomCoverCandidates = (record) => {
+      const original = String(record && record.originalTeacherEmail || '').toLowerCase();
+      return (teachersList.value || [])
+        .filter(t => t && t.email && String(t.email).toLowerCase() !== original)
+        .slice()
+        .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'zh-Hant'));
+    };
+    const loadHomeroomRecords = async (opts = {}) => {
+      if (!isAdmin.value || !user.value) return false;
+      homeroomRecordsLoading.value = true;
+      try {
+        const res = await callGasApi('getHomeroomRecords', { semesterId: currentSemester.value });
+        if (res && Array.isArray(res.homeroomRecords)) {
+          homeroomRecords.value = res.homeroomRecords.map(r => window.FieldMap.mapHomeroomRecord(r));
+        }
+        return true;
+      } catch (e) {
+        if (!opts.silent) showToast('載入代導紀錄失敗：' + (e && e.message ? e.message : e), 'warning');
+        return false;
+      } finally {
+        homeroomRecordsLoading.value = false;
+      }
+    };
+    /**
+     * 全域 Optimistic UI 樂觀執行器
+     * 0 毫秒本地更新 -> 背景同步 -> 成功跳右下氣泡 -> 失敗自動回滾並彈出需手動點擊關閉的警示 Modal
+     */
+    const executeOptimisticAction = async (opts) => {
+      opts = opts || {};
+      let snapshot = null;
+      if (typeof opts.optimistic === 'function') {
+        snapshot = opts.optimistic();
+      }
+      try {
+        const res = typeof opts.apiCall === 'function' ? await opts.apiCall() : null;
+        if (typeof opts.onSuccess === 'function') {
+          opts.onSuccess(res);
+        }
+        if (opts.successMessage) {
+          showToast(opts.successMessage, 'success', 3000);
+        }
+        return res;
+      } catch (err) {
+        console.error('背景同步失敗：', err);
+        if (typeof opts.rollback === 'function') {
+          opts.rollback(snapshot);
+        } else {
+          loadWeeklyData({ force: false, silent: true });
+        }
+        const errMsg = err && err.message ? String(err.message) : String(err || '未知錯誤');
+        const title = opts.errorTitle || '⚠️ 背景同步失敗警示';
+        const msg = (opts.errorMessagePrefix ? (opts.errorMessagePrefix + '：\n\n') : '') + errMsg + '\n\n（系統已嘗試還原本地資料，請檢查網路或數據後再試。）';
+        if (typeof showConfirm === 'function') {
+          await showConfirm(msg, title, { alertOnly: true });
+        } else {
+          alert(msg);
+        }
+        throw err;
+      }
+    };
+
+    const assignHomeroomTeacher = async (record) => {
+      if (!record || !record.id) return;
+      const email = String(homeroomAssignSelections.value[record.id] || '').trim().toLowerCase();
+      if (!email) {
+        showToast('請先選擇代導教師', 'info');
+        return;
+      }
+      const actualTeacher = teachersList.value.find(t => t.email === email);
+      const actualName = actualTeacher ? actualTeacher.name : email;
+
+      await executeOptimisticAction({
+        optimistic: () => {
+          const snapshot = (homeroomRecords.value || []).slice();
+          const next = snapshot.slice();
+          const idx = next.findIndex(r => r.id === record.id);
+          if (idx >= 0) {
+            next[idx] = Object.assign({}, next[idx], {
+              actualTeacherEmail: email,
+              actualTeacherName: actualName,
+              status: 'assigned'
+            });
+          }
+          homeroomRecords.value = next;
+          const nextSelections = Object.assign({}, homeroomAssignSelections.value);
+          delete nextSelections[record.id];
+          homeroomAssignSelections.value = nextSelections;
+          return snapshot;
+        },
+        rollback: (snapshot) => {
+          if (snapshot) homeroomRecords.value = snapshot;
+        },
+        apiCall: () => callGasApi('saveHomeroomCoverTeacher', {
+          semesterId: currentSemester.value,
+          recordId: record.id,
+          actualTeacherEmail: email
+        }),
+        successMessage: `✅ 代導教師（${actualName}）指定成功，已同步至雲端`,
+        errorMessagePrefix: `指定代導教師（${actualName}）失敗`
+      });
+    };
+
+    const extractNameFromFormatted = (str) => {
+      const raw = String(str || '').trim();
+      const idx = raw.indexOf('（');
+      if (idx >= 0) return raw.slice(0, idx).trim();
+      return raw;
+    };
+
+    const onHomeroomInputSelect = (record, nameOrEmail) => {
+      if (!record || !record.id) return;
+      const cleanVal = extractNameFromFormatted(nameOrEmail);
+      if (!cleanVal) {
+        homeroomAssignSelections.value[record.id] = '';
+        return;
+      }
+      const candidates = (typeof getHomeroomCoverCandidates === 'function' ? getHomeroomCoverCandidates(record) : []) || [];
+      const found = candidates.find(t => t.name === cleanVal || t.email === cleanVal) ||
+                    (teachersListDetails.value || []).find(t => t.name === cleanVal || t.email === cleanVal);
+      if (found) {
+        homeroomAssignSelections.value[record.id] = found.email;
+      } else {
+        const partial = candidates.find(t => t.name.indexOf(cleanVal) >= 0) ||
+                        (teachersListDetails.value || []).find(t => t.name.indexOf(cleanVal) >= 0);
+        if (partial) homeroomAssignSelections.value[record.id] = partial.email;
+      }
+    };
+
+    const onManualCoverTeacherInput = (nameOrEmail) => {
+      const cleanVal = extractNameFromFormatted(nameOrEmail);
+      if (!cleanVal) {
+        manualHomeroomForm.value.actualTeacherEmail = '';
+        return;
+      }
+      const found = (teachersListDetails.value || []).find(t => t.name === cleanVal || t.email === cleanVal);
+      if (found) {
+        manualHomeroomForm.value.actualTeacherEmail = found.email;
+      } else {
+        const partial = (teachersListDetails.value || []).find(t => t.name.indexOf(cleanVal) >= 0);
+        if (partial) manualHomeroomForm.value.actualTeacherEmail = partial.email;
+      }
+    };
+
+    const getFilteredHomeroomCandidates = (record, query) => {
+      const candidates = (typeof getHomeroomCoverCandidates === 'function' ? getHomeroomCoverCandidates(record) : []) || [];
+      const q = String(query || '').trim().toLowerCase();
+      if (!q) return candidates;
+      return candidates.filter(t => {
+        const name = String(t && t.name || '').toLowerCase();
+        const email = String(t && t.email || '').toLowerCase();
+        const job = String(t && t.jobTitle || '').toLowerCase();
+        const subj = String(t && t.subject || '').toLowerCase();
+        return name.indexOf(q) >= 0 || email.indexOf(q) >= 0 || job.indexOf(q) >= 0 || subj.indexOf(q) >= 0;
+      });
+    };
+
+    const filteredManualCoverTeachers = computed(() => {
+      const q = String(manualHomeroomSearchQuery.value || '').trim().toLowerCase();
+      const list = teachersListDetails.value || [];
+      if (!q) return list;
+      return list.filter(t => {
+        const name = String(t && t.name || '').toLowerCase();
+        const email = String(t && t.email || '').toLowerCase();
+        const job = String(t && t.jobTitle || '').toLowerCase();
+        const subj = String(t && t.subject || '').toLowerCase();
+        return name.indexOf(q) >= 0 || email.indexOf(q) >= 0 || job.indexOf(q) >= 0 || subj.indexOf(q) >= 0;
+      });
+    });
+
+    const getTodayYmdStr = () => {
+      const d = new Date();
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    };
+
+    const homeroomTeachersList = computed(() => {
+      return (teachersList.value || []).filter(t => {
+        const title = String(t && t.jobTitle || '').trim();
+        return title.indexOf('導師') >= 0;
+      }).sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'zh-Hant'));
+    });
+
+    const showManualHomeroomModal = ref(false);
+    const homeroomStatusFilter = ref('all');
+    const manualHomeroomForm = ref({
+      leaveEmail: '',
+      className: '',
+      date: getTodayYmdStr(),
+      leaveTimeType: '全天',
+      leaveTime: '08:00~16:00',
+      actualTeacherEmail: '',
+      note: ''
+    });
+
+    const openManualHomeroomModal = () => {
+      manualHomeroomForm.value = {
+        leaveEmail: '',
+        className: '',
+        date: getTodayYmdStr(),
+        leaveTimeType: '全天',
+        leaveTime: '08:00~16:00',
+        actualTeacherEmail: '',
+        note: '導師無課/調課請假，手動新增代導費'
+      };
+      showManualHomeroomModal.value = true;
+    };
+
+    const onManualHomeroomLeaveTeacherChange = () => {
+      const email = manualHomeroomForm.value.leaveEmail;
+      if (!email) return;
+      const t = teachersList.value.find(x => x.email === email);
+      if (t) {
+        const title = String(t.jobTitle || '').trim();
+        const m = title.match(/([0-9一二三四五六七八九十0-9\-]+(?:\s*年\s*[0-9一二三四五六七八九十]+)?(?:\s*班)?)\s*導師/);
+        if (m && m[1]) {
+          manualHomeroomForm.value.className = m[1].trim();
+        } else if (title) {
+          manualHomeroomForm.value.className = title.replace(/導師/g, '').trim() || '導師班';
+        }
+      }
+    };
+
+    const currentMonthHomeroomRecords = computed(() => {
+      const m = reportMonth.value;
+      const list = (homeroomRecords.value || []).filter(r => {
+        if (!r || r.enabled === false || String(r.status || '').toLowerCase() === 'cancelled') return false;
+        if (!m) return true;
+        return String(r.date || '').slice(0, 7) === m;
+      });
+      return list.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    });
+
+    const currentMonthHomeroomFeeTotal = computed(() => {
+      return (currentMonthHomeroomRecords.value || []).reduce((sum, r) => sum + (Number(r.feeAmount) || 455), 0);
+    });
+
+    const currentMonthHomeroomAssignedCount = computed(() => {
+      return (currentMonthHomeroomRecords.value || []).filter(r => !!r.actualTeacherEmail).length;
+    });
+
+    const currentMonthHomeroomPendingCount = computed(() => {
+      return (currentMonthHomeroomRecords.value || []).filter(r => !r.actualTeacherEmail).length;
+    });
+
+    const saveManualHomeroomRecord = async () => {
+      const form = manualHomeroomForm.value;
+      if (!form.leaveEmail) { showToast('請選擇請假導師', 'warning'); return; }
+      if (!form.date) { showToast('請選擇代導日期', 'warning'); return; }
+
+      const origTeacher = teachersList.value.find(t => t.email === form.leaveEmail);
+      const origName = origTeacher ? origTeacher.name : form.leaveEmail;
+      const actualTeacher = teachersList.value.find(t => t.email === form.actualTeacherEmail);
+      const actualName = actualTeacher ? actualTeacher.name : '';
+
+      showManualHomeroomModal.value = false;
+
+      await executeOptimisticAction({
+        optimistic: () => {
+          const snapshot = (homeroomRecords.value || []).slice();
+          const tempRecord = {
+            id: 'mentor_manual_temp_' + Date.now(),
+            semesterId: currentSemester.value,
+            sourceRequestId: 'manual',
+            originalTeacherEmail: form.leaveEmail,
+            originalTeacherName: origName,
+            className: form.className || '導師班',
+            date: form.date,
+            leaveTimeType: form.leaveTimeType,
+            leaveTime: form.leaveTime,
+            actualTeacherEmail: form.actualTeacherEmail || '',
+            actualTeacherName: actualName,
+            feeAmount: 455,
+            status: form.actualTeacherEmail ? 'assigned' : 'pending',
+            enabled: true,
+            note: form.note || '管理員手動新增代導費'
+          };
+          homeroomRecords.value = [tempRecord, ...snapshot];
+          return snapshot;
+        },
+        rollback: (snapshot) => {
+          if (snapshot) homeroomRecords.value = snapshot;
+        },
+        apiCall: () => callGasApi('saveManualHomeroomRecord', {
+          semesterId: currentSemester.value,
+          leaveEmail: form.leaveEmail,
+          className: form.className,
+          date: form.date,
+          leaveTimeType: form.leaveTimeType,
+          leaveTime: form.leaveTime,
+          actualTeacherEmail: form.actualTeacherEmail,
+          note: form.note
+        }),
+        onSuccess: () => loadHomeroomRecords({ silent: true }),
+        successMessage: `✅ 已成功建立【${origName}】代導費，並同步至雲端`,
+        errorMessagePrefix: `手動新增代導費失敗`
+      });
+    };
+
+    const deleteHomeroomRecord = async (record) => {
+      if (!record || !record.id) return;
+      const ok = await showConfirm(`確定要撤銷／刪除【${record.date} ${record.className || ''} ${record.originalTeacherName}】的代導紀錄嗎？`, '撤銷代導紀錄確認');
+      if (!ok || !ok.ok) return;
+
+      await executeOptimisticAction({
+        optimistic: () => {
+          const snapshot = (homeroomRecords.value || []).slice();
+          homeroomRecords.value = snapshot.filter(r => r.id !== record.id);
+          return snapshot;
+        },
+        rollback: (snapshot) => {
+          if (snapshot) homeroomRecords.value = snapshot;
+        },
+        apiCall: () => callGasApi('deleteHomeroomRecord', {
+          semesterId: currentSemester.value,
+          recordId: record.id
+        }),
+        successMessage: `✅ 代導紀錄已成功撤銷，並同步至雲端`,
+        errorMessagePrefix: `撤銷代導紀錄失敗`
+      });
+    };
 
     // 專門用於調課的對調教師選單（過濾條件：必須與請假教師在同一個班級有授課）
     const exchangeTeachersList = computed(() => {
@@ -3927,7 +4371,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         activeCell, inputRequestDate, allSchedules, showConfirm, getScheduleForDate,
         formatDateMMDD, getWeekDayText, exchangePeriodId, exchangeWeekOffset, exchangeTargetDate,
         consecAlertsA, consecAlertsB, isMutualCover, assignMutualDraftFromMatch, PERIOD8_FEE,
-        pendingRequestData, showMatchModal, showCompareModal
+        pendingRequestData, showMatchModal, showCompareModal, getLeaveTimeDefaults
       }, mode, targetEmail, periodIdVal, subjectVal, classVal);
     };
 
@@ -4099,6 +4543,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       showConfirm: showConfirm,
       // 下列函式定義在後方：一律用 wrapper，避免 const TDZ
       getTeacherNameByEmail: function (em) { return getTeacherNameByEmail(em); },
+      getLeaveTimeDefaults: getLeaveTimeDefaults,
       getTeacherSubjectByEmail: function (em) { return getTeacherSubjectByEmail(em); },
       getScheduleForDate: function (a, b, c, d) { return getScheduleForDate(a, b, c, d); },
       formatDateMMDD: function (d) { return formatDateMMDD(d); },
@@ -4668,6 +5113,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       const res = window.DomainBilling.buildSubFeeExcelWorkbook({
         reportMonth: reportMonth.value,
         substitutionRecords: substitutionRecords.value,
+        homeroomRecords: homeroomRecords.value,
         getTeacherNameByEmail
       });
 
@@ -4688,6 +5134,14 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         { wch: 24 }, { wch: 8 },  { wch: 12 }, { wch: 10 }
       ];
       XLSX.utils.book_append_sheet(wb, wsSelf, res.sheetNameSelf);
+
+      const wsMentor = XLSX.utils.aoa_to_sheet(res.mentorAoa || []);
+      wsMentor['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 7 } }];
+      wsMentor['!cols'] = [
+        { wch: 12 }, { wch: 10 }, { wch: 16 }, { wch: 14 },
+        { wch: 24 }, { wch: 8 },  { wch: 12 }, { wch: 10 }
+      ];
+      XLSX.utils.book_append_sheet(wb, wsMentor, res.sheetNameMentor || '代導公付');
 
       const mParts = String(reportMonth.value || '').split('-');
       const mNum = mParts.length > 1 ? parseInt(mParts[1], 10) : '';
@@ -5500,6 +5954,9 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       if (res.schedules) {
         allSchedules.value = res.schedules.map(s => window.FieldMap.mapSchedule(s));
       }
+      if (Array.isArray(res.homeroomRecords)) {
+        homeroomRecords.value = res.homeroomRecords.map(r => window.FieldMap.mapHomeroomRecord(r));
+      }
       if (res.requests) {
         const allRequests = res.requests.map(r => window.FieldMap.mapRequest(r));
         const sortedAll = sortRequestListDesc(allRequests);
@@ -5786,6 +6243,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
             }
             // p===true && d==='empty'：無異動，結束
           }
+          if (isAdmin.value && user.value) await loadHomeroomRecords({ silent: true });
           markDataUpdated();
         } catch (e) {
           console.warn('背景同步失敗：', e);
@@ -5953,6 +6411,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
             }
             if (meta.settings) applySettings(meta.settings);
             await resolveUserRoleFromTeachers();
+            recomputeRequestBuckets();
             loadingMessage.value = '同步課表與異動中...';
           } catch (metaErr) {
             console.warn('meta 載入失敗，改拉全量：', metaErr);
@@ -5966,7 +6425,9 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         });
         applyInitialPayload(res);
         await resolveUserRoleFromTeachers();
+        recomputeRequestBuckets();
         resolvePendingClassView();
+        if (isAdmin.value && user.value) await loadHomeroomRecords({ silent: true });
         markDataUpdated();
         if (!silent) loading.value = false;
       } catch (err) {
@@ -6736,6 +7197,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       restoreMutualQuotaForRows,
       optimisticPatchRequestStatus,
       softRefreshInBackground,
+      loadHomeroomRecords,
       formatRequestSummary,
       formatApproveBatchRiskSummary,
       getApproveRiskFlags,
@@ -7055,7 +7517,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     const showImportTeachersModal = ref(false);
     const teacherExcelData = ref([]);
     const teacherExcelHeaders = ref([]);
-    const teacherMappingFields = ref({ name: '', email: '', subject: '', baseHours: '', role: '' });
+    const teacherMappingFields = ref({ name: '', email: '', subject: '', jobTitle: '', baseHours: '', role: '' });
     const teacherImportPreview = ref(null);
     const showScheduleEditModal = ref(false);
     const scheduleForm = ref({
@@ -7064,7 +7526,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     });
     const showTeacherModal = ref(false);
     const teacherModalMode = ref('add');
-    const teacherForm = ref({ email: '', name: '', subject: '', role: 'teacher', baseHours: 16, mutualQuota: 0 });
+    const teacherForm = ref({ email: '', name: '', subject: '', jobTitle: '', role: 'teacher', baseHours: 16, mutualQuota: 0 });
     const excelData = ref([]);
     const excelHeaders = ref([]);
     const mappingFields = ref({
@@ -7562,6 +8024,8 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       teachersList.value = [];
       allSchedules.value = [];
       substitutionRecords.value = [];
+      homeroomRecords.value = [];
+      homeroomAssignSelections.value = {};
       mySentRequests.value = [];
       myPendingRequests.value = [];
       adminPendingRequests.value = [];
@@ -7824,7 +8288,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       currentSemester, availableSemesters, currentSemesterName, semestersList, showSemesterModal, semesterModalMode, semesterForm,
       currentWeekDates, selectedWeekDate, currentWeekNumber,
       classList, classSchedules, selectedClass, classReadonlyMode, getClassReadonlyLink, copyClassReadonlyLink,
-      searchQuery, selectedSubject, teachersList, allSchedules, substitutionRecords, requestsList,
+      searchQuery, selectedSubject, teachersList, allSchedules, substitutionRecords, homeroomRecords, requestsList,
       mySentRequests, myPendingRequests, adminPendingRequests, allPendingRequests,
       matchMode, activeCell, inputRequestDate, recommendedTeachers, recommendationLoading,
       batchSelectMode, batchSlots, showBatchConfirmModal, batchSubTeacher, batchReason, batchSubFee, batchNote,
@@ -7843,7 +8307,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       matchSearchQuery, matchDisplayCount, matchShowNoTeacherWarning, matchEmptyReasons,
       filteredRecommendedTeachers, displayedRecommendedTeachers,
       exchangeTeacherEmail, exchangeTeacherClasses, exchangePeriodId, exchangeTargetDate, exchangeWeekOffset,
-      showCompareModal, showMatchModal, pendingRequestData, selectedRecordIds, showDevDropdown, devTeacherQuery, filteredDevTeachers,
+      showCompareModal, showMatchModal, pendingRequestData, askFirstLineText, selectedRecordIds, showDevDropdown, devTeacherQuery, filteredDevTeachers,
       showDetailModal, consecAlertsA, consecAlertsB, detailRequest, detailSubRecord,
       showSuccessModal,
       successModalTitle, successModalMessage, successFlowMode, lineCopyText, hasLineTemplate, lineBatchParts,
@@ -7865,11 +8329,13 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       proxyTargetEmail, proxyTargetName, proxyTargetQuery, showProxyTargetDropdown, filteredProxyTeachers,
       setProxyTarget, clearProxyTarget, canOperateOnTeacherEmail, ensureProxyTargetForTeacher,
       userRoleText, subjectsList, filteredTeachers, displayTimetableTeachers, pendingCount, myInviteCount, adminTodoCount, hasQuickTodo, quickTodoSentOpen, allTeachersList, teachersListDetails,
+      pendingHomeroomRecords, homeroomAssignSelections, homeroomRecordsLoading, getHomeroomCoverCandidates, loadHomeroomRecords, assignHomeroomTeacher, homeroomTeachersList, onHomeroomInputSelect, onManualCoverTeacherInput,
+      showManualHomeroomModal, homeroomStatusFilter, manualHomeroomForm, openManualHomeroomModal, onManualHomeroomLeaveTeacherChange, currentMonthHomeroomRecords, currentMonthHomeroomFeeTotal, currentMonthHomeroomAssignedCount, currentMonthHomeroomPendingCount, saveManualHomeroomRecord, deleteHomeroomRecord,
       matchPreview,
       exchangeTeachersList, myTeacherProfile, isRequestValid, filteredHistoryRecords,
       dateFilteredHistoryRecords, paginatedHistoryRecords, historyTotalPages,
       historyFilterMode, historyFilterDate, historySearchQuery, historyPage, historyPageSize,
-      pendingSearchQuery,
+      pendingSearchQuery, getLeaveTimeDefaults, getLeaveTimePresetRange, setLeaveTimePreset, updatePendingLeaveTime,
       showHistoryEditModal, historyEditForm, leaveReasonOptions, onLeaveReasonChange, defaultSubFeeForReason,
       pendingMyPendingPage, pendingMySentPage, pendingAdminPage,
       paginatedMyPending, paginatedMySent, paginatedAdminPending,

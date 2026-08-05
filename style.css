@@ -527,12 +527,14 @@ body {
 /* 午休列：左側時間欄淡青底 */
 .grid-cell-time.is-lunch-period {
   background: #f0fdfa;
-  border-radius: 6px;
+  border-color: #ccfbf1;
+  border-radius: 8px;
   color: #0f766e;
 }
 .grid-cell-time.is-lunch-period .period {
-  font-size: 0.78rem;
+  font-size: 0.82rem;
   font-weight: 700;
+  color: #0f766e;
 }
 /* 併班小標籤 */
 .cell-badge.tag-combined {
@@ -542,6 +544,7 @@ body {
   font-weight: 600;
   font-size: 0.62rem;
   margin-left: 4px;
+  border-radius: 4px;
   vertical-align: middle;
 }
 
@@ -549,14 +552,18 @@ body {
 .tt-teacher-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 .tt-teacher-block {
   background: #fff;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  padding: 12px 12px 14px;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 12px;
+  padding: 14px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.tt-teacher-block:hover {
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.07);
 }
 .tt-teacher-block:last-child {
   margin-bottom: 0;
@@ -574,6 +581,7 @@ body {
 }
 .tt-teacher-head .tt-teacher-name {
   font-weight: 700;
+  color: var(--text-primary, #1e293b);
 }
 .tt-pager-bar {
   display: flex;
@@ -581,7 +589,7 @@ body {
   align-items: center;
   gap: 8px;
   margin-bottom: 12px;
-  padding: 8px 12px;
+  padding: 8px 14px;
   background: #f8fafc;
   border: 1px solid var(--border-color, #e2e8f0);
   border-radius: 10px;
@@ -590,22 +598,23 @@ body {
 .grid-header {
   background: #f8fafc;
   text-align: center;
-  padding: 10px 4px;
+  padding: 8px 4px;
   font-weight: 600;
   font-size: 0.85rem;
   border-radius: 8px;
-  border: 1px solid var(--border-color);
-  color: var(--text-secondary);
+  border: 1px solid var(--border-color, #e2e8f0);
+  color: var(--text-secondary, #475569);
   display: flex;
   flex-direction: column;
   justify-content: center;
   line-height: 1.3;
+  transition: background 0.15s ease;
 }
 
 .grid-header .date-sub {
   font-size: 0.7rem;
-  font-weight: 400;
-  color: var(--text-muted);
+  font-weight: 500;
+  color: var(--text-muted, #94a3b8);
 }
 
 .grid-cell-time {
@@ -615,65 +624,73 @@ body {
   justify-content: center;
   background: #f8fafc;
   border-radius: 8px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border-color, #e2e8f0);
   min-height: 68px;
+  transition: background 0.15s ease;
 }
 
 .grid-cell-time .period {
-  font-size: 1.1rem;
+  font-size: 1.05rem;
   font-weight: 700;
-  color: var(--text-secondary);
+  color: var(--text-primary, #1e293b);
 }
 
 .grid-cell-time .time-span {
   font-size: 0.65rem;
-  color: var(--text-muted);
+  color: var(--text-muted, #94a3b8);
+  font-weight: 500;
 }
 
 .grid-cell-class {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
+  background: var(--bg-secondary, #f8fafc);
+  border: 1px solid var(--border-color, #e2e8f0);
   border-radius: 8px;
-  padding: 6px 8px;
+  padding: 7px 9px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   min-height: 68px;
-  transition: var(--transition-smooth);
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
   cursor: pointer;
   position: relative;
 }
 
 .grid-cell-class:hover {
-  border-color: var(--color-primary);
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.08);
-  transform: translateY(-1px);
+  border-color: var(--color-primary, #2563eb);
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.12);
+  transform: translateY(-2px);
+  z-index: 2;
 }
 
 .grid-cell-class.has-class {
-  background: #f8fafc;
-  border-left: 3px solid var(--color-primary);
+  background: #ffffff;
+  border-left: 3.5px solid var(--color-primary, #2563eb);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
 }
 
 .grid-cell-class.is-empty {
   border-style: dashed;
-  opacity: 0.45;
+  border-color: #cbd5e1;
+  background: transparent;
+  opacity: 0.55;
   justify-content: center;
   align-items: center;
 }
 
 .grid-cell-class.is-empty:hover {
-  opacity: 0.9;
-  border-color: var(--color-success);
+  opacity: 1;
+  background: #eff6ff;
+  border-color: var(--color-primary, #2563eb);
   border-style: solid;
+  transform: translateY(-1px);
 }
 
-/* 課表狀態顏色 (莫蘭迪調) */
+/* 課表狀態顏色 (現代莫蘭迪調) */
 .grid-cell-class.is-substituted-out {
-  background: #f1f5f9 !important;
+  background: #f8fafc !important;
   border: 1px dashed #cbd5e1 !important;
-  border-left: 3px solid var(--text-muted) !important;
-  opacity: 0.6;
+  border-left: 3.5px solid #94a3b8 !important;
+  opacity: 0.65;
 }
 
 .grid-cell-class.is-substituted-out .cell-subject,
@@ -685,14 +702,15 @@ body {
 .grid-cell-class.is-substituted-in {
   background: #eff6ff !important;
   border: 1px solid #bfdbfe !important;
-  border-left: 3px solid var(--color-primary) !important;
+  border-left: 3.5px solid var(--color-primary, #2563eb) !important;
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.06);
 }
 
 .grid-cell-class.is-exchange-out {
-  background: #f1f5f9 !important;
+  background: #f8fafc !important;
   border: 1px dashed #cbd5e1 !important;
-  border-left: 3px solid var(--text-muted) !important;
-  opacity: 0.6;
+  border-left: 3.5px solid #94a3b8 !important;
+  opacity: 0.65;
 }
 
 .grid-cell-class.is-exchange-out .cell-subject,
@@ -704,6 +722,7 @@ body {
 .grid-cell-class.is-away-vacant {
   opacity: 0.55 !important;
   border-style: dashed !important;
+  border-color: #cbd5e1 !important;
   background: #f8fafc !important;
 }
 
@@ -717,13 +736,13 @@ body {
 .away-class-badge {
   display: inline-block;
   font-size: 0.65rem;
-  padding: 1px 4px;
+  padding: 1px 6px;
   background: var(--color-danger-glow, #fef2f2);
   color: var(--color-danger, #ef4444);
-  border: 1px solid rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.2);
   border-radius: 4px;
   margin-left: 4px;
-  font-weight: 500;
+  font-weight: 600;
   vertical-align: middle;
   line-height: 1.2;
 }
@@ -731,20 +750,21 @@ body {
 .grid-cell-class.is-exchange-in {
   background: #eff6ff !important;
   border: 1px solid #bfdbfe !important;
-  border-left: 3px solid var(--color-primary) !important;
+  border-left: 3.5px solid var(--color-primary, #2563eb) !important;
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.06);
 }
 
 .grid-cell-class.is-elastic {
   background: #f0fdf4 !important;
   border: 1px solid #bbf7d0 !important;
-  border-left: 3px solid #22c55e !important;
+  border-left: 3.5px solid #16a34a !important;
 }
 
 /* 巡堂：白底灰框，低調、不與調出混淆（無刪除線） */
 .grid-cell-class.is-patrol {
   background: #fff !important;
   border: 1px solid #e2e8f0 !important;
-  border-left: 3px solid #94a3b8 !important;
+  border-left: 3.5px solid #64748b !important;
 }
 .grid-cell-class.is-patrol .cell-subject,
 .grid-cell-class.is-patrol .cell-class-name {
@@ -776,22 +796,22 @@ body {
 }
 /* 抽離格：左側細青線，底色仍同有課 */
 .grid-cell-class.is-pullout {
-  border-left: 3px solid #14b8a6 !important;
+  border-left: 3.5px solid #0d9488 !important;
 }
 /* 課格：上主文、下標籤（桌機也略沉底；手機再強制） */
 .cell-main {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
   min-width: 0;
   flex: 1 1 auto;
 }
 .cell-badges {
   display: flex;
   flex-wrap: wrap;
-  gap: 2px;
+  gap: 3px;
   align-items: center;
-  margin-top: 3px;
+  margin-top: 4px;
   min-height: 0;
   flex: 0 0 auto;
 }
@@ -809,56 +829,60 @@ body {
 .grid-cell-class.is-pending-exc-in {
   background: #fffbeb !important;
   border: 1.5px dashed #f59e0b !important;
-  border-left: 3px solid #f59e0b !important;
+  border-left: 3.5px solid #f59e0b !important;
   animation: pending-pulse-orange 2s ease-in-out infinite;
 }
 
 @keyframes pending-pulse-orange {
-  0%, 100% { border-color: #f59e0b; box-shadow: 0 0 3px rgba(245, 158, 11, 0.15); }
-  50% { border-color: #d97706; box-shadow: 0 0 6px rgba(245, 158, 11, 0.3); }
+  0%, 100% { border-color: #f59e0b; box-shadow: 0 0 4px rgba(245, 158, 11, 0.15); }
+  50% { border-color: #d97706; box-shadow: 0 0 8px rgba(245, 158, 11, 0.3); }
 }
 
 .grid-cell-class.cell-selected {
-  background: #fffbeb !important;
-  border: 2px solid var(--color-warning) !important;
-  box-shadow: 0 0 10px rgba(245, 158, 11, 0.15) !important;
+  background: #fff7ed !important;
+  border: 2px solid #ea580c !important;
+  box-shadow: 0 0 12px rgba(234, 88, 12, 0.2) !important;
   z-index: 5;
 }
 
 .cell-class-name {
   font-weight: 700;
   font-size: 0.9rem;
-  color: var(--text-primary);
+  color: var(--text-primary, #1e293b);
+  line-height: 1.25;
   padding-right: 32px; /* 預留右上角徽章位置，防止文字交疊 */
 }
 
 .cell-subject {
-  font-size: 0.75rem;
-  color: var(--text-secondary);
+  font-size: 0.76rem;
+  color: var(--text-secondary, #475569);
+  font-weight: 500;
+  line-height: 1.25;
 }
 
 .cell-teacher {
-  font-size: 0.7rem;
-  color: var(--text-muted);
+  font-size: 0.72rem;
+  color: var(--text-muted, #64748b);
   text-align: right;
   margin-top: auto;
+  font-weight: 500;
 }
 
 .cell-badge {
   position: absolute;
-  top: 4px;
-  right: 4px;
-  font-size: 0.6rem;
-  padding: 0px 4px;
+  top: 5px;
+  right: 5px;
+  font-size: 0.62rem;
+  padding: 1px 5px;
   border-radius: 4px;
   font-weight: 600;
 }
 
-.tag-red { background: var(--color-danger-glow); color: var(--color-danger); border: 1px solid rgba(239, 68, 68, 0.2); }
-.tag-green { background: var(--color-success-glow); color: var(--color-success); border: 1px solid rgba(16, 185, 129, 0.2); }
-.tag-blue { background: var(--color-primary-glow); color: var(--color-primary); border: 1px solid rgba(37, 99, 235, 0.2); }
+.tag-red { background: var(--color-danger-glow, #fef2f2); color: var(--color-danger, #ef4444); border: 1px solid rgba(239, 68, 68, 0.25); }
+.tag-green { background: var(--color-success-glow, #f0fdf4); color: var(--color-success, #16a34a); border: 1px solid rgba(22, 163, 74, 0.25); }
+.tag-blue { background: var(--color-primary-glow, #eff6ff); color: var(--color-primary, #2563eb); border: 1px solid rgba(37, 99, 235, 0.25); }
 .tag-amber { background: #fef3c7; color: #b45309; border: 1px solid rgba(245, 158, 11, 0.35); }
-.tag-gray { background: #f1f5f9; color: var(--text-secondary); border: 1px solid #e2e8f0; }
+.tag-gray { background: #f1f5f9; color: var(--text-secondary, #475569); border: 1px solid #e2e8f0; }
 
 .badge-admin {
   display: inline-block;
@@ -881,6 +905,30 @@ body {
   border: 1px solid rgba(245, 158, 11, 0.35);
 }
 .badge-teacher {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #e0f2fe;
+  color: #0369a1;
+  border: 1px solid rgba(14, 165, 233, 0.25);
+}
+.badge-proxy {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #fff7ed;
+  color: #c2410c;
+  border: 1px solid rgba(249, 115, 22, 0.4);
+  max-width: 9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}cher {
   display: inline-block;
   font-size: 0.72rem;
   font-weight: 600;
@@ -1647,12 +1695,12 @@ body {
 .class-timetable .grid-header {
   background: #f8fafc;
   text-align: center;
-  padding: 10px 4px;
+  padding: 8px 4px;
   font-weight: 600;
   font-size: 0.82rem;
   border-radius: 8px;
-  border: 1px solid var(--border-color);
-  color: var(--text-secondary);
+  border: 1px solid var(--border-color, #e2e8f0);
+  color: var(--text-secondary, #475569);
   line-height: 1.35;
 }
 
@@ -1663,45 +1711,47 @@ body {
   justify-content: center;
   background: #f8fafc;
   border-radius: 8px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border-color, #e2e8f0);
   min-height: 68px;
-  color: var(--text-secondary);
+  color: var(--text-secondary, #475569);
 }
 .class-timetable .grid-cell-time .period {
-  font-size: 1rem;
+  font-size: 1.05rem;
   font-weight: 700;
-  color: var(--text-secondary);
+  color: var(--text-primary, #1e293b);
 }
 
 .class-timetable .grid-cell-class {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
+  background: var(--bg-secondary, #f8fafc);
+  border: 1px solid var(--border-color, #e2e8f0);
   border-radius: 8px;
-  padding: 6px 8px;
+  padding: 7px 9px;
   min-height: 68px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   justify-content: center;
   cursor: pointer;
-  transition: var(--transition-smooth);
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
   position: relative;
 }
 
 .class-timetable .grid-cell-class.has-class {
-  background: #fff;
+  background: #ffffff;
+  border-left: 3.5px solid var(--color-primary, #2563eb);
 }
 
 .class-timetable .grid-cell-class:hover {
-  border-color: var(--color-primary);
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.08);
-  transform: translateY(-1px);
-  z-index: 1;
+  border-color: var(--color-primary, #2563eb);
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.12);
+  transform: translateY(-2px);
+  z-index: 2;
 }
 
 .class-timetable .grid-cell-class.is-empty {
   border-style: dashed;
-  opacity: 0.45;
+  border-color: #cbd5e1;
+  opacity: 0.55;
   cursor: default;
   align-items: center;
   justify-content: center;
@@ -1711,29 +1761,35 @@ body {
 .class-timetable .grid-cell-class.is-empty:hover {
   box-shadow: none;
   transform: none;
-  opacity: 0.6;
+  opacity: 0.75;
+  background: #eff6ff;
+  border-color: var(--color-primary, #2563eb);
 }
 
 /* 第8節已改與一般課同色；巡堂白底灰框 */
 .class-timetable .grid-cell-class.is-patrol {
   background: #fff !important;
   border: 1px solid #e2e8f0 !important;
-  border-left: 3px solid #94a3b8 !important;
+  border-left: 3.5px solid #64748b !important;
 }
 
 .class-timetable .grid-cell-class.is-overtime,
 .class-timetable .grid-cell-class.is-elastic {
-  background: #f0fdf4;
+  background: #f0fdf4 !important;
+  border: 1px solid #bbf7d0 !important;
+  border-left: 3.5px solid #16a34a !important;
 }
 
 /* 僅異動格才加左側色條 */
 .class-timetable .grid-cell-class.has-substitution {
   background: #fef2f2 !important;
-  border-left: 3px solid #ef4444 !important;
+  border: 1px solid #fecaca !important;
+  border-left: 3.5px solid #ef4444 !important;
 }
 
 .class-timetable .grid-cell-class.has-substitution:hover {
   border-color: #f87171 !important;
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.15);
 }
 
 .class-timetable .cell-subject {

@@ -15,14 +15,14 @@ window.GasApi = (function () {
     saveScheduleCell: 1, clearScheduleCell: 1, importSchedulesBatch: 1,
     saveSemester: 1, deleteSemester: 1, setDefaultSemester: 1,
     saveClassAwayEvent: 1, deleteClassAwayEvent: 1,
-    saveHistoryEdit: 1, batchMarkPrinted: 1, saveMailSettings: 1, sendBatchNotices: 1
+    saveHistoryEdit: 1, saveHomeroomCoverTeacher: 1, saveManualHomeroomRecord: 1, deleteHomeroomRecord: 1, batchMarkPrinted: 1, saveMailSettings: 1, sendBatchNotices: 1
   };
   /** 只動申請／空堂對齊 → 只清 requests 分鍵，保留 meta／structure 快取 */
   var REQUEST_WRITE_ACTIONS = {
     submitRequest: 1, submitRequestBatch: 1, respondToRequest: 1, respondToBatch: 1,
     adminApprove: 1, adminReject: 1, adminApproveBatch: 1, adminRejectBatch: 1,
     cancelRequest: 1, withdrawRequest: 1, deleteSubstitutionRecord: 1,
-    saveHistoryEdit: 1, batchMarkPrinted: 1, sendBatchNotices: 1
+    saveHistoryEdit: 1, saveHomeroomCoverTeacher: 1, batchMarkPrinted: 1, sendBatchNotices: 1
   };
   /** 課表／教師／學期結構變更 → 清全部分鍵 */
   var STRUCTURE_WRITE_ACTIONS = {

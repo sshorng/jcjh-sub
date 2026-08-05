@@ -159,7 +159,7 @@ function requestVisibleToReader_(req, readerEmail, readerIsAdmin) {
 
 function sheetsReady_() {
   var ss = getSpreadsheet();
-  var need = ["學期設定", "教師名單", "教師課表", "申請單", "系統設定", "空堂事件"];
+  var need = ["學期設定", "教師名單", "教師課表", "申請單", "系統設定", "空堂事件", "代導紀錄"];
   for (var i = 0; i < need.length; i++) {
     if (!ss.getSheetByName(need[i])) return false;
   }
@@ -175,10 +175,11 @@ function getHeadersForSheet(sheetName) {
   const defaults = {
     "學期設定": ["學期代號", "學期名稱", "開始日期", "結束日期", "結算日期", "是否預設"],
     // 表頭與前端 FieldMap / 寫入 Key 對齊；field-map.js 讀取時另支援舊別名（任課科目、原任課教師Email）
-    "教師名單": ["學期代號", "教師Email", "教師姓名", "授課科目", "系統角色", "基本鐘點", "折抵額度"],
+    "教師名單": ["學期代號", "教師Email", "教師姓名", "授課科目", "職務", "系統角色", "基本鐘點", "折抵額度"],
     "教師課表": ["學期代號", "課表ID", "教師Email", "教師姓名", "星期", "節次", "班級", "科目", "課堂屬性", "調課限制"],
-    "申請單": ["學期代號", "申請單ID", "單號", "批次ID", "狀態", "申請人Email", "申請人姓名", "受邀人Email", "受邀人姓名", "代申請人Email", "代申請人姓名", "班級", "科目", "異動日期", "異動星期", "異動節次", "異動類型", "對調目標日期", "對調目標星期", "對調目標節次", "經費來源", "請假事由", "是否已印", "備註", "建立時間", "更新時間"],
+    "申請單": ["學期代號", "申請單ID", "單號", "批次ID", "狀態", "申請人Email", "申請人姓名", "受邀人Email", "受邀人姓名", "代申請人Email", "代申請人姓名", "班級", "科目", "異動日期", "異動星期", "異動節次", "異動類型", "對調目標日期", "對調目標星期", "對調目標節次", "經費來源", "請假事由", "請假時間類型", "請假時間", "是否已印", "備註", "建立時間", "更新時間"],
     "空堂事件": ["學期代號", "事件ID", "事件名稱", "起日", "迄日", "班級清單", "鐘點規則", "可進互代", "啟用", "備註"],
+    "代導紀錄": ["學期代號", "代導紀錄ID", "來源申請單ID", "原導師Email", "原導師姓名", "班級", "代導日期", "請假時間類型", "請假時間", "代導教師Email", "代導教師姓名", "代導節數", "鐘點費", "狀態", "啟用", "建立時間", "更新時間", "操作者", "備註"],
     // 額度帳本（單表）：流水即真相；包剩餘＝同包ID異動加總；教師名單「折抵額度」為快取
     // 索引鍵＝學期代號|教師Email（小寫），讀歷程可先 filter 再掃
     "額度帳本": ["學期代號", "流水ID", "時間", "教師Email", "教師姓名", "異動", "餘額後", "類型", "包ID", "事件ID", "事件名稱", "起日", "迄日", "申請單ID", "操作者", "備註", "索引鍵"],
@@ -239,6 +240,7 @@ function initSheets() {
         oldName === "申請單"      || oldName === "系統設定" ||
         oldName === "空堂事件" ||
         oldName === "額度帳本" ||
+        oldName === "代導紀錄" ||
         oldName === "系統日誌") {
       return;
     }
@@ -255,7 +257,7 @@ function initSheets() {
   });
 
   // 2. 標準建置工作表
-  const sheets = ["學期設定","教師名單","教師課表","申請單","空堂事件","額度帳本","系統設定","系統日誌"];
+  const sheets = ["學期設定","教師名單","教師課表","申請單","空堂事件","額度帳本","代導紀錄","系統設定","系統日誌"];
   sheets.forEach(name => {
     let sheet = ss.getSheetByName(name);
     if (!sheet) { sheet = ss.insertSheet(name); }
@@ -278,7 +280,7 @@ function rowArrayToObject_(sheetName, headers, row) {
     if (val instanceof Date) {
       val = toLocalDateStr(val);
     }
-    if (sheetName === "申請單") {
+    if (sheetName === "申請單" || sheetName === "代導紀錄") {
       if (headers[j] === "狀態") {
         val = translateStatusToEn(val);
       } else if (headers[j] === "異動類型") {
@@ -441,7 +443,7 @@ function pickFieldValue_(obj, headerName) {
 }
 
 function translateCellForSheet_(sheetName, headerName, val) {
-  if (sheetName === "申請單") {
+  if (sheetName === "申請單" || sheetName === "代導紀錄") {
     if (headerName === "狀態") return translateStatusToZh(val);
     if (headerName === "異動類型") return translateTypeToZh(val);
   }
@@ -533,7 +535,7 @@ function saveRows(sheetName, rowsToSave, keyName) {
   // 更新列先收集，再依 row 排序後連續區段一次 setValues（少 API 往返）
   const toUpdate = []; // { rowNum, arr }
   rowsToSave.forEach(function (row) {
-    if (sheetName === "申請單") {
+    if (sheetName === "申請單" || sheetName === "代導紀錄") {
       if (!row["建立時間"]) row["建立時間"] = toLocalTimeStr(new Date());
       // 每次寫入刷新更新時間（增量 softRefresh 水位線）
       row["更新時間"] = toLocalTimeStr(new Date());
@@ -574,7 +576,7 @@ function saveRows(sheetName, rowsToSave, keyName) {
   // 寫入後清該表 mem（同請求後續讀取才會看到新資料）
   bustTableDataMem_(sheetName);
   if (sheetName === "系統設定") bustSettingsMapCache_();
-  if (sheetName === "申請單") {
+  if (sheetName === "申請單" || sheetName === "代導紀錄") {
     // pending 快取另由 invalidateRequestCaches_ 清；此處只清表 mem
   }
 }
@@ -589,7 +591,7 @@ function saveRowsFullRewrite_(sheetName, rowsToSave, keyName) {
   const dataMap = {};
   data.forEach(function (row) { dataMap[row[keyName]] = row; });
   rowsToSave.forEach(function (row) {
-    if (sheetName === "申請單") {
+    if (sheetName === "申請單" || sheetName === "代導紀錄") {
       if (!row["建立時間"]) row["建立時間"] = toLocalTimeStr(new Date());
       row["更新時間"] = toLocalTimeStr(new Date());
     }
@@ -892,13 +894,12 @@ function slimScheduleRows_(rows) {
 function slimTeacherRows_(rows) {
   return (rows || []).map(function (t) {
     if (!t) return t;
-    if (t["學期代號"] === undefined && t["教師Email"] !== undefined && Object.keys(t).length <= 8) {
-      return t;
-    }
+
     return {
       "教師Email": t["教師Email"] || t.email || "",
       "教師姓名": t["教師姓名"] || t.name || "",
       "授課科目": t["授課科目"] || t["任課科目"] || t.subject || "",
+      "職務": t["職務"] || t.jobTitle || "",
       "系統角色": normalizeRole_(t["系統角色"] || t.role || "teacher"),
       "基本鐘點": t["基本鐘點"] != null && t["基本鐘點"] !== "" ? t["基本鐘點"] : (t.baseHours != null ? t.baseHours : 16),
       "折抵額度": t["折抵額度"] != null && t["折抵額度"] !== "" ? t["折抵額度"] : (t.mutualQuota != null ? t.mutualQuota : 0)
@@ -916,12 +917,219 @@ function getSemesterSchedulesCached_(semesterId) {
       if (Array.isArray(cached)) return slimScheduleRows_(cached);
     } catch (e) {}
   }
-  var rows = getTableData("教師課表").filter(function (s) { return s["學期代號"] === semesterId; });
+  var rows = getTableData("教師課表").filter(function (s) { return String(s["學期代號"] || "").trim() === String(semesterId || "").trim(); });
   var slim = slimScheduleRows_(rows);
   try { putCacheChunked(key, JSON.stringify(slim), CACHE_TTL_SCHED_); } catch (e2) {}
   return slim;
 }
 
+
+var HOMEROOM_SHEET_ = "代導紀錄";
+var HOMEROOM_FEE_ = 455;
+
+/** 代導紀錄：空白／否值視為未啟用，其餘視為啟用（相容舊表） */
+function homeroomRecordIsActive_(row) {
+  if (!row) return false;
+  var raw = row["啟用"];
+  if (raw === undefined || raw === null || raw === "") return true;
+  var s = String(raw).trim().toLowerCase();
+  return !(s === "false" || s === "0" || s === "否" || s === "no" || s === "停用");
+}
+
+function homeroomNormalizeRange_(raw) {
+  var s = String(raw == null ? "" : raw).trim();
+  if (!s) return "";
+  s = s.replace(/[～—–]/g, "~").replace(/\s*至\s*/g, "~").replace(/\s*-\s*/g, "~");
+  return s;
+}
+
+function homeroomDefaultTime_(teacher) {
+  var role = normalizeRole_(teacher && (teacher["系統角色"] || teacher.role || ""));
+  if (role === "admin" || role === "staff") {
+    return { type: "全天", range: "08:00~17:00" };
+  }
+  return { type: "全天", range: "08:00~16:00" };
+}
+
+function findSemesterTeacher_(semesterId, email) {
+  var em = String(email || "").toLowerCase().trim();
+  if (!em) return null;
+  var rows = getSemesterTeachersCached_(semesterId) || [];
+  return rows.find(function (t) {
+    return String(t["教師Email"] || t.email || "").toLowerCase().trim() === em;
+  }) || null;
+}
+
+function isHomeroomTeacher_(semesterId, email) {
+  var t = findSemesterTeacher_(semesterId, email);
+  var title = String(t && (t["職務"] || t.jobTitle || "") || "").trim();
+  return !!title && title.indexOf("導師") >= 0;
+}
+
+function homeroomSourceIds_(row) {
+  return String(row && row["來源申請單ID"] || "")
+    .split(/[,，;\s]+/)
+    .map(function (x) { return String(x || "").trim(); })
+    .filter(Boolean);
+}
+
+function homeroomSourceHas_(row, requestId) {
+  var rid = String(requestId || "").trim();
+  return !!rid && homeroomSourceIds_(row).indexOf(rid) >= 0;
+}
+
+function homeroomRequestDate_(row) {
+  return String(row && (row["異動日期"] || row.requestDate || row.date) || "").trim().slice(0, 10);
+}
+
+function homeroomRequestType_(row) {
+  return String(translateTypeToEn(row && (row["異動類型"] || row.type) || "") || "").trim().toLowerCase();
+}
+
+function homeroomRequestStatus_(row) {
+  return String(translateStatusToEn(row && (row["狀態"] || row.status) || "") || "").trim().toLowerCase();
+}
+
+function getSemesterHomeroomRecords_(semesterId) {
+  return getTableData(HOMEROOM_SHEET_).filter(function (r) {
+    return String(r["學期代號"] || "") === String(semesterId || "");
+  });
+}
+
+/**
+ * 依已核准代課申請同步一筆代導。
+ * 規則：請假教師職務含「導師」即建立；不看原代課經費與假別。
+ * 同一學期／日期／導師／班級只保留一筆，來源申請ID以逗號累積。
+ */
+function extractHomeroomClass_(teacher, fallbackClassName) {
+  var title = String(teacher && (teacher["職務"] || teacher.jobTitle || "") || "").trim();
+  var m = title.match(/([0-9一二三四五六七八九十0-9\-]+(?:\s*年\s*[0-9一二三四五六七八九十]+)?(?:\s*班)?)\s*導師/);
+  if (m && m[1]) return m[1].trim();
+  return String(fallbackClassName || "").trim() || "導師班";
+}
+
+/**
+ * 依已核准代課申請同步一筆代導。
+ * 規則：請假教師職務含「導師」即建立；不看原代課經費與假別。
+ * 同一學期／日期／導師／班級只保留一筆，來源申請ID以逗號累積。
+ */
+function syncHomeroomRecordForRequest_(requestRow, operatorEmail) {
+  if (!requestRow) return null;
+  var sid = String(requestRow["學期代號"] || requestRow.semesterId || "").trim();
+  var rid = String(requestRow["申請單ID"] || requestRow.id || "").trim();
+  var leaveEmail = String(requestRow["申請人Email"] || requestRow.requesterEmail || "").toLowerCase().trim();
+  var dateStr = homeroomRequestDate_(requestRow);
+  var status = homeroomRequestStatus_(requestRow);
+  var type = homeroomRequestType_(requestRow);
+
+  var teacher = findSemesterTeacher_(sid, leaveEmail) || {};
+  var className = extractHomeroomClass_(teacher, requestRow["班級"] || requestRow.className);
+
+  var rows = getSemesterHomeroomRecords_(sid);
+  var keyMatch = function (r) {
+    return homeroomRecordIsActive_(r)
+      && String(r["原導師Email"] || "").toLowerCase().trim() === leaveEmail
+      && String(r["代導日期"] || "").slice(0, 10) === dateStr;
+  };
+  var related = rows.filter(function (r) { return homeroomSourceHas_(r, rid) || keyMatch(r); });
+  var now = toLocalTimeStr(new Date());
+
+  var eligible = status === "approved"
+    && type === "substitution"
+    && !!sid && !!rid && !!leaveEmail && !!dateStr
+    && isHomeroomTeacher_(sid, leaveEmail);
+
+  if (!eligible) {
+    var changed = [];
+    related.forEach(function (r) {
+      var ids = homeroomSourceIds_(r);
+      if (rid && ids.length) {
+        ids = ids.filter(function (x) { return x !== rid; });
+        r["來源申請單ID"] = ids.join(",");
+      }
+      if (!ids.length) {
+        if (homeroomRecordIsActive_(r)) {
+          r["啟用"] = "FALSE";
+          r["狀態"] = "cancelled";
+          r["更新時間"] = now;
+          r["操作者"] = operatorEmail || "";
+          changed.push(r);
+        }
+      } else {
+        changed.push(r);
+      }
+    });
+    if (changed.length) saveRows(HOMEROOM_SHEET_, changed, "代導紀錄ID");
+    return null;
+  }
+
+  var fallbackTime = homeroomDefaultTime_(teacher);
+  var timeType = String(requestRow["請假時間類型"] || requestRow.leaveTimeType || "").trim() || fallbackTime.type;
+  var timeRange = homeroomNormalizeRange_(requestRow["請假時間"] || requestRow.leaveTime || "") || fallbackTime.range;
+  var actualName = "";
+  var actualEmail = "";
+  var hit = related.length ? related[0] : null;
+  if (hit && !homeroomRecordIsActive_(hit)) {
+    hit["代導教師Email"] = "";
+    hit["代導教師姓名"] = "";
+    hit["狀態"] = "pending";
+  }
+  if (!hit) {
+    hit = {
+      "學期代號": sid,
+      "代導紀錄ID": "mentor_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8),
+      "來源申請單ID": rid,
+      "原導師Email": leaveEmail,
+      "原導師姓名": String(requestRow["申請人姓名"] || requestRow.requesterName || teacher["教師姓名"] || teacher.name || ""),
+      "班級": className,
+      "代導日期": dateStr,
+      "請假時間類型": timeType,
+      "請假時間": timeRange,
+      "代導教師Email": "",
+      "代導教師姓名": "",
+      "代導節數": 1,
+      "鐘點費": HOMEROOM_FEE_,
+      "狀態": "pending",
+      "啟用": "TRUE",
+      "建立時間": now,
+      "更新時間": now,
+      "操作者": operatorEmail || "",
+      "備註": "導師排代自動建立，待指定代導教師"
+    };
+  } else {
+    var ids2 = homeroomSourceIds_(hit);
+    if (rid && ids2.indexOf(rid) < 0) ids2.push(rid);
+    hit["來源申請單ID"] = ids2.join(",");
+    hit["學期代號"] = sid;
+    hit["原導師Email"] = leaveEmail;
+    hit["原導師姓名"] = String(requestRow["申請人姓名"] || requestRow.requesterName || teacher["教師姓名"] || teacher.name || hit["原導師姓名"] || "");
+    hit["班級"] = className;
+    hit["代導日期"] = dateStr;
+    hit["請假時間類型"] = timeType;
+    hit["請假時間"] = timeRange;
+    hit["代導節數"] = 1;
+    hit["鐘點費"] = HOMEROOM_FEE_;
+    hit["啟用"] = "TRUE";
+    hit["更新時間"] = now;
+    hit["操作者"] = operatorEmail || "";
+    if (!String(hit["代導教師Email"] || "").trim()) {
+      hit["狀態"] = "pending";
+      hit["備註"] = "導師排代自動建立，待指定代導教師";
+    } else {
+      actualEmail = String(hit["代導教師Email"]).toLowerCase().trim();
+      var actual = findSemesterTeacher_(sid, actualEmail);
+      actualName = String(actual && (actual["教師姓名"] || actual.name) || hit["代導教師姓名"] || "");
+      hit["代導教師Email"] = actualEmail;
+      hit["代導教師姓名"] = actualName;
+      hit["狀態"] = "assigned";
+      hit["備註"] = "導師排代自動建立";
+    }
+  }
+  saveRows(HOMEROOM_SHEET_, [hit], "代導紀錄ID");
+  return hit;
+}
+
+/** 分層讀取：教師（中 TTL）— 快取存瘦身列 */
 /** 分層讀取：教師（中 TTL）— 快取存瘦身列 */
 function getSemesterTeachersCached_(semesterId) {
   var key = "jcjh_teachers_" + String(semesterId || "");
@@ -932,7 +1140,7 @@ function getSemesterTeachersCached_(semesterId) {
       if (Array.isArray(cachedT)) return slimTeacherRows_(cachedT);
     } catch (e) {}
   }
-  var rows = getTableData("教師名單").filter(function (t) { return t["學期代號"] === semesterId; });
+  var rows = getTableData("教師名單").filter(function (t) { return String(t["學期代號"] || "").trim() === String(semesterId || "").trim(); });
   var slim = slimTeacherRows_(rows);
   try { putCacheChunked(key, JSON.stringify(slim), CACHE_TTL_TEACHERS_); } catch (e2) {}
   return slim;
@@ -2242,6 +2450,9 @@ function personalizeSharedPayload_(shared, readerEmail, readerIsAdmin, opts) {
     }
   }
   out.requests = rows;
+  if (!readerIsAdmin && !opts.isStaff) {
+    delete out.homeroomRecords;
+  }
   if (out.requestWindow) {
     out.requestWindow = {
       historyAll: !!out.requestWindow.historyAll,
@@ -2640,6 +2851,7 @@ function buildFullSemesterPayload_(semesterId, opts) {
     teachers: allTeachers,
     schedules: allSchedules,
     substitutions: [],
+    homeroomRecords: isAdmin ? getSemesterHomeroomRecords_(semesterId) : [],
     requests: requests,
     classAwayEvents: classAwayEvents,
     scope: isAdmin ? "admin" : "teacher",
@@ -3078,6 +3290,21 @@ function handleReadAction_(postData) {
     return ContentService.createTextOutput(outLedJson).setMimeType(ContentService.MimeType.JSON);
   }
 
+  if (action === "getHomeroomRecords") {
+    var hTeachers = getSemesterTeachersCached_(semesterId);
+    var hIsAdmin = resolveIsAdmin_(readerEmail, hTeachers);
+    if (!hIsAdmin) {
+      return ContentService.createTextOutput(JSON.stringify({
+        success: false,
+        error: "僅管理員可查看代導紀錄"
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+    return ContentService.createTextOutput(JSON.stringify({
+      success: true,
+      homeroomRecords: getSemesterHomeroomRecords_(semesterId)
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+
   if (action === "getInitialData") {
     var teachersForRole = getSemesterTeachersCached_(semesterId);
     var readerIsAdmin = resolveIsAdmin_(readerEmail, teachersForRole);
@@ -3237,7 +3464,8 @@ function doPost(e) {
     // 讀取類：不佔寫入鎖；getPublicClassData 免 Token
     if (action === "getInitialData" || action === "getMetaData" || action === "getPublicClassData"
         || action === "getPendingOnly" || action === "getHistoryMonth"
-        || action === "getMatchCandidates" || action === "getMutualQuotaLedger") {
+        || action === "getMatchCandidates" || action === "getMutualQuotaLedger"
+        || action === "getHomeroomRecords") {
       return handleReadAction_(postData);
     }
 
@@ -3262,6 +3490,7 @@ function doPost(e) {
       earnMutualQuotaFromActivity: 1,
       saveScheduleCell: 1, clearScheduleCell: 1, importSchedulesBatch: 1,
       adminApprove: 1, adminReject: 1, adminApproveBatch: 1, adminRejectBatch: 1,
+      saveHomeroomCoverTeacher: 1,
       deleteSubstitutionRecord: 1,
       saveHistoryEdit: 1, batchMarkPrinted: 1, saveMailSettings: 1, sendBatchNotices: 1
     };
@@ -3631,6 +3860,123 @@ function doPost(e) {
         teachersAdded: (reqData.teachers && reqData.teachers.length) || 0
       })).setMimeType(ContentService.MimeType.JSON);
       
+    } else if (action === "saveHomeroomCoverTeacher") {
+      if (!isAdmin) throw new Error("無管理員權限！");
+      var recordId = String(reqData.recordId || reqData.id || "").trim();
+      var actualEmail = String(reqData.actualTeacherEmail || reqData.teacherEmail || "").trim().toLowerCase();
+      if (!recordId || !actualEmail) throw new Error("缺少代導紀錄或代導教師");
+      var coverRows = getSemesterHomeroomRecords_(semesterId);
+      var coverRow = coverRows.find(function (r) {
+        return String(r["代導紀錄ID"] || r.id || "").trim() === recordId;
+      });
+      if (!coverRow || !homeroomRecordIsActive_(coverRow)) {
+        throw new Error("找不到可指定的代導紀錄");
+      }
+      var originalEmail = String(coverRow["原導師Email"] || "").trim().toLowerCase();
+      if (actualEmail === originalEmail) {
+        throw new Error("代導教師不可與原導師相同");
+      }
+      var coverTeacher = findSemesterTeacher_(semesterId, actualEmail);
+      if (!coverTeacher) throw new Error("代導教師不在目前學期教師名單");
+      var duplicate = coverRows.some(function (r) {
+        if (String(r["代導紀錄ID"] || "").trim() === recordId) return false;
+        if (!homeroomRecordIsActive_(r)) return false;
+        return String(r["代導日期"] || "").slice(0, 10) === String(coverRow["代導日期"] || "").slice(0, 10)
+          && String(r["班級"] || "").trim() === String(coverRow["班級"] || "").trim()
+          && String(r["代導教師Email"] || "").trim().toLowerCase() === actualEmail;
+      });
+      if (duplicate) throw new Error("同日同班的代導教師已有另一筆代導紀錄");
+      var coverName = String(coverTeacher["教師姓名"] || coverTeacher.name || actualEmail);
+      var nowCover = toLocalTimeStr(new Date());
+      coverRow["代導教師Email"] = actualEmail;
+      coverRow["代導教師姓名"] = coverName;
+      coverRow["代導節數"] = 1;
+      coverRow["鐘點費"] = HOMEROOM_FEE_;
+      coverRow["狀態"] = "assigned";
+      coverRow["啟用"] = "TRUE";
+      coverRow["更新時間"] = nowCover;
+      coverRow["操作者"] = userEmail;
+      coverRow["備註"] = "教學組指定代導教師";
+      saveRows(HOMEROOM_SHEET_, [coverRow], "代導紀錄ID");
+      invalidateSemesterCaches_(semesterId);
+      return ContentService.createTextOutput(JSON.stringify({
+        success: true,
+        homeroomRecord: coverRow
+      })).setMimeType(ContentService.MimeType.JSON);
+
+    } else if (action === "saveManualHomeroomRecord") {
+      if (!isAdmin) throw new Error("無管理員權限！");
+      var leaveEmail = String(reqData.leaveEmail || reqData.originalTeacherEmail || "").toLowerCase().trim();
+      var dateStr = String(reqData.date || reqData.dateStr || "").trim().slice(0, 10);
+      if (!leaveEmail || !dateStr) throw new Error("請提供原導師與代導日期");
+      var origTeacher = findSemesterTeacher_(semesterId, leaveEmail);
+      if (!origTeacher) throw new Error("原導師不在目前學期教師名單");
+      var origName = String(origTeacher["教師姓名"] || origTeacher.name || leaveEmail);
+      var className = extractHomeroomClass_(origTeacher, reqData.className);
+      var fallbackTime = homeroomDefaultTime_(origTeacher);
+      var timeType = String(reqData.leaveTimeType || "").trim() || fallbackTime.type;
+      var timeRange = homeroomNormalizeRange_(reqData.leaveTime || "") || fallbackTime.range;
+
+      var actualEmail = String(reqData.actualTeacherEmail || "").toLowerCase().trim();
+      var actualName = "";
+      var status = "pending";
+      if (actualEmail) {
+        if (actualEmail === leaveEmail) throw new Error("代導教師不可與原導師相同");
+        var actualTeacher = findSemesterTeacher_(semesterId, actualEmail);
+        if (!actualTeacher) throw new Error("代導教師不在目前學期教師名單");
+        actualName = String(actualTeacher["教師姓名"] || actualTeacher.name || actualEmail);
+        status = "assigned";
+      }
+
+      var nowManual = toLocalTimeStr(new Date());
+      var manualHit = {
+        "學期代號": semesterId,
+        "代導紀錄ID": "mentor_manual_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8),
+        "來源申請單ID": "manual",
+        "原導師Email": leaveEmail,
+        "原導師姓名": origName,
+        "班級": className,
+        "代導日期": dateStr,
+        "請假時間類型": timeType,
+        "請假時間": timeRange,
+        "代導教師Email": actualEmail,
+        "代導教師姓名": actualName,
+        "代導節數": 1,
+        "鐘點費": HOMEROOM_FEE_,
+        "狀態": status,
+        "啟用": "TRUE",
+        "建立時間": nowManual,
+        "更新時間": nowManual,
+        "操作者": userEmail || "",
+        "備註": String(reqData.note || "管理員手動新增代導費").trim()
+      };
+      saveRows(HOMEROOM_SHEET_, [manualHit], "代導紀錄ID");
+      invalidateSemesterCaches_(semesterId);
+      return ContentService.createTextOutput(JSON.stringify({
+        success: true,
+        homeroomRecord: manualHit
+      })).setMimeType(ContentService.MimeType.JSON);
+
+    } else if (action === "deleteHomeroomRecord") {
+      if (!isAdmin) throw new Error("無管理員權限！");
+      var delRecordId = String(reqData.recordId || reqData.id || "").trim();
+      if (!delRecordId) throw new Error("缺少代導紀錄ID");
+      var delRows = getSemesterHomeroomRecords_(semesterId);
+      var delRow = delRows.find(function (r) {
+        return String(r["代導紀錄ID"] || r.id || "").trim() === delRecordId;
+      });
+      if (!delRow) throw new Error("找不到該筆代導紀錄");
+      var nowDel = toLocalTimeStr(new Date());
+      delRow["啟用"] = "FALSE";
+      delRow["狀態"] = "cancelled";
+      delRow["更新時間"] = nowDel;
+      delRow["操作者"] = userEmail || "";
+      saveRows(HOMEROOM_SHEET_, [delRow], "代導紀錄ID");
+      invalidateSemesterCaches_(semesterId);
+      return ContentService.createTextOutput(JSON.stringify({
+        success: true,
+        recordId: delRecordId
+      })).setMimeType(ContentService.MimeType.JSON);
     } else if (action === "adminApprove") {
       if (!isAdmin) throw new Error("無管理員權限！");
       var targetReq = findRowByKey_("申請單", "申請單ID", reqData.requestId);
@@ -3639,6 +3985,7 @@ function doPost(e) {
       targetReq["狀態"] = "approved";
       if (reqData.note) targetReq["備註"] = reqData.note;
       saveRows("申請單", [targetReq], "申請單ID");
+      syncHomeroomRecordForRequest_(targetReq, userEmail);
       // 待審核准一律寄通知信（鎖外）
       queueMail_("sendAdminApproveEmail", function () { sendAdminApproveEmail_(targetReq, currentUrl); });
       invalidateSemesterCaches_(semesterId);
@@ -3666,6 +4013,7 @@ function doPost(e) {
       });
       if (!apToSave.length) throw new Error("找不到可核准的申請單");
       saveRows("申請單", apToSave, "申請單ID");
+      apToSave.forEach(function (r) { syncHomeroomRecordForRequest_(r, userEmail); });
       // 通知：同受邀人合併（鎖外）
       queueMail_("adminApproveBatchMail", function () {
         var apBySub = {};
@@ -3696,6 +4044,7 @@ function doPost(e) {
       try { restoreMutualQuotaForRequests_(targetReq); } catch (qE) { logError_("restoreMutualQuota_adminReject", qE); }
       targetReq["狀態"] = "admin_rejected";
       saveRows("申請單", [targetReq], "申請單ID");
+      syncHomeroomRecordForRequest_(targetReq, userEmail);
       queueMail_("sendAdminRejectEmail", function () { sendAdminRejectEmail_(targetReq, currentUrl); });
       invalidateSemesterCaches_(semesterId);
 
@@ -3721,6 +4070,7 @@ function doPost(e) {
       try { restoreMutualQuotaForRequests_(rjToSave); } catch (qE) { logError_("restoreMutualQuota_adminRejectBatch", qE); }
       rjToSave.forEach(function (row) { row["狀態"] = "admin_rejected"; });
       saveRows("申請單", rjToSave, "申請單ID");
+      rjToSave.forEach(function (r) { syncHomeroomRecordForRequest_(r, userEmail); });
       queueMail_("adminRejectBatchMail", function () {
         rjToSave.forEach(function (r) { sendAdminRejectEmail_(r, currentUrl); });
       });
@@ -3741,6 +4091,7 @@ function doPost(e) {
           try { restoreMutualQuotaForRequests_(targetReq); } catch (qE) { logError_("restoreMutualQuota_deleteSub", qE); }
           targetReq["狀態"] = "cancelled";
           saveRows("申請單", [targetReq], "申請單ID");
+          syncHomeroomRecordForRequest_(targetReq, userEmail);
         }
       } else if (reqData.id) {
         var reqIdDel = String(reqData.id).replace(/_[12]$/, "");
@@ -3749,6 +4100,7 @@ function doPost(e) {
           try { restoreMutualQuotaForRequests_(targetReqDel); } catch (qE) { logError_("restoreMutualQuota_deleteSub", qE); }
           targetReqDel["狀態"] = "cancelled";
           saveRows("申請單", [targetReqDel], "申請單ID");
+          syncHomeroomRecordForRequest_(targetReqDel, userEmail);
         }
       }
       invalidateSemesterCaches_(semesterId);
@@ -3804,6 +4156,8 @@ function doPost(e) {
       targetReq["異動節次"] = reqPeriod;
       targetReq["異動類型"] = isEx ? "exchange" : "substitution";
       targetReq["請假事由"] = reqData.reason != null ? reqData.reason : (targetReq["請假事由"] || "");
+      targetReq["請假時間類型"] = reqData.leaveTimeType != null ? reqData.leaveTimeType : (targetReq["請假時間類型"] || "");
+      targetReq["請假時間"] = reqData.leaveTime != null ? reqData.leaveTime : (targetReq["請假時間"] || "");
       targetReq["備註"] = reqData.note != null ? reqData.note : (targetReq["備註"] || "");
       if (reqData.printed !== undefined) {
         targetReq["是否已印"] = (reqData.printed === true || reqData.printed === "TRUE" || reqData.printed === "true") ? "TRUE" : "FALSE";
@@ -3832,6 +4186,7 @@ function doPost(e) {
       }
 
       saveRows("申請單", [targetReq], "申請單ID");
+      syncHomeroomRecordForRequest_(targetReq, userEmail);
       invalidateSemesterCaches_(semesterId);
       
     } else if (action === "saveMailSettings") {
@@ -3977,6 +4332,9 @@ function doPost(e) {
       if (!reqData.request["批次ID"]) reqData.request["批次ID"] = "";
       
       saveRows("申請單", [reqData.request], "申請單ID");
+      if (String(reqData.request["狀態"] || "") === "approved") {
+        syncHomeroomRecordForRequest_(reqData.request, userEmail);
+      }
       // 扣額度：後端活動包 FIFO 扣用（與流水）
       try { spendMutualQuotaForRequests_([reqData.request], userEmail); } catch (qSpend1) {
         logError_("spendMutualQuota_submitRequest", qSpend1);
@@ -4051,6 +4409,9 @@ function doPost(e) {
         rows.push(row);
       }
       saveRows("申請單", rows, "申請單ID");
+      if (finalStatus === "approved") {
+        rows.forEach(function (r) { syncHomeroomRecordForRequest_(r, userEmail); });
+      }
       try { spendMutualQuotaForRequests_(rows, userEmail); } catch (qSpendB) {
         logError_("spendMutualQuota_submitRequestBatch", qSpendB);
       }
@@ -4215,6 +4576,7 @@ function doPost(e) {
         targetReq["狀態"] = "rejected";
       }
       saveRows("申請單", [targetReq], "申請單ID");
+      syncHomeroomRecordForRequest_(targetReq, userEmail);
       if (reqData.response === "agree") {
         queueMail_("sendRespondAgreeEmail", function () { sendRespondAgreeEmail_(targetReq, currentUrl); });
       } else {
@@ -4239,6 +4601,7 @@ function doPost(e) {
       var newStatus = resp === "agree" ? "pending_admin" : "rejected";
       peers.forEach(function (r) { r["狀態"] = newStatus; });
       saveRows("申請單", peers, "申請單ID");
+      peers.forEach(function (r) { syncHomeroomRecordForRequest_(r, userEmail); });
       queueMail_("respondToBatchMail", function () {
         if (resp === "agree") {
           sendRespondAgreeBatchEmail_(peers, currentUrl);
@@ -4266,6 +4629,7 @@ function doPost(e) {
       try { restoreMutualQuotaForRequests_(targetReq); } catch (qE) { logError_("restoreMutualQuota_cancel", qE); }
       targetReq["狀態"] = "cancelled";
       saveRows("申請單", [targetReq], "申請單ID");
+      syncHomeroomRecordForRequest_(targetReq, userEmail);
       invalidateSemesterCaches_(semesterId);
       
     } else if (action === "withdrawRequest") {
@@ -4279,6 +4643,7 @@ function doPost(e) {
       try { restoreMutualQuotaForRequests_(targetReq); } catch (qE) { logError_("restoreMutualQuota_withdraw", qE); }
       targetReq["狀態"] = "withdrawn";
       saveRows("申請單", [targetReq], "申請單ID");
+      syncHomeroomRecordForRequest_(targetReq, userEmail);
       invalidateSemesterCaches_(semesterId);
       
     } else {

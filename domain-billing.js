@@ -500,6 +500,7 @@ window.DomainBilling = (function () {
   function buildSubFeeExcelWorkbook(opts) {
     var reportMonth = opts.reportMonth || '';
     var substitutionRecords = opts.substitutionRecords || [];
+    var homeroomRecords = opts.homeroomRecords || [];
     var getTeacherNameByEmail = opts.getTeacherNameByEmail || function (e) { return e || ''; };
 
     var year = parseInt(reportMonth.slice(0, 4), 10);
@@ -518,6 +519,7 @@ window.DomainBilling = (function () {
 
     var sheetNamePub = rocYear + '.' + monthStr + ' 公付';
     var sheetNameSelf = rocYear + '.' + monthStr + ' 自付';
+    var sheetNameMentor = rocYear + '.' + monthStr + ' 代導公付';
 
     var monthPrefix = year + '-' + monthStr;
     var monthRecords = (substitutionRecords || []).filter(function (r) {
@@ -528,6 +530,28 @@ window.DomainBilling = (function () {
       if (p === 8 || String(r.period).trim() === '8') return false;
       var rDate = String(r.date).replace(/\//g, '-');
       return rDate.indexOf(monthPrefix) === 0;
+    });
+
+    var monthHomeroomRecords = (homeroomRecords || []).filter(function (r) {
+      if (!r || !r.date || !r.actualTeacherEmail) return false;
+      if (r.enabled === false || String(r.status || '').toLowerCase() === 'cancelled') return false;
+      var rDate = String(r.date).replace(/\//g, '-');
+      return rDate.indexOf(monthPrefix) === 0;
+    }).map(function (r) {
+      return Object.assign({}, r, {
+        type: 'homeroom',
+        subject: '代導',
+        reason: '代導公付',
+        subFee: '代導公付',
+        period: '代導',
+        periodCount: 1
+      });
+    });
+    monthHomeroomRecords.sort(function (a, b) {
+      var na = getTeacherNameByEmail(a.originalTeacherEmail) || a.originalTeacherName || '';
+      var nb = getTeacherNameByEmail(b.originalTeacherEmail) || b.originalTeacherName || '';
+      if (na !== nb) return na.localeCompare(nb, 'zh-Hant');
+      return String(a.date || '').localeCompare(String(b.date || ''));
     });
 
     function getOrigTeacherName(r) {
@@ -601,9 +625,9 @@ window.DomainBilling = (function () {
       else selfRecords.push(r);
     });
 
-    function buildAoa(records) {
+    function buildAoa(records, titleOverride) {
       var aoa = [];
-      aoa.push([title, null, null, null, null, null, null, null]);
+      aoa.push([titleOverride || title, null, null, null, null, null, null, null]);
       aoa.push(['請假\n教師', '假別', '請假\n日期', '請假\n時間', '課務\n(班級-課程)', '節次', '代課\n教師', '合計\n節數']);
 
       var groups = [];
@@ -668,8 +692,10 @@ window.DomainBilling = (function () {
       title: title,
       sheetNamePub: sheetNamePub,
       sheetNameSelf: sheetNameSelf,
+      sheetNameMentor: sheetNameMentor,
       pubAoa: buildAoa(pubRecords),
-      selfAoa: buildAoa(selfRecords)
+      selfAoa: buildAoa(selfRecords),
+      mentorAoa: buildAoa(monthHomeroomRecords, title + '（代導公付鐘點費清冊）')
     };
   }
 
