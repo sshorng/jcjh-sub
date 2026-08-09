@@ -4,6 +4,7 @@ const path = require('path');
 const url = require('url');
 
 const PORT = 8000;
+const HOST = 'localhost';
 const ROOT = __dirname;
 
 const MIME = {
@@ -31,8 +32,7 @@ http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream' });
     res.end(data);
   });
-}).listen(PORT, '127.0.0.1', () => {
-  // Google GSI 通常已授權 localhost，較少授權 127.0.0.1；請優先用 localhost
-  console.log(`Dev server running at http://localhost:${PORT}/`);
-  console.log(`(also) http://127.0.0.1:${PORT}/  ← GSI 可能無反應，請改用 localhost`);
+}).listen(PORT, HOST, () => {
+  // Google GSI 通常已授權 localhost，測試登入請使用 localhost
+  console.log(`Dev server running at http://${HOST}:${PORT}/`);
 });

@@ -1556,6 +1556,12 @@ body {
   font-size: 0.75rem !important;
   border-radius: 999px !important;
 }
+.history-filter-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  white-space: nowrap;
+}
 .history-filter-bar .filter-date,
 .history-filter-bar .filter-search {
   width: auto !important;
@@ -2028,6 +2034,48 @@ body {
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
+}
+.billing-report-title-main {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.billing-month-control {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.billing-month-control .form-label {
+  margin: 0;
+  white-space: nowrap;
+  font-size: 0.78rem;
+}
+.billing-month-control .form-select {
+  min-width: 130px;
+  padding: 7px 9px;
+  font-size: 0.82rem;
+}
+.billing-weeks-control {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.billing-weeks-control .form-input {
+  width: 72px;
+  padding: 7px 9px;
+  font-size: 0.82rem;
+}
+.billing-weeks-suffix {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+.billing-report-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .billing-legend {
   display: flex;
@@ -4412,6 +4460,50 @@ td.table-empty {
 .text-ok-green { color: #15803d; }
 .text-period8 { color: #0369a1; }
 .text-amber { color: #b45309; }
+
+/* 會計匯出期間 */
+#confirm-accounting-period-wrap {
+  display: none;
+  margin-bottom: 18px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 10px;
+  background: var(--bg-primary, #f8fafc);
+}
+#confirm-accounting-period-wrap.is-open { display: block; }
+#confirm-accounting-period-title {
+  margin-bottom: 8px;
+  color: var(--text-primary, #334155);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+#confirm-accounting-period-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+}
+
+#confirm-accounting-period-fields label {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--text-muted, #64748b);
+  font-size: 0.76rem;
+}
+#confirm-accounting-period-fields input {
+  width: 100%;
+  padding: 7px 8px;
+  font-size: 0.82rem;
+}
+#confirm-accounting-period-reset {
+  white-space: nowrap;
+  padding: 7px 9px;
+  font-size: 0.76rem;
+}
+@media (max-width: 480px) {
+  #confirm-accounting-period-fields { grid-template-columns: 1fr 1fr; }
+  #confirm-accounting-period-reset { grid-column: 1 / -1; justify-self: start; }
+}
 
 /* confirm note */
 #confirm-note-wrap {

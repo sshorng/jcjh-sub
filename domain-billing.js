@@ -428,6 +428,7 @@ window.DomainBilling = (function () {
         email: email,
         name: t.name,
         subject: t.subject,
+        expensePlan: String(t.expensePlan || t['鐘點支出計畫'] || t['鐘點支出來源'] || t['支出計畫'] || t['計畫'] || t.plan || '').trim(),
         weeklyPeriods: weeklyPeriods,
         baseHours: baseHours,
         weeklyOvertime: weeklyOvertime,

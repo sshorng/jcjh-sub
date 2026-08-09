@@ -117,6 +117,7 @@ window.FieldMap = (function () {
       name: pick(t, ['教師姓名', 'name']),
       subject: pick(t, ['授課科目', '任課科目', 'subject']) || '',
       jobTitle: String(pick(t, ['職務', '職稱', 'jobTitle']) || ''),
+      expensePlan: String(pick(t, ['鐘點支出計畫', '鐘點支出來源', '支出計畫', '計畫', 'expensePlan', 'plan']) || '').trim(),
       role: normalizeRole(pick(t, ['系統角色', 'role']) || 'teacher'),
       baseHours: asInt(pick(t, ['基本鐘點', 'baseHours']), 16),
       // 折抵額度：釋出 1 節＝0.5；扣額度須滿 1 才扣 1
@@ -159,6 +160,7 @@ window.FieldMap = (function () {
       period: asInt(pick(sub, ['節次', 'period']), 0),
       originalTeacherEmail: pick(sub, ['原授課教師Email', '原任課教師Email', 'originalTeacherEmail']),
       actualTeacherEmail: pick(sub, ['實際授課教師Email', 'actualTeacherEmail']),
+      actualTeacherName: pick(sub, ['\u5be6\u969b\u6388\u8ab2\u6559\u5e2b\u59d3\u540d', '\u4ee3\u8ab2\u6559\u5e2b\u59d3\u540d', 'actualTeacherName']) || '',
       className: String(pick(sub, ['班級', 'className']) || ''),
       subject: pick(sub, ['科目', 'subject']) || '',
       requestId: pick(sub, ['申請單ID', 'requestId']) || '',
@@ -262,6 +264,9 @@ window.FieldMap = (function () {
   /** 前端 → Sheets：教師寫入列（同時寫入授課科目/任課科目別名，相容舊表頭） */
   function teacherToSheet(t, semesterId) {
     const subject = t.subject || t["授課科目"] || t["任課科目"] || '';
+    const expensePlan = String(t.expensePlan !== undefined ? t.expensePlan
+      : (t["鐘點支出計畫"] !== undefined ? t["鐘點支出計畫"]
+        : (t["鐘點支出來源"] !== undefined ? t["鐘點支出來源"] : (t["計畫"] || "")))).trim();
     const quota = t.mutualQuota !== undefined ? t.mutualQuota
       : (t["折抵額度"] !== undefined ? t["折抵額度"] : 0);
     return {
@@ -271,6 +276,7 @@ window.FieldMap = (function () {
       "授課科目": subject,
       "任課科目": subject,
       "職務": t.jobTitle || t["職務"] || t["職稱"] || "",
+      "鐘點支出計畫": expensePlan,
       "系統角色": normalizeRole(t.role || t["系統角色"] || 'teacher'),
       "基本鐘點": (function () {
         if (t.baseHours === 0 || t.baseHours === '0') return 0;

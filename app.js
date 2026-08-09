@@ -84,15 +84,66 @@ function showConfirm(msg, title = '請確認', opts = {}) {
     const msgEl   = document.getElementById('confirm-msg');
     const noteWrap = document.getElementById('confirm-note-wrap');
     const noteEl  = document.getElementById('confirm-note');
+    const periodWrap = document.getElementById('confirm-accounting-period-wrap');
+    const periodStartEl = document.getElementById('confirm-accounting-period-start');
+    const periodEndEl = document.getElementById('confirm-accounting-period-end');
+    const periodResetEl = document.getElementById('confirm-accounting-period-reset');
+    const accountingWeeksField = document.getElementById('confirm-accounting-weeks-field');
+    const accountingWeeksEl = document.getElementById('confirm-accounting-weeks');
     const btnOk   = document.getElementById('confirm-ok');
     const btnCan  = document.getElementById('confirm-cancel');
+    const initialPeriod = {
+      start: opts.periodStart != null ? String(opts.periodStart) : '',
+      end: opts.periodEnd != null ? String(opts.periodEnd) : ''
+    };
+    const readPeriod = () => ({
+      start: periodStartEl ? String(periodStartEl.value || '').trim() : initialPeriod.start,
+      end: periodEndEl ? String(periodEndEl.value || '').trim() : initialPeriod.end
+    });
+    const setPeriod = (period) => {
+      const value = period || initialPeriod;
+      if (periodStartEl) periodStartEl.value = value.start || '';
+      if (periodEndEl) periodEndEl.value = value.end || '';
+    };
+    const initialWeeks = opts.reportWeeksCount != null ? String(opts.reportWeeksCount) : '';
+    const readWeeks = () => accountingWeeksEl
+      ? String(accountingWeeksEl.value || '').trim()
+      : initialWeeks;
+    const setWeeks = (weeks) => {
+      if (accountingWeeksEl) accountingWeeksEl.value = weeks == null ? '' : String(weeks);
+    };
     if (!overlay) {
       const ok = window.confirm(msg);
-      resolve(opts.withNote ? { ok, note: '' } : ok);
+      if (opts.withAccountingPeriod) {
+        const period = initialPeriod;
+        const result = { ok, period, start: period.start, end: period.end };
+        if (opts.withAccountingWeeks) result.reportWeeksCount = initialWeeks;
+        resolve(result);
+      } else {
+        resolve(opts.withNote ? { ok, note: '' } : ok);
+      }
       return;
     }
     titleEl.textContent = title;
     msgEl.textContent = msg;
+    if (periodWrap && periodStartEl && periodEndEl) {
+      if (opts.withAccountingPeriod) {
+        periodWrap.classList.add('is-open');
+        setPeriod(initialPeriod);
+      } else {
+        periodWrap.classList.remove('is-open');
+        setPeriod({ start: '', end: '' });
+      }
+    }
+    if (accountingWeeksField && accountingWeeksEl) {
+      if (opts.withAccountingWeeks) {
+        accountingWeeksField.classList.add('is-open');
+        setWeeks(initialWeeks);
+      } else {
+        accountingWeeksField.classList.remove('is-open');
+        setWeeks('');
+      }
+    }
     if (noteWrap && noteEl) {
       if (opts.withNote) {
         noteWrap.classList.add('is-open');
@@ -107,25 +158,64 @@ function showConfirm(msg, title = '請確認', opts = {}) {
     }
     overlay.classList.add('confirm-show');
     let disposeA11y = null;
+    let onPeriodChange = null;
+    let onWeeksChange = null;
+    let onPeriodReset = null;
     const cleanup = (ok) => {
       overlay.classList.remove('confirm-show');
       btnOk.removeEventListener('click', onOk);
       btnCan.removeEventListener('click', onCancel);
       overlay.removeEventListener('click', onOverlay);
+      if (onPeriodChange && periodStartEl) periodStartEl.removeEventListener('input', onPeriodChange);
+      if (onPeriodChange && periodEndEl) periodEndEl.removeEventListener('input', onPeriodChange);
+      if (onPeriodReset && periodResetEl) periodResetEl.removeEventListener('click', onPeriodReset);
+      if (onWeeksChange && accountingWeeksEl) accountingWeeksEl.removeEventListener('input', onWeeksChange);
       if (disposeA11y) disposeA11y();
       const note = (noteEl && noteEl.value || '').trim();
+      const period = readPeriod();
       if (noteWrap) noteWrap.classList.remove('is-open');
-      resolve(opts.withNote ? { ok, note } : ok);
+      if (periodWrap) periodWrap.classList.remove('is-open');
+      if (accountingWeeksField) accountingWeeksField.classList.remove('is-open');
+      if (opts.withAccountingPeriod) {
+        const result = { ok, period, start: period.start, end: period.end };
+        if (opts.withAccountingWeeks) result.reportWeeksCount = readWeeks();
+        if (opts.withNote) result.note = note;
+        resolve(result);
+      } else {
+        resolve(opts.withNote ? { ok, note } : ok);
+      }
     };
-    const onOk = () => cleanup(true);
+    const applyPeriodChange = () => {
+      if (typeof opts.onAccountingPeriodChange !== 'function') return;
+      const result = opts.onAccountingPeriodChange(readPeriod(), readWeeks());
+      if (result != null && msgEl) {
+        msgEl.textContent = typeof result === 'string' ? result : (result.message || '');
+      }
+    };
+    onPeriodChange = applyPeriodChange;
+    onWeeksChange = applyPeriodChange;
+    onPeriodReset = () => {
+      setPeriod(opts.periodDefault || initialPeriod);
+      applyPeriodChange();
+    };
+    const onOk = () => {
+      if (opts.withAccountingPeriod && typeof opts.validateAccountingPeriod === 'function' &&
+          !opts.validateAccountingPeriod(readPeriod(), readWeeks())) return;
+      cleanup(true);
+    };
     const onCancel = () => cleanup(false);
-    // 點遮罩（外側）＝取消，與其他 modal 一致
     const onOverlay = (e) => {
       if (e.target === overlay) cleanup(false);
     };
-    btnOk.addEventListener('click', onOk, { once: true });
-    btnCan.addEventListener('click', onCancel, { once: true });
+    btnOk.addEventListener('click', onOk);
+    btnCan.addEventListener('click', onCancel);
     overlay.addEventListener('click', onOverlay);
+    if (opts.withAccountingPeriod) {
+      if (periodStartEl) periodStartEl.addEventListener('input', onPeriodChange);
+      if (periodEndEl) periodEndEl.addEventListener('input', onPeriodChange);
+      if (accountingWeeksEl && opts.withAccountingWeeks) accountingWeeksEl.addEventListener('input', onWeeksChange);
+      if (periodResetEl && opts.periodDefault) periodResetEl.addEventListener('click', onPeriodReset);
+    }
     disposeA11y = installModalA11y(overlay, {
       box: document.getElementById('confirm-box'),
       label: title,
@@ -2432,9 +2522,15 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
 
     // 歷史紀錄篩選與分頁（預設本月，減少一次掃全學期）
     const historyFilterMode = ref('month');
+    const historyTypeFilter = ref('all');
     const historyFilterDate = ref(new Date().toISOString().split('T')[0]);
     const historySearchQuery = ref('');
     const historyPage = ref(1);
+
+    const isHistoryExchangeType = (record) => {
+      const type = String(record && record.type || '').trim().toLowerCase();
+      return type === 'exchange' || type === '對調' || type === '調課';
+    };
     const historyPageSize = ref(20);
 
     // ── 申請時間窗／歷史按月／待辦輕量對齊 ──
@@ -2741,6 +2837,12 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       }
     };
 
+    const setHistoryTypeFilter = (type) => {
+      const next = ['all', 'substitution', 'exchange'].includes(type) ? type : 'all';
+      historyTypeFilter.value = next;
+      historyPage.value = 1;
+    };
+
     watch(historyFilterDate, (d) => {
       if (historyFilterMode.value !== 'month') return;
       ensureHistoryMonthLoaded(String(d || '').slice(0, 7));
@@ -2808,8 +2910,49 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     const isScheduleEditMode = ref(false);
     // 月底報表統計
     const reportMonth = ref(new Date().toISOString().slice(0, 7)); // 格式: YYYY-MM
-    const reportWeeksCount = ref(4); 
+    const ACCOUNTING_WEEKS_STORAGE_KEY = 'jcjh_accounting_report_weeks';
+    const normalizeAccountingWeeksSetting = (value) => {
+      const weeks = Number(value);
+      return Number.isInteger(weeks) && weeks >= 1 && weeks <= 6 ? weeks : null;
+    };
+    const loadAccountingWeeksSetting = (month) => {
+      try {
+        const saved = JSON.parse(window.localStorage.getItem(ACCOUNTING_WEEKS_STORAGE_KEY) || '{}');
+        return normalizeAccountingWeeksSetting(saved && saved[month]) || 4;
+      } catch (e) {
+        return 4;
+      }
+    };
+    const saveAccountingWeeksSetting = (month, value) => {
+      const weeks = normalizeAccountingWeeksSetting(value);
+      const monthKey = String(month || '');
+      if (!weeks || !/^\d{4}-\d{2}$/.test(monthKey)) return;
+      try {
+        const saved = JSON.parse(window.localStorage.getItem(ACCOUNTING_WEEKS_STORAGE_KEY) || '{}');
+        saved[monthKey] = weeks;
+        window.localStorage.setItem(ACCOUNTING_WEEKS_STORAGE_KEY, JSON.stringify(saved));
+      } catch (e) {
+        // 私密瀏覽或瀏覽器封鎖 localStorage 時，仍可正常使用月報。
+      }
+    };
+    const reportWeeksCount = ref(loadAccountingWeeksSetting(reportMonth.value));
     const monthlyReportData = ref([]);
+    const accountingPeriod = ref(
+      window.ExportAccounting && window.ExportAccounting.loadPeriodSettings
+        ? window.ExportAccounting.loadPeriodSettings(reportMonth.value)
+        : {}
+    );
+
+    const accountingExportLoading = ref(false);
+    watch(reportMonth, (month) => {
+      reportWeeksCount.value = loadAccountingWeeksSetting(month);
+      if (window.ExportAccounting && window.ExportAccounting.loadPeriodSettings) {
+        accountingPeriod.value = window.ExportAccounting.loadPeriodSettings(month);
+      }
+    });
+    watch(reportWeeksCount, (weeks) => {
+      saveAccountingWeeksSetting(reportMonth.value, weeks);
+    });
 
     // 行政直接審核生效開關
     const directApproveMode = ref(true);
@@ -3376,6 +3519,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     });
 
     const teachersListDetails = computed(() => teachersList.value);
+    const accountingPlanOptions = computed(() => Array.from(new Set((teachersList.value || []).map(t => String(t && t.expensePlan || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'zh-Hant', { numeric: true })));
     const pendingHomeroomRecords = computed(() => {
       return (homeroomRecords.value || [])
         .filter(r => r && r.enabled !== false && String(r.status || '').toLowerCase() !== 'cancelled')
@@ -3924,6 +4068,13 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
 
     const dateFilteredHistoryRecords = computed(() => {
       let records = filteredHistoryRecords.value;
+
+      if (historyTypeFilter.value !== 'all') {
+        records = records.filter(r => {
+          const isExchange = isHistoryExchangeType(r);
+          return historyTypeFilter.value === 'exchange' ? isExchange : !isExchange;
+        });
+      }
 
       // 搜尋：單號／教師／班級／科目／日期／假別
       const q = (historySearchQuery.value || '').trim().toLowerCase();
@@ -5092,63 +5243,144 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       XLSX.writeFile(wb, `全校大鐘點與第8節費_${reportMonth.value}.xlsx`);
     };
 
-    // 匯出代課代導費 Excel（給幹事作帳備查：含公付與自付兩張逐筆清冊）
+    // 匯出會計版五類 Excel（套用範本；扣勞健保／實際金額留白）
     const exportSubFeeToExcel = async () => {
+      if (accountingExportLoading.value) return;
+      accountingExportLoading.value = true;
       try {
         await ensureBillingReady();
-        if (typeof window.ensureXlsx === 'function') await window.ensureXlsx();
+        if (typeof window.ensureExcelJS === 'function') await window.ensureExcelJS();
       } catch (e) {
-        showToast('Excel 模組載入失敗', 'error');
+        accountingExportLoading.value = false;
+        showToast('ExcelJS 模組載入失敗', 'error');
         return;
       }
-      if (typeof XLSX === 'undefined') {
-        showToast('Excel 模組未載入', 'error');
-        return;
+      try {
+        if (!window.ExportAccounting || !window.ExportAccounting.buildExportData || !window.ExportAccounting.exportWorkbook) {
+          throw new Error('會計匯出模組未載入');
+        }
+        if (!monthlyReportData.value.length) await calculateMonthlyReport();
+        const periodDefault = window.ExportAccounting.defaultPeriodSettings
+          ? window.ExportAccounting.defaultPeriodSettings(reportMonth.value)
+          : accountingPeriod.value;
+        const normalizeAccountingPeriod = (period) => {
+          const start = String(period && period.start || '').trim();
+          const end = String(period && period.end || '').trim();
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end) || start > end) return null;
+          return { start, end };
+        };
+        const initialPeriod = normalizeAccountingPeriod(accountingPeriod.value) || normalizeAccountingPeriod(periodDefault);
+        if (!initialPeriod) throw new Error('會計匯出期間無效，請重新整理後再試。');
+        const normalizeReportWeeks = (value) => {
+          const weeks = Number(value);
+          return Number.isInteger(weeks) && weeks >= 1 && weeks <= 6 ? weeks : null;
+        };
+        const initialWeeks = normalizeReportWeeks(reportWeeksCount.value) || 4;
+        const buildMonthlyRowsForExport = (weeks) => {
+          if (window.DomainBilling && typeof window.DomainBilling.buildMonthlyReportRows === 'function') {
+            return window.DomainBilling.buildMonthlyReportRows({
+              teachers: teachersList.value,
+              allSchedules: allSchedules.value,
+              substitutionRecords: substitutionRecords.value,
+              reportMonth: reportMonth.value,
+              reportWeeksCount: weeks,
+              getTeacherNameByEmail,
+              classAwayEvents: classAwayEvents.value,
+              semesterEndDate: semesterEndDate.value,
+              isSingleWeek
+            });
+          }
+          return monthlyReportData.value;
+        };
+        const exportOpts = {
+          reportMonth: reportMonth.value,
+          reportWeeksCount: initialWeeks,
+          periods: initialPeriod,
+          teachers: teachersList.value,
+          allSchedules: allSchedules.value,
+          substitutionRecords: substitutionRecords.value,
+          homeroomRecords: homeroomRecords.value,
+          monthlyReportRows: buildMonthlyRowsForExport(initialWeeks),
+          getTeacherNameByEmail,
+          classAwayEvents: classAwayEvents.value,
+          semesterEndDate: semesterEndDate.value,
+          isSingleWeek
+        };
+        const buildPopupState = (period) => {
+          const reportWeeks = initialWeeks;
+          const monthlyRows = buildMonthlyRowsForExport(reportWeeks);
+          const preview = window.ExportAccounting.buildExportData({
+            ...exportOpts,
+            reportWeeksCount: reportWeeks,
+            monthlyReportRows: monthlyRows,
+            periods: period
+          });
+          const summaryLines = preview.summary.map((item) => item.label + '：' + item.count + ' 筆／' + Number(item.hours || 0).toLocaleString() + ' 節／NT$ ' + Number(item.amount || 0).toLocaleString());
+          const warningLines = preview.warnings.length
+            ? '\n\n匯出前提示：\n' + preview.warnings.map((w) => '⚠️ ' + w).join('\n')
+            : '';
+          return {
+            period,
+            reportWeeksCount: reportWeeks,
+            monthlyReportRows: monthlyRows,
+            message: '將套用會計範本下載單一 Excel：\n\n授課週數：' + reportWeeks + ' 週\n\n' + summaryLines.join('\n') + warningLines + '\n\n扣勞健保與實際金額欄位會留白。'
+          };
+        };
+        let popupState = buildPopupState(initialPeriod);
+        const confirmed = await showConfirm(
+          popupState.message,
+          '匯出會計版五類 Excel',
+          {
+            withAccountingPeriod: true,
+            periodStart: popupState.period.start,
+            periodEnd: popupState.period.end,
+            periodDefault,
+            onAccountingPeriodChange: (draftPeriod) => {
+              const nextPeriod = normalizeAccountingPeriod(draftPeriod);
+              if (!nextPeriod) return '請先填寫有效的會計匯出起訖日，再確認下載。';
+              popupState = buildPopupState(nextPeriod);
+              return popupState.message;
+            },
+            validateAccountingPeriod: (draftPeriod) => {
+              const nextPeriod = normalizeAccountingPeriod(draftPeriod);
+              if (!nextPeriod) return false;
+              popupState = buildPopupState(nextPeriod);
+              return true;
+            }
+          }
+        );
+        if (!confirmed || !confirmed.ok) return;
+        const finalPeriod = normalizeAccountingPeriod(confirmed.period) || popupState.period;
+        const finalWeeks = initialWeeks;
+        const finalPopupState = buildPopupState(finalPeriod);
+        exportOpts.periods = finalPeriod;
+        exportOpts.reportWeeksCount = finalWeeks;
+        exportOpts.monthlyReportRows = finalPopupState.monthlyReportRows;
+        monthlyReportData.value = finalPopupState.monthlyReportRows;
+        accountingPeriod.value = finalPeriod;
+        if (window.ExportAccounting.savePeriodSettings) {
+          window.ExportAccounting.savePeriodSettings(reportMonth.value, finalPeriod);
+        }
+        const result = await window.ExportAccounting.exportWorkbook(exportOpts);
+        const blob = new Blob([result.buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = result.fileName;
+        document.body.appendChild(link);
+        link.click();
+        setTimeout(() => {
+          try { document.body.removeChild(link); } catch (e) { /* ignore */ }
+          try { URL.revokeObjectURL(url); } catch (e) { /* ignore */ }
+        }, 1200);
+        showToast('已下載：' + result.fileName, 'success');
+      } catch (e) {
+        console.error(e);
+        showToast('會計版 Excel 匯出失敗：' + (e.message || e), 'error');
+      } finally {
+        accountingExportLoading.value = false;
       }
-      if (!window.DomainBilling || !window.DomainBilling.buildSubFeeExcelWorkbook) {
-        showToast('計費服務模組未就緒', 'error');
-        return;
-      }
-
-      const res = window.DomainBilling.buildSubFeeExcelWorkbook({
-        reportMonth: reportMonth.value,
-        substitutionRecords: substitutionRecords.value,
-        homeroomRecords: homeroomRecords.value,
-        getTeacherNameByEmail
-      });
-
-      const wb = XLSX.utils.book_new();
-
-      const wsPub = XLSX.utils.aoa_to_sheet(res.pubAoa);
-      wsPub['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 7 } }];
-      wsPub['!cols'] = [
-        { wch: 12 }, { wch: 10 }, { wch: 16 }, { wch: 14 },
-        { wch: 24 }, { wch: 8 },  { wch: 12 }, { wch: 10 }
-      ];
-      XLSX.utils.book_append_sheet(wb, wsPub, res.sheetNamePub);
-
-      const wsSelf = XLSX.utils.aoa_to_sheet(res.selfAoa);
-      wsSelf['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 7 } }];
-      wsSelf['!cols'] = [
-        { wch: 12 }, { wch: 10 }, { wch: 16 }, { wch: 14 },
-        { wch: 24 }, { wch: 8 },  { wch: 12 }, { wch: 10 }
-      ];
-      XLSX.utils.book_append_sheet(wb, wsSelf, res.sheetNameSelf);
-
-      const wsMentor = XLSX.utils.aoa_to_sheet(res.mentorAoa || []);
-      wsMentor['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 7 } }];
-      wsMentor['!cols'] = [
-        { wch: 12 }, { wch: 10 }, { wch: 16 }, { wch: 14 },
-        { wch: 24 }, { wch: 8 },  { wch: 12 }, { wch: 10 }
-      ];
-      XLSX.utils.book_append_sheet(wb, wsMentor, res.sheetNameMentor || '代導公付');
-
-      const mParts = String(reportMonth.value || '').split('-');
-      const mNum = mParts.length > 1 ? parseInt(mParts[1], 10) : '';
-      const fileName = `${mNum ? mNum + '月' : ''}代課代導費.xlsx`;
-      XLSX.writeFile(wb, fileName);
     };
-
     // 全校課表彙整 Word 匯出（後台）：.docx、試算表順序、可選教師
     // export 腳本延後載入：預設區間空，進後台或點「本週」再填
     const schoolExportStart = ref('');
@@ -7526,7 +7758,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     });
     const showTeacherModal = ref(false);
     const teacherModalMode = ref('add');
-    const teacherForm = ref({ email: '', name: '', subject: '', jobTitle: '', role: 'teacher', baseHours: 16, mutualQuota: 0 });
+    const teacherForm = ref({ email: '', name: '', subject: '', jobTitle: '', expensePlan: '', role: 'teacher', baseHours: 16, mutualQuota: 0 });
     const excelData = ref([]);
     const excelHeaders = ref([]);
     const mappingFields = ref({
@@ -8283,7 +8515,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       dataUpdatedLabel, dataRefreshing, softSyncing, manualRefreshData,
       visibleTimetableTeachers, ttPage, ttPageSize, ttTotalPages, ttNeedPager, changeTtPage,
       requestWindowInfo, historyFullLoaded, historyLoadingFull, historyLoadedMonths, historyMonthLoading,
-      loadHistoryMonth, setHistoryFilterMode, ensureHistoryMonthLoaded, loadFullSemesterHistory, reloadWindowedHistory,
+      loadHistoryMonth, setHistoryFilterMode, setHistoryTypeFilter, ensureHistoryMonthLoaded, loadFullSemesterHistory, reloadWindowedHistory,
       selectedMobileDay, isMobile, checkMobile, initMobileDay,
       currentSemester, availableSemesters, currentSemesterName, semestersList, showSemesterModal, semesterModalMode, semesterForm,
       currentWeekDates, selectedWeekDate, currentWeekNumber,
@@ -8319,6 +8551,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       showQuotaLedgerModal, quotaLedgerLoading, quotaLedgerTeacher, quotaLedgerRows, openQuotaLedger, closeQuotaLedger, quotaTypeClass,
       showEmptySlotModal, emptySlotForm, emptySlotQuotaZero, openEmptySlotAssign, openEmptySlotFromDetail, closeEmptySlotModal, executeEmptySlotAssign,
       reportMonth, reportWeeksCount, monthlyReportData,
+      accountingPeriod, accountingExportLoading,
       excelData, excelHeaders, mappingFields, importPreview, runImportPreview, downloadScheduleTemplate, downloadCurrentSchedules,
       directApproveMode, googleClientId, gasApiUrl, saveClientSettings,
       isSubFeeLockedToSelf, isPeriod8FeeLocked, quotaDeductPreview, quotaDeductInsufficient, switchQuotaDeductToSelfPay, hasSubTeacherConflict,
@@ -8328,13 +8561,13 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       isProxySubmitEmailGranted, toggleProxySubmitEmail, clearAllProxySubmitEmails, persistProxySubmitEmails,
       proxyTargetEmail, proxyTargetName, proxyTargetQuery, showProxyTargetDropdown, filteredProxyTeachers,
       setProxyTarget, clearProxyTarget, canOperateOnTeacherEmail, ensureProxyTargetForTeacher,
-      userRoleText, subjectsList, filteredTeachers, displayTimetableTeachers, pendingCount, myInviteCount, adminTodoCount, hasQuickTodo, quickTodoSentOpen, allTeachersList, teachersListDetails,
+      userRoleText, subjectsList, filteredTeachers, displayTimetableTeachers, pendingCount, myInviteCount, adminTodoCount, hasQuickTodo, quickTodoSentOpen, allTeachersList, teachersListDetails, accountingPlanOptions,
       pendingHomeroomRecords, homeroomAssignSelections, homeroomRecordsLoading, getHomeroomCoverCandidates, loadHomeroomRecords, assignHomeroomTeacher, homeroomTeachersList, onHomeroomInputSelect, onManualCoverTeacherInput,
       showManualHomeroomModal, homeroomStatusFilter, manualHomeroomForm, openManualHomeroomModal, onManualHomeroomLeaveTeacherChange, currentMonthHomeroomRecords, currentMonthHomeroomFeeTotal, currentMonthHomeroomAssignedCount, currentMonthHomeroomPendingCount, saveManualHomeroomRecord, deleteHomeroomRecord,
       matchPreview,
-      exchangeTeachersList, myTeacherProfile, isRequestValid, filteredHistoryRecords,
+      exchangeTeachersList, myTeacherProfile, isRequestValid, isHistoryExchangeType, filteredHistoryRecords,
       dateFilteredHistoryRecords, paginatedHistoryRecords, historyTotalPages,
-      historyFilterMode, historyFilterDate, historySearchQuery, historyPage, historyPageSize,
+      historyFilterMode, historyTypeFilter, historyFilterDate, historySearchQuery, historyPage, historyPageSize,
       pendingSearchQuery, getLeaveTimeDefaults, getLeaveTimePresetRange, setLeaveTimePreset, updatePendingLeaveTime,
       showHistoryEditModal, historyEditForm, leaveReasonOptions, onLeaveReasonChange, defaultSubFeeForReason,
       pendingMyPendingPage, pendingMySentPage, pendingAdminPage,

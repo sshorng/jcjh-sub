@@ -63,7 +63,7 @@ window.UiAdmin = (function () {
 
     var showTeacherModal = useRef('showTeacherModal', false);
     var teacherModalMode = useRef('teacherModalMode', 'add');
-    var teacherForm = useRef('teacherForm', { email: '', name: '', subject: '', jobTitle: '', role: 'teacher', baseHours: 16, mutualQuota: 0 });
+    var teacherForm = useRef('teacherForm', { email: '', name: '', subject: '', jobTitle: '', expensePlan: '', role: 'teacher', baseHours: 16, mutualQuota: 0 });
 
     var excelData = useRef('excelData', []);
     var excelHeaders = useRef('excelHeaders', []);
@@ -744,6 +744,7 @@ window.UiAdmin = (function () {
           '教師Email': email,
           '教師姓名': teacher.name,
           '授課科目': teacher.subject,
+          '鐘點支出計畫': teacher.expensePlan || '',
           '基本鐘點': (hours === 0 || hours === '0') ? 0 : (parseInt(hours, 10) || 16),
           '系統角色': teacher.role || 'teacher',
           '折抵額度': (function () {
@@ -770,7 +771,7 @@ window.UiAdmin = (function () {
 
     function openAddTeacherModal() {
       teacherModalMode.value = 'add';
-      teacherForm.value = { email: '', name: '', subject: '', jobTitle: '', role: 'teacher', baseHours: 16, mutualQuota: 0 };
+      teacherForm.value = { email: '', name: '', subject: '', jobTitle: '', expensePlan: '', role: 'teacher', baseHours: 16, mutualQuota: 0 };
       showTeacherModal.value = true;
     }
 
@@ -781,6 +782,7 @@ window.UiAdmin = (function () {
         name: t.name,
         subject: t.subject,
         jobTitle: t.jobTitle || '',
+        expensePlan: t.expensePlan || '',
         role: t.role,
         baseHours: t.baseHours,
         mutualQuota: (function () {
@@ -799,6 +801,7 @@ window.UiAdmin = (function () {
         '教師姓名': teacherForm.value.name.trim(),
         '授課科目': teacherForm.value.subject.trim(),
         '職務': String(teacherForm.value.jobTitle || '').trim(),
+        '鐘點支出計畫': String(teacherForm.value.expensePlan || '').trim(),
         '系統角色': teacherForm.value.role,
         '基本鐘點': (teacherForm.value.baseHours === 0 || teacherForm.value.baseHours === '0')
           ? 0

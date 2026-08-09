@@ -1269,6 +1269,13 @@
 
             <!-- 篩選工具列（手機不撐滿 100%） -->
             <div class="toolbar history-filter-bar" style="align-items: center; gap: 8px; flex-wrap: wrap;">
+              <span class="history-filter-label">類型</span>
+              <div class="filter-chip-group" aria-label="紀錄類型篩選">
+                <button type="button" class="btn btn-secondary filter-chip" :class="{ 'btn-primary': historyTypeFilter === 'all' }" @click="setHistoryTypeFilter('all')">全部</button>
+                <button type="button" class="btn btn-secondary filter-chip" :class="{ 'btn-primary': historyTypeFilter === 'substitution' }" @click="setHistoryTypeFilter('substitution')">代課</button>
+                <button type="button" class="btn btn-secondary filter-chip" :class="{ 'btn-primary': historyTypeFilter === 'exchange' }" @click="setHistoryTypeFilter('exchange')">調課</button>
+              </div>
+              <span class="history-filter-label">日期</span>
               <div class="filter-chip-group">
                 <button type="button" class="btn btn-secondary filter-chip" :class="{ 'btn-primary': historyFilterMode === 'all' }" @click="setHistoryFilterMode('all')">全部</button>
                 <button type="button" class="btn btn-secondary filter-chip" :class="{ 'btn-primary': historyFilterMode === 'day' }" @click="setHistoryFilterMode('day')">本日</button>
@@ -1350,7 +1357,7 @@
                     <td>{{ rec.createdDate }}</td>
                     <td>
                       <div class="flex-wrap-gap">
-                        <span class="status-badge tag-blue" v-if="rec.type === 'exchange'">調課</span>
+                        <span class="status-badge tag-blue" v-if="isHistoryExchangeType(rec)">調課</span>
                         <span class="status-badge tag-red" v-else>代課</span>
                          <span v-for="tag in getRequestTypeTags(rec)" :key="tag.key" class="risk-tag risk-tag-xs" :class="'risk-'+tag.key">{{ tag.label }}</span>
                       </div>
@@ -1527,24 +1534,29 @@
           <div v-if="adminSubTab === 'billing'" class="billing-report">
             <div class="card">
               <div class="card-title billing-report-title">
-                <span>💰 月底大鐘點與代課費</span>
-                <button type="button" class="btn btn-primary" style="padding:8px 14px;font-size:0.85rem;margin-right:8px;" @click="exportSubFeeToExcel">📊 匯出代課代導費 Excel (幹事端)</button><button type="button" class="btn btn-success" style="padding:8px 14px;font-size:0.85rem;" @click="exportReportToExcel">
-                  💾 匯出 Excel
-                </button>
+                <div class="billing-report-title-main">
+                  <span>💰 月底大鐘點與代課費</span>
+                  <div class="billing-month-control">
+                    <label class="form-label" for="billing-report-month">結算月份</label>
+                    <select id="billing-report-month" class="form-select" v-model="reportMonth" @change="calculateMonthlyReport">
+                      <option v-for="m in reportMonthOptions" :key="m" :value="m">{{ m }}</option>
+                    </select>
+                  </div>
+                  <div class="billing-weeks-control">
+                    <label class="form-label" for="billing-report-weeks">授課週數</label>
+                    <input id="billing-report-weeks" type="number" class="form-input" min="1" max="6" step="1" inputmode="numeric" v-model.number="reportWeeksCount" @change="calculateMonthlyReport">
+                    <span class="billing-weeks-suffix">週</span>
+                  </div>
+                </div>
+                <div class="billing-report-actions">
+                  <button type="button" class="btn btn-primary" style="padding:8px 14px;font-size:0.85rem;" :disabled="accountingExportLoading" @click="exportSubFeeToExcel">
+                    {{ accountingExportLoading ? '⏳ 準備會計檔…' : '📊 下載會計版 Excel' }}
+                  </button>
+                </div>
               </div>
 
-              <div class="report-toolbar billing-toolbar">
-                <div class="form-group" style="margin:0;min-width:130px;">
-                  <label class="form-label">結算月份</label>
-                  <select class="form-select" v-model="reportMonth" @change="calculateMonthlyReport">
-                    <option v-for="m in reportMonthOptions" :key="m" :value="m">{{ m }}</option>
-                  </select>
-                </div>
-                <div class="form-group" style="margin:0;min-width:110px;">
-                  <label class="form-label">授課週數</label>
-                  <input type="number" class="form-input p-9-12" min="1" max="6" v-model.number="reportWeeksCount" @change="calculateMonthlyReport">
-                </div>
-                <p class="billing-toolbar-hint">Excel 含「大鐘點1-7」與「第8節明細」與「代導公付」清冊</p>
+              <div class="report-toolbar billing-toolbar billing-toolbar-note">
+                <p class="billing-toolbar-hint">授課週數請先在上方設定，系統會記錄在本機；月報與下載會計版會使用同一數值。下載彈窗只調整五類共用的會計起訖日，扣勞健保與實際金額留白。</p>
               </div>
 
               <div v-if="isAdmin" class="card" style="margin:14px 0;padding:16px;background:#fffdf6;border:1px solid #ebd9a2;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,0.03);">
@@ -1616,6 +1628,7 @@
                     </tr>
                     <tr class="billing-th-cols">
                       <th class="billing-sticky-name">姓名</th>
+                      <th title="超鐘點支出來源；留白為預設經費">超鐘點計畫</th>
                       <th>科目</th>
                       <th title="每週 1～7＋午休；基本／一般／超鐘點／抽離（不含巡堂／第8）">排課</th>
                       <th title="教師基本授課鐘點">基鐘</th>
@@ -1636,6 +1649,7 @@
                   <tbody>
                     <tr v-for="row in monthlyReportData" :key="row.email">
                       <td class="billing-sticky-name"><strong>{{ row.name }}</strong></td>
+                      <td class="billing-plan">{{ row.expensePlan || '預設' }}</td>
                       <td class="billing-subj">{{ row.subject }}</td>
                       <td class="num">{{ row.weeklyPeriods }}</td>
                       <td class="num">{{ row.baseHours }}</td>
@@ -1653,7 +1667,7 @@
                       <td class="num result-p8">{{ row.period8Fee ? ('$' + row.period8Fee) : '—' }}</td>
                     </tr>
                     <tr v-if="monthlyReportData.length === 0">
-                      <td colspan="16" class="billing-empty">請先在「教師名單」設定基本授課鐘點，再選擇月份統計。</td>
+                      <td colspan="17" class="billing-empty">請先在「教師名單」設定基本授課鐘點，再選擇月份統計。</td>
                     </tr>
                   </tbody>
                 </table>
@@ -1681,6 +1695,7 @@
                     <th>Email (帳號)</th>
                     <th>科目</th>
                     <th>職務</th>
+                    <th>超鐘點計畫</th>
                     <th>基本鐘點 (基鐘)</th>
                     <th title="可用餘額；點數字可看額度帳本歷程">折抵額度</th>
                     <th>系統角色</th>
@@ -1693,6 +1708,7 @@
                     <td>{{ t.email }}</td>
                     <td>{{ t.subject }}</td>
                     <td>{{ t.jobTitle || '—' }}</td>
+                    <td>{{ t.expensePlan || '預設' }}</td>
                     <td>
                       <!-- 基礎基本鐘點設定 -->
                       <input 
@@ -2895,6 +2911,14 @@
               <input type="text" class="form-input" placeholder="例如：七年級導師、行政教師" v-model="teacherForm.jobTitle">
             </div>
             <div class="form-group">
+              <label class="form-label">超鐘點支出計畫</label>
+              <input type="text" class="form-input" list="accounting-plan-options" maxlength="40" placeholder="留白＝原本的超鐘點（預設經費）" v-model="teacherForm.expensePlan">
+              <datalist id="accounting-plan-options">
+                <option v-for="plan in accountingPlanOptions" :key="'accounting-plan-' + plan" :value="plan"></option>
+              </datalist>
+              <span style="font-size:0.72rem;color:var(--text-muted);display:block;margin-top:4px;">只有超鐘點會依計畫拆表；代這位教師的課，超鐘點扣抵會沿用這個計畫。其他四類會計表維持原樣。</span>
+            </div>
+            <div class="form-group">
               <label class="form-label">系統角色</label>
               <select class="form-select" v-model="teacherForm.role">
                 <option value="teacher">一般教師</option>
@@ -3626,7 +3650,7 @@
   <!-- App Main JS Logic -->
 
   <!-- 模組：defer 依文件順序執行，不擋 HTML 解析；billing/print/export 另延後 -->
-  <script defer src="field-map.js?v=opt3"></script>
+  <script defer src="field-map.js?v=opt4"></script>
   <script defer src="date-utils.js?v=opt3"></script>
   <script defer src="gas-api.js?v=opt3"></script>
   <script defer src="domain-schedule.js?v=opt3"></script>
@@ -3634,12 +3658,13 @@
   <!-- domain-activity-cover：活動互代／空堂任務時 ensureDomainActivityCover -->
   <script defer src="domain-class-away.js?v=opt3"></script>
   <script defer src="fee-utils.js?v=opt3"></script>
+  <script defer src="export-accounting.js?v=opt13"></script>
   <script defer src="ui-activity.js?v=opt3"></script>
   <script defer src="ui-request.js?v=opt3"></script>
   <script defer src="ui-timetable.js?v=opt3"></script>
   <script defer src="ui-approval.js?v=opt3"></script>
   <!-- ui-admin：僅管理員／後台操作時 ensureUiAdmin -->
-  <script defer src="app.js?v=opt3"></script>
+  <script defer src="app.js?v=opt12"></script>
   <script>
     (function () {
       function loadScript(src) {
@@ -3660,7 +3685,7 @@
       var _uiAdminP = null;
       window.ensureDomainBilling = function () {
         if (window.DomainBilling) return Promise.resolve();
-        if (!_billingP) _billingP = loadScript('domain-billing.js?v=opt3');
+        if (!_billingP) _billingP = loadScript('domain-billing.js?v=opt4');
         return _billingP;
       };
       /** 活動互代／額度／空堂任務邏輯（首屏不載） */
@@ -3672,7 +3697,7 @@
       /** 後台匯入／教師／課表編輯（教師首屏不載） */
       window.ensureUiAdmin = function () {
         if (window.UiAdmin) return Promise.resolve();
-        if (!_uiAdminP) _uiAdminP = loadScript('ui-admin.js?v=opt3');
+        if (!_uiAdminP) _uiAdminP = loadScript('ui-admin.js?v=opt4');
         return _uiAdminP;
       };
       window.ensurePrintHelper = function () {
@@ -3747,6 +3772,21 @@
     <div id="confirm-box">
       <div id="confirm-title">請確認</div>
       <div id="confirm-msg"></div>
+      <div id="confirm-accounting-period-wrap" aria-label="會計匯出期間">
+        <div id="confirm-accounting-period-title">會計匯出設定（五類共用，期間預設整月，可調整）</div>
+        <div id="confirm-accounting-period-fields">
+          <div>
+            <label for="confirm-accounting-period-start">起日</label>
+            <input id="confirm-accounting-period-start" type="date" class="form-input" data-autofocus>
+          </div>
+          <div>
+            <label for="confirm-accounting-period-end">迄日</label>
+            <input id="confirm-accounting-period-end" type="date" class="form-input">
+          </div>
+
+          <button id="confirm-accounting-period-reset" type="button" class="btn btn-sm btn-outline-secondary">恢復本月整月</button>
+        </div>
+      </div>
       <div id="confirm-note-wrap">
         <label for="confirm-note">備註（選填）</label>
         <input id="confirm-note" type="text" class="form-input" placeholder="備註（選填）">
