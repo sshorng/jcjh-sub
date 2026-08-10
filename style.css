@@ -4587,3 +4587,511 @@ td.table-empty {
 .quota-type-spend { background: #fee2e2; color: #b91c1c; }
 .quota-type-restore { background: #dbeafe; color: #1d4ed8; }
 .quota-type-adjust { background: #fef3c7; color: #b45309; }
+
+/* 課表整體視覺規劃：背景、卡片、表格、內容層級一次統一 */
+:root {
+  --tt-bg: #eef3f8;
+  --tt-panel: #f7f9fc;
+  --tt-surface: #ffffff;
+  --tt-surface-soft: #f8fafc;
+  --tt-empty: #f9fbfd;
+  --tt-line: #dfe7f0;
+  --tt-line-soft: #e8eef5;
+  --tt-ink: #1e293b;
+  --tt-ink-2: #526174;
+  --tt-muted: #8a99aa;
+  --tt-accent: #2563eb;
+  --tt-accent-soft: #dbeafe;
+  --tt-accent-dark: #1d4ed8;
+  --tt-shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 4px 12px rgba(15, 23, 42, 0.04);
+}
+
+.card:has(.timetable-wrapper) {
+  padding: 0;
+  background: var(--tt-panel);
+  border-color: var(--tt-line);
+  box-shadow: var(--tt-shadow);
+}
+
+.card:has(.timetable-wrapper) > .card-title {
+  margin: 0;
+  padding: 13px 18px;
+  background: var(--tt-surface-soft);
+  border-bottom: 1px solid var(--tt-line);
+}
+
+.card:has(.timetable-wrapper) > .toolbar {
+  width: auto;
+  margin: 14px 18px 12px;
+}
+
+.card:has(.timetable-wrapper) > [data-tour="week-and-grid"] {
+  padding: 0 18px 16px;
+}
+
+.card:has(.class-timetable-layout) > div {
+  padding-left: 18px !important;
+  padding-right: 18px !important;
+}
+
+.timetable-wrapper,
+.class-timetable-layout,
+.class-timetable-main {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden !important;
+}
+
+.timetable-wrapper {
+  padding: 8px;
+  background: var(--tt-bg);
+  border: 1px solid var(--tt-line);
+  border-radius: 10px;
+  box-sizing: border-box;
+}
+
+.class-timetable-main {
+  background: var(--tt-bg);
+}
+
+.tt-teacher-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tt-teacher-block {
+  padding: 0;
+  overflow: hidden;
+  background: var(--tt-surface);
+  border: 1px solid var(--tt-line);
+  border-radius: 9px;
+  box-shadow: var(--tt-shadow);
+}
+
+.tt-teacher-block:hover {
+  border-color: #cbd8e6;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+}
+
+.tt-teacher-head {
+  min-width: 0;
+  margin: 0;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--tt-line);
+  border-radius: 0;
+  background: var(--tt-surface-soft);
+  color: var(--tt-ink);
+  font-size: 0.94rem;
+}
+
+.tt-teacher-head .tt-teacher-name {
+  color: var(--tt-ink);
+  font-weight: 700;
+}
+
+.tt-pager-bar,
+.week-picker-bar {
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--tt-surface-soft);
+  border: 1px solid var(--tt-line);
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+.week-picker-bar {
+  justify-content: space-between;
+}
+
+.week-label {
+  color: var(--tt-ink-2);
+  font-weight: 600;
+}
+
+.timetable-grid,
+.class-timetable {
+  display: grid;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  grid-template-columns: 46px repeat(5, minmax(0, 1fr));
+  gap: 0;
+  border: 1px solid var(--tt-line);
+  border-radius: 7px;
+  overflow: hidden;
+  background: var(--tt-surface);
+  box-sizing: border-box;
+}
+
+.timetable-grid > .grid-header,
+.class-timetable > .grid-header {
+  min-width: 0;
+  min-height: 48px;
+  height: 48px;
+  padding: 6px 2px;
+  border: 1px solid var(--tt-line);
+  border-radius: 0;
+  background: var(--tt-surface-soft);
+  box-shadow: none;
+  color: var(--tt-ink-2);
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.timetable-grid > .grid-header:first-child,
+.class-timetable > .grid-header:first-child {
+  color: var(--tt-muted);
+  font-size: 0.76rem;
+  letter-spacing: 0;
+}
+
+.timetable-grid .grid-header .date-sub,
+.class-timetable .grid-header span {
+  color: var(--tt-muted);
+  font-size: 0.68rem;
+  font-weight: 500;
+}
+
+.timetable-grid .grid-cell-time,
+.timetable-grid .grid-cell-class,
+.class-timetable .grid-cell-time,
+.class-timetable .grid-cell-class {
+  min-width: 0;
+  height: 56px;
+  min-height: 56px;
+  max-height: 56px;
+  border-radius: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.timetable-grid .grid-cell-time,
+.class-timetable .grid-cell-time {
+  padding: 3px 2px;
+  background: var(--tt-surface-soft);
+  border: 1px solid var(--tt-line);
+  color: var(--tt-ink-2);
+}
+
+.timetable-grid .grid-cell-time .period,
+.class-timetable .grid-cell-time .period {
+  color: var(--tt-ink);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.timetable-grid .grid-cell-time .time-span,
+.class-timetable .grid-cell-time .time-span {
+  color: var(--tt-muted);
+  font-size: 0.66rem;
+  line-height: 1.15;
+}
+
+.timetable-grid .grid-cell-time.is-lunch-period,
+.class-timetable .grid-cell-time.is-lunch-period {
+  background: #effaf7;
+  border-color: #d2f1e9;
+  color: #0f766e;
+}
+
+.timetable-grid .grid-cell-time.is-lunch-period .period,
+.class-timetable .grid-cell-time.is-lunch-period .period {
+  color: #0f766e;
+}
+
+.timetable-grid .grid-cell-class,
+.class-timetable .grid-cell-class {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 4px;
+  background: var(--tt-surface);
+  border-left: 1px solid var(--tt-line) !important;
+  box-shadow: none;
+  transform: none;
+  transition: background 0.12s ease, box-shadow 0.12s ease;
+}
+
+.timetable-grid .grid-cell-class:hover,
+.class-timetable .grid-cell-class:hover {
+  z-index: 2;
+  background: #f2f7ff !important;
+  border-color: #cbdcf2;
+  border-left-color: #cbdcf2 !important;
+  box-shadow: inset 0 0 0 1px #9fc1f5;
+  transform: none;
+}
+
+.timetable-grid .grid-cell-class.has-class,
+.class-timetable .grid-cell-class.has-class {
+  background: var(--tt-surface);
+  border-left: 1px solid var(--tt-line) !important;
+}
+
+.timetable-grid .grid-cell-class.is-empty,
+.class-timetable .grid-cell-class.is-empty {
+  background: var(--tt-empty) !important;
+  border-color: var(--tt-line-soft) !important;
+  border-left-color: var(--tt-line-soft) !important;
+  opacity: 1 !important;
+  color: transparent !important;
+}
+
+.timetable-grid .grid-cell-class.is-empty:hover,
+.class-timetable .grid-cell-class.is-empty:hover {
+  background: #f4f8fd !important;
+  border-color: #d4e2f2 !important;
+  border-left-color: #d4e2f2 !important;
+  box-shadow: inset 0 0 0 1px #b7d0ef;
+}
+
+.timetable-grid .grid-cell-class.is-empty .cell-empty-label,
+.class-timetable .grid-cell-class.is-empty .cell-empty-label,
+.timetable-grid .grid-cell-class.is-empty::before,
+.class-timetable .grid-cell-class.is-empty::before {
+  display: none !important;
+  content: none !important;
+}
+
+.timetable-grid .cell-empty-label,
+.class-timetable .cell-empty-label {
+  color: var(--tt-muted);
+  font-size: 0.62rem;
+  font-weight: 500;
+}
+
+.timetable-grid .cell-main,
+.class-timetable .class-entry-block {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.timetable-grid .cell-main {
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.timetable-grid .cell-class-name,
+.timetable-grid .cell-subject,
+.timetable-grid .cell-sub-text,
+.class-timetable .cell-subject,
+.class-timetable .cell-class-name {
+  min-width: 0;
+  max-width: 90%;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timetable-grid .cell-class-name,
+.class-timetable .cell-subject {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--tt-accent-soft);
+  color: var(--tt-accent-dark);
+  font-size: 0.86rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.timetable-grid .cell-class-name {
+  padding-right: 6px;
+}
+
+.timetable-grid .cell-class-name > .cell-badge {
+  position: static;
+  margin-left: 3px;
+}
+
+.timetable-grid .cell-subject,
+.class-timetable .cell-class-name {
+  display: block;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--tt-ink-2);
+  font-size: 0.74rem;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.timetable-grid .cell-sub-text {
+  color: var(--tt-muted);
+  font-size: 0.64rem;
+  line-height: 1.1;
+}
+
+.class-timetable .class-entry-block {
+  flex-direction: column;
+  flex: 1 1 auto;
+  gap: 1px;
+  padding: 0;
+}
+
+.class-timetable .class-entry-block + .class-entry-block {
+  margin-top: 2px;
+  padding-top: 2px;
+  border-top: 1px solid var(--tt-line);
+}
+
+.class-timetable .cell-sub-badge {
+  display: inline-flex;
+  max-width: 90%;
+  overflow: hidden;
+  color: var(--tt-muted);
+  font-size: 0.64rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timetable-grid .cell-badges,
+.class-timetable .cell-badges {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  z-index: 3;
+  display: flex;
+  max-width: calc(100% - 6px);
+  margin: 0;
+  gap: 2px;
+  overflow: hidden;
+  align-items: center;
+}
+
+.timetable-grid .cell-badges > .cell-badge,
+.class-timetable .cell-badges > .cell-badge {
+  position: static;
+  max-width: 100%;
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-size: 0.62rem;
+  line-height: 1.15;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.class-pick-btn {
+  min-width: 46px;
+  min-height: 32px;
+  padding: 4px 11px !important;
+  border: 1px solid #cbd5e1 !important;
+  border-radius: 6px !important;
+  background: var(--tt-surface) !important;
+  color: var(--tt-ink-2) !important;
+  font-size: 0.82rem !important;
+  font-weight: 600 !important;
+  box-shadow: none;
+}
+
+.class-pick-btn:hover {
+  border-color: var(--tt-accent) !important;
+  background: var(--tt-accent-soft) !important;
+  color: var(--tt-accent-dark) !important;
+}
+
+.class-pick-btn-active {
+  border-color: var(--tt-accent) !important;
+  background: var(--tt-accent) !important;
+  color: #ffffff !important;
+  box-shadow: none;
+}
+
+.timetable-grid > :nth-child(6n + 2),
+.timetable-grid > :nth-child(6n + 3),
+.timetable-grid > :nth-child(6n + 4),
+.timetable-grid > :nth-child(6n + 5),
+.timetable-grid > :nth-child(6n + 6),
+.class-timetable > :nth-child(6n + 2),
+.class-timetable > :nth-child(6n + 3),
+.class-timetable > :nth-child(6n + 4),
+.class-timetable > :nth-child(6n + 5),
+.class-timetable > :nth-child(6n + 6) {
+  border-left: 0 !important;
+}
+
+.timetable-grid > :nth-child(n + 7),
+.class-timetable > :nth-child(n + 7) {
+  border-top: 0 !important;
+}
+
+@media (max-width: 700px) {
+  .card:has(.timetable-wrapper) > .card-title {
+    padding: 10px 12px;
+  }
+
+  .card:has(.timetable-wrapper) > .toolbar,
+  .card:has(.timetable-wrapper) > [data-tour="week-and-grid"],
+  .card:has(.class-timetable-layout) > div {
+    margin-left: 0;
+    margin-right: 0;
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+  }
+
+  .timetable-wrapper {
+    padding: 6px;
+  }
+
+  .timetable-grid,
+  .class-timetable {
+    grid-template-columns: 42px repeat(5, minmax(0, 1fr));
+  }
+
+  .timetable-grid > .grid-header,
+  .class-timetable > .grid-header {
+    min-height: 42px;
+    height: 42px;
+    padding: 5px 1px;
+    font-size: 0.7rem;
+  }
+
+  .timetable-grid .grid-cell-time,
+  .timetable-grid .grid-cell-class,
+  .class-timetable .grid-cell-time,
+  .class-timetable .grid-cell-class {
+    height: 52px;
+    min-height: 52px;
+    max-height: 52px;
+    padding: 2px 3px;
+  }
+
+  .timetable-grid .cell-class-name,
+  .class-timetable .cell-subject {
+    font-size: 0.74rem;
+  }
+
+  .timetable-grid .cell-subject,
+  .class-timetable .cell-class-name {
+    font-size: 0.66rem;
+  }
+
+  .timetable-grid .cell-badges > .cell-badge,
+  .class-timetable .cell-badges > .cell-badge {
+    font-size: 0.58rem;
+    padding: 1px 3px;
+  }
+}
+
+/* 節次時間文字置中 */
+.timetable-grid .grid-cell-time .time-span,
+.class-timetable .grid-cell-time .time-span {
+  display: block;
+  width: 100%;
+  text-align: center;
+}
