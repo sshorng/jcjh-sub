@@ -6131,7 +6131,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       { key: 'social', label: '地理、歷史、公民', aliases: ['地理', '歷史', '公民', '公民與社會', '社會'], color: { bg: '#ede9fe', text: '#5b21b6' } },
       { key: 'health', label: '體育、健康教育', aliases: ['體育', '健康教育', '健康與體育', '健康'], color: { bg: '#ffedd5', text: '#9a3412' } },
       { key: 'comprehensive', label: '家政、童軍、輔導', aliases: ['家政', '童軍', '輔導', '課輔', '綜合活動', '綜合'], color: { bg: '#fce7f3', text: '#9d174d' } },
-      { key: 'technology', label: '生活科技、資訊科技', aliases: ['生活科技', '資訊科技', '資訊', '電腦', '科技'], color: { bg: '#e2e8f0', text: '#334155' } },
+      { key: 'technology', label: '生活科技、資訊科技', aliases: ['生活科技', '資訊科技', '資訊', '電腦', '科技'], color: { bg: '#e0e7ff', text: '#3730a3' } },
       { key: 'arts', label: '表演藝術、視覺藝術、音樂', aliases: ['表演藝術', '視覺藝術', '音樂', '藝術', '視覺藝'], color: { bg: '#fae8ff', text: '#86198f' } },
       { key: 'other', label: '其他彈性課程', aliases: ['其他彈性課程', '彈性課程', '彈性', '班週會', '週會', '班會', '社團', '閱讀', '閱讀課', '校訂課程'], color: { bg: '#f1f5f9', text: '#475569' } }
     ];
