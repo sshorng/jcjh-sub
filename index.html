@@ -2295,7 +2295,7 @@
                           <span v-if="r.restriction === 'restricted'" class="badge-match badge-restricted">對調課綁課</span>
                         </td>
                         <td style="padding: 10px 4px; font-size: 0.8rem; color: var(--text-secondary);">
-                          可調：週{{ getWeekDayText(r.dayOfWeek) }}{{ formatPeriodText(r.period) }}
+                          可調：<span v-if="getMatchSlotDateMMDD(r.dayOfWeek)" style="font-weight: 600; color: var(--text-primary); margin-right: 2px;">{{ getMatchSlotDateMMDD(r.dayOfWeek) }}</span>週{{ getWeekDayText(r.dayOfWeek) }}{{ formatPeriodText(r.period) }}
                         </td>
                         <td class="td-match-op">
                           <button class="btn btn-primary btn-sm-compact" @click.stop="prepCompare('exchange', r.teacherEmail, r.periodKey, r.subject, r.className)">模擬</button>

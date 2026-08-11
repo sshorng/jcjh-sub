@@ -8574,8 +8574,18 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       // 保持 Modal 開啟或關閉皆可；複製後仍可選其他按鈕
     };
 
+    const getMatchSlotDateMMDD = (dayOfWeek) => {
+      if (!dayOfWeek) return '';
+      const dates = (selectedClassWeekDates && selectedClassWeekDates.value) ? selectedClassWeekDates.value : null;
+      if (dates && dates[dayOfWeek - 1]) {
+        return formatDateMMDD(dates[dayOfWeek - 1]);
+      }
+      return '';
+    };
+
     // 返回 Vue 拋出變數
     return {
+      getMatchSlotDateMMDD,
       user, userRole, loading, loadingMessage, activeTab, setActiveTab, isSimulating, originalUser, avatarSrc, handleAvatarError,
       dataUpdatedLabel, dataRefreshing, softSyncing, manualRefreshData,
       visibleTimetableTeachers, ttPage, ttPageSize, ttTotalPages, ttNeedPager, changeTtPage,
