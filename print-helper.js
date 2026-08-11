@@ -674,7 +674,7 @@ async function printSelectedForms(formType, ctx) {
       }
     }
 
-    let printWin = ctx.printWin || targetWin;
+    let printWin = ctx.printWin || ctx.targetWin || null;
     let targetDoc = null;
 
     if (!printWin) {
@@ -840,8 +840,10 @@ async function printSelectedForms(formType, ctx) {
           window.onload = function() {
             setTimeout(function() {
               window.print();
-              window.close();
-            }, 500);
+              if (window.opener) {
+                try { window.close(); } catch(e) {}
+              }
+            }, 300);
           }
         <\/script>
       </body>
