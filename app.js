@@ -6109,6 +6109,80 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       return rawName.includes('(') ? '' : rawName;
     };
 
+    const SUBJECT_PRESET_COLORS = {
+      '國文': { bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe' },
+      '數學': { bg: '#f5f3ff', color: '#6d28d9', border: '#ddd6fe' },
+      '英文': { bg: '#ecfdf5', color: '#047857', border: '#a7f3d0' },
+      '英語': { bg: '#ecfdf5', color: '#047857', border: '#a7f3d0' },
+      '理化': { bg: '#fff7ed', color: '#c2410c', border: '#ffedd5' },
+      '自然': { bg: '#fff7ed', color: '#c2410c', border: '#ffedd5' },
+      '生物': { bg: '#f0fdf4', color: '#15803d', border: '#bbf7d0' },
+      '地科': { bg: '#f0fdfa', color: '#0f766e', border: '#99f6e4' },
+      '歷史': { bg: '#fff1f2', color: '#be123c', border: '#fecdd3' },
+      '地理': { bg: '#fdf4ff', color: '#a21caf', border: '#f5d0fe' },
+      '公民': { bg: '#fefce8', color: '#a16207', border: '#fef08a' },
+      '社會': { bg: '#fff1f2', color: '#be123c', border: '#fecdd3' },
+      '體育': { bg: '#f0fdfa', color: '#0d9488', border: '#99f6e4' },
+      '健體': { bg: '#f0fdfa', color: '#0d9488', border: '#99f6e4' },
+      '健康': { bg: '#ecfdf5', color: '#059669', border: '#a7f3d0' },
+      '音樂': { bg: '#faf5ff', color: '#7e22ce', border: '#e9d5ff' },
+      '美術': { bg: '#fff0f6', color: '#c026d3', border: '#f5d0fe' },
+      '表演': { bg: '#fff0f6', color: '#c026d3', border: '#f5d0fe' },
+      '藝能': { bg: '#faf5ff', color: '#7e22ce', border: '#e9d5ff' },
+      '家政': { bg: '#fff7ed', color: '#ea580c', border: '#ffedd5' },
+      '童軍': { bg: '#f0fdf4', color: '#166534', border: '#bbf7d0' },
+      '資訊': { bg: '#f0f9ff', color: '#0369a1', border: '#bae6fd' },
+      '科技': { bg: '#f0f9ff', color: '#0369a1', border: '#bae6fd' },
+      '輔導': { bg: '#f0fdfa', color: '#0f766e', border: '#99f6e4' },
+      '課輔': { bg: '#eff6ff', color: '#2563eb', border: '#bfdbfe' },
+      '巡堂': { bg: '#f8fafc', color: '#475569', border: '#cbd5e1' }
+    };
+
+    const MORANDI_PALETTE = [
+      { bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe' },
+      { bg: '#f5f3ff', color: '#6d28d9', border: '#ddd6fe' },
+      { bg: '#ecfdf5', color: '#047857', border: '#a7f3d0' },
+      { bg: '#fff7ed', color: '#c2410c', border: '#ffedd5' },
+      { bg: '#fff1f2', color: '#be123c', border: '#fecdd3' },
+      { bg: '#fdf4ff', color: '#a21caf', border: '#f5d0fe' },
+      { bg: '#f0fdfa', color: '#0f766e', border: '#99f6e4' },
+      { bg: '#f0f9ff', color: '#0369a1', border: '#bae6fd' },
+      { bg: '#fefce8', color: '#a16207', border: '#fef08a' },
+      { bg: '#faf5ff', color: '#7e22ce', border: '#e9d5ff' }
+    ];
+
+    const getHashColor = (str) => {
+      if (!str) return MORANDI_PALETTE[0];
+      let hash = 0;
+      for (let i = 0; i < str.length; i++) {
+        hash = str.charCodeAt(i) + ((hash << 5) - hash);
+      }
+      const idx = Math.abs(hash) % MORANDI_PALETTE.length;
+      return MORANDI_PALETTE[idx];
+    };
+
+    const getSubjectStyle = (subject) => {
+      if (!subject) return {};
+      const cleanSub = String(subject).replace(/（超）|\(超\)|（代）|\(單\)|（雙）/g, '').trim();
+      const col = SUBJECT_PRESET_COLORS[cleanSub] || getHashColor(cleanSub);
+      return {
+        backgroundColor: col.bg,
+        color: col.color,
+        borderColor: col.border
+      };
+    };
+
+    const getClassBadgeStyle = (className) => {
+      if (!className) return {};
+      const cleanCls = String(className).trim();
+      const col = getHashColor(cleanCls);
+      return {
+        backgroundColor: col.bg,
+        color: col.color,
+        borderColor: col.border
+      };
+    };
+
     // 模擬身份：搜尋過濾（避免一次渲染 60+ li）
     const devTeacherQuery = ref('');
     const filteredDevTeachers = computed(() => {
@@ -8615,6 +8689,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       invigilationExportTitle, exportInvigilationWorkbook,
       devSwitchUser, restoreAdmin,
       getTeacherNameByEmail, getTeacherSubjectByEmail, getRealTeacherName, startSecondSub,
+      getSubjectStyle, getClassBadgeStyle,
       changeHistoryPage, openHistoryEditModal, saveHistoryEdit, onHistoryEditDateChange, changePendingPage,
       openAddSemesterModal, openEditSemesterModal, saveSemester, deleteSemester, setDefaultSemester,
       // 工具函數

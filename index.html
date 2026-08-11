@@ -635,7 +635,9 @@
                               <template v-else>
                                 <div class="cell-main">
                                   <div class="cell-class-name">
-                                    {{ formatClassName(slot.cell.className) || slot.cell.className }}
+                                    <span class="class-color-badge" :style="getClassBadgeStyle(slot.cell.className)">
+                                      {{ formatClassName(slot.cell.className) || slot.cell.className }}
+                                    </span>
                                     <span v-if="isCombinedClass(slot.cell.className)" class="cell-badge tag-combined" title="併班">併班</span>
                                   </div>
                                   <div class="cell-subject">
@@ -840,7 +842,9 @@
                             <template v-if="classSubstitutionMap[selectedClass + '|' + dateStr + '|' + period]">
                               <div class="class-entry-block" :class="{ 'is-readonly': classReadonlyMode }" @click="handleClassCellClick(selectedClass, dayIdx+1, period, 0)">
                                 <div class="cell-subject">
-                                  {{ classSubstitutionMap[selectedClass + '|' + dateStr + '|' + period].subject || classSchedules[selectedClass][(dayIdx+1) + '-' + period][0].subject }}
+                                  <span class="subject-color-tag" :style="getSubjectStyle(classSubstitutionMap[selectedClass + '|' + dateStr + '|' + period].subject || classSchedules[selectedClass][(dayIdx+1) + '-' + period][0].subject)">
+                                    {{ classSubstitutionMap[selectedClass + '|' + dateStr + '|' + period].subject || classSchedules[selectedClass][(dayIdx+1) + '-' + period][0].subject }}
+                                  </span>
                                 </div>
                                 <div class="cell-class-name">
                                   {{ getTeacherNameByEmail(classSubstitutionMap[selectedClass + '|' + dateStr + '|' + period].actualTeacherEmail) }}
@@ -860,7 +864,10 @@
                                   :class="{ 'is-match-source': isMatchSourceEntry(entry, dayIdx+1, period), 'is-match-hover': isMatchHoverEntry(entry, dayIdx+1, period), 'is-readonly': classReadonlyMode }"
                                   @click.stop="handleClassCellClick(selectedClass, dayIdx+1, period, entry)">
                                   <div class="cell-subject">
-                                    {{ entry.subject }}<span v-if="entry.attr === '超鐘點'" title="超鐘點">（超）</span>
+                                    <span class="subject-color-tag" :style="getSubjectStyle(entry.subject)">
+                                      {{ entry.subject }}
+                                    </span>
+                                    <span v-if="entry.attr === '超鐘點'" title="超鐘點">（超）</span>
                                     <span v-if="entry.attr === '單週' || entry.attr === '雙週'" style="font-size:0.65rem;color:var(--text-muted);margin-left:2px;">({{ entry.attr }})</span>
                                     <span v-if="entry._isCombined || isCombinedClass(entry.className)" class="cell-badge tag-combined" title="併班">併班</span>
                                   </div>

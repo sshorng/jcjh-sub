@@ -641,6 +641,33 @@ body {
   font-weight: 500;
 }
 
+/* 科目動態色彩標籤（班級課表） */
+.subject-color-tag {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 6px;
+  border-width: 1px;
+  border-style: solid;
+  font-weight: 700;
+  font-size: 0.85rem;
+  line-height: 1.25;
+  transition: all 0.15s ease;
+}
+
+/* 班級動態色彩膠囊（教師課表） */
+.class-color-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  border-width: 1px;
+  border-style: solid;
+  font-weight: 700;
+  font-size: 0.82rem;
+  line-height: 1.25;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  transition: all 0.15s ease;
+}
+
 .grid-cell-class {
   background: var(--bg-secondary, #f8fafc);
   border: 1px solid var(--border-color, #e2e8f0);
