@@ -6145,9 +6145,16 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
 
     const getClassBadgeStyle = (className) => {
       if (!className) return {};
+      const cleanCls = String(className).trim();
+      let hash = 0;
+      for (let i = 0; i < cleanCls.length; i++) {
+        hash = cleanCls.charCodeAt(i) + ((hash << 5) - hash);
+      }
+      const idx = Math.abs(hash) % SUBJECT_COLOR_GROUPS.length;
+      const group = SUBJECT_COLOR_GROUPS[idx];
       return {
-        backgroundColor: '#dbeafe',
-        color: '#1e3a8a',
+        backgroundColor: group.color.bg,
+        color: group.color.text,
         border: 'none'
       };
     };
