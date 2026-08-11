@@ -4183,6 +4183,18 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     const recommendedExchangeList = computed(() => {
       if (matchMode.value !== 'exchange' || !activeCell.value.dayOfWeek || !inputRequestDate.value) return [];
       const leaveCell = activeCell.value.classData || null;
+      
+      const offset = parseInt(exchangeWeekOffset.value, 10) || 0;
+      const baseDates = currentWeekDates.value || [];
+      const targetWeekDates = baseDates.map(dStr => {
+        if (!dStr) return '';
+        if (offset === 0) return dStr;
+        const d = new Date(String(dStr).replace(/-/g, '/'));
+        if (isNaN(d.getTime())) return dStr;
+        d.setDate(d.getDate() + offset * 7);
+        return toLocalDateStr(d);
+      });
+
       return window.DomainMatch.listExchangeCandidates({
         allSchedules: allSchedules.value,
         className: leaveCell ? leaveCell.className : '',
@@ -4192,7 +4204,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         leaveDay: activeCell.value.dayOfWeek,
         leaveCell: leaveCell,
         leaveAttr: leaveCell ? leaveCell.attr : '',
-        weekDates: currentWeekDates.value,
+        weekDates: targetWeekDates,
         getScheduleForDate,
         getTeacherNameByEmail,
         // 調課：外出班／空堂事件釋出視同空堂（不特別優先排序）
@@ -8578,7 +8590,15 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       if (!dayOfWeek) return '';
       const dates = (selectedClassWeekDates && selectedClassWeekDates.value) ? selectedClassWeekDates.value : null;
       if (dates && dates[dayOfWeek - 1]) {
-        return formatDateMMDD(dates[dayOfWeek - 1]);
+        const baseStr = dates[dayOfWeek - 1];
+        const offset = parseInt(exchangeWeekOffset.value, 10) || 0;
+        if (offset === 0) return formatDateMMDD(baseStr);
+        const d = new Date(String(baseStr).replace(/-/g, '/'));
+        if (!isNaN(d.getTime())) {
+          d.setDate(d.getDate() + offset * 7);
+          return formatDateMMDD(toLocalDateStr(d));
+        }
+        return formatDateMMDD(baseStr);
       }
       return '';
     };
