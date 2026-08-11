@@ -5972,9 +5972,16 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     };
 
     const printSelectedForms = async (formType) => {
+      // 必須在任何 await 之前先開好視窗，否則瀏覽器視為非 user gesture 而封鎖
+      const printWin = window.open('', '_blank');
+      if (!printWin) {
+        showToast('瀏覽器封鎖了列印視窗，請允許彈出視窗後再試。', 'warning');
+        return;
+      }
       try {
         await ensurePrintReady();
       } catch (e) {
+        printWin.close();
         showToast('列印模組載入失敗，請重新整理後再試', 'error');
         return;
       }
@@ -5990,7 +5997,8 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         showToast,
         loading,
         loadingMessage,
-        allSchedules
+        allSchedules,
+        printWin   // 傳入已開好的視窗，helper 直接使用
       });
     };
 

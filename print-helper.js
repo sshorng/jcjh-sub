@@ -674,7 +674,7 @@ async function printSelectedForms(formType, ctx) {
       }
     }
 
-    const printWin = window.open('', '_blank');
+    const printWin = ctx.printWin || window.open('', '_blank');
     if (!printWin) {
       ctx.showToast('瀏覽器封鎖了列印視窗，請允許彈出視窗後再試。', 'warning');
       if (ctx.loading) ctx.loading.value = false;
