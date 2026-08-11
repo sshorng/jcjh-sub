@@ -674,15 +674,35 @@ async function printSelectedForms(formType, ctx) {
       }
     }
 
-    const printWin = ctx.printWin || window.open('', '_blank');
+    let printWin = ctx.printWin || targetWin;
+    let targetDoc = null;
+
     if (!printWin) {
-      ctx.showToast('瀏覽器封鎖了列印視窗，請允許彈出視窗後再試。', 'warning');
-      if (ctx.loading) ctx.loading.value = false;
-      return;
+      // 降級備援機制：如果 Chrome / Edge 封鎖了 Pop-up，自動建立隱藏 iframe 本頁直印，100% 免除封鎖！
+      let hiddenIframe = document.getElementById('hidden-print-iframe');
+      if (!hiddenIframe) {
+        hiddenIframe = document.createElement('iframe');
+        hiddenIframe.id = 'hidden-print-iframe';
+        hiddenIframe.style.position = 'fixed';
+        hiddenIframe.style.right = '0';
+        hiddenIframe.style.bottom = '0';
+        hiddenIframe.style.width = '0px';
+        hiddenIframe.style.height = '0px';
+        hiddenIframe.style.border = 'none';
+        hiddenIframe.style.visibility = 'hidden';
+        document.body.appendChild(hiddenIframe);
+      }
+      printWin = hiddenIframe.contentWindow;
+      targetDoc = hiddenIframe.contentDocument || hiddenIframe.contentWindow.document;
+    } else {
+      targetDoc = printWin.document;
     }
-    // 預覽視窗已順利開啟，主視窗即可解除轉圈圈狀態
+
+    // 預覽／列印已初始化，主視窗即可解除轉圈圈狀態
     if (ctx.loading) ctx.loading.value = false;
-    printWin.document.write(`
+
+    targetDoc.open();
+    targetDoc.write(`
       <html>
       <head>
         <title>建成國中調代課通知單</title>
@@ -827,7 +847,7 @@ async function printSelectedForms(formType, ctx) {
       </body>
       </html>
     `);
-    printWin.document.close();
+    targetDoc.close();
 
     const idsToMark = new Set(ctx.selectedRecordIds.value);
     ctx.selectedRecordIds.value.forEach(id => {
