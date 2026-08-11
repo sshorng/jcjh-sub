@@ -838,7 +838,11 @@ body {
   flex-direction: column;
   gap: 2px;
   min-width: 0;
+  width: 100%;
   flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
 }
 .cell-badges {
   display: flex;
@@ -892,6 +896,11 @@ body {
   color: var(--text-secondary, #475569);
   font-weight: 500;
   line-height: 1.25;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
 }
 
 .cell-teacher {
@@ -4953,7 +4962,12 @@ td.table-empty {
 }
 
 .timetable-grid .cell-class-name {
-  padding-right: 6px;
+  padding-right: 0;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
 }
 
 .timetable-grid .cell-class-name > .cell-badge {
