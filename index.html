@@ -634,7 +634,7 @@
                               </template>
                               <template v-else>
                                 <div class="cell-main">
-                                  <div class="cell-class-name">
+                                  <div class="cell-class-name" v-if="slot.cell.className && String(slot.cell.className).trim()">
                                     <span class="class-color-badge" :style="getClassBadgeStyle(slot.cell.className)">
                                       {{ formatClassName(slot.cell.className) || slot.cell.className }}
                                     </span>
@@ -648,7 +648,7 @@
                                     暫定：{{ slot.draftSubName }}
                                     <span class="opacity-85">（{{ slot.draftFeeShort }}）</span>
                                   </div>
-                                  <div v-if="!isMobile && slot.cell.subText" class="cell-sub-text cell-sub-muted">{{ slot.cell.subText }}</div>
+                                  <div v-if="!isMobile && slot.cell.subText && String(slot.cell.subText).replace(/[📌\s]/g, '') !== String(slot.cell.subject || '').replace(/[📌\s]/g, '')" class="cell-sub-text cell-sub-muted">{{ slot.cell.subText }}</div>
                                   <div v-if="!isMobile && slot.cell.pendingText" class="cell-sub-text cell-sub-pending">{{ slot.cell.pendingText }}</div>
                                 </div>
                                 <div class="cell-badges">
