@@ -2246,12 +2246,7 @@ createApp({
     };
 
     const printSingleRequest = async (req, formType = 'Notice') => {
-      // 必須在觸發第一時間開視窗，繞過 Chrome popup 封鎖
       const printWin = window.open('', '_blank');
-      if (!printWin) {
-        showToast('瀏覽器封鎖了列印視窗，請允許彈出視窗後再試。', 'warning');
-        return;
-      }
       let targetIds = [];
       if (substitutionRecords.value && substitutionRecords.value.length > 0) {
         targetIds = substitutionRecords.value
@@ -2262,7 +2257,7 @@ createApp({
         targetIds = [detailSubRecord.value.id];
       }
       if (targetIds.length === 0) {
-        printWin.close();
+        if (printWin) printWin.close();
         showToast("⚠️ 找不到該筆核准的代課明細，無法執行列印。", "error");
         return;
       }
@@ -5991,16 +5986,11 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     };
 
     const printSelectedForms = async (formType, existingWin = null) => {
-      // 若外部已在點擊第一時間開好視窗則直接使用，否則在此第一時間開好
       const printWin = existingWin || window.open('', '_blank');
-      if (!printWin) {
-        showToast('瀏覽器封鎖了列印視窗，請允許彈出視窗後再試。', 'warning');
-        return;
-      }
       try {
         await ensurePrintReady();
       } catch (e) {
-        printWin.close();
+        if (printWin) printWin.close();
         showToast('列印模組載入失敗，請重新整理後再試', 'error');
         return;
       }
