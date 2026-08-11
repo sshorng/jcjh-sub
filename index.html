@@ -664,7 +664,7 @@
                                   <span
                                     v-if="period === 8 && slot.cell.attr !== '單週' && slot.cell.attr !== '雙週' && !slot.cell.isSubstituted && !slot.cell.isSubstitutionDuty && !slot.cell.isPending && !(slot.cell.isPatrol || slot.cell.attr === '巡堂')"
                                     class="cell-badge tag-blue"
-                                  >輔導</span>
+                                  >課輔</span>
                                   <span v-if="slot.cell.isPullOut || slot.cell.attr === '抽離'" class="cell-badge tag-pullout">抽離</span>
                                   <span v-if="slot.cell.restriction === 'restricted'" class="cell-badge tag-restricted">綁課</span>
                                   <span 
@@ -3431,9 +3431,9 @@
                 <option value="基本">基本（計鐘點，同一般）</option>
                 <option value="超鐘點">超鐘點（計鐘點）</option>
                 <option value="巡堂">巡堂（不計鐘點、不可調課、可當空堂）</option>
-                <option v-if="parseInt(scheduleForm.period, 10) === 8" value="單週">單週（僅第8節輔導）</option>
-                <option v-if="parseInt(scheduleForm.period, 10) === 8" value="雙週">雙週（僅第8節輔導）</option>
-                <option v-if="parseInt(scheduleForm.period, 10) === 8" value="輔導">輔導（第8節每週）</option>
+                <option v-if="parseInt(scheduleForm.period, 10) === 8" value="單週">單週（僅第8節課輔）</option>
+                <option v-if="parseInt(scheduleForm.period, 10) === 8" value="雙週">雙週（僅第8節課輔）</option>
+                <option v-if="parseInt(scheduleForm.period, 10) === 8" value="課輔">課輔（第8節每週）</option>
                 <option value="抽離">抽離（不進班級課表；計週鐘點；可另勾綁課）</option>
               </select>
               <span class="text-xs-muted-70">

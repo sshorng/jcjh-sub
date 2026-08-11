@@ -1101,7 +1101,7 @@ createApp({
     };
     const requestsList = ref([]); // 已核准 substitutions [{id, date, period, originalTeacherEmail, actualTeacherEmail, className, subject, requestId, type, printed, subFee, reason, note}]
 
-    // 單/雙週輔導課輔助
+    // 單/雙週課輔課輔助
     const semesterStartDate = computed(() => {
       const sem = semestersList.value.find(s => s.id === currentSemester.value);
       return sem ? sem.startDate : '';
@@ -8604,7 +8604,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       openAddSemesterModal, openEditSemesterModal, saveSemester, deleteSemester, setDefaultSemester,
       // 工具函數
       toLocalDateStr,
-      // 單/雙週輔導課
+      // 單/雙週課輔課
       isSingleWeek, semesterStartDate,
       // 空堂事件
       classAwayEvents, semesterEndDate, activeAwayBanner, isClassAwayOnDate,

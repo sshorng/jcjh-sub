@@ -48,7 +48,7 @@ window.DomainBilling = (function () {
    * 是否計入「每週排課鐘點」
    * - 節次：1–7 或 午休 45
    * - 屬性：基本／一般／超鐘點／抽離（空屬性視同一般）
-   * - 不含：巡堂、第8、輔導（第8）、單雙週輔導
+   * - 不含：巡堂、第8、課輔（第8）、單雙週課輔
    */
   function isWeeklyHoursSlot(s) {
     if (!s) return false;
@@ -152,7 +152,7 @@ window.DomainBilling = (function () {
       if (!cands.length) return null;
       var base = cands.find(function (s) {
         var a = s.attr || '';
-        if (!a || a === '一般' || a === '輔導' || a === '基本') return true;
+        if (!a || a === '一般' || a === '課輔' || a === '基本') return true;
         if (a === '單週' && isSingleWeek(dateStr)) return true;
         if (a === '雙週' && !isSingleWeek(dateStr)) return true;
         return false;
@@ -340,7 +340,7 @@ window.DomainBilling = (function () {
         ? 0
         : (parseInt(t.baseHours, 10) || 16);
 
-      // 週鐘點：1–7＋午休(45)；基本／一般／超鐘點／抽離皆計；巡堂／第8／輔導單雙週不算
+      // 週鐘點：1–7＋午休(45)；基本／一般／超鐘點／抽離皆計；巡堂／第8／課輔單雙週不算
       var weeklyPeriods = allSchedules.filter(function (s) {
         return emailKey(s.teacherEmail) === em && isWeeklyHoursSlot(s);
       }).length;

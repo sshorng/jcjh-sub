@@ -104,12 +104,12 @@ window.UiAdmin = (function () {
     function normalizeAttrImport(raw, period, subject) {
       var attr = String(raw || '').trim() || '一般';
       if (attr === '基本') attr = '一般';
-      if (!raw && period === 8) attr = '輔導';
+      if (!raw && period === 8) attr = '課輔';
       if (!raw && period === 8 && /^[單雙]/.test(String(subject || ''))) {
         var m = String(subject).match(/^([單雙])/);
         if (m) attr = m[1] + '週';
       }
-      if (period !== 8 && (attr === '單週' || attr === '雙週' || attr === '輔導')) {
+      if (period !== 8 && (attr === '單週' || attr === '雙週' || attr === '課輔')) {
         attr = '一般';
       }
       if (String(subject || '').indexOf('巡堂') >= 0 || attr === '巡堂') attr = '巡堂';
@@ -417,8 +417,8 @@ window.UiAdmin = (function () {
             '星期': 2,
             '節次': 8,
             '班級': '901',
-            '科目': '輔導',
-            '課堂屬性': '輔導',
+            '科目': '課輔',
+            '課堂屬性': '課輔',
             '調課限制': ''
           },
           {
@@ -634,10 +634,10 @@ window.UiAdmin = (function () {
         var currentPeriod = parseInt(scheduleForm.value.period, 10);
         var attr = scheduleForm.value.attr || '一般';
         // 本校 1～7 節無單雙週；誤選時改回一般
-        if (currentPeriod !== 8 && (attr === '單週' || attr === '雙週' || attr === '輔導')) {
+        if (currentPeriod !== 8 && (attr === '單週' || attr === '雙週' || attr === '課輔')) {
           attr = '一般';
           scheduleForm.value.attr = '一般';
-          showToast('1～7 節不使用單雙週／輔導屬性，已改為一般', 'info');
+          showToast('1～7 節不使用單雙週／課輔屬性，已改為一般', 'info');
         }
         var docId = scheduleForm.value.id;
         if (!docId) {
