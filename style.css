@@ -681,7 +681,9 @@ body {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+  height: auto;
   min-height: 68px;
+  overflow: visible;
   transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
   cursor: pointer;
   position: relative;
@@ -4920,11 +4922,11 @@ td.table-empty {
 .class-timetable .cell-subject,
 .class-timetable .cell-class-name {
   min-width: 0;
-  max-width: 90%;
-  overflow: hidden;
+  max-width: 100%;
+  overflow: visible;
   text-align: center;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  word-break: break-word;
 }
 
 .timetable-grid .cell-class-name,
