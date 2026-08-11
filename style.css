@@ -4897,14 +4897,23 @@ td.table-empty {
   font-weight: 500;
 }
 
-.timetable-grid .cell-main,
-.class-timetable .class-entry-block {
+.timetable-grid .cell-main {
   display: flex;
   min-width: 0;
   max-width: 100%;
   width: 100%;
-  height: 100%;
-  overflow: hidden;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.class-timetable .class-entry-block {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+  height: auto;
+  overflow: visible;
   align-items: center;
   justify-content: center;
   text-align: center;
@@ -4972,9 +4981,9 @@ td.table-empty {
 
 .class-timetable .class-entry-block {
   flex-direction: column;
-  flex: 1 1 auto;
-  gap: 1px;
-  padding: 0;
+  flex: 0 0 auto;
+  gap: 2px;
+  padding: 3px 0;
 }
 
 .class-timetable .class-entry-block + .class-entry-block {

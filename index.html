@@ -867,7 +867,6 @@
                                     <span class="subject-color-tag" :style="getSubjectStyle(entry.subject)">
                                       {{ entry.subject }}
                                     </span>
-                                    <span v-if="entry.attr === '超鐘點'" title="超鐘點">（超）</span>
                                     <span v-if="entry.attr === '單週' || entry.attr === '雙週'" style="font-size:0.65rem;color:var(--text-muted);margin-left:2px;">({{ entry.attr }})</span>
                                     <span v-if="entry._isCombined || isCombinedClass(entry.className)" class="cell-badge tag-combined" title="併班">併班</span>
                                   </div>
