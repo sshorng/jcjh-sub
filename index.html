@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>建成國中線上調代課系統</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📅</text></svg>">
-  <link rel="stylesheet" href="style.css?v=20260809_tt_ref7">
+  <link rel="stylesheet" href="style.css?v=20260814-p8">
   <!-- 手機版獨立樣式：不影響桌機 -->
   <link rel="stylesheet" href="mobile.css" media="(max-width: 768px)">
   
@@ -507,7 +507,7 @@
               </div>
               
               <!-- 行政代申請提示（僅未授權／進行中顯示） -->
-              <div v-if="isStaff && (!canStaffProxySubmit || isProxySubmitActive)" class="batch-hint-bar" style="margin-bottom:8px;">
+              <div v-if="isStaff && (!canStaffProxySubmit || isProxySubmitActive)" class="batch-hint-bar mb-8" >
                 <template v-if="!canStaffProxySubmit">
                   行政可瀏覽全校課表。代他人申請需教學組在「後台 → 系統設定」勾選授權<strong>您這位行政</strong>（不是一次開全部行政）。
                 </template>
@@ -847,7 +847,7 @@
                                   </span>
                                 </div>
                                 <div class="cell-class-name">
-                                  {{ getTeacherNameByEmail(classSubstitutionMap[selectedClass + '|' + dateStr + '|' + period].actualTeacherEmail) }}
+                                  {{ classSubstitutionMap[selectedClass + '|' + dateStr + '|' + period].actualTeacherName || getTeacherNameByEmail(classSubstitutionMap[selectedClass + '|' + dateStr + '|' + period].actualTeacherEmail) }}
                                 </div>
                                 <div class="cell-sub-badge">
                                   {{ classSubstitutionMap[selectedClass + '|' + dateStr + '|' + period].type === 'exchange' ? '已調課' : '已代課' }}
@@ -925,7 +925,7 @@
             <div class="card-title" style="flex-wrap: wrap; gap: 8px;">
               <span>📝 待核准發放 (共 {{ pendingSearchQuery ? (paginatedAdminPending.length + '／篩選') : adminPendingRequests.length + ' 筆' }})</span>
               <div class="batch-bar" v-if="adminPendingRequests.length > 0">
-                <button type="button" class="btn btn-secondary" style="padding:6px 10px;font-size:0.78rem;" @click="toggleSelectAllAdminPending">
+                <button type="button" class="btn btn-secondary pad-6-10-78"  @click="toggleSelectAllAdminPending">
                   {{ paginatedAdminPending.length && paginatedAdminPending.every(r => isAdminPendingSelected(r.id)) ? '取消本頁全選' : '本頁全選' }}
                 </button>
                 <button type="button" class="btn btn-success btn-sm-78" :disabled="!selectedAdminPendingIds.length" @click="batchAdminApprove">
@@ -1592,7 +1592,7 @@
                         <strong>{{ r.originalTeacherName || r.originalTeacherEmail }}</strong>
                         <span v-if="r.sourceRequestId === 'manual'" class="status-badge" style="background:#fff3bf;color:#f59f00;font-size:0.72rem;padding:1px 5px;">手動建立</span>
                       </div>
-                      <div style="font-size:0.78rem;color:var(--text-secondary);">
+                      <div class="text-xs-sec-78" >
                         請假時間：{{ r.leaveTimeType || '' }} {{ r.leaveTime || '—' }}｜鐘點費：1節（NT$ {{ r.feeAmount || 455 }}）
                         <span v-if="r.note" style="margin-left:6px;color:#868e96;">({{ r.note }})</span>
                       </div>
@@ -1847,7 +1847,7 @@
                 各事件可匯出<strong>活動輪值通知單</strong>（只匯已送出；第1～7節入表、第8節附註）。
               </p>
               <div class="table-responsive">
-                <table class="custom-table" style="font-size:0.85rem;">
+                <table class="custom-table fs-85" >
                   <thead>
                     <tr>
                       <th>名稱</th>
@@ -1917,7 +1917,7 @@
                   class="btn btn-secondary btn-sm"
                   @click="clearAllProxySubmitEmails"
                 >清空全部授權</button>
-                <span v-if="proxySubmitEnabledBy" style="font-size:0.75rem;color:var(--text-muted);">
+                <span class="text-xs-muted-75" v-if="proxySubmitEnabledBy" >
                   最近由 {{ proxySubmitEnabledBy }} 更新
                   <template v-if="proxySubmitEnabledAt">（{{ String(proxySubmitEnabledAt).slice(0, 16).replace('T', ' ') }}）</template>
                 </span>
@@ -1937,8 +1937,8 @@
                       :checked="isProxySubmitEmailGranted(t.email)"
                       @change="toggleProxySubmitEmail(t.email)"
                     >
-                    <span style="font-weight:600;">{{ t.name }}</span>
-                    <span style="color:var(--text-muted);font-size:0.78rem;">{{ t.email }}</span>
+                    <span class="fw-600" >{{ t.name }}</span>
+                    <span class="text-xs-muted-78" >{{ t.email }}</span>
                     <span class="badge-staff" style="margin-left:auto;">行政</span>
                   </label>
                 </li>
@@ -2489,15 +2489,15 @@
                 <div v-if="pendingRequestData.mode === 'substitution'" class="form-group" style="grid-column:1 / -1;">
                   <label class="form-label">請假時間（代課清冊）</label>
                   <div style="display:flex;flex-wrap:wrap;gap:7px;align-items:center;">
-                    <button type="button" class="btn btn-secondary" style="padding:6px 10px;font-size:0.78rem;" @click="setLeaveTimePreset('全天')">全天（{{ getLeaveTimePresetRange(pendingRequestData.leaveTeacher, '全天') }}）</button>
-                    <button type="button" class="btn btn-secondary" style="padding:6px 10px;font-size:0.78rem;" @click="setLeaveTimePreset('上午')">上午（{{ getLeaveTimePresetRange(pendingRequestData.leaveTeacher, '上午') }}）</button>
-                    <button type="button" class="btn btn-secondary" style="padding:6px 10px;font-size:0.78rem;" @click="setLeaveTimePreset('下午')">下午（{{ getLeaveTimePresetRange(pendingRequestData.leaveTeacher, '下午') }}）</button>
+                    <button type="button" class="btn btn-secondary pad-6-10-78"  @click="setLeaveTimePreset('全天')">全天（{{ getLeaveTimePresetRange(pendingRequestData.leaveTeacher, '全天') }}）</button>
+                    <button type="button" class="btn btn-secondary pad-6-10-78"  @click="setLeaveTimePreset('上午')">上午（{{ getLeaveTimePresetRange(pendingRequestData.leaveTeacher, '上午') }}）</button>
+                    <button type="button" class="btn btn-secondary pad-6-10-78"  @click="setLeaveTimePreset('下午')">下午（{{ getLeaveTimePresetRange(pendingRequestData.leaveTeacher, '下午') }}）</button>
                   </div>
                   <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px;">
                     <input type="time" class="form-input" style="width:125px;" v-model="pendingRequestData.leaveTimeStart" @change="updatePendingLeaveTime">
                     <span>至</span>
                     <input type="time" class="form-input" style="width:125px;" v-model="pendingRequestData.leaveTimeEnd" @change="updatePendingLeaveTime">
-                    <span style="font-size:0.78rem;color:var(--text-secondary);">目前：{{ pendingRequestData.leaveTimeType || '—' }}（{{ pendingRequestData.leaveTime || '—' }}）</span>
+                    <span class="text-xs-sec-78" >目前：{{ pendingRequestData.leaveTimeType || '—' }}（{{ pendingRequestData.leaveTime || '—' }}）</span>
                   </div>
                   <small style="display:block;margin-top:5px;color:var(--text-muted);">行政人員預設全天 08:00~17:00；非行政預設全天 08:00~16:00，時間可自行修改。</small>
                 </div>
@@ -3029,7 +3029,7 @@
                 <button type="button" class="btn btn-secondary btn-xs" @click="selectClassAwayGrade('8')">全選八年級</button>
                 <button type="button" class="btn btn-secondary btn-xs" @click="selectClassAwayGrade('9')">全選九年級</button>
                 <button type="button" class="btn btn-secondary btn-xs" @click="classAwayForm.classes = []">清空</button>
-                <span style="font-size:0.75rem;color:var(--text-muted);">已選 {{ (classAwayForm.classes || []).length }} 班</span>
+                <span class="text-xs-muted-75" >已選 {{ (classAwayForm.classes || []).length }} 班</span>
               </div>
               <div style="max-height:160px;overflow:auto;border:1px solid var(--border-color);border-radius:8px;padding:8px;display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:4px;">
                 <label
@@ -3481,7 +3481,7 @@
             </p>
             <div style="background:#f8fafc;border:1px solid var(--border-color);border-radius:8px;padding:10px 12px;font-size:0.85rem;">
               <div><strong>{{ emptySlotForm.teacherName }}</strong>
-                <span style="color:var(--text-muted);font-size:0.78rem;">（額度 {{ emptySlotForm.quota }}）</span>
+                <span class="text-xs-muted-78" >（額度 {{ emptySlotForm.quota }}）</span>
               </div>
               <div style="margin-top:4px;color:var(--text-secondary);">
                 {{ emptySlotForm.dateStr }}　週{{ getWeekDayText(emptySlotForm.dayOfWeek) }}{{ formatPeriodText(emptySlotForm.period) }}
@@ -3490,15 +3490,15 @@
             <div v-if="emptySlotQuotaZero" style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 12px;font-size:0.8rem;color:#b91c1c;">
               ⚠️ 折抵額度為 0：仍可送出，但請安排<strong>由他人還一節</strong>。
             </div>
-            <div class="form-group" style="margin:0;">
+            <div class="form-group m-0" >
               <label class="form-label">任務名稱 *</label>
               <input type="text" class="form-input" v-model="emptySlotForm.taskName" placeholder="例如：段考巡堂、考場巡堂" maxlength="40">
             </div>
-            <div class="form-group" style="margin:0;">
+            <div class="form-group m-0" >
               <label class="form-label">班級（選填）</label>
               <input type="text" class="form-input" v-model="emptySlotForm.className" placeholder="可不填；要綁班再填，如 701" maxlength="20">
             </div>
-            <div class="form-group" style="margin:0;">
+            <div class="form-group m-0" >
               <label class="form-label">備註（選填）</label>
               <input type="text" class="form-input" v-model="emptySlotForm.note" placeholder="可空白" maxlength="80">
             </div>
@@ -3530,7 +3530,7 @@
               常用於導師無課或已調課請假、系統未自動產生代課單時，手動補建一筆代導費（每筆 1 節 / NT$ 455 元）。
             </p>
 
-            <div class="form-group" style="margin:0;">
+            <div class="form-group m-0" >
               <label class="form-label">請假導師 *</label>
               <select class="form-select" v-model="manualHomeroomForm.leaveEmail" @change="onManualHomeroomLeaveTeacherChange">
                 <option value="">請選擇原導師…</option>
@@ -3541,11 +3541,11 @@
             </div>
 
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-              <div class="form-group" style="margin:0;">
+              <div class="form-group m-0" >
                 <label class="form-label">代導日期 *</label>
                 <input type="date" class="form-input" v-model="manualHomeroomForm.date">
               </div>
-              <div class="form-group" style="margin:0;">
+              <div class="form-group m-0" >
                 <label class="form-label">請假時間類型</label>
                 <select class="form-select" v-model="manualHomeroomForm.leaveTimeType">
                   <option value="全天">全天</option>
@@ -3556,12 +3556,12 @@
               </div>
             </div>
 
-            <div class="form-group" style="margin:0;">
+            <div class="form-group m-0" >
               <label class="form-label">請假時間區間</label>
               <input type="text" class="form-input" v-model="manualHomeroomForm.leaveTime" placeholder="例如：08:00~16:00">
             </div>
 
-            <div class="form-group" style="margin:0;">
+            <div class="form-group m-0" >
               <label class="form-label">代導教師（選填，留空為待指定）</label>
               <input 
                 type="text" 
@@ -3577,7 +3577,7 @@
               </datalist>
             </div>
 
-            <div class="form-group" style="margin:0;">
+            <div class="form-group m-0" >
               <label class="form-label">備註（選填）</label>
               <input type="text" class="form-input" v-model="manualHomeroomForm.note" placeholder="例如：導師無課請假手動補建">
             </div>
@@ -3656,21 +3656,21 @@
   <!-- App Main JS Logic -->
 
   <!-- 模組：defer 依文件順序執行，不擋 HTML 解析；billing/print/export 另延後 -->
-  <script defer src="field-map.js?v=opt4"></script>
-  <script defer src="date-utils.js?v=opt3"></script>
-  <script defer src="gas-api.js?v=opt3"></script>
-  <script defer src="domain-schedule.js?v=opt3"></script>
-  <script defer src="domain-match.js?v=opt3"></script>
+  <script defer src="field-map.js?v=20260814-p8"></script>
+  <script defer src="date-utils.js?v=20260814-p8"></script>
+  <script defer src="gas-api.js?v=20260814-p8"></script>
+  <script defer src="domain-schedule.js?v=20260814-p8"></script>
+  <script defer src="domain-match.js?v=20260814-p8"></script>
   <!-- domain-activity-cover：活動互代／空堂任務時 ensureDomainActivityCover -->
-  <script defer src="domain-class-away.js?v=opt3"></script>
-  <script defer src="fee-utils.js?v=opt3"></script>
-  <script defer src="export-accounting.js?v=opt13"></script>
-  <script defer src="ui-activity.js?v=opt3"></script>
-  <script defer src="ui-request.js?v=opt3"></script>
-  <script defer src="ui-timetable.js?v=opt3"></script>
-  <script defer src="ui-approval.js?v=opt3"></script>
+  <script defer src="domain-class-away.js?v=20260814-p8"></script>
+  <script defer src="fee-utils.js?v=20260814-p8"></script>
+  <script defer src="ui-activity.js?v=20260814-p8"></script>
+  <script defer src="ui-request.js?v=20260814-p8"></script>
+  <script defer src="ui-timetable.js?v=20260814-p8"></script>
+  <script defer src="ui-approval.js?v=20260814-p8"></script>
   <!-- ui-admin：僅管理員／後台操作時 ensureUiAdmin -->
-  <script defer src="app.js?v=opt12"></script>
+  <script defer src="app-shell-utils.js?v=20260814-p8"></script>
+  <script defer src="app.js?v=20260814-p8"></script>
   <script>
     (function () {
       function loadScript(src) {
@@ -3687,46 +3687,52 @@
       var _exportP = null;
       var _xlsxP = null;
       var _billingP = null;
+      var _accountingP = null;
       var _domainActivityP = null;
       var _uiAdminP = null;
       window.ensureDomainBilling = function () {
         if (window.DomainBilling) return Promise.resolve();
-        if (!_billingP) _billingP = loadScript('domain-billing.js?v=opt4');
+        if (!_billingP) _billingP = loadScript('domain-billing.js?v=20260814-p8');
         return _billingP;
+      };
+      window.ensureExportAccounting = function () {
+        if (window.ExportAccounting) return Promise.resolve();
+        if (!_accountingP) _accountingP = loadScript('export-accounting.js?v=20260814-p8');
+        return _accountingP;
       };
       /** 活動互代／額度／空堂任務邏輯（首屏不載） */
       window.ensureDomainActivityCover = function () {
         if (window.DomainActivityCover) return Promise.resolve();
-        if (!_domainActivityP) _domainActivityP = loadScript('domain-activity-cover.js?v=opt3');
+        if (!_domainActivityP) _domainActivityP = loadScript('domain-activity-cover.js?v=20260814-p8');
         return _domainActivityP;
       };
       /** 後台匯入／教師／課表編輯（教師首屏不載） */
       window.ensureUiAdmin = function () {
         if (window.UiAdmin) return Promise.resolve();
-        if (!_uiAdminP) _uiAdminP = loadScript('ui-admin.js?v=opt4');
+        if (!_uiAdminP) _uiAdminP = loadScript('ui-admin.js?v=20260814-p8');
         return _uiAdminP;
       };
       window.ensurePrintHelper = function () {
         if (typeof window.generateFormHtml === 'function') return Promise.resolve();
-        if (!_printP) _printP = loadScript('print-helper.js?v=opt3');
+        if (!_printP) _printP = loadScript('print-helper.js?v=20260814-p8');
         return _printP;
       };
       window.ensureExportSchoolTimetable = function () {
         if (window.ExportSchoolTimetable) return Promise.resolve();
-        if (!_exportP) _exportP = loadScript('export-school-timetable.js?v=opt3');
+        if (!_exportP) _exportP = loadScript('export-school-timetable.js?v=20260814-p8');
         return _exportP;
       };
       var _activityCoverP = null;
       window.ensureExportActivityCover = function () {
         if (window.ExportActivityCover) return Promise.resolve();
-        if (!_activityCoverP) _activityCoverP = loadScript('export-activity-cover.js?v=opt3');
+        if (!_activityCoverP) _activityCoverP = loadScript('export-activity-cover.js?v=20260814-p8');
         return _activityCoverP;
       };
       var _invigP = null;
       var _excelJsP = null;
       window.ensureExportInvigilation = function () {
         if (window.ExportInvigilation) return Promise.resolve();
-        if (!_invigP) _invigP = loadScript('export-invigilation.js?v=opt3');
+        if (!_invigP) _invigP = loadScript('export-invigilation.js?v=20260814-p8');
         return _invigP;
       };
       window.ensureExcelJS = function () {
@@ -3758,15 +3764,6 @@
         }
         return _xlsxP;
       };
-      function idlePrefetch() {
-        var run = window.requestIdleCallback || function (cb) { setTimeout(cb, 1500); };
-        run(function () {
-          window.ensurePrintHelper().catch(function () {});
-          window.ensureExportSchoolTimetable().catch(function () {});
-        });
-      }
-      if (document.readyState === 'complete') idlePrefetch();
-      else window.addEventListener('load', idlePrefetch);
     })();
   </script>
 

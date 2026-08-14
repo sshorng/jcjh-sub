@@ -14,8 +14,12 @@ window.UiApproval = (function () {
     var getStatusText = deps.getStatusText;
     var restoreMutualQuotaForRows = deps.restoreMutualQuotaForRows || function () {};
     var optimisticPatchRequestStatus = deps.optimisticPatchRequestStatus;
+    var optimisticPatchRequestStatuses = deps.optimisticPatchRequestStatuses || function (updates) {
+      (updates || []).forEach(function (u) {
+        if (u) optimisticPatchRequestStatus(u.id, u.status);
+      });
+    };
     var softRefreshInBackground = deps.softRefreshInBackground || function () {};
-    var loadHomeroomRecords = deps.loadHomeroomRecords || function () {};
     var formatRequestSummary = deps.formatRequestSummary || function () { return ''; };
     var formatApproveBatchRiskSummary = deps.formatApproveBatchRiskSummary || function () { return ''; };
     var getApproveRiskFlags = deps.getApproveRiskFlags || function () { return []; };
@@ -40,11 +44,13 @@ window.UiApproval = (function () {
     var showBatchPrintPrompt = ref(false);
 
     function findRequestById(id) {
+      var direct = requestsList.value.find(function (r) { return r.id === id; });
+      if (direct) return direct;
+      // 輕量 fallback：資料剛切換時，衍生清單可能比主列表先完成更新。
       return mySentRequests.value.find(function (r) { return r.id === id; }) ||
         myPendingRequests.value.find(function (r) { return r.id === id; }) ||
         adminPendingRequests.value.find(function (r) { return r.id === id; }) ||
-        allPendingRequests.value.find(function (r) { return r.id === id; }) ||
-        requestsList.value.find(function (r) { return r.id === id; });
+        allPendingRequests.value.find(function (r) { return r.id === id; });
     }
 
     function isAdminPendingSelected(id) {
@@ -252,10 +258,12 @@ window.UiApproval = (function () {
         var batchPeers = (requestsList.value || []).filter(function (r) {
           return r.batchId === batchId && r.status === 'pending_teacher';
         });
-        batchPeers.forEach(function (r) {
-          optimisticPatchRequestStatus(r.id, newStatus);
-        });
-        if (status !== 'agree') restoreMutualQuotaForRows(batchPeers);
+        optimisticPatchRequestStatuses(batchPeers.map(function (r) {
+          return { id: r.id, status: newStatus };
+        }));
+        if (status !== 'agree') {
+          restoreMutualQuotaForRows(batchPeers);
+        }
         showToast(
           status === 'agree'
             ? '🎉 已全部同意共 ' + (n || '多') + ' 節，已送交教學組核准。'
@@ -318,7 +326,6 @@ window.UiApproval = (function () {
         // 批次核准：只在 batch 結束打一次；單筆延後對齊
         // 核准後課表異動：用 requestsOnly（含已核准列），勿只拉 pending
         if (!opts.skipSoftRefresh) softRefreshInBackground({ delay: 2800, requestsOnly: true });
-        loadHomeroomRecords({ silent: true });
       } catch (e) {
         console.error('核准出單失敗：', e);
         if (!silent) {
@@ -403,9 +410,15 @@ window.UiApproval = (function () {
         );
         var doneIds = (res && res.ids) || ids;
         ok = (res && res.count) || doneIds.length;
+        var doneReqById = Object.create(null);
+        (requestsList.value || []).forEach(function (r) {
+          if (r && r.id != null) doneReqById[String(r.id)] = r;
+        });
+        optimisticPatchRequestStatuses(doneIds.map(function (id) {
+          return { id: id, status: 'approved' };
+        }));
         doneIds.forEach(function (id) {
-          optimisticPatchRequestStatus(id, 'approved');
-          var r = findRequestById(id);
+          var r = doneReqById[String(id)] || findRequestById(id);
           if (r && (r.type === 'exchange' || r.type === '對調')) {
             printIds.push(id + '_1');
             printIds.push(id + '_2');
@@ -439,7 +452,6 @@ window.UiApproval = (function () {
       );
       // 整批只對齊一次（核准＝課表異動）
       if (ok > 0) softRefreshInBackground({ delay: 1200, requestsOnly: true });
-      if (ok > 0) loadHomeroomRecords({ silent: true });
       if (ok > 0 && printIds.length > 0) {
         lastBatchPrintIds.value = printIds;
         showBatchPrintPrompt.value = true;
@@ -476,11 +488,17 @@ window.UiApproval = (function () {
         var res = await callGasApi('adminRejectBatch', { requestIds: ids });
         var doneIds = (res && res.ids) || ids;
         ok = (res && res.count) || doneIds.length;
-        doneIds.forEach(function (id) {
-          var r = findRequestById(id);
-          if (r) restoreMutualQuotaForRows(r);
-          optimisticPatchRequestStatus(id, 'admin_rejected');
+        var doneReqById = Object.create(null);
+        (requestsList.value || []).forEach(function (r) {
+          if (r && r.id != null) doneReqById[String(r.id)] = r;
         });
+        doneIds.forEach(function (id) {
+          var r = doneReqById[String(id)] || findRequestById(id);
+          if (r) restoreMutualQuotaForRows(r);
+        });
+        optimisticPatchRequestStatuses(doneIds.map(function (id) {
+          return { id: id, status: 'admin_rejected' };
+        }));
         if (res && res.missing) fail = res.missing;
       } catch (batchE) {
         console.warn('adminRejectBatch 失敗，回退逐筆：', batchE);

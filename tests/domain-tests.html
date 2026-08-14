@@ -221,7 +221,9 @@
         allSchedules: schedulesEx, scheduleIndex: idxEx,
         periodSubs: [exB], allSubs: [exA, exB], helpers: helpersEx
       });
-      assert('對調調入主標是自己科目', aIn && aIn.isSubstitutionDuty && aIn.subject === '國文',
+      // 對調調入：主標＝實際要上的課（edge 寫入「帶來的班科」），副標才是調自來源
+      // 契約註記（2026-07-20 起）：顯示帶來的課，不用教師專長覆寫
+      assert('對調調入主標＝帶來的課(702/輔導)', aIn && aIn.isSubstitutionDuty && aIn.subject === '輔導' && aIn.className === '702',
         aIn && (aIn.className + '/' + aIn.subject));
 
       // A理化 B國文 C數學：AB 後 BC — 課表上 B 異動格主標永遠國文
@@ -264,14 +266,14 @@
         allSchedules: schedulesABC, scheduleIndex: idxABC,
         periodSubs: [ab1, bc1], allSubs: [ab1, ab2, bc1, bc2], helpers: hABC
       });
-      assert('C 調入主標是數學（自己）', cP1 && cP1.isSubstitutionDuty && cP1.subject === '數學',
+      assert('C 調入主標＝帶來的課(802/國文)', cP1 && cP1.isSubstitutionDuty && cP1.subject === '國文' && cP1.className === '802',
         cP1 && (cP1.className + '/' + cP1.subject));
       var bP3 = window.DomainSchedule.resolveApprovedSchedule({
         teacherEmail: 'b@x', dateStr: '2026-07-13', period: 3, dayOfWeek: 1,
         allSchedules: schedulesABC, scheduleIndex: idxABC,
         periodSubs: [bc2], allSubs: [ab1, ab2, bc1, bc2], helpers: hABC
       });
-      assert('B 調入主標仍是國文', bP3 && bP3.isSubstitutionDuty && bP3.subject === '國文',
+      assert('B 調入主標＝帶來的課(803/數學)', bP3 && bP3.isSubstitutionDuty && bP3.subject === '數學' && bP3.className === '803',
         bP3 && (bP3.className + '/' + bP3.subject));
       var bP2 = window.DomainSchedule.resolveApprovedSchedule({
         teacherEmail: 'b@x', dateStr: '2026-07-13', period: 2, dayOfWeek: 1,

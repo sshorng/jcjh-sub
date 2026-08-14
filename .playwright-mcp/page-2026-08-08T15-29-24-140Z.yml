@@ -1,0 +1,6 @@
+- generic [ref=e4]:
+  - generic [ref=e5]: 🏫
+  - heading "建成國中線上調代課系統" [level=1] [ref=e6]
+  - paragraph [ref=e7]: 請使用學校 Google 帳號登入系統，即可線上發起調代課並查看每週課表狀況。
+  - button "使用 Google 帳號登入" [ref=e9] [cursor=pointer]
+  - paragraph [ref=e11]: "* 注意：本系統僅限本校 G Workspace 網域帳號登入。非本校網域帳號將無法通過身分驗證。"

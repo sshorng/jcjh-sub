@@ -548,40 +548,8 @@ body {
   vertical-align: middle;
 }
 
-/* 多位老師課表：清楚分隔、中密度 */
-.tt-teacher-list {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-.tt-teacher-block {
-  background: #fff;
-  border: 1px solid var(--border-color, #e2e8f0);
-  border-radius: 12px;
-  padding: 14px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
-  transition: box-shadow 0.2s ease, border-color 0.2s ease;
-}
-.tt-teacher-block:hover {
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.07);
-}
 .tt-teacher-block:last-child {
   margin-bottom: 0;
-}
-.tt-teacher-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin: 0 0 12px 0;
-  padding: 0;
-  border-bottom: none;
-  font-size: 0.95rem;
-  color: var(--text-primary, #0f172a);
-}
-.tt-teacher-head .tt-teacher-name {
-  font-weight: 700;
-  color: var(--text-primary, #1e293b);
 }
 .tt-pager-bar {
   display: flex;
@@ -921,11 +889,7 @@ body {
   font-weight: 600;
 }
 
-.tag-red { background: var(--color-danger-glow, #fef2f2); color: var(--color-danger, #ef4444); border: 1px solid rgba(239, 68, 68, 0.25); }
-.tag-green { background: var(--color-success-glow, #f0fdf4); color: var(--color-success, #16a34a); border: 1px solid rgba(22, 163, 74, 0.25); }
-.tag-blue { background: var(--color-primary-glow, #eff6ff); color: var(--color-primary, #2563eb); border: 1px solid rgba(37, 99, 235, 0.25); }
 .tag-amber { background: #fef3c7; color: #b45309; border: 1px solid rgba(245, 158, 11, 0.35); }
-.tag-gray { background: #f1f5f9; color: var(--text-secondary, #475569); border: 1px solid #e2e8f0; }
 
 .badge-admin {
   display: inline-block;
@@ -948,30 +912,6 @@ body {
   border: 1px solid rgba(245, 158, 11, 0.35);
 }
 .badge-teacher {
-  display: inline-block;
-  font-size: 0.72rem;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: #e0f2fe;
-  color: #0369a1;
-  border: 1px solid rgba(14, 165, 233, 0.25);
-}
-.badge-proxy {
-  display: inline-block;
-  font-size: 0.7rem;
-  font-weight: 700;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: #fff7ed;
-  color: #c2410c;
-  border: 1px solid rgba(249, 115, 22, 0.4);
-  max-width: 9rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  vertical-align: middle;
-}cher {
   display: inline-block;
   font-size: 0.72rem;
   font-weight: 600;
@@ -1540,17 +1480,6 @@ body {
 }
 
 /* 班級課表：多堂並陳 */
-.class-timetable .class-entry-block {
-  cursor: pointer;
-  border-radius: 4px;
-  padding: 1px 0;
-  width: 100%;
-}
-.class-timetable .class-entry-block + .class-entry-block {
-  margin-top: 4px;
-  padding-top: 4px;
-  border-top: 1px solid var(--border-color);
-}
 .class-timetable .class-entry-block:hover {
   background: rgba(37, 99, 235, 0.04);
 }
@@ -1571,19 +1500,6 @@ body {
   font-size: 0.75rem;
   color: var(--text-muted);
   font-weight: 500;
-}
-
-/* 班級選擇 */
-.class-pick-btn {
-  border-radius: 8px !important;
-  font-weight: 500 !important;
-  width: auto !important;
-}
-.class-pick-btn-active {
-  background: var(--color-primary) !important;
-  color: #fff !important;
-  border-color: var(--color-primary) !important;
-  font-weight: 600 !important;
 }
 
 /* 歷史篩選 chip 列 */
@@ -1839,26 +1755,6 @@ body {
 .class-timetable .grid-cell-class.has-substitution:hover {
   border-color: #f87171 !important;
   box-shadow: 0 4px 14px rgba(239, 68, 68, 0.15);
-}
-
-.class-timetable .cell-subject {
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  line-height: 1.25;
-}
-
-.class-timetable .cell-sub-badge {
-  font-size: 0.6rem;
-  font-weight: 600;
-  color: #dc2626;
-  background: #fff;
-  border: 1px solid #fecaca;
-  border-radius: 4px;
-  padding: 1px 5px;
-  margin-top: 3px;
-  line-height: 1.35;
-  white-space: nowrap;
 }
 
 .class-timetable .grid-cell-class .cell-class-name {
@@ -2420,13 +2316,6 @@ body {
 
 .custom-table tr:hover td {
   background: #f8fafc;
-}
-
-/* 大表效能：離屏列延後繪製（歷史／待辦長列表） */
-.custom-table.history-table tbody tr,
-.custom-table.req-table-aligned tbody tr {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 52px;
 }
 
 /* 大表效能：離屏列延後繪製（歷史／待辦長列表） */
@@ -3040,35 +2929,6 @@ td.table-empty {
   font-weight: 600;
 }
 
-/* ── 申請進度條 ── */
-.req-progress {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 2px 0;
-  max-width: 220px;
-}
-.req-step {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  font-size: 0.68rem;
-  color: #94a3b8;
-  font-weight: 600;
-}
-.req-step.done { color: #16a34a; }
-.req-step.current { color: #2563eb; }
-.req-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: currentColor;
-  opacity: 0.85;
-  flex-shrink: 0;
-}
-.req-step-label { white-space: nowrap; }
-.req-arrow { color: #cbd5e1; margin: 0 2px; font-weight: 400; }
-
 .success-actions {
   display: flex !important;
   flex-wrap: wrap;
@@ -3475,12 +3335,6 @@ td.table-empty {
   white-space: nowrap;
   vertical-align: middle;
 }
-.custom-table.history-table .hist-td-serial {
-  vertical-align: middle;
-}
-.custom-table.history-table .hist-serial-row {
-  align-items: center;
-}
 .req-progress-panel {
   background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
   border: 1px solid #e2e8f0;
@@ -3723,6 +3577,24 @@ td.table-empty {
 /* ── 外觀收斂：高頻 inline → 共用 class（測試階段整理）── */
 .m-0 { margin: 0; }
 .mb-0 { margin-bottom: 0; }
+.d-flex { display: flex; }
+.fw-600 { font-weight: 600; }
+.gap-6 { gap: 6px; }
+.gap-8 { gap: 8px; }
+.gap-10 { gap: 10px; }
+.gap-12 { gap: 12px; }
+.align-center { align-items: center; }
+.white-nowrap { white-space: nowrap; }
+.fs-72 { font-size: 0.72rem; }
+.fs-75 { font-size: 0.75rem; }
+.fs-80 { font-size: 0.8rem; }
+.fs-82 { font-size: 0.82rem; }
+.fs-85 { font-size: 0.85rem; }
+.text-xs-muted-75 { font-size: 0.75rem; color: var(--text-muted); }
+.text-xs-sec-78 { font-size: 0.78rem; color: var(--text-secondary); }
+.flex-col-gap-12 { display: flex; flex-direction: column; gap: 12px; }
+.flex-center-gap-6 { display: flex; align-items: center; gap: 6px; }
+.pad-6-10-78 { padding: 6px 10px; font-size: 0.78rem; }
 .flex-row-center {
   display: flex;
   align-items: center;
@@ -4710,6 +4582,7 @@ td.table-empty {
   border: 1px solid var(--tt-line);
   border-radius: 9px;
   box-shadow: var(--tt-shadow);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
 .tt-teacher-block:hover {
@@ -4719,6 +4592,10 @@ td.table-empty {
 
 .tt-teacher-head {
   min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
   margin: 0;
   padding: 9px 12px;
   border-bottom: 1px solid var(--tt-line);
@@ -4828,6 +4705,9 @@ td.table-empty {
 
 .timetable-grid .grid-cell-time .time-span,
 .class-timetable .grid-cell-time .time-span {
+  display: block;
+  width: 100%;
+  text-align: center;
   color: var(--tt-muted);
   font-size: 0.66rem;
   line-height: 1.15;
@@ -4908,13 +4788,17 @@ td.table-empty {
 
 .timetable-grid .cell-main {
   display: flex;
+  flex-direction: column;
   min-width: 0;
   max-width: 100%;
   width: 100%;
+  flex: 1 1 auto;
+  gap: 1px;
   align-items: center;
   justify-content: center;
   text-align: center;
 }
+
 .class-timetable .class-entry-block {
   display: flex;
   flex-direction: column;
@@ -4923,15 +4807,14 @@ td.table-empty {
   width: 100%;
   height: auto;
   overflow: visible;
+  flex: 0 0 auto;
+  gap: 2px;
+  padding: 3px 0;
   align-items: center;
   justify-content: center;
   text-align: center;
-}
-
-.timetable-grid .cell-main {
-  flex: 1 1 auto;
-  flex-direction: column;
-  gap: 1px;
+  cursor: pointer;
+  border-radius: 4px;
 }
 
 .timetable-grid .cell-class-name,
@@ -4993,13 +4876,6 @@ td.table-empty {
   line-height: 1.1;
 }
 
-.class-timetable .class-entry-block {
-  flex-direction: column;
-  flex: 0 0 auto;
-  gap: 2px;
-  padding: 3px 0;
-}
-
 .class-timetable .class-entry-block + .class-entry-block {
   margin-top: 2px;
   padding-top: 2px;
@@ -5014,6 +4890,7 @@ td.table-empty {
   font-size: 0.64rem;
   text-overflow: ellipsis;
   white-space: nowrap;
+  margin-top: 3px;
 }
 
 .timetable-grid .cell-badges,
@@ -5143,12 +5020,4 @@ td.table-empty {
     font-size: 0.58rem;
     padding: 1px 3px;
   }
-}
-
-/* 節次時間文字置中 */
-.timetable-grid .grid-cell-time .time-span,
-.class-timetable .grid-cell-time .time-span {
-  display: block;
-  width: 100%;
-  text-align: center;
 }

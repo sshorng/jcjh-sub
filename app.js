@@ -1,236 +1,3 @@
-// 學校調代課線上系統 - 核心應用程式邏輯 (莫蘭迪現代大鐘點版)
-
-
-// ── Toast 通知系統 ──────────────────────────────────────────
-function showToast(msg, type = 'info', duration = 3500) {
-  const container = document.getElementById('toast-container');
-  if (!container) { window.alert(String(msg)); return; }
-  const toast = document.createElement('div');
-  toast.className = 'toast toast-' + type;
-  const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
-  const iconEl = document.createElement('span');
-  iconEl.className = 'toast-icon';
-  iconEl.textContent = icons[type] || 'ℹ️';
-  const msgEl = document.createElement('span');
-  msgEl.className = 'toast-msg';
-  msgEl.textContent = String(msg == null ? '' : msg);
-  toast.appendChild(iconEl);
-  toast.appendChild(msgEl);
-  container.appendChild(toast);
-  requestAnimationFrame(() => toast.classList.add('toast-show'));
-  setTimeout(() => {
-    toast.classList.remove('toast-show');
-    toast.addEventListener('transitionend', () => toast.remove(), { once: true });
-  }, duration);
-}
-
-// ── Modal 無障礙：Esc 關閉 + 焦點陷阱 ───────────────────────
-function installModalA11y(overlay, opts) {
-  opts = opts || {};
-  const onClose = typeof opts.onClose === 'function' ? opts.onClose : function () {};
-  const box = opts.box || overlay.querySelector('.modal-card, .match-drawer, #confirm-box, [role="dialog"]') || overlay;
-  const prevFocus = document.activeElement;
-  const FOCUSABLE = 'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])';
-  overlay.setAttribute('role', 'presentation');
-  if (box) {
-    box.setAttribute('role', 'dialog');
-    box.setAttribute('aria-modal', 'true');
-    if (opts.label && !box.getAttribute('aria-label') && !box.getAttribute('aria-labelledby')) {
-      box.setAttribute('aria-label', opts.label);
-    }
-  }
-  const onKey = (e) => {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      e.stopPropagation();
-      onClose();
-      return;
-    }
-    if (e.key !== 'Tab' || !box) return;
-    const nodes = Array.prototype.slice.call(box.querySelectorAll(FOCUSABLE))
-      .filter((el) => el.offsetParent !== null || el === document.activeElement);
-    if (!nodes.length) return;
-    const first = nodes[0];
-    const last = nodes[nodes.length - 1];
-    if (e.shiftKey) {
-      if (document.activeElement === first || !box.contains(document.activeElement)) {
-        e.preventDefault();
-        last.focus();
-      }
-    } else if (document.activeElement === last || !box.contains(document.activeElement)) {
-      e.preventDefault();
-      first.focus();
-    }
-  };
-  document.addEventListener('keydown', onKey, true);
-  requestAnimationFrame(() => {
-    const prefer = box && (box.querySelector('[data-autofocus], .btn-close, #confirm-ok, button') || box);
-    try { if (prefer && prefer.focus) prefer.focus(); } catch (eF) { /* ignore */ }
-  });
-  return () => {
-    document.removeEventListener('keydown', onKey, true);
-    try {
-      if (prevFocus && prevFocus.focus && document.contains(prevFocus)) prevFocus.focus();
-    } catch (eR) { /* ignore */ }
-  };
-}
-
-// ── 自訂確認 Modal ──────────────────────────────────────────
-// opts.withNote=true 時回傳 { ok, note }；否則回傳 boolean
-function showConfirm(msg, title = '請確認', opts = {}) {
-  return new Promise(resolve => {
-    const overlay = document.getElementById('confirm-overlay');
-    const titleEl = document.getElementById('confirm-title');
-    const msgEl   = document.getElementById('confirm-msg');
-    const noteWrap = document.getElementById('confirm-note-wrap');
-    const noteEl  = document.getElementById('confirm-note');
-    const periodWrap = document.getElementById('confirm-accounting-period-wrap');
-    const periodStartEl = document.getElementById('confirm-accounting-period-start');
-    const periodEndEl = document.getElementById('confirm-accounting-period-end');
-    const periodResetEl = document.getElementById('confirm-accounting-period-reset');
-    const accountingWeeksField = document.getElementById('confirm-accounting-weeks-field');
-    const accountingWeeksEl = document.getElementById('confirm-accounting-weeks');
-    const btnOk   = document.getElementById('confirm-ok');
-    const btnCan  = document.getElementById('confirm-cancel');
-    const initialPeriod = {
-      start: opts.periodStart != null ? String(opts.periodStart) : '',
-      end: opts.periodEnd != null ? String(opts.periodEnd) : ''
-    };
-    const readPeriod = () => ({
-      start: periodStartEl ? String(periodStartEl.value || '').trim() : initialPeriod.start,
-      end: periodEndEl ? String(periodEndEl.value || '').trim() : initialPeriod.end
-    });
-    const setPeriod = (period) => {
-      const value = period || initialPeriod;
-      if (periodStartEl) periodStartEl.value = value.start || '';
-      if (periodEndEl) periodEndEl.value = value.end || '';
-    };
-    const initialWeeks = opts.reportWeeksCount != null ? String(opts.reportWeeksCount) : '';
-    const readWeeks = () => accountingWeeksEl
-      ? String(accountingWeeksEl.value || '').trim()
-      : initialWeeks;
-    const setWeeks = (weeks) => {
-      if (accountingWeeksEl) accountingWeeksEl.value = weeks == null ? '' : String(weeks);
-    };
-    if (!overlay) {
-      const ok = window.confirm(msg);
-      if (opts.withAccountingPeriod) {
-        const period = initialPeriod;
-        const result = { ok, period, start: period.start, end: period.end };
-        if (opts.withAccountingWeeks) result.reportWeeksCount = initialWeeks;
-        resolve(result);
-      } else {
-        resolve(opts.withNote ? { ok, note: '' } : ok);
-      }
-      return;
-    }
-    titleEl.textContent = title;
-    msgEl.textContent = msg;
-    if (periodWrap && periodStartEl && periodEndEl) {
-      if (opts.withAccountingPeriod) {
-        periodWrap.classList.add('is-open');
-        setPeriod(initialPeriod);
-      } else {
-        periodWrap.classList.remove('is-open');
-        setPeriod({ start: '', end: '' });
-      }
-    }
-    if (accountingWeeksField && accountingWeeksEl) {
-      if (opts.withAccountingWeeks) {
-        accountingWeeksField.classList.add('is-open');
-        setWeeks(initialWeeks);
-      } else {
-        accountingWeeksField.classList.remove('is-open');
-        setWeeks('');
-      }
-    }
-    if (noteWrap && noteEl) {
-      if (opts.withNote) {
-        noteWrap.classList.add('is-open');
-        noteEl.value = opts.noteDefault != null ? String(opts.noteDefault) : '';
-        noteEl.placeholder = opts.notePlaceholder || '備註（選填）';
-        const noteLab = noteWrap.querySelector('label');
-        if (noteLab) noteLab.textContent = opts.noteLabel || '備註（選填）';
-      } else {
-        noteWrap.classList.remove('is-open');
-        noteEl.value = '';
-      }
-    }
-    overlay.classList.add('confirm-show');
-    let disposeA11y = null;
-    let onPeriodChange = null;
-    let onWeeksChange = null;
-    let onPeriodReset = null;
-    const cleanup = (ok) => {
-      overlay.classList.remove('confirm-show');
-      btnOk.removeEventListener('click', onOk);
-      btnCan.removeEventListener('click', onCancel);
-      overlay.removeEventListener('click', onOverlay);
-      if (onPeriodChange && periodStartEl) periodStartEl.removeEventListener('input', onPeriodChange);
-      if (onPeriodChange && periodEndEl) periodEndEl.removeEventListener('input', onPeriodChange);
-      if (onPeriodReset && periodResetEl) periodResetEl.removeEventListener('click', onPeriodReset);
-      if (onWeeksChange && accountingWeeksEl) accountingWeeksEl.removeEventListener('input', onWeeksChange);
-      if (disposeA11y) disposeA11y();
-      const note = (noteEl && noteEl.value || '').trim();
-      const period = readPeriod();
-      if (noteWrap) noteWrap.classList.remove('is-open');
-      if (periodWrap) periodWrap.classList.remove('is-open');
-      if (accountingWeeksField) accountingWeeksField.classList.remove('is-open');
-      if (opts.withAccountingPeriod) {
-        const result = { ok, period, start: period.start, end: period.end };
-        if (opts.withAccountingWeeks) result.reportWeeksCount = readWeeks();
-        if (opts.withNote) result.note = note;
-        resolve(result);
-      } else {
-        resolve(opts.withNote ? { ok, note } : ok);
-      }
-    };
-    const applyPeriodChange = () => {
-      if (typeof opts.onAccountingPeriodChange !== 'function') return;
-      const result = opts.onAccountingPeriodChange(readPeriod(), readWeeks());
-      if (result != null && msgEl) {
-        msgEl.textContent = typeof result === 'string' ? result : (result.message || '');
-      }
-    };
-    onPeriodChange = applyPeriodChange;
-    onWeeksChange = applyPeriodChange;
-    onPeriodReset = () => {
-      setPeriod(opts.periodDefault || initialPeriod);
-      applyPeriodChange();
-    };
-    const onOk = () => {
-      if (opts.withAccountingPeriod && typeof opts.validateAccountingPeriod === 'function' &&
-          !opts.validateAccountingPeriod(readPeriod(), readWeeks())) return;
-      cleanup(true);
-    };
-    const onCancel = () => cleanup(false);
-    const onOverlay = (e) => {
-      if (e.target === overlay) cleanup(false);
-    };
-    btnOk.addEventListener('click', onOk);
-    btnCan.addEventListener('click', onCancel);
-    overlay.addEventListener('click', onOverlay);
-    if (opts.withAccountingPeriod) {
-      if (periodStartEl) periodStartEl.addEventListener('input', onPeriodChange);
-      if (periodEndEl) periodEndEl.addEventListener('input', onPeriodChange);
-      if (accountingWeeksEl && opts.withAccountingWeeks) accountingWeeksEl.addEventListener('input', onWeeksChange);
-      if (periodResetEl && opts.periodDefault) periodResetEl.addEventListener('click', onPeriodReset);
-    }
-    disposeA11y = installModalA11y(overlay, {
-      box: document.getElementById('confirm-box'),
-      label: title,
-      onClose: () => cleanup(false)
-    });
-  });
-}
-
-const fallbackAvatarDataUri = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-    <rect width="64" height="64" rx="32" fill="#e2e8f0"/>
-    <circle cx="32" cy="25" r="12" fill="#94a3b8"/>
-    <path d="M12 58c4-12 14-18 20-18s16 6 20 18" fill="#94a3b8"/>
-  </svg>
-`);
 const { createApp, ref, computed, onMounted, watch, nextTick } = Vue;
 
 createApp({
@@ -239,6 +6,8 @@ createApp({
     localStorage.removeItem('jcjh_google_client_id');
     localStorage.removeItem('jcjh_gas_url');
     localStorage.removeItem('jcjh_gas_mail_api');
+    // ID Token 只保留在目前分頁，並清掉舊版 localStorage 憑證。
+    try { localStorage.removeItem('jcjh_google_id_token'); } catch (eToken) { /* ignore */ }
 
     // ════════════════════════════════════════
     // §1 系統狀態 / 登入 / 學期
@@ -493,6 +262,17 @@ createApp({
         gsiLoggingIn.value = false;
         const q = parseOAuthReturnParams();
         if (!q) return null;
+        const expectedState = sessionStorage.getItem('jcjh_oauth_state');
+        const returnedState = q.get('state');
+        try {
+          sessionStorage.removeItem('jcjh_oauth_state');
+          sessionStorage.removeItem('jcjh_oauth_redirect');
+        } catch (eStateCleanup) { /* ignore */ }
+        if (!expectedState || !returnedState || returnedState !== expectedState) {
+          clearOAuthUrlResidue();
+          showToast('登入驗證失敗（state），請重新登入。', 'error');
+          return null;
+        }
         const err = q.get('error');
         const token = q.get('id_token');
         clearOAuthUrlResidue();
@@ -513,21 +293,26 @@ createApp({
         if (!token) return null;
         const expected = sessionStorage.getItem('jcjh_oauth_nonce');
         try { sessionStorage.removeItem('jcjh_oauth_nonce'); } catch (eN) { /* ignore */ }
-        if (expected) {
-          try {
-            const payload = JSON.parse(
-              decodeURIComponent(
-                atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))
-                  .split('').map(function (c) {
-                    return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-                  }).join('')
-              )
-            );
-            if (payload && payload.nonce && payload.nonce !== expected) {
-              showToast('登入驗證失敗（nonce），請再試一次', 'error');
-              return null;
-            }
-          } catch (ePay) { /* ignore */ }
+        if (!expected) {
+          showToast('登入驗證失敗（nonce 遺失），請重新登入。', 'error');
+          return null;
+        }
+        try {
+          const payload = JSON.parse(
+            decodeURIComponent(
+              atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))
+                .split('').map(function (c) {
+                  return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+                }).join('')
+            )
+          );
+          if (!payload || !payload.nonce || payload.nonce !== expected) {
+            showToast('登入驗證失敗（nonce），請再試一次', 'error');
+            return null;
+          }
+        } catch (ePay) {
+          showToast('登入驗證失敗（Token 格式錯誤），請再試一次', 'error');
+          return null;
         }
         return token;
       } catch (e) {
@@ -599,7 +384,7 @@ createApp({
       if (_tokenRefreshP) return _tokenRefreshP;
       _tokenRefreshP = Promise.resolve().then(() => {
         try {
-          const cur = localStorage.getItem('jcjh_google_id_token');
+          const cur = sessionStorage.getItem('jcjh_google_id_token');
           if (cur && !isTokenExpired(cur)) return cur;
         } catch (e) { /* ignore */ }
         return null;
@@ -614,7 +399,7 @@ createApp({
       fetchPendingOnly, fetchRequestsDelta, fetchHistoryMonth, fetchMatchCandidates,
       fetchMutualQuotaLedger,
       decodeJwt, isTokenExpired, isTokenExpiringSoon,
-      formatError, clearSWR, parseAllowedHd, isEmailDomainAllowed, DEFAULT_ALLOWED_HD
+      formatError, clearSWR, cancelAll, parseAllowedHd, isEmailDomainAllowed, DEFAULT_ALLOWED_HD
     } = window.GasApi.createClient({
       getApiUrl: () => gasApiUrl.value,
       getSemesterId: () => currentSemester.value,
@@ -671,8 +456,10 @@ createApp({
     };
     const assertSchoolDomain = (payload) => {
       const email = payload && payload.email;
+      // 後端會先驗證網域；前端尚未取得設定時不可誤拒絕合法帳號。
+      if (!allowedHdList.value.length) return true;
       if (!isEmailDomainAllowed(email, payload, allowedHdList.value)) {
-        localStorage.removeItem('jcjh_google_id_token');
+        sessionStorage.removeItem('jcjh_google_id_token');
         showToast('⚠️ 非本校網域帳號，無法登入本系統。', 'error');
         resetAppState();
         loading.value = false;
@@ -991,6 +778,7 @@ createApp({
             period: req.requestPeriod,
             originalTeacherEmail: req.requesterEmail,
             actualTeacherEmail: req.targetTeacherEmail,
+            actualTeacherName: req.actualTeacherName || req.targetTeacherName || '',
             className: leaveCls,
             subject: leaveSubj,
             requestId: req.id,
@@ -1065,6 +853,7 @@ createApp({
             period: req.targetPeriod,
             originalTeacherEmail: req.targetTeacherEmail,
             actualTeacherEmail: req.requesterEmail,
+            actualTeacherName: req.requesterName || '',
             className: leaveCls,
             subject: leaveSubj,
             requestId: req.id,
@@ -1084,6 +873,7 @@ createApp({
             period: req.requestPeriod,
             originalTeacherEmail: req.requesterEmail,
             actualTeacherEmail: req.targetTeacherEmail,
+            actualTeacherName: req.targetTeacherName || '',
             className: targetCls,
             subject: targetSubj,
             requestId: req.id,
@@ -1827,7 +1617,7 @@ createApp({
             }
           }
         }
-        const toName = getTeacherNameByEmail(r.actualTeacherEmail) || '—';
+        const toName = r.actualTeacherName || getTeacherNameByEmail(r.actualTeacherEmail) || '—';
         const subject = r.subject || '';
         const dayPart = dayNum ? (window.DateUtils.getWeekDayText(dayNum) || '') : '';
         const datePart = dayPart
@@ -2876,8 +2666,12 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     const reloadWindowedHistory = async () => {
       historyFullLoaded.value = false;
       historyLoadedMonths.value = [];
-      await loadWeeklyData({ force: true, silent: false });
-      showToast('已恢復近兩週資料視窗', 'info');
+      try {
+        await loadWeeklyData({ force: true, silent: false });
+        showToast('已恢復近兩週資料視窗', 'info');
+      } catch (e) {
+        showToast('恢復資料視窗失敗：' + (e && e.message ? e.message : e), 'error');
+      }
     };
 
     // 管理員編輯歷史紀錄（可改全部代／調課欄位）
@@ -3574,7 +3368,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         if (typeof opts.rollback === 'function') {
           opts.rollback(snapshot);
         } else {
-          loadWeeklyData({ force: false, silent: true });
+          loadWeeklyData({ force: false, silent: true }).catch(function () {});
         }
         const errMsg = err && err.message ? String(err.message) : String(err || '未知錯誤');
         const title = opts.errorTitle || '⚠️ 背景同步失敗警示';
@@ -4332,6 +4126,13 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         (r.originalTeacherEmail && r.originalTeacherEmail.toLowerCase() === email) || 
         (r.actualTeacherEmail && r.actualTeacherEmail.toLowerCase() === email)
       );
+      const exchangePeersByRequestId = Object.create(null);
+      substitutionRecords.value.forEach(r => {
+        if (!r || r.type !== 'exchange' || !r.requestId) return;
+        const key = String(r.requestId);
+        if (!exchangePeersByRequestId[key]) exchangePeersByRequestId[key] = [];
+        exchangePeersByRequestId[key].push(r);
+      });
 
       // 調課去重：優先保留自己去上課（actualTeacherEmail 是自己）的那一筆
       const deduped = [];
@@ -4406,7 +4207,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         let desc = '';
 
         if (isSwap) {
-          const peer = substitutionRecords.value.find(x => x.requestId === r.requestId && x.id !== r.id);
+          const peer = (exchangePeersByRequestId[String(r.requestId)] || []).find(x => x.id !== r.id);
           classLine = fmtClassLine(r.date, r.period, r.className, r.subject);
           if (peer) {
             const peerTeacherName = getTeacherNameByEmail(peer.actualTeacherEmail);
@@ -5263,15 +5064,19 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       accountingExportLoading.value = true;
       try {
         await ensureBillingReady();
+        if (typeof window.ensureExportAccounting === 'function') await window.ensureExportAccounting();
         if (typeof window.ensureExcelJS === 'function') await window.ensureExcelJS();
       } catch (e) {
         accountingExportLoading.value = false;
-        showToast('ExcelJS 模組載入失敗', 'error');
+        showToast('會計匯出模組或 ExcelJS 載入失敗', 'error');
         return;
       }
       try {
         if (!window.ExportAccounting || !window.ExportAccounting.buildExportData || !window.ExportAccounting.exportWorkbook) {
           throw new Error('會計匯出模組未載入');
+        }
+        if ((!accountingPeriod.value || !accountingPeriod.value.start || !accountingPeriod.value.end) && window.ExportAccounting.loadPeriodSettings) {
+          accountingPeriod.value = window.ExportAccounting.loadPeriodSettings(reportMonth.value);
         }
         if (!monthlyReportData.value.length) await calculateMonthlyReport();
         const periodDefault = window.ExportAccounting.defaultPeriodSettings
@@ -5290,9 +5095,13 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
           return Number.isInteger(weeks) && weeks >= 1 && weeks <= 6 ? weeks : null;
         };
         const initialWeeks = normalizeReportWeeks(reportWeeksCount.value) || 4;
+        let monthlyRowsCache = null;
+        let monthlyRowsCacheWeeks = null;
         const buildMonthlyRowsForExport = (weeks) => {
+          if (monthlyRowsCache && monthlyRowsCacheWeeks === weeks) return monthlyRowsCache;
+          let rows = monthlyReportData.value;
           if (window.DomainBilling && typeof window.DomainBilling.buildMonthlyReportRows === 'function') {
-            return window.DomainBilling.buildMonthlyReportRows({
+            rows = window.DomainBilling.buildMonthlyReportRows({
               teachers: teachersList.value,
               allSchedules: allSchedules.value,
               substitutionRecords: substitutionRecords.value,
@@ -5304,7 +5113,9 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
               isSingleWeek
             });
           }
-          return monthlyReportData.value;
+          monthlyRowsCacheWeeks = weeks;
+          monthlyRowsCache = rows;
+          return rows;
         };
         const exportOpts = {
           reportMonth: reportMonth.value,
@@ -6234,6 +6045,9 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
 
     const applyInitialPayload = (res) => {
       if (!res) return;
+      if (res.userRole && ['admin', 'staff', 'teacher'].includes(String(res.userRole))) {
+        userRole.value = String(res.userRole);
+      }
       if (res.scheduleScope) scheduleScope.value = String(res.scheduleScope);
       else if (res.scope === 'teacher') scheduleScope.value = 'teacher_self_and_class';
       else if (res.scope === 'admin') scheduleScope.value = 'full';
@@ -6421,15 +6235,34 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       recomputeRequestBuckets();
     };
 
-    const optimisticPatchRequestStatus = (id, status) => {
-      const list = requestsList.value.slice();
-      const idx = list.findIndex(r => r.id === id);
-      if (idx < 0) return false;
-      list[idx] = Object.assign({}, list[idx], { status });
-      requestsList.value = list;
-      // recomputeRequestBuckets 會重算 substitutionRecords 與課表快取
+    const optimisticPatchRequestStatuses = (updates) => {
+      const statusById = Object.create(null);
+      (updates || []).forEach(update => {
+        if (!update || update.id == null) return;
+        statusById[String(update.id)] = update.status;
+      });
+      if (!Object.keys(statusById).length) return false;
+      let found = false;
+      let changed = false;
+      const next = requestsList.value.map(r => {
+        const key = r && r.id != null ? String(r.id) : '';
+        if (!Object.prototype.hasOwnProperty.call(statusById, key)) return r;
+        found = true;
+        const status = statusById[key];
+        if (r.status === status) return r;
+        changed = true;
+        return Object.assign({}, r, { status });
+      });
+      if (!found) return false;
+      if (!changed) return true;
+      requestsList.value = next;
+      // 批次狀態一次寫入，避免每筆都觸發列表與課表重算。
       recomputeRequestBuckets();
       return true;
+    };
+
+    const optimisticPatchRequestStatus = (id, status) => {
+      return optimisticPatchRequestStatuses([{ id, status }]);
     };
 
     const optimisticRemoveRequest = (id) => {
@@ -6450,6 +6283,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     let _softRefreshQueued = null; // null | { force, delay, requestsOnly }
     let _softRefreshLastAt = 0;
     const SOFT_REFRESH_MIN_GAP_MS = 3500;
+    let _dataLoadSeq = 0;
     /** 畫面「更新於 HH:mm」；手動刷新／softRefresh／全量載入成功時寫入 */
     const dataUpdatedAt = ref(null);
     const dataRefreshing = ref(false);
@@ -6471,7 +6305,6 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       dataRefreshing.value = true;
       try {
         await loadWeeklyData({ force: true, silent: false });
-        markDataUpdated();
         showToast('資料已重新整理', 'success', 2000);
       } catch (e) {
         showToast('重新整理失敗：' + (e && e.message ? e.message : e), 'error');
@@ -6572,29 +6405,10 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         return true;
       }
       if (teachersList.value.length === 0) {
-        userRole.value = 'admin';
-        try {
-          const bootstrapPayload = {
-            "教師Email": email,
-            "教師姓名": user.value.displayName || email.split('@')[0],
-            "授課科目": "系統管理",
-            "系統角色": "admin",
-            "基本鐘點": 16
-          };
-          await callGasApi('saveTeacher', bootstrapPayload);
-          showToast("🎉 偵測到此學期尚未建立教師名單，已將您的帳號自動註冊為此學期的【系統管理員】！", 'success');
-          teachersList.value.push({
-            email: email,
-            name: bootstrapPayload["教師姓名"],
-            subject: bootstrapPayload["授課科目"],
-            role: bootstrapPayload["系統角色"],
-            baseHours: bootstrapPayload["基本鐘點"]
-          });
-          return true;
-        } catch (bootstrapErr) {
-          console.error("自動註冊管理員失敗：", bootstrapErr);
-          return false;
-        }
+        if (userRole.value === 'admin') return true;
+        logout();
+        showToast('目前學期尚未建立教師名單，請由系統管理員先設定 SUPER_ADMIN_EMAILS 並完成初始化。', 'error');
+        return false;
       }
       logout();
       showToast(`⚠️ 登入失敗：您的帳號 (${user.value.email}) 不在本校教師名單中，請聯繫教學組協助開通。`, 'error');
@@ -6617,6 +6431,9 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
           teachersList.value = res.teachers.map(t => window.FieldMap.mapTeacher(t));
         }
         if (res.settings) applySettings(res.settings);
+        if (res.userRole && ['admin', 'staff', 'teacher'].includes(String(res.userRole))) {
+          userRole.value = String(res.userRole);
+        }
         if (semestersList.value.length === 0) {
           semestersList.value = [{ id: '114-1', name: '114學年度第1學期', startDate: '', endDate: '', isDefault: true }];
         }
@@ -6639,6 +6456,10 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     const loadPublicClassData = async (className) => {
       const cls = String(className || pendingClassView.value || selectedClass.value || '').trim();
       if (!cls) return false;
+      if (typeof cancelAll === 'function') cancelAll();
+      const loadSeq = ++_dataLoadSeq;
+      const requestedSemester = currentSemester.value;
+      const isCurrentLoad = () => loadSeq === _dataLoadSeq;
       loading.value = true;
       loadingMessage.value = '載入班級課表中...';
       classReadonlyMode.value = true;
@@ -6648,8 +6469,9 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       try {
         const res = await fetchPublicClassData({
           className: cls,
-          semesterId: currentSemester.value
+          semesterId: requestedSemester
         });
+        if (!isCurrentLoad()) return false;
         applyInitialPayload(res);
         if (res.semesterId) {
           currentSemester.value = res.semesterId;
@@ -6668,9 +6490,13 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
 
     const loadWeeklyData = async (opts) => {
       if (!user.value) return;
+      if (typeof cancelAll === 'function') cancelAll();
       opts = opts || {};
       const silent = !!opts.silent;
       const force = !!opts.force;
+      const loadSeq = ++_dataLoadSeq;
+      const requestedSemester = currentSemester.value;
+      const isCurrentLoad = () => loadSeq === _dataLoadSeq && requestedSemester === currentSemester.value;
 
       if (!silent) {
         loading.value = true;
@@ -6680,8 +6506,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       const url = gasApiUrl.value;
       if (!url) {
         if (!silent) loading.value = false;
-        // 無 GAS 網址時不強制改分頁，保留使用者上次位置
-        return;
+        throw new Error('主要資料庫 GAS API 網址尚未設定！');
       }
 
       try {
@@ -6691,50 +6516,39 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
           structure: 300000,
           requests: 120000
         });
-        if (stale) {
+        if (stale && isCurrentLoad()) {
           applyInitialPayload(stale);
           loadingMessage.value = '正在更新最新資料...';
         }
 
-        // 1) meta：SWR 新鮮且非 force 時略過（減少雙次請求）
-        const skipMeta = !force && !!stale && !!(stale.teachers || stale.semesters);
-        if (!skipMeta) {
-          try {
-            const meta = await fetchMetaData({ semesterId: currentSemester.value });
-            if (meta.semesters) {
-              semestersList.value = meta.semesters.map(s => window.FieldMap.mapSemester(s));
-              semestersList.value.sort((a, b) => a.id.localeCompare(b.id));
-            }
-            if (meta.teachers) {
-              teachersList.value = meta.teachers.map(t => window.FieldMap.mapTeacher(t));
-            }
-            if (meta.settings) applySettings(meta.settings);
-            await resolveUserRoleFromTeachers();
-            recomputeRequestBuckets();
-            loadingMessage.value = '同步課表與異動中...';
-          } catch (metaErr) {
-            console.warn('meta 載入失敗，改拉全量：', metaErr);
-          }
-        }
-
-        // 2) 全量：課表 + 異動 + 申請
+        // 全量回應已包含學期、教師、課表與申請，避免首載先打 meta 再打全量。
+        if (!isCurrentLoad()) return false;
+        loadingMessage.value = '同步課表與異動中...';
         const res = await fetchInitialData({
-          semesterId: currentSemester.value,
+          semesterId: requestedSemester,
           force: force
         });
+        if (!isCurrentLoad()) return false;
         applyInitialPayload(res);
         await resolveUserRoleFromTeachers();
+        if (!isCurrentLoad() || !user.value) return false;
         recomputeRequestBuckets();
         resolvePendingClassView();
-        if (isAdmin.value && user.value) await loadHomeroomRecords({ silent: true });
+        if (isAdmin.value && user.value && !Array.isArray(res.homeroomRecords)) {
+          await loadHomeroomRecords({ silent: true });
+        }
+        if (!isCurrentLoad()) return false;
         markDataUpdated();
         if (!silent) loading.value = false;
+        return true;
       } catch (err) {
+        if (!isCurrentLoad()) return false;
         console.error("載入調代課系統資料失敗：", err);
         if (!silent) {
           showToast("載入資料失敗：" + err.message, 'error');
           loading.value = false;
         }
+        throw err;
       }
     };
 
@@ -6753,7 +6567,8 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     watch(currentSemester, (newSem, oldSem) => {
       if (newSem && newSem !== oldSem) {
         localStorage.setItem('jcjh_semester', newSem);
-        loadWeeklyData();
+        if (typeof cancelAll === 'function') cancelAll();
+        loadWeeklyData().catch(function () {});
       }
     });
 
@@ -7495,8 +7310,8 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       getStatusText,
       restoreMutualQuotaForRows,
       optimisticPatchRequestStatus,
+      optimisticPatchRequestStatuses,
       softRefreshInBackground,
-      loadHomeroomRecords,
       formatRequestSummary,
       formatApproveBatchRiskSummary,
       getApproveRiskFlags,
@@ -7679,12 +7494,19 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       const mySentOpen = mySentRequests.value.filter(r =>
         r.status === 'pending_teacher' || r.status === 'pending_admin').length;
 
-      const scopeSubs = substitutionRecords.value.filter(r => inScope(r.date));
-      const scopeSubCount = scopeSubs.length;
-      const scopePublic = scopeSubs.filter(r =>
-        r.type === 'substitution' && (r.subFee === '公費代課' || r.subFee === '學校移撥' || r.subFee === '活動公費')).length;
-      const scopeP8 = scopeSubs.filter(r => parseInt(r.period) === 8).length;
-      const unprinted = scopeSubs.filter(r => !r.printed).length;
+      let scopeSubCount = 0;
+      let scopePublic = 0;
+      let scopeP8 = 0;
+      let unprinted = 0;
+      substitutionRecords.value.forEach(r => {
+        if (!inScope(r.date)) return;
+        scopeSubCount += 1;
+        if (r.type === 'substitution' && (r.subFee === '公費代課' || r.subFee === '學校移撥' || r.subFee === '活動公費')) {
+          scopePublic += 1;
+        }
+        if (parseInt(r.period) === 8) scopeP8 += 1;
+        if (!r.printed) unprinted += 1;
+      });
 
       return {
         myPend, adminPend, mySentOpen,
@@ -7740,7 +7562,9 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     const logout = () => {
       loading.value = true;
       const prevEmail = user.value && user.value.email ? user.value.email : '';
-      localStorage.removeItem('jcjh_google_id_token');
+      _dataLoadSeq += 1;
+      if (typeof cancelAll === 'function') cancelAll();
+      sessionStorage.removeItem('jcjh_google_id_token');
       clearSWR();
       // 不記憶本站上次帳號：revoke + disableAutoSelect + 清 g_state
       try {
@@ -8376,7 +8200,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         proxyTargetEmail.value = '';
         // 先用目前已載入的全量資料，依「被模擬者 Email」重算待辦／送出列表
         recomputeRequestBuckets();
-        loadWeeklyData();
+        loadWeeklyData().catch(function () {});
       }
     };
 
@@ -8392,7 +8216,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       originalUser.value = null;
       proxyTargetEmail.value = '';
       recomputeRequestBuckets();
-      loadWeeklyData();
+       loadWeeklyData().catch(function () {});
     };
 
     onMounted(async () => {
@@ -8414,11 +8238,11 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       // OAuth 回傳 #id_token=…（prompt=select_account，每次強制選帳）
       const redirectToken = consumeOAuthRedirectToken();
       if (redirectToken) {
-        try { localStorage.setItem('jcjh_google_id_token', redirectToken); } catch (eR) { /* ignore */ }
+        try { sessionStorage.setItem('jcjh_google_id_token', redirectToken); } catch (eR) { /* ignore */ }
       }
 
       // 檢查是否已有登入之 Google ID Token 快取
-      const idToken = localStorage.getItem('jcjh_google_id_token');
+      const idToken = sessionStorage.getItem('jcjh_google_id_token');
       if (idToken && !isTokenExpired(idToken)) {
         const payload = decodeJwt(idToken);
         if (payload) {
@@ -8447,7 +8271,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
             showToast('登入後同步失敗：' + (eRest && eRest.message ? eRest.message : eRest), 'error', 5000);
           }
         } else {
-          localStorage.removeItem('jcjh_google_id_token');
+          sessionStorage.removeItem('jcjh_google_id_token');
           // 勿呼叫 resetAppState：會清掉 classReadonlyMode
           user.value = null;
           if (hasClassLink) {
@@ -8458,7 +8282,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
           }
         }
       } else {
-        localStorage.removeItem('jcjh_google_id_token');
+        sessionStorage.removeItem('jcjh_google_id_token');
         user.value = null;
         // 免登入：?class=701 直接載入公開班級課表
         if (hasClassLink) {
@@ -8482,7 +8306,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
           _gsiClickGen += 1;
           try { if (_gsiPopupHintTimer) { clearTimeout(_gsiPopupHintTimer); _gsiPopupHintTimer = null; } } catch (eTm) { /* ignore */ }
           try { gsiButtonError.value = ''; } catch (eClr) { /* ignore */ }
-          localStorage.setItem('jcjh_google_id_token', token);
+          sessionStorage.setItem('jcjh_google_id_token', token);
           const payload = decodeJwt(token);
           if (!payload) {
             showToast('無法解析 Google 登入憑證', 'error');
@@ -8518,7 +8342,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         // A：定時檢查 Token，快過期就靜默換票（約每 4 分鐘）
         const tokenKeepAlive = () => {
           try {
-            const tok = localStorage.getItem('jcjh_google_id_token');
+            const tok = sessionStorage.getItem('jcjh_google_id_token');
             if (!tok || !user.value) return;
             if (typeof isTokenExpiringSoon === 'function' && isTokenExpiringSoon(tok, 6 * 60 * 1000)) {
               refreshGoogleIdToken().catch(() => {});

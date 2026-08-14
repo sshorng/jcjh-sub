@@ -1,0 +1,49 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]: 📅 排課系統
+    - generic [ref=e4]:
+      - button "🗓 課表" [ref=e5] [cursor=pointer]
+      - button "📋 配課" [ref=e6] [cursor=pointer]
+      - button "⛔ 限制" [ref=e7] [cursor=pointer]
+      - button "📊 統計" [ref=e8] [cursor=pointer]
+      - button "🏫 教室" [ref=e9] [cursor=pointer]
+    - generic [ref=e10]:
+      - generic "連線中…" [ref=e11]
+      - button "🤖 自動排課" [ref=e12] [cursor=pointer]
+      - button "📄 匯出 Word" [ref=e13] [cursor=pointer]
+      - button "🗑 清除排課" [ref=e14] [cursor=pointer]
+  - generic [ref=e15]:
+    - generic [ref=e16]:
+      - generic [ref=e17]:
+        - generic [ref=e18]:
+          - generic [ref=e19]:
+            - generic [ref=e20]: 班級
+            - combobox "班級" [ref=e21] [cursor=pointer]:
+              - option "請選擇班級" [selected]
+          - generic [ref=e22]:
+            - generic [ref=e23]:
+              - generic [ref=e24]: 📦 班級待排科目（按住卡片直接拖曳至班級課表）
+              - generic [ref=e25]: 請選擇班級
+            - generic [ref=e26]: 選擇班級後，此處將自動列出該班配課科目與剩餘節數…
+          - paragraph [ref=e30]: 請先選擇班級
+        - generic [ref=e31]:
+          - generic [ref=e32]:
+            - generic [ref=e33]: 教師
+            - textbox "教師" [ref=e35]:
+              - /placeholder: — 選擇教師 —
+          - generic [ref=e36]:
+            - generic [ref=e37]:
+              - generic [ref=e38]: 📦 教師授課科目（按住卡片拖曳至該師任教班級課表）
+              - generic [ref=e39]: 請選擇教師
+            - generic [ref=e40]: 選擇教師後，此處將自動列出該師授課班級與剩餘節數…
+          - paragraph [ref=e44]: 請先選擇教師
+      - generic [ref=e45]:
+        - generic [ref=e46]: 🖱️ 左鍵點空格：指派課程
+        - generic [ref=e47]: ✋ 拖曳有課格：移動課程
+        - generic [ref=e48]: 🔄 Shift+拖曳：互調兩格
+        - generic [ref=e49]: 🖱️ 右鍵：更多選項
+        - generic [ref=e50]: 🔒 黃框：預排鎖定
+    - text: ✏️
+  - generic [ref=e51]:
+    - paragraph [ref=e53]: 載入中…
+    - paragraph [ref=e54]: 0s

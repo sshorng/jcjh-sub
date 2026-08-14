@@ -216,6 +216,7 @@ window.FieldMap = (function () {
       requesterName: pick(r, ['申請人姓名', 'requesterName']),
       targetTeacherEmail: pick(r, ['受邀人Email', 'targetTeacherEmail']),
       targetTeacherName: pick(r, ['受邀人姓名', 'targetTeacherName']),
+      actualTeacherName: pick(r, ['實際授課教師姓名', 'actualTeacherName']) || '',
       className: String(pick(r, ['班級', 'className']) || ''),
       subject: pick(r, ['科目', 'subject']) || '',
       requestDate: pick(r, ['異動日期', 'requestDate']),

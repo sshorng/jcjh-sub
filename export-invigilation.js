@@ -244,6 +244,13 @@ window.ExportInvigilation = (function () {
     };
   }
 
+  function setCellFontPreservingStyle(cell, fontSpec) {
+    if (!cell) return;
+    var style = clonePlain(cell.style) || {};
+    style.font = clonePlain(fontSpec) || fontSpec;
+    cell.style = style;
+  }
+
   /**
    * 只還原中線（模板 L 右 thick）。
    * 必須用完整 cell.style 寫入。
@@ -317,10 +324,9 @@ window.ExportInvigilation = (function () {
   }
 
   /**
-   * 兩段式字型 + 還原中線：
+   * 動態字型：
    * Pass1：左右 11 節全部格 → 一般字型（拆共用 style）
    * Pass2：matrix.changed → 粗體底線
-   * Pass3：還原 L/M 中線 thick（不碰其他格線）
    */
   function applyChangeFonts(ws, matrix, layout) {
     if (!ws || !layout) return 0;
@@ -331,7 +337,7 @@ window.ExportInvigilation = (function () {
     var di, idx, s, row, cell;
     var marked = 0;
 
-    // Pass 1：整區隔離＋一般字型（空白格也拆；L=col12 強制 thick）
+    // Pass 1：只替換字型，保留模板原有邊框、底色、對齊與數字格式。
     for (di = 0; di < dataStarts.length; di++) {
       for (idx = 0; idx < slots; idx++) {
         row = rowStart + idx;
@@ -339,7 +345,7 @@ window.ExportInvigilation = (function () {
         for (s = 0; s < 11; s++) {
           var colN = dataStarts[di] + s;
           cell = ws.getCell(row, colN);
-          setCellFontIsolated(cell, plainFont(false, false), colN);
+           setCellFontPreservingStyle(cell, plainFont(false, false));
         }
       }
     }
@@ -362,7 +368,7 @@ window.ExportInvigilation = (function () {
             if (cell.value == null || String(cell.value).trim() === '') {
               cell.value = txt;
             }
-            setCellFontIsolated(cell, plainFont(true, true), colM);
+            setCellFontPreservingStyle(cell, plainFont(true, true));
             marked += 1;
           }
         }
@@ -371,8 +377,6 @@ window.ExportInvigilation = (function () {
       markSide(matrix.right, 14);
     }
 
-    // Pass 3：整列 L/M 再鎖中線（含空白 L 格）
-    restoreMiddleDivider(ws, rowStart, rowEnd);
     return marked;
   }
 
@@ -603,9 +607,8 @@ window.ExportInvigilation = (function () {
     }
     fillSide(matrix.left || [], 1, 2);
     fillSide(matrix.right || [], 13, 14);
-
-    // 只重套字型（先清再標異動）；完全不碰格線
     applyChangeFonts(ws, matrix, layout);
+
   }
 
   function personalizeValues(ws, layout, recipientName, before, used, remain) {
@@ -634,74 +637,58 @@ window.ExportInvigilation = (function () {
     setVal(noteCell, noteText);
   }
 
-  /** 每張表：分發後只重套字型（不碰格線） */
-  function finalizeSheet(ws, matrix, layout) {
-    return applyChangeFonts(ws, matrix, layout);
-  }
-
   /**
-   * 逐格複製（value/font/border/fill/alignment）＋合併／頁面設定
-   * 複製後呼叫方再 finalizeSheet
+   * 套用模板工作表尺寸與列屬性。
    */
-  function copySheetValuesAndStyles(srcSheet, targetSheet) {
+  function copySheetDimensions(srcSheet, targetSheet) {
     if (!srcSheet || !targetSheet) return;
 
     if (srcSheet.columns) {
       srcSheet.columns.forEach(function (col, idx) {
-        if (col && col.width) {
-          try { targetSheet.getColumn(idx + 1).width = col.width; } catch (eW) {}
-        }
+        if (!col || col.width == null) return;
+        try { targetSheet.getColumn(idx + 1).width = col.width; } catch (eW) {}
       });
     }
 
     srcSheet.eachRow({ includeEmpty: true }, function (row, rowNumber) {
       var targetRow = targetSheet.getRow(rowNumber);
-      if (row.height) targetRow.height = row.height;
+      if (row.height != null) targetRow.height = row.height;
+      try {
+        if (row.hidden != null) targetRow.hidden = row.hidden;
+        if (row.outlineLevel != null) targetRow.outlineLevel = row.outlineLevel;
+      } catch (eRow) { /* ignore unsupported row metadata */ }
+    });
+  }
+
+  function copySheetValuesAndStyles(srcSheet, targetSheet, dimensionSource) {
+    if (!srcSheet || !targetSheet) return;
+
+    copySheetDimensions(dimensionSource || srcSheet, targetSheet);
+    if (srcSheet.properties) targetSheet.properties = clonePlain(srcSheet.properties);
+    if (srcSheet.views) targetSheet.views = clonePlain(srcSheet.views);
+    if (srcSheet.headerFooter) targetSheet.headerFooter = clonePlain(srcSheet.headerFooter);
+    if (srcSheet.pageSetup) targetSheet.pageSetup = clonePlain(srcSheet.pageSetup);
+
+    srcSheet.eachRow({ includeEmpty: true }, function (row, rowNumber) {
+      var targetRow = targetSheet.getRow(rowNumber);
 
       row.eachCell({ includeEmpty: true }, function (cell, colNumber) {
         var targetCell = targetRow.getCell(colNumber);
         targetCell.value = cell.value;
-
-        if (cell.font) {
-          var sf = cell.font;
-          targetCell.font = {
-            name: sf.name || '標楷體',
-            size: sf.size || 15,
-            bold: !!sf.bold,
-            italic: !!sf.italic,
-            underline: sf.underline ? (sf.underline === true ? 'single' : sf.underline) : false
-          };
-          if (sf.color && sf.color.argb) {
-            targetCell.font.color = { argb: sf.color.argb };
-          }
-        }
-        if (cell.border) {
-          try { targetCell.border = JSON.parse(JSON.stringify(cell.border)); } catch (eB) {
-            targetCell.border = cell.border;
-          }
-        }
-        if (cell.fill) {
-          try { targetCell.fill = JSON.parse(JSON.stringify(cell.fill)); } catch (eF) {
-            targetCell.fill = cell.fill;
-          }
-        }
-        if (cell.alignment) {
-          targetCell.alignment = Object.assign({}, cell.alignment);
-        }
+        targetCell.style = clonePlain(cell.style) || {};
       });
     });
 
     if (srcSheet.model && srcSheet.model.merges) {
       srcSheet.model.merges.forEach(function (range) {
-        try { targetSheet.mergeCells(range); } catch (eM) {}
+        try {
+          if (typeof targetSheet.mergeCellsWithoutStyle === 'function') {
+            targetSheet.mergeCellsWithoutStyle(range);
+          } else {
+            targetSheet.mergeCells(range);
+          }
+        } catch (eM) {}
       });
-    }
-
-    if (srcSheet.headerFooter) {
-      try { targetSheet.headerFooter = JSON.parse(JSON.stringify(srcSheet.headerFooter)); } catch (eHF) {}
-    }
-    if (srcSheet.pageSetup) {
-      try { targetSheet.pageSetup = JSON.parse(JSON.stringify(srcSheet.pageSetup)); } catch (ePS) {}
     }
   }
 
@@ -793,8 +780,9 @@ window.ExportInvigilation = (function () {
     await outWb.xlsx.load(masterBuf.slice(0));
     var masterSheet = outWb.worksheets[0];
     if (!masterSheet) return { ok: false, error: '底稿讀取失敗' };
+    copySheetDimensions(master, masterSheet);
     masterSheet.name = MASTER_SHEET_NAME;
-    var lastMarked = finalizeSheet(masterSheet, matrix, layout);
+    var lastMarked = applyChangeFonts(masterSheet, matrix, layout);
 
     var usedNames = {};
     usedNames[MASTER_SHEET_NAME] = 1;
@@ -825,12 +813,10 @@ window.ExportInvigilation = (function () {
       if (!tempSheet) return { ok: false, error: '底稿讀取失敗' };
       tempSheet.name = sheetName;
       personalizeValues(tempSheet, layout, name, remain + usedN, usedN, remain);
-      finalizeSheet(tempSheet, matrix, layout);
 
       try {
         var targetSheet = outWb.addWorksheet(sheetName);
-        copySheetValuesAndStyles(tempSheet, targetSheet);
-        finalizeSheet(targetSheet, matrix, layout);
+        copySheetValuesAndStyles(tempSheet, targetSheet, master);
         // 考科列 B4:X6 公式連動「監考表」
         linkExamSubjectRows(targetSheet, MASTER_SHEET_NAME);
       } catch (eMove) {
@@ -844,15 +830,6 @@ window.ExportInvigilation = (function () {
     if (!outWb || !outWb.worksheets.length) {
       return { ok: false, error: '沒有可匯出的工作表' };
     }
-
-    // 寫出前：每張表（含第1張監考表）再鎖中線一次
-    progress('鎖定中線…', total, total);
-    await yieldUi();
-    var rMidS = (layout && layout.teacherRowStart) || 9;
-    var rMidE = (layout && layout.teacherRowEnd) || 46;
-    outWb.worksheets.forEach(function (sh) {
-      restoreMiddleDivider(sh, rMidS, rMidE);
-    });
 
     progress('寫入單一 xlsx…', total, total);
     await yieldUi();

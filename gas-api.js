@@ -3,9 +3,9 @@
  * JWT / Token 檢查 / 錯誤格式化 / callGasApi（讀寫皆 POST，Token 不進 URL）/ SWR 分鍵
  */
 window.GasApi = (function () {
-  var APP_VERSION = '2026-07-17-api6';
-  // 正式建議在系統設定 allowedHd 覆寫校內網域；* 僅測試
-  var DEFAULT_ALLOWED_HD = ['*'];
+  var APP_VERSION = '2026-08-14-security1';
+  // 未取得明確網域設定時，前端也採 fail-closed；公開課表仍可免登入使用。
+  var DEFAULT_ALLOWED_HD = [];
   var WRITE_ACTIONS = {
     submitRequest: 1, submitRequestBatch: 1, respondToRequest: 1, respondToBatch: 1,
     adminApprove: 1, adminReject: 1, adminApproveBatch: 1, adminRejectBatch: 1,
@@ -70,7 +70,7 @@ window.GasApi = (function () {
   }
 
   function getStoredIdToken() {
-    const idToken = localStorage.getItem('jcjh_google_id_token');
+    const idToken = sessionStorage.getItem('jcjh_google_id_token');
     if (!idToken || idToken === 'mock-admin-token') return null;
     return idToken;
   }
@@ -100,8 +100,9 @@ window.GasApi = (function () {
 
   function isEmailDomainAllowed(email, payload, allowedList) {
     var list = allowedList && allowedList.length ? allowedList : DEFAULT_ALLOWED_HD;
-    // * 或空清單 = 不限制（測試用）
-    if (!list.length || list.indexOf('*') !== -1) return true;
+    // 空清單不得再被視為不限制，避免設定遺失時放行陌生帳號。
+    if (!list.length) return false;
+    if (list.indexOf('*') !== -1) return true;
     var em = String(email || (payload && payload.email) || '').toLowerCase();
     var domain = em.split('@')[1] || '';
     var hd = String((payload && payload.hd) || domain).toLowerCase();
@@ -279,7 +280,7 @@ window.GasApi = (function () {
     var _refreshInflight = null;
 
     function handleAuthExpired(msg) {
-      localStorage.removeItem('jcjh_google_id_token');
+      sessionStorage.removeItem('jcjh_google_id_token');
       clearSWR();
       if (opts.onAuthExpired) {
         try { opts.onAuthExpired(); } catch (e) {}
@@ -345,6 +346,35 @@ window.GasApi = (function () {
       earnMutualQuotaFromActivity: 45
     };
 
+    var ACTION_TIMEOUT_MS = {
+      getMetaData: 20000,
+      getPublicClassData: 15000,
+      getPendingOnly: 20000,
+      getMatchCandidates: 20000,
+      getHistoryMonth: 30000,
+      getMutualQuotaLedger: 30000,
+      getInitialData: 60000,
+      submitRequest: 45000,
+      respondToRequest: 45000,
+      adminApprove: 60000,
+      adminReject: 60000,
+      submitRequestBatch: 90000,
+      adminApproveBatch: 120000,
+      adminRejectBatch: 90000,
+      importTeachersBatch: 120000,
+      importSchedulesBatch: 180000,
+      sendBatchNotices: 120000
+    };
+    var _inflightControllers = Object.create(null);
+    function cancelInflight(action) {
+      if (!action || !_inflightControllers[action]) return;
+      try { _inflightControllers[action].abort(); } catch (e) { /* ignore */ }
+      delete _inflightControllers[action];
+    }
+    function cancelAllInflight() {
+      Object.keys(_inflightControllers).forEach(cancelInflight);
+    }
+
     async function postJson(action, data, options) {
       options = options || {};
       const url = opts.getApiUrl();
@@ -358,12 +388,14 @@ window.GasApi = (function () {
           handleAuthExpired();
           throw new Error(formatError(new Error('登入憑證已過期，請重新登入！'), action));
         }
+      } else if (action !== 'getPublicClassData') {
+        throw new Error('未授權的免登入 API 操作');
       }
       const payload = {
         idToken: idToken,
         apiKey: '',
         action: action,
-        semesterId: opts.getSemesterId(),
+        semesterId: options.semesterId || opts.getSemesterId(),
         currentUrl: window.location.origin + window.location.pathname,
         data: data || {}
       };
@@ -391,22 +423,46 @@ window.GasApi = (function () {
       }
 
       let response;
+      var timeoutMs = Number(options.timeoutMs || ACTION_TIMEOUT_MS[action] || 45000);
+      var controller = null;
+      var timeoutId = null;
+      var timedOut = false;
+      if (typeof AbortController === 'function' && !options.signal) {
+        if (options.abortPrevious && _inflightControllers[action]) {
+          cancelInflight(action);
+        }
+        controller = new AbortController();
+        if (options.abortPrevious) _inflightControllers[action] = controller;
+      }
+      var signal = options.signal || (controller && controller.signal);
+      if (controller && timeoutMs > 0) {
+        timeoutId = setTimeout(function () {
+          timedOut = true;
+          try { controller.abort(); } catch (eAbort) { /* ignore */ }
+        }, timeoutMs);
+      }
       try {
         response = await fetch(url, {
           method: 'POST',
           mode: 'cors',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify(payload)
+          body: JSON.stringify(payload),
+          signal: signal
         });
       } catch (netErr) {
-        if (progressTimer) clearInterval(progressTimer);
         var netMsg = String(netErr && netErr.message ? netErr.message : netErr);
-        if (/abort|timeout|timed out|Failed to fetch|NetworkError|network/i.test(netMsg)) {
+        if (timedOut || /abort|timeout|timed out|Failed to fetch|NetworkError|network/i.test(netMsg)) {
           throw new Error(formatError(new Error(
             '連線逾時或中斷（可能 GAS 處理較久）。請稍候再試；若剛完成寫入，可按 ↻ 重新整理確認。'
           ), action));
         }
         throw new Error(formatError(netErr, action));
+      } finally {
+        if (progressTimer) clearInterval(progressTimer);
+        if (timeoutId) clearTimeout(timeoutId);
+        if (controller && _inflightControllers[action] === controller) {
+          delete _inflightControllers[action];
+        }
       }
       if (progressTimer) clearInterval(progressTimer);
       if (!response.ok) {
@@ -475,24 +531,15 @@ window.GasApi = (function () {
     async function fetchMetaData(options) {
       options = options || {};
       const semesterId = options.semesterId || opts.getSemesterId();
-      // 暫時覆寫 semester：postJson 用 opts.getSemesterId
-      const prevGet = opts.getSemesterId;
-      if (options.semesterId) {
-        opts.getSemesterId = function () { return semesterId; };
+      const res = await postJson('getMetaData', {}, { abortPrevious: true, semesterId: semesterId });
+      if (res) {
+        writePart(semesterId, 'meta', {
+          semesters: res.semesters,
+          teachers: res.teachers,
+          settings: res.settings
+        });
       }
-      try {
-        const res = await postJson('getMetaData', {});
-        if (res) {
-          writePart(semesterId, 'meta', {
-            semesters: res.semesters,
-            teachers: res.teachers,
-            settings: res.settings
-          });
-        }
-        return res;
-      } finally {
-        opts.getSemesterId = prevGet;
-      }
+      return res;
     }
 
     /**
@@ -509,38 +556,30 @@ window.GasApi = (function () {
       const requestsOnly = !!options.requestsOnly;
       const windowDays = options.windowDays != null ? options.windowDays : 14;
 
-      if (!force && !historyAll && !requestsOnly) {
+      if (!force && !historyAll && !requestsOnly && typeof options.onStale === 'function') {
         const stale = readSWR(semesterId, 120000);
-        if (stale && options.onStale) options.onStale(stale);
+        if (stale) options.onStale(stale);
       }
 
-      const prevGet = opts.getSemesterId;
-      if (options.semesterId) {
-        opts.getSemesterId = function () { return semesterId; };
-      }
-      try {
-        const res = await postJson('getInitialData', {
-          scope: force ? 'fresh' : 'full',
-          historyAll: historyAll,
-          windowDays: windowDays,
-          requestsOnly: requestsOnly
+      const res = await postJson('getInitialData', {
+        scope: force ? 'fresh' : 'full',
+        historyAll: historyAll,
+        windowDays: windowDays,
+        requestsOnly: requestsOnly
+      }, { abortPrevious: true, semesterId: semesterId });
+      if (historyAll) {
+        // 完整歷史不覆寫預設 SWR
+      } else if (requestsOnly) {
+        writeSWRPart(semesterId, 'requests', {
+          requests: res.requests,
+          classAwayEvents: res.classAwayEvents,
+          requestWindow: res.requestWindow,
+          serverTime: res.serverTime
         });
-        if (historyAll) {
-          // 完整歷史不覆寫預設 SWR
-        } else if (requestsOnly) {
-          writeSWRPart(semesterId, 'requests', {
-            requests: res.requests,
-            classAwayEvents: res.classAwayEvents,
-            requestWindow: res.requestWindow,
-            serverTime: res.serverTime
-          });
-        } else {
-          writeSWR(semesterId, res);
-        }
-        return res;
-      } finally {
-        opts.getSemesterId = prevGet;
+      } else {
+        writeSWR(semesterId, res);
       }
+      return res;
     }
 
     /** 公開班級課表（免登入） */
@@ -548,30 +587,14 @@ window.GasApi = (function () {
       options = options || {};
       const className = options.className || options.class || '';
       const semesterId = options.semesterId || opts.getSemesterId();
-      const prevGet = opts.getSemesterId;
-      if (options.semesterId) {
-        opts.getSemesterId = function () { return semesterId; };
-      }
-      try {
-        return await postJson('getPublicClassData', { className: className, class: className }, { skipAuth: true });
-      } finally {
-        opts.getSemesterId = prevGet;
-      }
+      return await postJson('getPublicClassData', { className: className, class: className }, { skipAuth: true, abortPrevious: true, semesterId: semesterId });
     }
 
     /** 極輕量：只拉進行中申請（不含課表） */
     async function fetchPendingOnly(options) {
       options = options || {};
       const semesterId = options.semesterId || opts.getSemesterId();
-      const prevGet = opts.getSemesterId;
-      if (options.semesterId) {
-        opts.getSemesterId = function () { return semesterId; };
-      }
-      try {
-        return await postJson('getPendingOnly', {});
-      } finally {
-        opts.getSemesterId = prevGet;
-      }
+      return await postJson('getPendingOnly', {}, { abortPrevious: true, semesterId: semesterId });
     }
 
     /**
@@ -585,18 +608,10 @@ window.GasApi = (function () {
       if (!updatedSince) {
         throw new Error('fetchRequestsDelta 需要 updatedSince');
       }
-      const prevGet = opts.getSemesterId;
-      if (options.semesterId) {
-        opts.getSemesterId = function () { return semesterId; };
-      }
-      try {
-        return await postJson('getInitialData', {
-          requestsDelta: true,
-          updatedSince: updatedSince
-        });
-      } finally {
-        opts.getSemesterId = prevGet;
-      }
+      return await postJson('getInitialData', {
+        requestsDelta: true,
+        updatedSince: updatedSince
+      }, { abortPrevious: true, semesterId: semesterId });
     }
 
     /** 歷史按月：YYYY-MM，只回申請列 */
@@ -604,15 +619,7 @@ window.GasApi = (function () {
       options = options || {};
       const semesterId = options.semesterId || opts.getSemesterId();
       const month = String(options.month || '').slice(0, 7);
-      const prevGet = opts.getSemesterId;
-      if (options.semesterId) {
-        opts.getSemesterId = function () { return semesterId; };
-      }
-      try {
-        return await postJson('getHistoryMonth', { month: month });
-      } finally {
-        opts.getSemesterId = prevGet;
-      }
+      return await postJson('getHistoryMonth', { month: month }, { abortPrevious: true, semesterId: semesterId });
     }
 
     /**
@@ -622,46 +629,30 @@ window.GasApi = (function () {
     async function fetchMatchCandidates(options) {
       options = options || {};
       const semesterId = options.semesterId || opts.getSemesterId();
-      const prevGet = opts.getSemesterId;
-      if (options.semesterId) {
-        opts.getSemesterId = function () { return semesterId; };
-      }
-      try {
-        return await postJson('getMatchCandidates', {
-          leaveEmail: options.leaveEmail,
-          dateStr: options.dateStr,
-          dayOfWeek: options.dayOfWeek != null ? options.dayOfWeek : options.targetDay,
-          period: options.period != null ? options.period : options.targetPeriod,
-          myCourse: options.myCourse,
-          myDomain: options.myDomain,
-          myClass: options.myClass,
-          className: options.myClass || options.className,
-          subject: options.myCourse || options.subject,
-          awayClasses: options.awayClasses || [],
-          activityMode: !!options.activityMode,
-          limit: options.limit != null ? options.limit : 40
-        });
-      } finally {
-        opts.getSemesterId = prevGet;
-      }
+      return await postJson('getMatchCandidates', {
+        leaveEmail: options.leaveEmail,
+        dateStr: options.dateStr,
+        dayOfWeek: options.dayOfWeek != null ? options.dayOfWeek : options.targetDay,
+        period: options.period != null ? options.period : options.targetPeriod,
+        myCourse: options.myCourse,
+        myDomain: options.myDomain,
+        myClass: options.myClass,
+        className: options.myClass || options.className,
+        subject: options.myCourse || options.subject,
+        awayClasses: options.awayClasses || [],
+        activityMode: !!options.activityMode,
+        limit: options.limit != null ? options.limit : 40
+      }, { abortPrevious: true, semesterId: semesterId });
     }
 
     /** 折抵額度帳本歷程（email 可選；管理員可查他人） */
     async function fetchMutualQuotaLedger(options) {
       options = options || {};
       const semesterId = options.semesterId || opts.getSemesterId();
-      const prevGet = opts.getSemesterId;
-      if (options.semesterId) {
-        opts.getSemesterId = function () { return semesterId; };
-      }
-      try {
-        return await postJson('getMutualQuotaLedger', {
-          email: options.email || options.teacherEmail || '',
-          limit: options.limit != null ? options.limit : 50
-        });
-      } finally {
-        opts.getSemesterId = prevGet;
-      }
+      return await postJson('getMutualQuotaLedger', {
+        email: options.email || options.teacherEmail || '',
+        limit: options.limit != null ? options.limit : 50
+      }, { abortPrevious: true, semesterId: semesterId });
     }
 
     return {
@@ -683,6 +674,8 @@ window.GasApi = (function () {
       requireIdToken,
       clearSWR,
       writeSWRPart,
+      cancel: cancelInflight,
+      cancelAll: cancelAllInflight,
       parseAllowedHd,
       isEmailDomainAllowed,
       DEFAULT_ALLOWED_HD,
