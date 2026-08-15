@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "node dev-server.js",
     "test": "node tests/run-domain-tests.js",
-    "test:security": "node tests/security-tests.js",
-    "check": "node --check app.js && node --check app-shell-utils.js && node --check gas-api.js && node --check field-map.js && node --check dev-server.js && node --check tests/security-tests.js && node --check ui-request.js && node --check ui-approval.js && node --check export-invigilation.js"
+    "test:security": "node tests/security-tests.js && node tests/permission-tests.js",
+    "check": "node --check app.js && node --check app-shell-utils.js && node --check gas-api.js && node --check field-map.js && node --check dev-server.js && node --check tests/security-tests.js && node --check tests/permission-tests.js && node --check ui-request.js && node --check ui-approval.js && node --check export-invigilation.js && node --check print-helper.js",
+    "test:permissions": "node tests/permission-tests.js"
   }
 }

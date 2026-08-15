@@ -4,19 +4,28 @@
  */
 
 /** 對調路線圖（畫面與列印共用結構） */
+function escapePrintHtml(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function buildExchangeRouteHtml(opts) {
-  const nameA = opts.nameA || '';
-  const nameB = opts.nameB || '';
-  const dateA = opts.dateA || '';
-  const dateB = opts.dateB || '';
-  const dayA = opts.dayA || '';
-  const dayB = opts.dayB || '';
-  const periodA = opts.periodA || '';
-  const periodB = opts.periodB || '';
-  const classA = opts.classA || '';
-  const classB = opts.classB || '';
-  const subjectA = opts.subjectA || '';
-  const subjectB = opts.subjectB || '';
+  const nameA = escapePrintHtml(opts.nameA || '');
+  const nameB = escapePrintHtml(opts.nameB || '');
+  const dateA = escapePrintHtml(opts.dateA || '');
+  const dateB = escapePrintHtml(opts.dateB || '');
+  const dayA = escapePrintHtml(opts.dayA || '');
+  const dayB = escapePrintHtml(opts.dayB || '');
+  const periodA = escapePrintHtml(opts.periodA || '');
+  const periodB = escapePrintHtml(opts.periodB || '');
+  const classA = escapePrintHtml(opts.classA || '');
+  const classB = escapePrintHtml(opts.classB || '');
+  const subjectA = escapePrintHtml(opts.subjectA || '');
+  const subjectB = escapePrintHtml(opts.subjectB || '');
   const compact = !!opts.compact;
 
   const slotA = [dayA ? `週${dayA}` : '', periodA ? `第${periodA}節` : ''].filter(Boolean).join(' ');
@@ -82,9 +91,9 @@ function generateFormHtml(g, currentType, ctx) {
   if (g.isExchange) {
     const rec1 = g.records[0];
     const rec2 = g.records[1] || rec1;
-    const teacherAName = getTeacherNameByEmail(rec1.originalTeacherEmail);
-    const teacherBName = getTeacherNameByEmail(rec2.originalTeacherEmail);
-    const serialText = [...new Set(g.serials)].join(', ');
+    const teacherAName = escapePrintHtml(getTeacherNameByEmail(rec1.originalTeacherEmail));
+    const teacherBName = escapePrintHtml(getTeacherNameByEmail(rec2.originalTeacherEmail));
+    const serialText = escapePrintHtml([...new Set(g.serials)].join(', '));
 
     let titleLabel = '';
     let descHtml = '';
@@ -95,10 +104,10 @@ function generateFormHtml(g, currentType, ctx) {
     titleLabel = `教師聯 (給 ${teacherBName} 老師)`;
       descHtml = `
         <div style="line-height: 1.3; font-size: 0.75rem; color: #1e293b;">
-          <strong>${teacherAName}</strong> 老師與 <strong>${teacherBName}</strong> 老師，因 <strong>${g.reason || '其他'}</strong> 進行課堂對調：
+          <strong>${teacherAName}</strong> 老師與 <strong>${teacherBName}</strong> 老師，因 <strong>${escapePrintHtml(g.reason || '其他')}</strong> 進行課堂對調：
           <ul style="margin: 2px 0; padding-left: 14px;">
-            <li>${rec1.date} 第 ${rec1.period} 節【${rec1.className}】 改由 <strong>${teacherBName}</strong> 老師上課（${rec1.subject}）。</li>
-            <li>${rec2.date} 第 ${rec2.period} 節【${rec2.className}】 改由 <strong>${teacherAName}</strong> 老師上課（${rec2.subject}）。</li>
+            <li>${escapePrintHtml(rec1.date)} 第 ${escapePrintHtml(rec1.period)} 節【${escapePrintHtml(rec1.className)}】 改由 <strong>${teacherBName}</strong> 老師上課（${escapePrintHtml(rec1.subject)}）。</li>
+            <li>${escapePrintHtml(rec2.date)} 第 ${escapePrintHtml(rec2.period)} 節【${escapePrintHtml(rec2.className)}】 改由 <strong>${teacherAName}</strong> 老師上課（${escapePrintHtml(rec2.subject)}）。</li>
           </ul>
         </div>
       `;
@@ -110,10 +119,10 @@ function generateFormHtml(g, currentType, ctx) {
       titleLabel = '班級聯 (貼於教室日誌)';
       descHtml = `
         <div style="line-height: 1.3; font-size: 0.75rem; color: #1e293b;">
-          <strong>${teacherAName}</strong> 老師與 <strong>${teacherBName}</strong> 老師，因 <strong>${g.reason || '其他'}</strong> 進行課堂對調：
+          <strong>${teacherAName}</strong> 老師與 <strong>${teacherBName}</strong> 老師，因 <strong>${escapePrintHtml(g.reason || '其他')}</strong> 進行課堂對調：
           <ul style="margin: 2px 0; padding-left: 14px;">
-            <li>${rec1.date} 第 ${rec1.period} 節【${rec1.className}】 改由 <strong>${teacherBName}</strong> 老師上課（${rec1.subject}）。</li>
-            <li>${rec2.date} 第 ${rec2.period} 節【${rec2.className}】 改由 <strong>${teacherAName}</strong> 老師上課（${rec2.subject}）。</li>
+            <li>${escapePrintHtml(rec1.date)} 第 ${escapePrintHtml(rec1.period)} 節【${escapePrintHtml(rec1.className)}】 改由 <strong>${teacherBName}</strong> 老師上課（${escapePrintHtml(rec1.subject)}）。</li>
+            <li>${escapePrintHtml(rec2.date)} 第 ${escapePrintHtml(rec2.period)} 節【${escapePrintHtml(rec2.className)}】 改由 <strong>${teacherAName}</strong> 老師上課（${escapePrintHtml(rec2.subject)}）。</li>
           </ul>
         </div>
       `;
@@ -125,12 +134,12 @@ function generateFormHtml(g, currentType, ctx) {
       titleLabel = '教學組留存聯';
       descHtml = `
         <div style="line-height: 1.3; font-size: 0.75rem; color: #1e293b;">
-          <strong>${teacherAName}</strong> 老師與 <strong>${teacherBName}</strong> 老師，因 <strong>${g.reason || '其他'}</strong> 進行課堂對調：
+          <strong>${teacherAName}</strong> 老師與 <strong>${teacherBName}</strong> 老師，因 <strong>${escapePrintHtml(g.reason || '其他')}</strong> 進行課堂對調：
           <ul style="margin: 2px 0; padding-left: 14px;">
-            <li>${rec1.date} 第 ${rec1.period} 節【${rec1.className}】 改由 <strong>${teacherBName}</strong> 老師上課（${rec1.subject}）。</li>
-            <li>${rec2.date} 第 ${rec2.period} 節【${rec2.className}】 改由 <strong>${teacherAName}</strong> 老師上課（${rec2.subject}）。</li>
+            <li>${escapePrintHtml(rec1.date)} 第 ${escapePrintHtml(rec1.period)} 節【${escapePrintHtml(rec1.className)}】 改由 <strong>${teacherBName}</strong> 老師上課（${escapePrintHtml(rec1.subject)}）。</li>
+            <li>${escapePrintHtml(rec2.date)} 第 ${escapePrintHtml(rec2.period)} 節【${escapePrintHtml(rec2.className)}】 改由 <strong>${teacherAName}</strong> 老師上課（${escapePrintHtml(rec2.subject)}）。</li>
           </ul>
-          <span style="font-size: 0.7rem; color: #64748b;">* 行政備註：${g.note || '無'}</span>
+          <span style="font-size: 0.7rem; color: #64748b;">* 行政備註：${escapePrintHtml(g.note || '無')}</span>
         </div>
       `;
       remarkHtml = `
@@ -150,7 +159,7 @@ function generateFormHtml(g, currentType, ctx) {
       let headerDate = '';
       if (isTarget1) headerDate = rec1.date.slice(5);
       if (isTarget2) headerDate = rec2.date.slice(5);
-      tableHeader += `<th style="width:13.6%;${isTarget1 || isTarget2 ? 'background:#cbd5e1 !important;' : ''}">${headerDate}<br>${d}</th>`;
+      tableHeader += `<th style="width:13.6%;${isTarget1 || isTarget2 ? 'background:#cbd5e1 !important;' : ''}">${escapePrintHtml(headerDate)}<br>${escapePrintHtml(d)}</th>`;
     });
     tableHeader += '<th style="width:20%; border-left: 1.5pt solid black !important;">調（代）課教師<br>簽名</th></tr>';
 
@@ -162,22 +171,22 @@ function generateFormHtml(g, currentType, ctx) {
       days.forEach(d => {
         const isTarget1 = (d === targetDayText1 && p === parseInt(rec1.period, 10));
         const isTarget2 = (d === targetDayText2 && p === parseInt(rec2.period, 10));
-        if (isTarget1) matchTeacherName = getTeacherNameByEmail(rec1.actualTeacherEmail);
-        else if (isTarget2) matchTeacherName = getTeacherNameByEmail(rec2.actualTeacherEmail);
+        if (isTarget1) matchTeacherName = escapePrintHtml(getTeacherNameByEmail(rec1.actualTeacherEmail));
+        else if (isTarget2) matchTeacherName = escapePrintHtml(getTeacherNameByEmail(rec2.actualTeacherEmail));
       });
 
       tableBody += '<tr' + (rowStyle ? ` style="${rowStyle}"` : '') + '>';
-      tableBody += `<td style="background:#e2e8f0; font-weight:bold; text-align:center;">${getPeriodChinese(p)}</td>`;
+      tableBody += `<td style="background:#e2e8f0; font-weight:bold; text-align:center;">${escapePrintHtml(getPeriodChinese(p))}</td>`;
       days.forEach(d => {
         const isTarget1 = (d === targetDayText1 && p === parseInt(rec1.period, 10));
         const isTarget2 = (d === targetDayText2 && p === parseInt(rec2.period, 10));
         let cellContent = '';
         let cellStyle = '';
         if (isTarget1) {
-          cellContent = rec1.subject;
+          cellContent = escapePrintHtml(rec1.subject);
           cellStyle = 'background:#a1a1aa !important; font-weight:bold; text-align:center; font-size:0.75rem; color:#fff;';
         } else if (isTarget2) {
-          cellContent = rec2.subject;
+          cellContent = escapePrintHtml(rec2.subject);
           cellStyle = 'background:#a1a1aa !important; font-weight:bold; text-align:center; font-size:0.75rem; color:#fff;';
         }
         tableBody += `<td style="${cellStyle}">${cellContent}</td>`;
@@ -194,10 +203,10 @@ function generateFormHtml(g, currentType, ctx) {
         let cellContent = '';
         let cellStyle = '';
         if (isTarget1) {
-          cellContent = rec1.className;
+          cellContent = escapePrintHtml(rec1.className);
           cellStyle = 'background:#a1a1aa !important; font-weight:bold; text-align:center; font-size:0.75rem; color:#fff;';
         } else if (isTarget2) {
-          cellContent = rec2.className;
+          cellContent = escapePrintHtml(rec2.className);
           cellStyle = 'background:#a1a1aa !important; font-weight:bold; text-align:center; font-size:0.75rem; color:#fff;';
         }
         tableBody += `<td style="${cellStyle} border-bottom: 1.5pt solid black !important;">${cellContent}</td>`;
@@ -215,7 +224,7 @@ function generateFormHtml(g, currentType, ctx) {
           <h1 class="title">建成國中調代課通知單</h1>
         </div>
         <div class="info-row">
-          <span>班級：${[...new Set([rec1.className, rec2.className])].join(', ')}</span>
+        <span>班級：${escapePrintHtml([...new Set([rec1.className, rec2.className])].join(', '))}</span>
           <span>教師：${teacherAName} ⇄ ${teacherBName}</span>
         </div>
         <table class="schedule-table"><thead>${tableHeader}</thead><tbody>${tableBody}</tbody></table>
@@ -223,7 +232,7 @@ function generateFormHtml(g, currentType, ctx) {
           <div class="desc" style="margin-bottom:4px;">${descHtml}</div>
           <div class="remark-area">
             <span style="font-weight:bold;">※ 備註說明：</span>
-            <ol class="remark-list">${remarkHtml.split('\n').filter(x => x.trim()).map(x => `<li>${x.replace(/<\/?li>/g, '')}</li>`).join('')}</ol>
+            <ol class="remark-list">${remarkHtml.split('\n').filter(x => x.trim()).map(x => `<li>${escapePrintHtml(x.replace(/<\/?li>/g, ''))}</li>`).join('')}</ol>
           </div>
         </div>
       </div>
@@ -231,10 +240,10 @@ function generateFormHtml(g, currentType, ctx) {
   }
 
   // --- 普通代課通知單 ---
-  const serialText = (g.serials || []).join(', ');
-  const leaveNames = (g.leaveEmails || [g.leaveEmail]).map(e => getTeacherNameByEmail(e)).join('、');
-  const subName = getTeacherNameByEmail(g.subEmail);
-  const reasonsStr = (g.reasons || [g.reason]).join('、');
+  const serialText = escapePrintHtml((g.serials || []).join(', '));
+  const leaveNames = (g.leaveEmails || [g.leaveEmail]).map(e => escapePrintHtml(getTeacherNameByEmail(e))).join('、');
+  const subName = escapePrintHtml(getTeacherNameByEmail(g.subEmail));
+  const reasonsStr = escapePrintHtml((g.reasons || [g.reason]).join('、'));
 
   let remarkHtml = '';
   let descHtml = '';
@@ -243,17 +252,17 @@ function generateFormHtml(g, currentType, ctx) {
   // 班級聯可能跨多位代課老師：逐節顯示代課人
   // 教師聯／班級聯：不顯示假別、費用（僅教學組留存聯保留）
   const periodListHtml = (g.periods || []).map(p => {
-    const subT = p.subEmail ? getTeacherNameByEmail(p.subEmail) : subName;
-    const leaveT = getTeacherNameByEmail(p.leaveEmail);
+    const subT = p.subEmail ? escapePrintHtml(getTeacherNameByEmail(p.subEmail)) : subName;
+    const leaveT = escapePrintHtml(getTeacherNameByEmail(p.leaveEmail));
     const showFeeReason = currentType === 'Admin';
     if (currentType === 'Class' && p.subEmail) {
       return showFeeReason
-        ? `<li>${(p.date || '').toString().slice(5)} 第 ${p.num} 節【${p.cls}】(${p.sub}) – ${leaveT}→<strong>${subT}</strong>（${p.reason}，${p.subFee}）</li>`
-        : `<li>${(p.date || '').toString().slice(5)} 第 ${p.num} 節【${p.cls}】(${p.sub}) – ${leaveT}→<strong>${subT}</strong></li>`;
+        ? `<li>${escapePrintHtml((p.date || '').toString().slice(5))} 第 ${escapePrintHtml(p.num)} 節【${escapePrintHtml(p.cls)}】(${escapePrintHtml(p.sub)}) – ${leaveT}→<strong>${subT}</strong>（${escapePrintHtml(p.reason)}，${escapePrintHtml(p.subFee)}）</li>`
+        : `<li>${escapePrintHtml((p.date || '').toString().slice(5))} 第 ${escapePrintHtml(p.num)} 節【${escapePrintHtml(p.cls)}】(${escapePrintHtml(p.sub)}) – ${leaveT}→<strong>${subT}</strong></li>`;
     }
     return showFeeReason
-      ? `<li>第 ${p.num} 節【${p.cls}】(${p.sub}) – ${leaveT}（${p.reason}，${p.subFee}）</li>`
-      : `<li>第 ${p.num} 節【${p.cls}】(${p.sub}) – ${leaveT}</li>`;
+      ? `<li>第 ${escapePrintHtml(p.num)} 節【${escapePrintHtml(p.cls)}】(${escapePrintHtml(p.sub)}) – ${leaveT}（${escapePrintHtml(p.reason)}，${escapePrintHtml(p.subFee)}）</li>`
+      : `<li>第 ${escapePrintHtml(p.num)} 節【${escapePrintHtml(p.cls)}】(${escapePrintHtml(p.sub)}) – ${leaveT}</li>`;
   }).join('');
 
   const isQuotaDeductFee = (f) => {
@@ -262,7 +271,7 @@ function generateFormHtml(g, currentType, ctx) {
   };
   const isMutualCover = isQuotaDeductFee(g.subFee)
     || (g.periods || []).some(p => isQuotaDeductFee(p.subFee));
-  const multiSubNames = [...new Set((g.periods || []).map(p => p.subEmail).filter(Boolean).map(e => getTeacherNameByEmail(e)))];
+  const multiSubNames = [...new Set((g.periods || []).map(p => p.subEmail).filter(Boolean).map(e => escapePrintHtml(getTeacherNameByEmail(e))))];
   const subNamesStr = multiSubNames.length > 1 ? multiSubNames.join('、') : subName;
 
   if (currentType === 'Teacher') {
@@ -289,9 +298,9 @@ function generateFormHtml(g, currentType, ctx) {
   } else {
     titleLabel = '教學組留存聯';
     if (isMutualCover) {
-      descHtml = `<div style="line-height: 1.3; font-size: 0.75rem; color: #1e293b;"><strong>${leaveNames}</strong> 老師因 <strong>${reasonsStr}</strong>（活動互代），由 <strong>${subName}</strong> 老師代課。<strong style="color:#6b21a8;">經費：扣額度</strong>。共 <strong>${g.periods.length}</strong> 節：<ul style="margin:2px 0 0 14px;padding:0;">${periodListHtml}</ul><br><span style="font-size:0.7rem; color:#64748b;">* 行政備註：${g.note || '無'}</span></div>`;
+      descHtml = `<div style="line-height: 1.3; font-size: 0.75rem; color: #1e293b;"><strong>${leaveNames}</strong> 老師因 <strong>${reasonsStr}</strong>（活動互代），由 <strong>${subName}</strong> 老師代課。<strong style="color:#6b21a8;">經費：扣額度</strong>。共 <strong>${g.periods.length}</strong> 節：<ul style="margin:2px 0 0 14px;padding:0;">${periodListHtml}</ul><br><span style="font-size:0.7rem; color:#64748b;">* 行政備註：${escapePrintHtml(g.note || '無')}</span></div>`;
     } else {
-      descHtml = `<div style="line-height: 1.3; font-size: 0.75rem; color: #1e293b;"><strong>${leaveNames}</strong> 老師因 <strong>${reasonsStr}</strong>，由 <strong>${subName}</strong> 老師代課。經費來源：<strong>${g.subFee}</strong>。共 <strong>${g.periods.length}</strong> 節：<ul style="margin:2px 0 0 14px;padding:0;">${periodListHtml}</ul><br><span style="font-size:0.7rem; color:#64748b;">* 行政備註：${g.note || '無'}</span></div>`;
+      descHtml = `<div style="line-height: 1.3; font-size: 0.75rem; color: #1e293b;"><strong>${leaveNames}</strong> 老師因 <strong>${reasonsStr}</strong>，由 <strong>${subName}</strong> 老師代課。經費來源：<strong>${escapePrintHtml(g.subFee)}</strong>。共 <strong>${g.periods.length}</strong> 節：<ul style="margin:2px 0 0 14px;padding:0;">${periodListHtml}</ul><br><span style="font-size:0.7rem; color:#64748b;">* 行政備註：${escapePrintHtml(g.note || '無')}</span></div>`;
     }
     remarkHtml = `
       <li>本聯由教學組存查核帳。</li>
@@ -307,7 +316,7 @@ function generateFormHtml(g, currentType, ctx) {
     const periodOnDay = g.periods.find(x => dayIdx[new Date(x.date + 'T00:00:00').getDay()] === d);
     const headerDate = periodOnDay ? periodOnDay.date.slice(5) : '';
     const hasPeriod = !!periodOnDay;
-    tableHeader += `<th style="width:13.6%;${hasPeriod ? 'background:#bfdbfe !important;' : ''}">${headerDate}<br>${d}</th>`;
+    tableHeader += `<th style="width:13.6%;${hasPeriod ? 'background:#bfdbfe !important;' : ''}">${escapePrintHtml(headerDate)}<br>${escapePrintHtml(d)}</th>`;
   });
   tableHeader += '<th style="width:20%; border-left: 1.5pt solid black !important;">調（代）課教師<br>簽名</th></tr>';
 
@@ -316,13 +325,13 @@ function generateFormHtml(g, currentType, ctx) {
     const p = printPeriodList[pi];
     const rowStyle = p === 4 ? 'border-bottom: 2.5pt solid black !important;' : '';
     tableBody += '<tr>';
-    tableBody += `<td style="background:#f8fafc; font-weight:bold; text-align:center;">${getPeriodChinese(p)}</td>`;
+    tableBody += `<td style="background:#f8fafc; font-weight:bold; text-align:center;">${escapePrintHtml(getPeriodChinese(p))}</td>`;
     days.forEach(d => {
       const matchPeriod = g.periods.find(x => parseInt(x.num, 10) === parseInt(p, 10) && dayIdx[new Date(x.date + 'T00:00:00').getDay()] === d);
       let cellContent = '';
       let cellStyle = '';
       if (matchPeriod) {
-        cellContent = matchPeriod.sub;
+        cellContent = escapePrintHtml(matchPeriod.sub);
         cellStyle = 'background:#fef08a !important; font-weight:bold; text-align:center; font-size:0.75rem;';
       }
       tableBody += `<td style="${cellStyle}">${cellContent}</td>`;
@@ -339,7 +348,7 @@ function generateFormHtml(g, currentType, ctx) {
       let cellContent = '';
       let cellStyle = '';
       if (matchPeriod) {
-        cellContent = matchPeriod.cls;
+        cellContent = escapePrintHtml(matchPeriod.cls);
         cellStyle = 'background:#fef08a !important; font-weight:bold; text-align:center; font-size:0.75rem;';
       }
       tableBody += `<td style="${cellStyle} border-bottom: 1.5pt solid black !important;">${cellContent}</td>`;
@@ -357,7 +366,7 @@ function generateFormHtml(g, currentType, ctx) {
         <h1 class="title">建成國中調代課通知單</h1>
       </div>
       <div class="info-row">
-        <span>班級：${[...new Set(g.periods.map(x => x.cls))].join('、')}</span>
+        <span>班級：${escapePrintHtml([...new Set(g.periods.map(x => x.cls))].join('、'))}</span>
         <span>${currentType === 'Teacher' ? `共 ${g.periods.length} 節 | ${leaveNames} ➔ ${subNamesStr}` : `共 ${g.periods.length} 節`}</span>
       </div>
       <table class="schedule-table"><thead>${tableHeader}</thead><tbody>${tableBody}</tbody></table>
@@ -365,7 +374,7 @@ function generateFormHtml(g, currentType, ctx) {
         <div class="desc" style="margin-bottom:4px;">${descHtml}</div>
         <div class="remark-area">
           <span style="font-weight:bold;">※ 備註說明：</span>
-          <ol class="remark-list">${remarkHtml.split('\n').filter(x => x.trim()).map(x => `<li>${x.replace(/<\/?li>/g, '')}</li>`).join('')}</ol>
+          <ol class="remark-list">${remarkHtml.split('\n').filter(x => x.trim()).map(x => `<li>${escapePrintHtml(x.replace(/<\/?li>/g, ''))}</li>`).join('')}</ol>
         </div>
       </div>
     </div>

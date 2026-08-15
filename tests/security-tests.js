@@ -13,6 +13,7 @@ const gasApiSource = fs.readFileSync(path.join(root, 'gas-api.js'), 'utf8');
 const indexSource = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 const devServerSource = fs.readFileSync(path.join(root, 'dev-server.js'), 'utf8');
 const invigilationSource = fs.readFileSync(path.join(root, 'export-invigilation.js'), 'utf8');
+const printHelperSource = fs.readFileSync(path.join(root, 'print-helper.js'), 'utf8');
 const vercelConfig = JSON.parse(fs.readFileSync(path.join(root, 'vercel.json'), 'utf8'));
 
 assert.strictEqual(resolvePublicFile('/'), path.join(root, 'index.html'));
@@ -29,6 +30,79 @@ assert.match(invigilationSource, /copySheetValuesAndStyles/);
 assert.match(invigilationSource, /copySheetValuesAndStyles\(tempSheet, targetSheet, master\)/);
 assert.match(invigilationSource, /mergeCellsWithoutStyle/);
 assert.match(invigilationSource, /setCellFontPreservingStyle/);
+assert.match(printHelperSource, /function escapePrintHtml/);
+const printXssPayload = '<img src=x onerror="alert(1)"><script>alert(2)</script>&"';
+const printContext = {
+  window: {
+    DateUtils: { getTimetablePeriods: () => [1] }
+  }
+};
+vm.createContext(printContext);
+vm.runInContext(printHelperSource, printContext, { filename: 'print-helper.js' });
+const printFixtureContext = {
+  getTeacherNameByEmail: () => printXssPayload,
+  getTeacherSubjectByEmail: () => printXssPayload,
+  getWeekDayText: day => ['日', '一', '二', '三', '四', '五', '六'][day] || '',
+  allSchedules: { value: [] }
+};
+const printOutput = printContext.window.generateFormHtml({
+  isExchange: false,
+  serials: [printXssPayload],
+  leaveEmails: ['leave@example.com'],
+  subEmail: 'sub@example.com',
+  reasons: [printXssPayload],
+  subFee: printXssPayload,
+  note: printXssPayload,
+  periods: [{
+    date: '2026-08-17',
+    num: 1,
+    cls: printXssPayload,
+    sub: printXssPayload,
+    leaveEmail: 'leave@example.com',
+    reason: printXssPayload,
+    subFee: printXssPayload
+  }]
+}, 'Admin', printFixtureContext);
+const exchangeOutput = printContext.window.generateFormHtml({
+  isExchange: true,
+  serials: [printXssPayload],
+  reason: printXssPayload,
+  note: printXssPayload,
+  records: [
+    {
+      originalTeacherEmail: 'teacher-a@example.com',
+      actualTeacherEmail: 'teacher-b@example.com',
+      date: '2026-08-17',
+      period: 1,
+      className: printXssPayload,
+      subject: printXssPayload
+    },
+    {
+      originalTeacherEmail: 'teacher-b@example.com',
+      actualTeacherEmail: 'teacher-a@example.com',
+      date: '2026-08-18',
+      period: 2,
+      className: printXssPayload,
+      subject: printXssPayload
+    }
+  ]
+}, 'Admin', printFixtureContext);
+const routeOutput = printContext.window.buildExchangeRouteHtml({
+  nameA: printXssPayload,
+  nameB: printXssPayload,
+  dateA: printXssPayload,
+  dateB: printXssPayload,
+  classA: printXssPayload,
+  classB: printXssPayload,
+  subjectA: printXssPayload,
+  subjectB: printXssPayload
+});
+const executablePrintMarkup = /<(?:script|img)\b|<[^>]+\bon(?:error|load)\s*=/i;
+assert.ok(printOutput.includes('&lt;img src=x onerror=&quot;alert(1)&quot;&gt;'));
+assert.ok(printOutput.includes('&lt;script&gt;alert(2)&lt;/script&gt;'));
+assert.strictEqual(executablePrintMarkup.test(printOutput), false);
+assert.strictEqual(executablePrintMarkup.test(exchangeOutput), false);
+assert.strictEqual(executablePrintMarkup.test(routeOutput), false);
 const vercelCsp = vercelConfig.headers[0].headers.find(h => h.key === 'Content-Security-Policy');
 assert.ok(vercelCsp && vercelCsp.value.includes('googleusercontent.com'));
 assert.match(gasApiSource, /AbortController/);
