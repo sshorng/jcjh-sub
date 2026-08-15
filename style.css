@@ -5026,3 +5026,23 @@ td.table-empty {
     padding: 1px 3px;
   }
 }
+
+/* 班級課表多堂課：格高隨內容展開，避免第二堂課被裁切 */
+.class-timetable .grid-cell-time,
+.class-timetable .grid-cell-class {
+  height: auto;
+  min-height: 56px;
+  max-height: none;
+  overflow: visible;
+}
+
+.class-timetable .grid-cell-class {
+  align-items: stretch;
+}
+
+@media (max-width: 700px) {
+  .class-timetable .grid-cell-time,
+  .class-timetable .grid-cell-class {
+    min-height: 52px;
+  }
+}

@@ -34,11 +34,11 @@ function request(server, method, requestPath) {
   try {
     const root = await request(server, 'GET', '/');
     assert.equal(root.status, 200);
-    assert.match(root.body.toString('utf8'), /20260815-p9/);
+    assert.match(root.body.toString('utf8'), /20260815-p10/);
     assert.equal(root.headers['cache-control'], 'no-cache');
     assert.match(root.headers['content-security-policy'], /frame-ancestors 'none'/);
 
-    const head = await request(server, 'HEAD', '/style.css?v=20260815-p9');
+    const head = await request(server, 'HEAD', '/style.css?v=20260815-p10');
     assert.equal(head.status, 200);
     assert.equal(head.body.length, 0);
 

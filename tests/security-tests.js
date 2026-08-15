@@ -14,6 +14,7 @@ const indexSource = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 const devServerSource = fs.readFileSync(path.join(root, 'dev-server.js'), 'utf8');
 const invigilationSource = fs.readFileSync(path.join(root, 'export-invigilation.js'), 'utf8');
 const printHelperSource = fs.readFileSync(path.join(root, 'print-helper.js'), 'utf8');
+const styleSource = fs.readFileSync(path.join(root, 'style.css'), 'utf8');
 const vercelConfig = JSON.parse(fs.readFileSync(path.join(root, 'vercel.json'), 'utf8'));
 
 assert.strictEqual(resolvePublicFile('/'), path.join(root, 'index.html'));
@@ -124,7 +125,8 @@ assert.match(indexSource, /id="toast-container"[^>]*role="status"[^>]*aria-live=
 assert.match(indexSource, /id="confirm-overlay"[^>]*role="dialog"[^>]*aria-modal="true"/);
 assert.match(indexSource, /:aria-current="activeTab === 'timetable'/);
 assert.match(indexSource, /class="class-timetable-layout"[^>]*role="region"/);
-assert.match(fs.readFileSync(path.join(root, 'style.css'), 'utf8'), /:where\(button, a, input, select, textarea\):focus-visible/);
+assert.match(styleSource, /:where\(button, a, input, select, textarea\):focus-visible/);
+assert.match(styleSource, /班級課表多堂課[\s\S]*?\.class-timetable \.grid-cell-class[\s\S]*?height: auto;[\s\S]*?max-height: none;[\s\S]*?overflow: visible;/);
 
 const scriptProperties = {};
 global.PropertiesService = {
