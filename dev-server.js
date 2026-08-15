@@ -43,7 +43,10 @@ function resolvePublicFile(requestUrl) {
   return filePath;
 }
 
-function startServer() {
+function startServer(options) {
+  options = options || {};
+  const port = options.port !== undefined ? options.port : PORT;
+  const host = options.host || HOST;
   return http.createServer((req, res) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     res.writeHead(405, {
@@ -87,9 +90,9 @@ function startServer() {
     }
     res.end(data);
   });
-  }).listen(PORT, HOST, () => {
+  }).listen(port, host, () => {
     // Google GSI 通常已授權 localhost，測試登入請使用 localhost
-    console.log(`Dev server running at http://${HOST}:${PORT}/`);
+    if (!options.silent) console.log(`Dev server running at http://${host}:${port}/`);
   });
 }
 
