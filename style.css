@@ -428,6 +428,11 @@ body {
   box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.12);
 }
 
+:where(button, a, input, select, textarea):focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.55);
+  outline-offset: 2px;
+}
+
 /* 按鈕樣式系統 */
 .btn {
   display: inline-flex;

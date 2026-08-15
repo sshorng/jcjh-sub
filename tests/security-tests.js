@@ -119,6 +119,12 @@ assert.strictEqual(appSource.slice(classScheduleBlockStart, classScheduleBlockEn
 assert.strictEqual(/<script\s+defer\s+src=["']export-accounting\.js/i.test(indexSource), false);
 assert.strictEqual(indexSource.includes('20260814-p2'), false);
 assert.strictEqual(new Set(Array.from(indexSource.matchAll(/(?:src|href)="[^"]+\?v=([^"']+)/g), m => m[1])).size, 1);
+assert.match(indexSource, /class="loading-overlay"[^>]*role="status"[^>]*aria-live="polite"/);
+assert.match(indexSource, /id="toast-container"[^>]*role="status"[^>]*aria-live="polite"/);
+assert.match(indexSource, /id="confirm-overlay"[^>]*role="dialog"[^>]*aria-modal="true"/);
+assert.match(indexSource, /:aria-current="activeTab === 'timetable'/);
+assert.match(indexSource, /class="class-timetable-layout"[^>]*role="region"/);
+assert.match(fs.readFileSync(path.join(root, 'style.css'), 'utf8'), /:where\(button, a, input, select, textarea\):focus-visible/);
 
 const scriptProperties = {};
 global.PropertiesService = {

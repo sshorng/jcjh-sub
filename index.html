@@ -23,7 +23,7 @@
     <!-- ════════════════════════════════════════
          §UI-0 全螢幕載入遮罩
          ════════════════════════════════════════ -->
-    <div v-if="loading" class="loading-overlay">
+    <div v-if="loading" class="loading-overlay" role="status" aria-live="polite" aria-atomic="true" :aria-busy="loading ? 'true' : 'false'">
       <div class="spinner"></div>
       <p class="loading-msg">{{ loadingMessage }}</p>
     </div>
@@ -71,18 +71,20 @@
         
         <!-- Tab 選單（公開唯讀只顯示班級課表） -->
         <div class="nav-menu" v-if="user" data-tour="nav-menu">
-          <button 
-            class="nav-item" 
+          <button
+            class="nav-item"
             :class="{ active: activeTab === 'timetable' }"
+            :aria-current="activeTab === 'timetable' ? 'page' : undefined"
             data-tour="nav-timetable"
             @click="setActiveTab('timetable')"
             title="課表總覽"
           >
             <span class="nav-label-full">課表總覽</span><span class="nav-label-short">課表</span>
           </button>
-          <button 
-            class="nav-item" 
+          <button
+            class="nav-item"
             :class="{ active: activeTab === 'pending' }"
+            :aria-current="activeTab === 'pending' ? 'page' : undefined"
             data-tour="nav-pending"
             @click="setActiveTab('pending')"
             title="待辦簽核"
@@ -91,9 +93,10 @@
             <span v-if="myInviteCount > 0" class="nav-badge nav-badge-invite" :title="'待您回覆 ' + myInviteCount + ' 筆'">{{ myInviteCount }}</span>
             <span v-if="adminTodoCount > 0" class="nav-badge nav-badge-admin" :title="'待核准 ' + adminTodoCount + ' 筆'">{{ adminTodoCount }}</span>
           </button>
-          <button 
-            class="nav-item" 
+          <button
+            class="nav-item"
             :class="{ active: activeTab === 'records' }"
+            :aria-current="activeTab === 'records' ? 'page' : undefined"
             data-tour="nav-records"
             @click="setActiveTab('records')"
             title="歷史紀錄"
@@ -102,8 +105,9 @@
           </button>
           <button 
             v-if="isAdmin || isStaff || classReadonlyMode"
-            class="nav-item" 
+            class="nav-item"
             :class="{ active: activeTab === 'class' }"
+            :aria-current="activeTab === 'class' ? 'page' : undefined"
             data-tour="nav-class"
             @click="setActiveTab('class')"
             title="班級課表"
@@ -112,8 +116,9 @@
           </button>
           <button 
             v-if="isAdmin"
-            class="nav-item" 
+            class="nav-item"
             :class="{ active: activeTab === 'admin' }"
+            :aria-current="activeTab === 'admin' ? 'page' : undefined"
             data-tour="nav-admin"
             @click="setActiveTab('admin')"
             title="後台管理"
@@ -823,7 +828,7 @@
                   目前檢視：<strong>{{ selectedClass }}</strong>
                 </div>
                 <div v-if="!selectedClass" style="text-align:center;padding:20px;color:var(--text-muted);">👆 點選上方班級按鈕查看該班課表</div>
-                <div v-else class="class-timetable-layout">
+                <div v-else class="class-timetable-layout" role="region" aria-label="班級課表內容">
                   <div class="timetable-wrapper class-timetable-main" style="overflow-x:auto;">
                     <div class="class-timetable" :class="{ 'is-readonly': classReadonlyMode }">
                       <div class="grid-header">節</div>
@@ -3768,10 +3773,10 @@
   </script>
 
   <!-- Toast 通知容器 -->
-  <div id="toast-container"></div>
+  <div id="toast-container" role="status" aria-live="polite" aria-atomic="true"></div>
 
   <!-- 自訂確認 Modal -->
-  <div id="confirm-overlay">
+  <div id="confirm-overlay" role="dialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-msg">
     <div id="confirm-box">
       <div id="confirm-title">請確認</div>
       <div id="confirm-msg"></div>
