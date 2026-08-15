@@ -13,7 +13,7 @@ function getSpreadsheet() {
     _requestSpreadsheetKey_ = cacheKey;
     return _requestSpreadsheet_;
   }
-  if (getConfig_("ALLOW_ACTIVE_SPREADSHEET_FALLBACK", "true").toLowerCase() === "true") {
+  if (getConfig_("ALLOW_ACTIVE_SPREADSHEET_FALLBACK", getActiveSpreadsheetFallbackDefault_()).toLowerCase() === "true") {
     const active = SpreadsheetApp.getActiveSpreadsheet();
     if (active) {
       _requestSpreadsheet_ = active;
@@ -26,7 +26,11 @@ function getSpreadsheet() {
 
 
 // ----------------- 安全與效能設定 -----------------
-// 可在「專案設定 → 指令碼屬性」覆寫：EXPECTED_CLIENT_ID / ALLOWED_HD / ALLOW_MOCK_TOKEN
+function getActiveSpreadsheetFallbackDefault_() {
+  return getConfig_("DEPLOYMENT_ENV", "development").toLowerCase() === "production" ? "false" : "true";
+}
+
+// 可在「專案設定 → 指令碼屬性」覆寫：DEPLOYMENT_ENV / EXPECTED_CLIENT_ID / ALLOWED_HD / ALLOW_MOCK_TOKEN
 // SPREADSHEET_ID 可選：綁定試算表的 GAS 預設使用作用中試算表；獨立 Web App 再設定 SPREADSHEET_ID。
 function getConfig_(key, fallback) {
   try {
@@ -980,11 +984,46 @@ function removeCacheChunkedMany_(keys) {
   removeCacheEntries_(cache, removeKeys);
 }
 
+function getCacheGeneration_(namespace, semesterId) {
+  var key = "jcjh_gen_" + String(namespace || "data") + "_" + String(semesterId || "");
+  var cache = CacheService.getScriptCache();
+  var value = cache.get(key);
+  if (value) return String(value);
+  cache.put(key, "0", 21600);
+  return "0";
+}
+
+function bumpCacheGeneration_(namespace, semesterId) {
+  var key = "jcjh_gen_" + String(namespace || "data") + "_" + String(semesterId || "");
+  var cache = CacheService.getScriptCache();
+  var previous = parseInt(cache.get(key) || "0", 10) || 0;
+  var next = String(Math.max(Date.now(), previous + 1));
+  cache.put(key, next, 21600);
+  return next;
+}
+
+function scheduleImportStateKey_(semesterId) {
+  return "jcjh_schedule_import_" + String(semesterId || "");
+}
+
+function setScheduleImportState_(semesterId, state) {
+  CacheService.getScriptCache().put(scheduleImportStateKey_(semesterId), String(state || "writing"), 180);
+}
+
+function clearScheduleImportState_(semesterId) {
+  removeCacheEntries_(CacheService.getScriptCache(), [scheduleImportStateKey_(semesterId)]);
+}
+
+function getScheduleImportState_(semesterId) {
+  return CacheService.getScriptCache().get(scheduleImportStateKey_(semesterId)) || "";
+}
+
 /** 清除公開班級課表快取（核准／寫入後立即失效） */
 function clearPublicClassCache_(semesterId) {
   try {
     var cache = CacheService.getScriptCache();
     var sid = String(semesterId || "");
+    bumpCacheGeneration_("public", sid);
     // 記錄過的班級 key 清單
     var listKey = "jcjh_pub_keys_" + sid;
     var raw = cache.get(listKey);
@@ -1021,6 +1060,7 @@ function rememberPublicCacheKey_(semesterId, className, cacheKey) {
 /** 只清申請／組裝 payload（簽核、送單用；課表層保留） */
 function invalidateRequestCaches_(semesterId) {
   var sid = String(semesterId || "");
+  bumpCacheGeneration_("data", sid);
   var cacheKeys = [];
   try {
     [7, 14, 21, 30, 60, 90, 120].forEach(function (d) {
@@ -1161,6 +1201,9 @@ function getSemesterSchedulesCached_(semesterId) {
       var cached = JSON.parse(raw);
       if (Array.isArray(cached)) return slimScheduleRows_(cached);
     } catch (e) {}
+  }
+  if (getScheduleImportState_(semesterId)) {
+    throw new Error("課表匯入處理中，請稍後再試");
   }
   var rows = getTableData("教師課表").filter(function (s) { return String(s["學期代號"] || "").trim() === String(semesterId || "").trim(); });
   var slim = slimScheduleRows_(rows);
@@ -1395,7 +1438,8 @@ function getSemesterTeachersCached_(semesterId) {
 function getSemesterRequestsCached_(semesterId, historyAll, windowDays) {
   var sid = String(semesterId || "");
   var w = historyAll ? "all" : ("w" + (parseInt(windowDays, 10) || 14));
-  var key = "jcjh_req_" + sid + "_" + w;
+  var generation = getCacheGeneration_("data", sid);
+  var key = "jcjh_req_" + sid + "_" + generation + "_" + w;
   var raw = getCacheChunked(key);
   if (raw) {
     try {
@@ -3291,7 +3335,8 @@ function handleReadAction_(postData) {
     assertPublicClassRateLimit_();
     var pubCls = reqData.className || reqData.class || postData.className || "";
     var pubSid = semesterId || reqData.semesterId || "";
-     var pubCacheKey = "jcjh_pub_v2_" + pubSid + "_" + String(pubCls).trim();
+     var pubGeneration = getCacheGeneration_("public", pubSid);
+     var pubCacheKey = "jcjh_pub_v2_" + pubSid + "_" + pubGeneration + "_" + String(pubCls).trim();
     var pubCached = getCacheChunked(pubCacheKey);
     if (pubCached) {
       return ContentService.createTextOutput(pubCached).setMimeType(ContentService.MimeType.JSON);
@@ -3624,6 +3669,7 @@ function handleReadAction_(postData) {
     if (reqData.windowDays != null && reqData.windowDays !== "") windowDaysOpt = reqData.windowDays;
     else if (postData.windowDays != null && postData.windowDays !== "") windowDaysOpt = postData.windowDays;
     var wDays = parseInt(windowDaysOpt, 10) || 14;
+    var dataGeneration = getCacheGeneration_("data", semesterId);
 
     // ── 申請增量：updatedSince 之後變更列（softRefresh 用）──
     var updatedSinceRaw = reqData.updatedSince || postData.updatedSince || "";
@@ -3639,7 +3685,7 @@ function handleReadAction_(postData) {
 
     // ── requestsOnly：申請＋空堂（共用底包後再個人化；淺拷貝）──
     if (requestsOnlyFlag) {
-      var roSharedKey = "jcjh_reqonly_" + semesterId + "_admin_w" + wDays;
+      var roSharedKey = "jcjh_reqonly_" + semesterId + "_" + dataGeneration + "_admin_w" + wDays;
       var roShared = null;
       if (!historyAllFlag && scope !== "fresh") {
         var roCached = getCacheChunked(roSharedKey);
@@ -3679,8 +3725,8 @@ function handleReadAction_(postData) {
     // ── 全量：admin／教師共用底包（課表全校；申請全校列，回傳前淺拷 filter）──
     // 行政與教學組皆吃 full 底包（課表不瘦身）；一般教師用 teacher 鍵（內容相同，個人化再瘦）
     var fullSharedKey = (readerIsAdmin || readerIsStaff)
-      ? ("jcjh_data_" + semesterId + "_admin_w" + wDays)
-      : ("jcjh_data_" + semesterId + "_teacher_w" + wDays);
+      ? ("jcjh_data_" + semesterId + "_" + dataGeneration + "_admin_w" + wDays)
+      : ("jcjh_data_" + semesterId + "_" + dataGeneration + "_teacher_w" + wDays);
     var fullShared = null;
     if (!historyAllFlag && scope !== "fresh") {
       var fullCached = getCacheChunked(fullSharedKey);
@@ -3706,7 +3752,7 @@ function handleReadAction_(postData) {
           // 教師／admin 底包內容相同時互寫，提高命中（共用字串，少 stringify 一次）
           if (readerIsAdmin || readerIsStaff) {
             putCacheChunked(
-              "jcjh_data_" + semesterId + "_teacher_w" + wDays,
+              "jcjh_data_" + semesterId + "_" + dataGeneration + "_teacher_w" + wDays,
               fullSharedJson,
               CACHE_TTL_TEACHER_FULL_
             );
@@ -4225,6 +4271,8 @@ function doPost(e) {
         return s;
       });
 
+      // 讀取端不佔寫鎖；匯入期間先標記，避免快取未命中時掃到半成品。
+      setScheduleImportState_(sidStr, "writing");
       if (replaceAll) {
         // 一次讀取 → 保留其他學期 → 整表重寫（表頭 + 其他學期 + 本學期新資料）
         var allExisting = getTableData("教師課表") || [];
@@ -4263,6 +4311,7 @@ function doPost(e) {
         });
         saveRows("教師名單", tList, "教師Email");
       }
+      clearScheduleImportState_(sidStr);
       invalidateScheduleCaches_(semesterId);
       return ContentService.createTextOutput(JSON.stringify({
         success: true,

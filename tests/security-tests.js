@@ -115,9 +115,14 @@ assert.strictEqual(/<script\s+defer\s+src=["']export-accounting\.js/i.test(index
 assert.strictEqual(indexSource.includes('20260814-p2'), false);
 assert.strictEqual(new Set(Array.from(indexSource.matchAll(/(?:src|href)="[^"]+\?v=([^"']+)/g), m => m[1])).size, 1);
 
+const scriptProperties = {};
 global.PropertiesService = {
   getScriptProperties() {
-    return { getProperty() { return null; } };
+    return {
+      getProperty(key) {
+        return Object.prototype.hasOwnProperty.call(scriptProperties, key) ? scriptProperties[key] : null;
+      }
+    };
   }
 };
 const activeSpreadsheet = {};
@@ -155,6 +160,29 @@ vm.runInThisContext(fs.readFileSync(path.join(root, 'code.gs'), 'utf8'), { filen
 assert.strictEqual(getSpreadsheet(), activeSpreadsheet);
 assert.strictEqual(getSpreadsheet(), activeSpreadsheet);
 assert.strictEqual(activeSpreadsheetCalls, 1);
+_requestSpreadsheet_ = null;
+_requestSpreadsheetKey_ = '';
+scriptProperties.DEPLOYMENT_ENV = 'production';
+assert.throws(() => getSpreadsheet(), /找不到可用的試算表/);
+scriptProperties.ALLOW_ACTIVE_SPREADSHEET_FALLBACK = 'true';
+assert.strictEqual(getSpreadsheet(), activeSpreadsheet);
+delete scriptProperties.ALLOW_ACTIVE_SPREADSHEET_FALLBACK;
+delete scriptProperties.DEPLOYMENT_ENV;
+_requestSpreadsheet_ = null;
+_requestSpreadsheetKey_ = '';
+assert.strictEqual(getSpreadsheet(), activeSpreadsheet);
+assert.strictEqual(getActiveSpreadsheetFallbackDefault_(), 'true');
+const generationBefore = getCacheGeneration_('data', '115-1');
+assert.strictEqual(getCacheGeneration_('data', '115-1'), generationBefore);
+const generationAfter = bumpCacheGeneration_('data', '115-1');
+assert.notStrictEqual(generationAfter, generationBefore);
+const generationBeforeInvalidation = getCacheGeneration_('data', '115-1');
+invalidateRequestCaches_('115-1');
+assert.notStrictEqual(getCacheGeneration_('data', '115-1'), generationBeforeInvalidation);
+setScheduleImportState_('115-1', 'writing');
+assert.strictEqual(getScheduleImportState_('115-1'), 'writing');
+clearScheduleImportState_('115-1');
+assert.strictEqual(getScheduleImportState_('115-1'), '');
 const largeCacheValue = 'x'.repeat(180 * 1024);
 putCacheChunked('security-cache', largeCacheValue, 60);
 assert.strictEqual(getCacheChunked('security-cache'), largeCacheValue);
@@ -174,6 +202,12 @@ getTableData = function (sheetName) {
   if (sheetName === '學期設定') return [{ '學期代號': '115-1', '是否預設': 'TRUE' }];
   return [];
 };
+scanRequestsFromSheet_ = function () { return { allCount: 0, rows: [] }; };
+getSemesterRequestsCached_('115-1', false, 15);
+assert.ok(Array.from(cacheStore.keys()).some(key => /^jcjh_req_115-1_.*_w15/.test(key)));
+setScheduleImportState_('115-1', 'writing');
+assert.throws(() => getSemesterSchedulesCached_('115-1'), /課表匯入處理中/);
+clearScheduleImportState_('115-1');
 getSemesterSchedulesCached_ = function () {
   return [{ '課表ID': 'real-schedule', '教師Email': 'teacher@school.example', '教師姓名': '王老師', '星期': 1, '節次': 1, '班級': '701', '科目': '國文' }];
 };
