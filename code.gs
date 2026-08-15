@@ -291,7 +291,9 @@ function initSheets() {
         oldName === "空堂事件" ||
         oldName === "額度帳本" ||
         oldName === "代導紀錄" ||
-        oldName === "系統日誌") {
+        oldName === "系統日誌" || oldName === "操作日誌" ||
+        oldName === "課表匯入暫存" || oldName === "課表匯入備份" ||
+        oldName === "教師匯入備份") {
       return;
     }
     if      (oldName.indexOf("課表") !== -1) { newName = "教師課表"; }
@@ -1026,6 +1028,137 @@ function bumpCacheGeneration_(namespace, semesterId) {
   var next = String(Math.max(Date.now(), previous + 1));
   cache.put(key, next, 21600);
   return next;
+}
+
+var SCHEDULE_IMPORT_STAGING_SHEET_ = "課表匯入暫存";
+var SCHEDULE_IMPORT_BACKUP_SHEET_ = "課表匯入備份";
+var TEACHER_IMPORT_BACKUP_SHEET_ = "教師匯入備份";
+
+function createScheduleImportVersion_() {
+  return "sched_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
+}
+
+function getOrCreateScheduleImportSheet_(spreadsheet, sheetName) {
+  var sheet = spreadsheet.getSheetByName(sheetName);
+  return sheet || spreadsheet.insertSheet(sheetName);
+}
+
+function writeRowsInChunks_(sheet, startRow, headers, rows, chunkSize) {
+  var list = rows || [];
+  var width = (headers || []).length;
+  var size = chunkSize || 500;
+  for (var i = 0; i < list.length; i += size) {
+    var block = list.slice(i, i + size);
+    sheet.getRange(startRow + i, 1, block.length, width).setValues(block);
+  }
+}
+
+function writeScheduleSnapshotSheet_(sheet, headers, rows) {
+  var headerList = headers || [];
+  if (!sheet || !headerList.length) throw new Error("課表快照缺少工作表或欄位");
+  sheet.clearContents();
+  sheet.getRange(1, 1, 1, headerList.length).setValues([headerList]);
+  sheet.getRange(1, 1, 1, headerList.length).setFontWeight("bold").setBackground("#f1f5f9");
+  writeRowsInChunks_(sheet, 2, headerList, rows || [], 500);
+}
+
+function writeScheduleImportBackupSheet_(sheet, headers, rows, version, semesterId, sourceSheet) {
+  var backupHeaders = ["備份版本", "備份時間", "來源學期", "來源工作表"].concat(headers || []);
+  var stamp = toLocalTimeStr(new Date());
+  var backupRows = (rows || []).map(function (row) {
+    return [String(version || ""), stamp, String(semesterId || ""), String(sourceSheet || "")].concat(row);
+  });
+  writeScheduleSnapshotSheet_(sheet, backupHeaders, backupRows);
+  return { version: String(version || ""), count: backupRows.length, timestamp: stamp };
+}
+
+function restoreScheduleImportSnapshots_(scheduleSheet, scheduleHeaders, scheduleRows,
+    teacherSheet, teacherHeaders, teacherRows) {
+  writeScheduleSnapshotSheet_(scheduleSheet, scheduleHeaders, scheduleRows || []);
+  if (teacherSheet && teacherHeaders && teacherHeaders.length) {
+    writeScheduleSnapshotSheet_(teacherSheet, teacherHeaders, teacherRows || []);
+  }
+  bustTableDataMem_("教師課表");
+  bustTableDataMem_("教師名單");
+}
+
+function isPatrolScheduleRow_(row) {
+  if (!row) return false;
+  return [row["課堂屬性"], row["班級"], row["科目"], row.attr, row.className, row.subject]
+    .some(function (value) { return String(value || "").trim().indexOf("巡堂") >= 0; });
+}
+
+function normalizePatrolScheduleRow_(row) {
+  if (!isPatrolScheduleRow_(row)) return row;
+  var normalized = Object.assign({}, row);
+  normalized["班級"] = "";
+  normalized["科目"] = "";
+  normalized["課堂屬性"] = "巡堂";
+  normalized["調課限制"] = "";
+  return normalized;
+}
+
+function validateScheduleImportRows_(rows, semesterId) {
+  var list = Array.isArray(rows) ? rows : [];
+  var sid = String(semesterId || "").trim();
+  var errors = [];
+  var seenIds = Object.create(null);
+  var seenSlots = Object.create(null);
+  var seenPatrolSlots = Object.create(null);
+
+  if (!sid) errors.push("缺少學期代號");
+  if (!list.length) errors.push("匯入清單為空");
+
+  for (var i = 0; i < list.length; i++) {
+    var row = normalizePatrolScheduleRow_(list[i] || {});
+    list[i] = row;
+    var rowErrors = [];
+    var rowSid = String(row["學期代號"] || "").trim();
+    var id = String(row["課表ID"] || "").trim();
+    var email = String(row["教師Email"] || "").trim().toLowerCase();
+    var name = String(row["教師姓名"] || "").trim();
+    var dayRaw = String(row["星期"] == null ? "" : row["星期"]).trim();
+    var periodRaw = String(row["節次"] == null ? "" : row["節次"]).trim();
+    var className = String(row["班級"] || "").trim();
+    var subject = String(row["科目"] || "").trim();
+    var attr = String(row["課堂屬性"] || "").trim().toLowerCase();
+    var restriction = String(row["調課限制"] || "").trim().toLowerCase();
+    var isPatrol = isPatrolScheduleRow_(row);
+    var day = parseInt(dayRaw, 10);
+    var period = parseInt(periodRaw, 10);
+
+    if (rowSid !== sid) rowErrors.push("學期不一致");
+    if (!id) rowErrors.push("缺少課表ID");
+    if (!email || !/^[^@\s]+@[^@\s]+$/.test(email)) rowErrors.push("教師Email不正確");
+    if (!name) rowErrors.push("缺少教師姓名");
+    if (!/^\d+$/.test(dayRaw) || day < 1 || day > 5) rowErrors.push("星期須為1至5");
+    if (!/^\d+$/.test(periodRaw) || !(period === 45 || (period >= 1 && period <= 8))) rowErrors.push("節次須為1至8或45");
+    if (!isPatrol && !className) rowErrors.push("缺少班級");
+    if (!isPatrol && !subject) rowErrors.push("缺少科目");
+    if (id && seenIds[id]) rowErrors.push("課表ID重複");
+
+    if (isPatrol) {
+      var patrolSlotKey = [day, period].join("|");
+      if (day && period && seenPatrolSlots[patrolSlotKey]) rowErrors.push("同一星期與節次只能安排一位巡堂教師");
+      if (!rowErrors.length) seenPatrolSlots[patrolSlotKey] = true;
+    } else {
+      var slotKey = [email, day, period, className.toLowerCase(), subject.toLowerCase(), attr, restriction].join("|");
+      if (email && day && period && className && subject && seenSlots[slotKey]) rowErrors.push("同一教師／時段／班級／科目重複");
+      if (!rowErrors.length) seenSlots[slotKey] = true;
+    }
+
+    if (rowErrors.length) {
+      errors.push("第" + (i + 1) + "列：" + rowErrors.join("、"));
+      continue;
+    }
+    seenIds[id] = true;
+  }
+
+  if (errors.length) {
+    var suffix = errors.length > 8 ? "；另有" + (errors.length - 8) + "項" : "";
+    throw new Error("課表匯入資料驗證失敗：" + errors.slice(0, 8).join("；") + suffix);
+  }
+  return { count: list.length, versionable: true };
 }
 
 function scheduleImportStateKey_(semesterId) {
@@ -3945,7 +4078,8 @@ function doPost(e) {
     requestId: "req_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8),
     action: "unknown",
     operator: "",
-    semesterId: ""
+    semesterId: "",
+    importVersion: ""
   };
   try {
     resetRequestContext_();
@@ -4294,6 +4428,21 @@ function doPost(e) {
       
     } else if (action === "saveScheduleCell") {
       if (!isAdmin) throw new Error("無管理員權限！");
+      reqData = normalizePatrolScheduleRow_(reqData);
+      if (isPatrolScheduleRow_(reqData)) {
+        var currentScheduleRows = getTableData("教師課表") || [];
+        var patrolDay = String(reqData["星期"] || "").trim();
+        var patrolPeriod = String(reqData["節次"] || "").trim();
+        var patrolId = String(reqData["課表ID"] || "").trim();
+        var hasPatrolConflict = currentScheduleRows.some(function (row) {
+          return String(row["學期代號"] || "").trim() === String(semesterId || "").trim()
+            && String(row["課表ID"] || "").trim() !== patrolId
+            && isPatrolScheduleRow_(row)
+            && String(row["星期"] || "").trim() === patrolDay
+            && String(row["節次"] || "").trim() === patrolPeriod;
+        });
+        if (hasPatrolConflict) throw new Error("同一星期與節次只能安排一位巡堂教師");
+      }
       reqData["學期代號"] = semesterId;
       saveRows("教師課表", [reqData], "課表ID");
       invalidateScheduleCaches_(semesterId);
@@ -4317,6 +4466,8 @@ function doPost(e) {
       var sheetImp = ssImp.getSheetByName("教師課表");
       if (!sheetImp) throw new Error("找不到教師課表工作表");
       var headersImp = getHeadersForSheet("教師課表");
+      var teacherSheetImp = ssImp.getSheetByName("教師名單");
+      var teacherHeadersImp = getHeadersForSheet("教師名單");
       var semKey = "學期代號";
       var sidStr = String(semesterId || "");
 
@@ -4330,72 +4481,107 @@ function doPost(e) {
         return s;
       });
 
+      validateScheduleImportRows_(list, sidStr);
+      // 所有快照先在寫入閘門外準備，避免內部回復讀取被匯入狀態阻擋。
+      var allExisting = getTableData("教師課表") || [];
+      var allTeacherExisting = getTableData("教師名單") || [];
+      var scheduleBackupRows = allExisting.map(function (row) {
+        return buildRowArray_("教師課表", headersImp, row);
+      });
+      var teacherBackupRows = allTeacherExisting.map(function (row) {
+        return buildRowArray_("教師名單", teacherHeadersImp, row);
+      });
+      var keptOtherSem = allExisting.filter(function (row) {
+        return String(row[semKey] || "") !== sidStr;
+      });
+      var outRows = [];
+      keptOtherSem.forEach(function (row) {
+        outRows.push(buildRowArray_("教師課表", headersImp, row));
+      });
+      list.forEach(function (row) {
+        outRows.push(buildRowArray_("教師課表", headersImp, row));
+      });
+      var importRows = list.map(function (row) {
+        return buildRowArray_("教師課表", headersImp, row);
+      });
+      var importVersion = createScheduleImportVersion_();
+      requestContext.importVersion = importVersion;
+      var stagingSheet = getOrCreateScheduleImportSheet_(ssImp, SCHEDULE_IMPORT_STAGING_SHEET_);
+      var scheduleBackupSheet = getOrCreateScheduleImportSheet_(ssImp, SCHEDULE_IMPORT_BACKUP_SHEET_);
+      var teacherBackupSheet = getOrCreateScheduleImportSheet_(ssImp, TEACHER_IMPORT_BACKUP_SHEET_);
+
       logOperation_("importSchedulesBatch", "started", {
         requestId: requestContext.requestId,
         operator: userEmail,
         semesterId: sidStr,
         count: list.length,
-        replaceAll: replaceAll
+        replaceAll: replaceAll,
+        version: importVersion
       });
+      writeScheduleSnapshotSheet_(stagingSheet, headersImp, replaceAll ? outRows : importRows);
+      writeScheduleImportBackupSheet_(scheduleBackupSheet, headersImp, scheduleBackupRows,
+        importVersion, sidStr, "教師課表");
+      writeScheduleImportBackupSheet_(teacherBackupSheet, teacherHeadersImp, teacherBackupRows,
+        importVersion, sidStr, "教師名單");
+
       // 讀取端不佔寫鎖；匯入期間先標記，避免快取未命中時掃到半成品。
-      setScheduleImportState_(sidStr, "writing");
-      _scheduleImportWriteContext_ = true;
-      if (replaceAll) {
-        // 一次讀取 → 保留其他學期 → 整表重寫（表頭 + 其他學期 + 本學期新資料）
-        var allExisting = getTableData("教師課表") || [];
-        var keptOtherSem = allExisting.filter(function (row) {
-          return String(row[semKey] || "") !== sidStr;
-        });
-        var outRows = [];
-        keptOtherSem.forEach(function (row) {
-          outRows.push(buildRowArray_("教師課表", headersImp, row));
-        });
-        list.forEach(function (row) {
-          outRows.push(buildRowArray_("教師課表", headersImp, row));
-        });
-        // 清空後一次寫入（比逐列 deleteRow 快一個數量級）
-        sheetImp.clearContents();
-        sheetImp.getRange(1, 1, 1, headersImp.length).setValues([headersImp]);
-        sheetImp.getRange(1, 1, 1, headersImp.length).setFontWeight("bold").setBackground("#f1f5f9");
-        if (outRows.length > 0) {
-          var WCHUNK = 500;
-          for (var wi = 0; wi < outRows.length; wi += WCHUNK) {
-            var block = outRows.slice(wi, wi + WCHUNK);
-            sheetImp.getRange(2 + wi, 1, block.length, headersImp.length).setValues(block);
+      var importStateStarted = false;
+      try {
+        setScheduleImportState_(sidStr, "writing");
+        importStateStarted = true;
+        _scheduleImportWriteContext_ = true;
+        if (replaceAll) {
+          // 暫存快照已驗證；正式表只在讀取閘門內一次覆寫。
+          writeScheduleSnapshotSheet_(sheetImp, headersImp, outRows);
+        } else {
+          // 非 S1：增量 append／更新
+          var CHUNK = 400;
+          for (var ci = 0; ci < list.length; ci += CHUNK) {
+            saveRows("教師課表", list.slice(ci, ci + CHUNK), "課表ID");
           }
         }
-      } else {
-        // 非 S1：增量 append／更新
-        var CHUNK = 400;
-        for (var ci = 0; ci < list.length; ci += CHUNK) {
-          saveRows("教師課表", list.slice(ci, ci + CHUNK), "課表ID");
+        if (reqData.teachers && reqData.teachers.length > 0) {
+          var tList = reqData.teachers.map(function (t) {
+            t[semKey] = semesterId;
+            return t;
+          });
+          saveRows("教師名單", tList, "教師Email");
         }
-      }
-      if (reqData.teachers && reqData.teachers.length > 0) {
-        var tList = reqData.teachers.map(function (t) {
-          t[semKey] = semesterId;
-          return t;
+        _scheduleImportWriteContext_ = false;
+        clearScheduleImportState_(sidStr);
+        invalidateScheduleCaches_(semesterId);
+        logOperation_("importSchedulesBatch", "completed", {
+          requestId: requestContext.requestId,
+          operator: userEmail,
+          semesterId: sidStr,
+          count: list.length,
+          replaceAll: replaceAll,
+          version: importVersion,
+          teachersAdded: (reqData.teachers && reqData.teachers.length) || 0
         });
-        saveRows("教師名單", tList, "教師Email");
+        return ContentService.createTextOutput(JSON.stringify({
+          success: true,
+          count: list.length,
+          replaceAll: !!replaceAll,
+          semesterOnly: true,
+          version: importVersion,
+          teachersAdded: (reqData.teachers && reqData.teachers.length) || 0
+        })).setMimeType(ContentService.MimeType.JSON);
+      } catch (importError) {
+        _scheduleImportWriteContext_ = false;
+        if (importStateStarted) {
+          try {
+            restoreScheduleImportSnapshots_(sheetImp, headersImp, scheduleBackupRows,
+              teacherSheetImp, teacherHeadersImp, teacherBackupRows);
+            clearScheduleImportState_(sidStr);
+            invalidateScheduleCaches_(semesterId);
+            requestContext.importRolledBack = true;
+          } catch (restoreError) {
+            requestContext.importRollbackError = String(restoreError);
+          }
+        }
+        throw importError;
       }
-      _scheduleImportWriteContext_ = false;
-      clearScheduleImportState_(sidStr);
-      invalidateScheduleCaches_(semesterId);
-      logOperation_("importSchedulesBatch", "completed", {
-        requestId: requestContext.requestId,
-        operator: userEmail,
-        semesterId: sidStr,
-        count: list.length,
-        replaceAll: replaceAll,
-        teachersAdded: (reqData.teachers && reqData.teachers.length) || 0
-      });
-      return ContentService.createTextOutput(JSON.stringify({
-        success: true,
-        count: list.length,
-        replaceAll: !!replaceAll,
-        semesterOnly: true,
-        teachersAdded: (reqData.teachers && reqData.teachers.length) || 0
-      })).setMimeType(ContentService.MimeType.JSON);
       
     } else if (action === "saveHomeroomCoverTeacher") {
       if (!isAdmin) throw new Error("無管理員權限！");
@@ -5256,6 +5442,9 @@ function doPost(e) {
         requestId: requestContext.requestId,
         operator: requestContext.operator,
         semesterId: requestContext.semesterId,
+        version: requestContext.importVersion,
+        rolledBack: requestContext.importRolledBack === true,
+        rollbackError: requestContext.importRollbackError || "",
         error: String(err)
       });
     }

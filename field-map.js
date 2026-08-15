@@ -137,8 +137,11 @@ window.FieldMap = (function () {
     let subj = String(pick(s, ['科目', 'subject']) || '').trim();
     let attr = String(pick(s, ['課堂屬性', 'attr']) || '').trim();
     // 基礎課表常見：科目或班級寫「巡堂」、屬性空白 → 正規成 attr=巡堂
-    if ((!attr || attr === '一般') && (cn === '巡堂' || subj === '巡堂')) {
+    const isPatrol = attr.indexOf('巡堂') >= 0 || cn.indexOf('巡堂') >= 0 || subj.indexOf('巡堂') >= 0;
+    if (isPatrol) {
       attr = '巡堂';
+      cn = '';
+      subj = '';
     }
     return {
       id: pick(s, ['課表ID', 'id']),

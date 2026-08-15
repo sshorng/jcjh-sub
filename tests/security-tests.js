@@ -185,6 +185,48 @@ _requestSpreadsheet_ = null;
 _requestSpreadsheetKey_ = '';
 assert.strictEqual(getSpreadsheet(), activeSpreadsheet);
 assert.strictEqual(getActiveSpreadsheetFallbackDefault_(), 'true');
+const validScheduleRows = [
+  { '學期代號': '115-1', '課表ID': 'sched-701', '教師Email': 'teacher@school.example', '教師姓名': '王老師', '星期': 1, '節次': 1, '班級': '701', '科目': '國文', '課堂屬性': '一般', '調課限制': '' },
+  { '學期代號': '115-1', '課表ID': 'sched-702', '教師Email': 'teacher@school.example', '教師姓名': '王老師', '星期': 1, '節次': 1, '班級': '702', '科目': '國文', '課堂屬性': '一般', '調課限制': '' }
+];
+const validationResult = validateScheduleImportRows_(validScheduleRows, '115-1');
+assert.strictEqual(validationResult.count, 2);
+assert.strictEqual(validationResult.versionable, true);
+assert.throws(
+  () => validateScheduleImportRows_([validScheduleRows[0], Object.assign({}, validScheduleRows[0], { '課表ID': 'sched-duplicate' })], '115-1'),
+  /同一教師／時段／班級／科目重複/
+);
+assert.throws(
+  () => validateScheduleImportRows_([Object.assign({}, validScheduleRows[0], { '教師Email': 'invalid-email' })], '115-1'),
+  /教師Email不正確/
+);
+const patrolRow = {
+  '學期代號': '115-1', '課表ID': 'sched-patrol', '教師Email': 'patrol@school.example',
+  '教師姓名': '巡堂老師', '星期': 2, '節次': 3, '班級': '', '科目': '', '課堂屬性': '巡堂'
+};
+assert.strictEqual(validateScheduleImportRows_([patrolRow], '115-1').count, 1);
+assert.throws(
+  () => validateScheduleImportRows_([patrolRow, Object.assign({}, patrolRow, { '課表ID': 'sched-patrol-2', '教師Email': 'patrol2@school.example' })], '115-1'),
+  /同一星期與節次只能安排一位巡堂教師/
+);
+const snapshotValueWrites = [];
+const fakeSnapshotSheet = {
+  clearContents() {},
+  getRange() {
+    return {
+      setValues(values) { snapshotValueWrites.push(values); return this; },
+      setFontWeight() { return this; },
+      setBackground() { return this; }
+    };
+  }
+};
+writeScheduleSnapshotSheet_(fakeSnapshotSheet, ['欄A', '欄B'], [['值A', '值B']]);
+assert.strictEqual(snapshotValueWrites[0][0][0], '欄A');
+assert.strictEqual(snapshotValueWrites[1][0][1], '值B');
+const backupResult = writeScheduleImportBackupSheet_(fakeSnapshotSheet, ['欄A'], [['值A']], 'sched-test', '115-1', '教師課表');
+assert.strictEqual(backupResult.version, 'sched-test');
+assert.strictEqual(snapshotValueWrites[2][0][0], '備份版本');
+assert.strictEqual(snapshotValueWrites[3][0][0], 'sched-test');
 const deletedRanges = [];
 deleteSheetRowsDescending_({
   deleteRows(start, count) { deletedRanges.push([start, count]); }

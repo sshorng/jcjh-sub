@@ -192,6 +192,7 @@ window.UiAdmin = (function () {
       var teachersSet = new Set();
       var skippedRows = [];
       var multiSlotKeys = {};
+      var patrolSlotKeys = {};
       var resolvedByName = 0;
       if (!mappingFields.value.teacherName ||
           !mappingFields.value.subject || !mappingFields.value.dayOfWeek ||
@@ -244,8 +245,8 @@ window.UiAdmin = (function () {
               '缺：' + missP.join('、') + '（巡堂可省略班級／科目）');
             continue;
           }
-          subject = subject || '巡堂';
-          className = className || '巡堂';
+           subject = '';
+           className = '';
         } else if (!name || !subject || !dayRaw || !periodRaw || !className) {
           pushSkip(skippedRows, lineNo, '欄位不完整', snippet,
             buildSkipMissing(name, emailRaw, dayRaw, periodRaw, className, subject, 'incomplete'));
@@ -285,15 +286,24 @@ window.UiAdmin = (function () {
             buildSkipMissing(name, emailRaw, dayRaw, periodRaw, className, subject, 'day', dayRaw));
           continue;
         }
-        var period = (window.DateUtils && window.DateUtils.parsePeriod)
-          ? window.DateUtils.parsePeriod(periodRaw)
-          : parseInt(periodRaw, 10);
+         var period = (window.DateUtils && window.DateUtils.parsePeriod)
+           ? window.DateUtils.parsePeriod(periodRaw)
+           : parseInt(periodRaw, 10);
         if (isNaN(period) || !(period === 45 || (period >= 1 && period <= 8))) {
           pushSkip(skippedRows, lineNo, '節次格式錯誤', snippet,
             buildSkipMissing(name, emailRaw, dayRaw, periodRaw, className, subject, 'period', periodRaw));
-          continue;
-        }
-        var slotKey = email + '|' + dayOfWeek + '|' + period;
+           continue;
+         }
+         if (isPatrol) {
+           var patrolSlotKey = dayOfWeek + '|' + period;
+           if (patrolSlotKeys[patrolSlotKey]) {
+             pushSkip(skippedRows, lineNo, '同一星期與節次已有巡堂', snippet,
+               '同一星期、節次只能安排一位巡堂教師');
+             continue;
+           }
+           patrolSlotKeys[patrolSlotKey] = true;
+         }
+         var slotKey = email + '|' + dayOfWeek + '|' + period;
         multiSlotKeys[slotKey] = (multiSlotKeys[slotKey] || 0) + 1;
 
         // 僅當列有填 Email 且名單沒有時，才一併新建教師
