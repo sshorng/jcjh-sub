@@ -361,11 +361,13 @@ function rowArrayToObject_(sheetName, headers, row) {
 // 同一次 doPost／doGet 內的服務物件與資料快取。
 var _tableDataMem_ = {}; // sheetName -> rows[]
 var _headersMem_ = {}; // sheetName -> headers[]
+var _scheduleImportWriteContext_ = false;
 function resetRequestContext_() {
   _requestSpreadsheet_ = null;
   _requestSpreadsheetKey_ = "";
   _tableDataMem_ = {};
   _headersMem_ = {};
+  _scheduleImportWriteContext_ = false;
 }
 
 function bustTableDataMem_(sheetName) {
@@ -379,6 +381,7 @@ function bustTableDataMem_(sheetName) {
 // 讀取工作表並轉換為物件陣列（二維陣列一次性讀取；請求內 mem）
 function getTableData(sheetName) {
   var name = String(sheetName || "");
+  if (name === "教師課表" && !_scheduleImportWriteContext_) assertScheduleReadable_();
   if (name && _tableDataMem_[name]) return _tableDataMem_[name];
   const ss = getSpreadsheet();
   let sheet = ss.getSheetByName(name);
@@ -1029,16 +1032,42 @@ function scheduleImportStateKey_(semesterId) {
   return "jcjh_schedule_import_" + String(semesterId || "");
 }
 
+function scheduleImportActiveKey_() {
+  return "jcjh_schedule_import_active";
+}
+
 function setScheduleImportState_(semesterId, state) {
-  CacheService.getScriptCache().put(scheduleImportStateKey_(semesterId), String(state || "writing"), 180);
+  var cache = CacheService.getScriptCache();
+  var activeKey = scheduleImportActiveKey_();
+  if (cache.get(activeKey)) {
+    throw new Error("已有課表匯入正在處理或前次匯入未完成，請稍後再試");
+  }
+  var stateValue = String(state || "writing");
+  var payload = JSON.stringify({
+    semesterId: String(semesterId || ""),
+    state: stateValue,
+    startedAt: Date.now()
+  });
+  cache.put(scheduleImportStateKey_(semesterId), stateValue, 180);
+  cache.put(activeKey, payload, 180);
 }
 
 function clearScheduleImportState_(semesterId) {
-  removeCacheEntries_(CacheService.getScriptCache(), [scheduleImportStateKey_(semesterId)]);
+  removeCacheEntries_(CacheService.getScriptCache(), [scheduleImportStateKey_(semesterId), scheduleImportActiveKey_()]);
 }
 
 function getScheduleImportState_(semesterId) {
   return CacheService.getScriptCache().get(scheduleImportStateKey_(semesterId)) || "";
+}
+
+function isScheduleImportInProgress_() {
+  return !!CacheService.getScriptCache().get(scheduleImportActiveKey_());
+}
+
+function assertScheduleReadable_(semesterId) {
+  if (isScheduleImportInProgress_() || (semesterId && getScheduleImportState_(semesterId))) {
+    throw new Error("課表匯入處理中，請稍後再試");
+  }
 }
 
 /** 清除公開班級課表快取（核准／寫入後立即失效） */
@@ -1218,15 +1247,13 @@ function sanitizeSettingsForReader_(settings, readerEmail, isAdmin, isStaff, tea
 /** 分層讀取：課表（長 TTL）— 快取存瘦身列 */
 function getSemesterSchedulesCached_(semesterId) {
   var key = "jcjh_sched_" + String(semesterId || "");
+  assertScheduleReadable_(semesterId);
   var raw = getCacheChunked(key);
   if (raw) {
     try {
       var cached = JSON.parse(raw);
       if (Array.isArray(cached)) return slimScheduleRows_(cached);
     } catch (e) {}
-  }
-  if (getScheduleImportState_(semesterId)) {
-    throw new Error("課表匯入處理中，請稍後再試");
   }
   var rows = getTableData("教師課表").filter(function (s) { return String(s["學期代號"] || "").trim() === String(semesterId || "").trim(); });
   var slim = slimScheduleRows_(rows);
@@ -3914,11 +3941,19 @@ function persistRequestRowsWithQuota_(rows, operatorEmail) {
 
 // ----------------- 主入口：doPost（讀寫） -----------------
 function doPost(e) {
+  var requestContext = {
+    requestId: "req_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8),
+    action: "unknown",
+    operator: "",
+    semesterId: ""
+  };
   try {
     resetRequestContext_();
     ensureInit_();
     const postData = JSON.parse(e.postData.contents);
     const action = postData.action;
+    requestContext.action = String(action || "unknown");
+    requestContext.semesterId = String(postData.semesterId || "");
 
     // 讀取類：不佔寫入鎖；getPublicClassData 免 Token
     if (action === "getInitialData" || action === "getMetaData" || action === "getPublicClassData"
@@ -3935,6 +3970,7 @@ function doPost(e) {
     const currentUrl = postData.currentUrl || "";
     const user = verifyGoogleIdToken(idToken);
     const userEmail = user.email.toLowerCase();
+    requestContext.operator = userEmail;
     // 權限用快取教師名單；寫入教師結構的 action 仍會 invalidate
     const teachers = getSemesterTeachersCached_(semesterId) || [];
     const currentTeacher = teachers.find(function (t) {
@@ -4294,8 +4330,16 @@ function doPost(e) {
         return s;
       });
 
+      logOperation_("importSchedulesBatch", "started", {
+        requestId: requestContext.requestId,
+        operator: userEmail,
+        semesterId: sidStr,
+        count: list.length,
+        replaceAll: replaceAll
+      });
       // 讀取端不佔寫鎖；匯入期間先標記，避免快取未命中時掃到半成品。
       setScheduleImportState_(sidStr, "writing");
+      _scheduleImportWriteContext_ = true;
       if (replaceAll) {
         // 一次讀取 → 保留其他學期 → 整表重寫（表頭 + 其他學期 + 本學期新資料）
         var allExisting = getTableData("教師課表") || [];
@@ -4334,8 +4378,17 @@ function doPost(e) {
         });
         saveRows("教師名單", tList, "教師Email");
       }
+      _scheduleImportWriteContext_ = false;
       clearScheduleImportState_(sidStr);
       invalidateScheduleCaches_(semesterId);
+      logOperation_("importSchedulesBatch", "completed", {
+        requestId: requestContext.requestId,
+        operator: userEmail,
+        semesterId: sidStr,
+        count: list.length,
+        replaceAll: replaceAll,
+        teachersAdded: (reqData.teachers && reqData.teachers.length) || 0
+      });
       return ContentService.createTextOutput(JSON.stringify({
         success: true,
         count: list.length,
@@ -5197,6 +5250,15 @@ function doPost(e) {
       try { flushDeferredMails_(); } catch (ignM) { logError_("flushDeferredMails_", ignM); }
     }
   } catch (err) {
+    _scheduleImportWriteContext_ = false;
+    if (requestContext.action === "importSchedulesBatch") {
+      logOperation_("importSchedulesBatch", "failed", {
+        requestId: requestContext.requestId,
+        operator: requestContext.operator,
+        semesterId: requestContext.semesterId,
+        error: String(err)
+      });
+    }
     try { flushDeferredMails_(); } catch (ignM2) {}
     return ContentService.createTextOutput(JSON.stringify({ success: false, error: err.toString() }))
       .setMimeType(ContentService.MimeType.JSON);
@@ -5274,6 +5336,29 @@ function logError_(action, err) {
     }
     logSheet.appendRow([toLocalTimeStr(new Date()), action, String(err)]);
   } catch(e) {}
+}
+
+function logOperation_(action, status, details) {
+  try {
+    const ss = getSpreadsheet();
+    var logSheet = ss.getSheetByName("操作日誌");
+    if (!logSheet) {
+      logSheet = ss.insertSheet("操作日誌");
+      logSheet.appendRow(["時間", "操作", "狀態", "操作者", "學期代號", "請求ID", "摘要"]);
+      logSheet.getRange(1, 1, 1, 7).setFontWeight("bold").setBackground("#e0f2fe");
+    }
+    var data = details || {};
+    var summary = typeof data === "string" ? data : JSON.stringify(data);
+    logSheet.appendRow([
+      toLocalTimeStr(new Date()),
+      String(action || ""),
+      String(status || ""),
+      String(data.operator || ""),
+      String(data.semesterId || ""),
+      String(data.requestId || ""),
+      summary
+    ]);
+  } catch (e) {}
 }
 
 // ============================================================
