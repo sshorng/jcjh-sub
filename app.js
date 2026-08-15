@@ -2811,33 +2811,48 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       return [...set].sort((a, b) => a.localeCompare(b, 'zh-Hant', { numeric: true }));
     });
 
-    // P2：只建「目前選取班」的格（全校班 map 太重）
+    const parseScheduleClasses = (raw) => (window.DateUtils && window.DateUtils.parseCombinedClasses)
+      ? window.DateUtils.parseCombinedClasses(raw)
+      : String(raw || '').split(/[、,，/／|｜\s]+/).map(s => s.trim()).filter(Boolean);
+
+    // P1：班級索引只隨基礎課表重建，切換班級時不再掃描全校課表。
+    const classScheduleIndex = computed(() => {
+      const map = {};
+      allSchedules.value.forEach(s => {
+        if (!s.className || s.attr === '抽離' || s.isPullOut) return;
+        const classes = parseScheduleClasses(s.className);
+        if (!classes.length) return;
+        classes.forEach(cls => {
+          if (!map[cls]) map[cls] = [];
+          map[cls].push({
+            schedule: s,
+            isCombined: classes.length > 1,
+            combinedWith: classes.filter(other => other !== cls).join('、')
+          });
+        });
+      });
+      return map;
+    });
+
+    // 只建「目前選取班」的格；週次判斷仍在此層處理。
     // 併班：班級欄寫「701、702」時，701 與 702 班級課表都會看到此節
     const classSchedules = computed(() => {
       const map = {};
       const cls = String(selectedClass.value || '').trim();
       if (!cls) return map;
       const weekDates = selectedClassWeekDates.value || [];
-      const parseClasses = (window.DateUtils && window.DateUtils.parseCombinedClasses)
-        ? window.DateUtils.parseCombinedClasses
-        : (raw) => String(raw || '').split(/[、,，/／|｜\s]+/).map(s => s.trim()).filter(Boolean);
-      allSchedules.value.forEach(s => {
-        if (!s.className) return;
-        // 抽離一律不進班級課表（含併班）
-        if (s.attr === '抽離' || s.isPullOut) return;
-        const classes = parseClasses(s.className);
-        if (!classes.length) return;
-        if (!classes.some(c => c === cls)) return;
+      const rows = classScheduleIndex.value[cls] || [];
+      rows.forEach(entry => {
+        const s = entry.schedule;
         const dateStr = weekDates[parseInt(s.dayOfWeek, 10) - 1];
         if (s.attr === '單週' && dateStr && !isSingleWeek(dateStr)) return;
         if (s.attr === '雙週' && dateStr && isSingleWeek(dateStr)) return;
         if (!map[cls]) map[cls] = {};
         const key = `${s.dayOfWeek}-${s.period}`;
         if (!map[cls][key]) map[cls][key] = [];
-        const others = classes.filter(c => c !== cls);
         map[cls][key].push(Object.assign({}, s, {
-          _isCombined: classes.length > 1,
-          _combinedWith: others.length ? others.join('、') : ''
+          _isCombined: entry.isCombined,
+          _combinedWith: entry.combinedWith
         }));
       });
       return map;

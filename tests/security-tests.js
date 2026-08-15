@@ -111,6 +111,11 @@ assert.match(gasApiSource, /cancelAllInflight/);
 assert.match(appSource, /const _dataLoadSeq|let _dataLoadSeq/);
 assert.match(appSource, /const optimisticPatchRequestStatuses\s*=\s*\(updates\)/);
 assert.match(appSource, /ensureExportAccounting/);
+assert.match(appSource, /const classScheduleIndex = computed/);
+const classScheduleBlockStart = appSource.indexOf('const classSchedules = computed');
+const classScheduleBlockEnd = appSource.indexOf('const timetablePeriods', classScheduleBlockStart);
+assert.ok(classScheduleBlockStart >= 0 && classScheduleBlockEnd > classScheduleBlockStart);
+assert.strictEqual(appSource.slice(classScheduleBlockStart, classScheduleBlockEnd).includes('allSchedules.value.forEach'), false);
 assert.strictEqual(/<script\s+defer\s+src=["']export-accounting\.js/i.test(indexSource), false);
 assert.strictEqual(indexSource.includes('20260814-p2'), false);
 assert.strictEqual(new Set(Array.from(indexSource.matchAll(/(?:src|href)="[^"]+\?v=([^"']+)/g), m => m[1])).size, 1);
@@ -172,6 +177,11 @@ _requestSpreadsheet_ = null;
 _requestSpreadsheetKey_ = '';
 assert.strictEqual(getSpreadsheet(), activeSpreadsheet);
 assert.strictEqual(getActiveSpreadsheetFallbackDefault_(), 'true');
+const deletedRanges = [];
+deleteSheetRowsDescending_({
+  deleteRows(start, count) { deletedRanges.push([start, count]); }
+}, [2, 3, 5, 7, 8, 8]);
+assert.deepStrictEqual(deletedRanges, [[7, 2], [5, 1], [2, 2]]);
 const generationBefore = getCacheGeneration_('data', '115-1');
 assert.strictEqual(getCacheGeneration_('data', '115-1'), generationBefore);
 const generationAfter = bumpCacheGeneration_('data', '115-1');

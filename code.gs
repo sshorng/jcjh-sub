@@ -703,7 +703,29 @@ function saveRowsFullRewrite_(sheetName, rowsToSave, keyName) {
   if (sheetName === "系統設定") bustSettingsMapCache_();
 }
 
-// 刪除特定行（增量：只刪對應列，由下往上刪避免位移）
+function deleteSheetRowsDescending_(sheet, targets) {
+  var seen = {};
+  var rows = (targets || []).map(function (row) { return parseInt(row, 10); }).filter(function (row) {
+    if (!row || seen[row]) return false;
+    seen[row] = true;
+    return true;
+  }).sort(function (a, b) { return b - a; });
+  var i = 0;
+  while (i < rows.length) {
+    var end = rows[i];
+    var start = end;
+    i++;
+    while (i < rows.length && rows[i] === start - 1) {
+      start = rows[i];
+      i++;
+    }
+    var count = end - start + 1;
+    if (typeof sheet.deleteRows === "function") sheet.deleteRows(start, count);
+    else for (var row = end; row >= start; row--) sheet.deleteRow(row);
+  }
+}
+
+// 刪除特定行（增量：連續列合併成一次 deleteRows）
 function deleteRows(sheetName, keyName, keyValue, rowFilter) {
   const ss = getSpreadsheet();
   let sheet = ss.getSheetByName(sheetName);
@@ -723,19 +745,20 @@ function deleteRows(sheetName, keyName, keyValue, rowFilter) {
       if (!filteredRow || String(filteredRow[keyName]) !== targetKey) continue;
       if (rowFilter(filteredRow)) targets.push(fi + 1);
     }
-    for (var ti = targets.length - 1; ti >= 0; ti--) sheet.deleteRow(targets[ti]);
+    deleteSheetRowsDescending_(sheet, targets);
     bustTableDataMem_(sheetName);
     if (sheetName === "系統設定") bustSettingsMapCache_();
     return;
   }
   const keyVals = sheet.getRange(2, keyCol, lastRow - 1, 1).getValues();
   const target = String(keyValue);
-  // 由下往上刪
+  var targetsByKey = [];
   for (var i = keyVals.length - 1; i >= 0; i--) {
     if (String(keyVals[i][0]) === target) {
-      sheet.deleteRow(i + 2);
+      targetsByKey.push(i + 2);
     }
   }
+  deleteSheetRowsDescending_(sheet, targetsByKey);
   bustTableDataMem_(sheetName);
   if (sheetName === "系統設定") bustSettingsMapCache_();
 }
@@ -753,7 +776,7 @@ function deleteRowsBySemester_(sheetName, semesterId) {
   for (var i = 1; i < values.length; i++) {
     if (String(values[i][semCol] == null ? "" : values[i][semCol]).trim() === sid) targets.push(i + 1);
   }
-  for (var j = targets.length - 1; j >= 0; j--) sheet.deleteRow(targets[j]);
+  deleteSheetRowsDescending_(sheet, targets);
   if (targets.length) bustTableDataMem_(sheetName);
   return targets.length;
 }
