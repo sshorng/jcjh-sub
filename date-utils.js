@@ -26,11 +26,11 @@ window.DateUtils = (function () {
   }
 
   /**
-   * 課表節次列（含午休）
-   * 午休內部代碼 45，顯示「午休」，時段 12:35–13:15（第4節與第5節之間）
+   * 課表節次列：0＝早自習，45＝午休；1～8 保留原節次。
    */
-  var TIMETABLE_PERIODS = [1, 2, 3, 4, 45, 5, 6, 7, 8];
+  var EARLY_PERIOD = 0;
   var LUNCH_PERIOD = 45;
+  var TIMETABLE_PERIODS = [EARLY_PERIOD, 1, 2, 3, 4, LUNCH_PERIOD, 5, 6, 7, 8];
 
   function getTimetablePeriods() {
     return TIMETABLE_PERIODS.slice();
@@ -38,29 +38,37 @@ window.DateUtils = (function () {
 
   function isLunchPeriod(p) {
     var n = parseInt(p, 10);
-    return n === LUNCH_PERIOD || n === 0 && String(p).trim() === '0';
+    return n === LUNCH_PERIOD;
   }
 
-  /** 解析節次：1–8、45／午休／午／lunch */
+  function isEarlyPeriod(p) {
+    return parseInt(p, 10) === EARLY_PERIOD;
+  }
+
+  /** 解析節次：0／早自習、1–8、45／午休／午／lunch */
   function parsePeriod(raw) {
     if (raw == null || raw === '') return NaN;
     var s = String(raw).trim();
+    if (/^(早自習|早讀|晨間|晨間工作|morning|early)$/i.test(s)) return EARLY_PERIOD;
     if (/^(午休|午|lunch|LUNCH)$/i.test(s)) return LUNCH_PERIOD;
-    if (s === '45' || s === '0') return LUNCH_PERIOD;
+    if (s === '0') return EARLY_PERIOD;
+    if (s === '45') return LUNCH_PERIOD;
     var n = parseInt(s, 10);
     if (n === LUNCH_PERIOD) return LUNCH_PERIOD;
+    if (n === EARLY_PERIOD) return EARLY_PERIOD;
     if (!isNaN(n) && n >= 1 && n <= 8) return n;
     return NaN;
   }
-
+  /** 檢查節次是否為系統支援的固定節次。 */
   function isValidPeriod(p) {
     var n = parsePeriod(p);
-    return !isNaN(n) && (n === LUNCH_PERIOD || (n >= 1 && n <= 8));
+    return !isNaN(n) && (n === EARLY_PERIOD || n === LUNCH_PERIOD || (n >= 1 && n <= 8));
   }
 
   /** 顯示用節次標籤 */
   function getPeriodLabel(p) {
     var n = parseInt(p, 10);
+    if (n === EARLY_PERIOD) return '早自習';
     if (n === LUNCH_PERIOD) return '午休';
     if (!isNaN(n) && n >= 1 && n <= 8) return String(n);
     return String(p == null ? '' : p);
@@ -69,6 +77,7 @@ window.DateUtils = (function () {
   /** 「第N節」文案（午休不寫「第」） */
   function formatPeriodText(p) {
     var n = parseInt(p, 10);
+    if (n === EARLY_PERIOD) return '早自習';
     if (n === LUNCH_PERIOD) return '午休';
     if (!isNaN(n) && n >= 1 && n <= 8) return '第' + n + '節';
     return String(p == null ? '' : p);
@@ -77,6 +86,7 @@ window.DateUtils = (function () {
   function getPeriodTimeSpan(p) {
     // 建成國中課堂時間表（含午休抽離／特教／資優）
     const times = {
+      0: '07:40-08:30',
       1: '08:30-09:15',
       2: '09:25-10:10',
       3: '10:20-11:05',
@@ -206,7 +216,9 @@ window.DateUtils = (function () {
     TIMETABLE_PERIODS,
     LUNCH_PERIOD,
     getTimetablePeriods,
+    EARLY_PERIOD,
     isLunchPeriod,
+    isEarlyPeriod,
     parsePeriod,
     isValidPeriod,
     getPeriodLabel,

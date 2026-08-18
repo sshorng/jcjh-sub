@@ -760,7 +760,7 @@ window.DomainActivityCover = (function () {
           if (!dow) return;
           var periodList = (window.DateUtils && window.DateUtils.getTimetablePeriods)
             ? window.DateUtils.getTimetablePeriods()
-            : [1, 2, 3, 4, 5, 6, 7, 8];
+             : [0, 1, 2, 3, 4, 45, 5, 6, 7, 8];
           for (var pi = 0; pi < periodList.length; pi++) {
             var p = periodList[pi];
             var cell = null;
@@ -782,8 +782,8 @@ window.DomainActivityCover = (function () {
           if (emailKey(s.teacherEmail) !== em) return;
           if (parseInt(s.dayOfWeek, 10) !== dow) return;
           var per = parseInt(s.period, 10);
-          // 允許午休 45；其餘僅 1–8
-          if (!per || (per !== 45 && (per < 1 || per > 8))) return;
+          // 允許早自習 0、午休 45；其餘僅 1–8
+          if (!(per === 0 || per === 45 || (per >= 1 && per <= 8))) return;
           var attr = String(s.attr || '');
           if (attr === '抽離' || attr === '巡堂') return;
           if (window.DomainSchedule && window.DomainSchedule.isPatrolAttr

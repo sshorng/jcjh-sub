@@ -255,6 +255,8 @@ window.DomainMatch = (function () {
     });
     const res = [];
     var leaveP = parseInt(leavePeriod, 10);
+    var leaveIsEarly = leaveP === 0 || (window.DateUtils && window.DateUtils.isEarlyPeriod
+      && window.DateUtils.isEarlyPeriod(leavePeriod));
     var leaveIsLunch = leaveP === 45 || (window.DateUtils && window.DateUtils.isLunchPeriod
       && window.DateUtils.isLunchPeriod(leavePeriod));
 
@@ -283,11 +285,14 @@ window.DomainMatch = (function () {
       const isTargetFreeAtLeave = isSlotFreeForMatch(cellAtLeave, awaySet);
 
       var schedP = parseInt(sched.period, 10);
+      var schedIsEarly = schedP === 0 || (window.DateUtils && window.DateUtils.isEarlyPeriod
+        && window.DateUtils.isEarlyPeriod(sched.period));
       var schedIsLunch = schedP === 45 || (window.DateUtils && window.DateUtils.isLunchPeriod
         && window.DateUtils.isLunchPeriod(sched.period));
-      // 第8節只對第8；午休只對午休；一般 1–7 互對
+      // 第8節只對第8；早自習與午休各自對應；一般 1–7 互對
       if (leaveP === 8 && schedP !== 8) return;
       if (leaveP !== 8 && schedP === 8) return;
+      if (leaveIsEarly !== schedIsEarly) return;
       if (leaveIsLunch !== schedIsLunch) return;
 
       if (isRequesterFreeAtTarget && isTargetFreeAtLeave) {

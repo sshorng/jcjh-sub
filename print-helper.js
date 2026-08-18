@@ -63,12 +63,13 @@ function generateFormHtml(g, currentType, ctx) {
   const getWeekDayText = ctx.getWeekDayText;
   const getPeriodChinese = (p) => {
     const n = parseInt(p, 10);
+    if (n === 0) return '早自習';
     if (n === 45) return '午休';
     return ['', '第一節', '第二節', '第三節', '第四節', '第五節', '第六節', '第七節', '第八節'][n] || String(p);
   };
   const printPeriodList = (window.DateUtils && window.DateUtils.getTimetablePeriods)
     ? window.DateUtils.getTimetablePeriods()
-    : [1, 2, 3, 4, 5, 6, 7, 8];
+    : [0, 1, 2, 3, 4, 45, 5, 6, 7, 8];
   const reprintClass = g.isReprint ? 'is-reprint' : '';
 
   const getOriginalSubject = (rec) => {

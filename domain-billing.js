@@ -1,6 +1,6 @@
 /**
  * 大鐘點／代課費領域邏輯（純函式）
- * 1～7：超鐘／代課費一軌
+ * 早自習／1～7／午休：超鐘／代課費一軌
  * 第8節：獨立「誰上誰拿」（空堂事件日該班不發）
  */
 window.DomainBilling = (function () {
@@ -46,16 +46,17 @@ window.DomainBilling = (function () {
 
   /**
    * 是否計入「每週排課鐘點」
-   * - 節次：1–7 或 午休 45
+   * - 節次：早自習 0、1–7 或 午休 45
    * - 屬性：基本／一般／超鐘點／抽離（空屬性視同一般）
    * - 不含：巡堂、第8、課輔（第8）、單雙週課輔
    */
   function isWeeklyHoursSlot(s) {
     if (!s) return false;
     var p = parseInt(s.period, 10);
+    var isSpecial = p === 0 || p === 45;
     var isLunch = p === 45 || (window.DateUtils && window.DateUtils.isLunchPeriod
       && window.DateUtils.isLunchPeriod(s.period));
-    if (!(isLunch || (p >= 1 && p <= 7))) return false;
+    if (!(isSpecial || isLunch || (p >= 1 && p <= 7))) return false;
     var a = String(s.attr || '').trim();
     if (!a || a === '一般' || a === '基本' || a === '超鐘點' || a === '抽離') return true;
     // 舊匯入可能寫「實支」仍計（與有課同）
@@ -63,10 +64,10 @@ window.DomainBilling = (function () {
     return false;
   }
 
-  /** 請假／代課是否落在「週鐘點節次」（1–7 或午休） */
+  /** 請假／代課是否落在「週鐘點節次」（早自習0、1–7 或午休） */
   function isWeeklyHoursPeriod(period) {
     var p = parseInt(period, 10);
-    if (p === 45) return true;
+    if (p === 0 || p === 45) return true;
     if (window.DateUtils && window.DateUtils.isLunchPeriod && window.DateUtils.isLunchPeriod(period)) return true;
     return p >= 1 && p <= 7;
   }
@@ -340,7 +341,7 @@ window.DomainBilling = (function () {
         ? 0
         : (parseInt(t.baseHours, 10) || 16);
 
-      // 週鐘點：1–7＋午休(45)；基本／一般／超鐘點／抽離皆計；巡堂／第8／課輔單雙週不算
+      // 週鐘點：早自習0＋1–7＋午休(45)；抽離等一般授課屬性皆計
       var weeklyPeriods = allSchedules.filter(function (s) {
         return emailKey(s.teacherEmail) === em && isWeeklyHoursSlot(s);
       }).length;
@@ -357,7 +358,7 @@ window.DomainBilling = (function () {
       }
       var weeklyOvertime = Math.max(0, weeklyPeriods - baseHours);
 
-      // 1～7＋午休 請假／代課（不含第8）
+      // 早自習0＋1～7＋午休 請假／代課（不含第8）
       var leaveRecords = monthlyRecords.filter(function (r) {
         return r.originalTeacherEmail === email && r.type === 'substitution' && isWeeklyHoursPeriod(r.period);
       });
@@ -614,7 +615,7 @@ window.DomainBilling = (function () {
     function formatPeriodChinese(p) {
       if (p === null || p === undefined || p === '' || p === '代導') return '';
       var pStr = String(p).trim();
-      var map = { '1': '一', '2': '二', '3': '三', '4': '四', '5': '五', '6': '六', '7': '七', '8': '八', '0': '午休' };
+      var map = { '0': '早自習', '1': '一', '2': '二', '3': '三', '4': '四', '5': '五', '6': '六', '7': '七', '8': '八', '45': '午休' };
       if (map[pStr]) return map[pStr];
       return pStr;
     }

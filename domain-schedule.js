@@ -54,7 +54,10 @@ window.DomainSchedule = (function () {
       } catch (e) {}
     }
     var weekPart = dayText ? '(' + dayText + ')' : '';
-    return mmdd + weekPart + ' ' + period;
+    var periodLabel = (window.DateUtils && window.DateUtils.formatPeriodText)
+      ? window.DateUtils.formatPeriodText(period)
+      : (parseInt(period, 10) === 0 ? '早自習' : (parseInt(period, 10) === 45 ? '午休' : '第' + period + '節'));
+    return mmdd + weekPart + ' ' + periodLabel;
   }
 
   function buildSubstitutionsLookup(records) {

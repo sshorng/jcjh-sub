@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>建成國中線上調代課系統</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📅</text></svg>">
-  <link rel="stylesheet" href="style.css?v=20260815-p10">
+  <link rel="stylesheet" href="style.css?v=20260817-scheduling-palette">
   <!-- 手機版獨立樣式：不影響桌機 -->
   <link rel="stylesheet" href="mobile.css" media="(max-width: 768px)">
   
@@ -357,7 +357,7 @@
                     <input type="date" class="form-control form-date-xs" v-model="mutualActivityEnd">
                   </label>
                   <button type="button" class="btn btn-secondary btn-xs" @click="setMutualActivityThisWeek">本週</button>
-                  <span class="text-mutual-hint">期間：{{ mutualCoverStats.rangeLabel || '—' }}（{{ mutualCoverStats.rangeDays || 0 }} 天）</span>
+                   <span class="text-mutual-hint">期間：{{ mutualCoverStats.rangeLabel || '未設定' }}（{{ mutualCoverStats.rangeDays || 0 }} 天）</span>
                 </div>
                 <div v-if="mutualImportableEvents.length" class="mutual-import-row">
                   <label class="mutual-import-label">
@@ -367,7 +367,7 @@
                       :value="mutualImportEventId"
                       @change="applyClassAwayEventById($event.target.value)"
                     >
-                      <option value="">— 選一個事件，自動帶入日期與班級 —</option>
+                       <option value="">請選擇事件，自動帶入日期與班級</option>
                       <option v-for="ev in mutualImportableEvents" :key="'imp-'+ev.id" :value="ev.id">
                         {{ ev.name }}（{{ ev.startDate }}～{{ ev.endDate || '學期結束' }} · {{ (ev.classes || []).length }} 班）
                       </option>
@@ -383,7 +383,7 @@
                     type="text"
                     class="form-control mutual-note-input"
                     v-model="mutualNote"
-                    placeholder="例：九年級畢旅 4/21–4/22"
+                     placeholder="例：九年級畢旅 4/21～4/22"
                   >
                 </div>
                 <div class="mb-8">
@@ -471,7 +471,7 @@
                     請先勾選「帶隊老師」。需求＝期間內課表應代節（不含巡堂／外出班）；尚缺＝需求−已送出−暫定。
                   </div>
                   <div class="mutual-quota-note">
-                    ＊額度寫在「教師名單」；明細在試算表「額度帳本」。同活動不重複發放；扣額度 FIFO。帶隊不發放。釋出：未上 1 節＝0.5。1–7節：餘額≥1→扣額度（扣 1）；不足 1→活動公費。第8節不吃額度。
+                     ＊額度寫在「教師名單」；明細在試算表「額度帳本」。同活動不重複發放；扣額度 FIFO。帶隊不發放。釋出：未上 1 節＝0.5。1～7 節：餘額≥1→扣額度（扣 1）；不足 1→活動公費。第8節不吃額度。
                   </div>
                   <label class="mutual-skip-label">
                     <input type="checkbox" v-model="mutualSkipNotify" class="chk-md">
@@ -577,7 +577,7 @@
                   <!-- 全校／多師：分頁列（≤ 一頁人數時隱藏） -->
                   <div v-if="ttNeedPager" class="tt-pager-bar">
                     <span style="font-size:0.8rem;color:var(--text-secondary);">
-                      顯示 {{ (ttPage - 1) * ttPageSize + 1 }}–{{ Math.min(ttPage * ttPageSize, displayTimetableTeachers.length) }}
+                       顯示 {{ (ttPage - 1) * ttPageSize + 1 }}～{{ Math.min(ttPage * ttPageSize, displayTimetableTeachers.length) }}
                       ／共 {{ displayTimetableTeachers.length }} 位
                     </span>
                     <select class="form-control" style="width:auto;padding:4px 8px;font-size:0.78rem;" v-model.number="ttPageSize" title="每頁人數">
@@ -614,7 +614,7 @@
                       <div class="grid-header">五<span class="date-sub" v-if="!isMobile"><br>{{ formatDateMMDD(currentWeekDates[4]) }}</span></div>
                       
                       <template v-for="period in timetablePeriods" :key="'tt-p-'+period">
-                        <div class="grid-cell-time" :class="{ 'is-lunch-period': isLunchPeriod(period) }">
+                        <div class="grid-cell-time" :class="getPeriodClass(period)">
                           <span class="period">{{ getPeriodLabel(period) }}</span>
                           <span class="time-span" v-if="!isMobile">{{ getPeriodTimeSpan(period) }}</span>
                         </div>
@@ -628,7 +628,7 @@
                           :data-tt-day="day"
                           :data-tt-period="period"
                           :data-tt-date="currentWeekDates[day-1]"
-                          :class="((weekScheduleGrid[teacher.email] || {})[day + '-' + period] || {}).cls || 'is-empty'"
+                           :class="[getPeriodClass(period), ((weekScheduleGrid[teacher.email] || {})[day + '-' + period] || {}).cls || 'is-empty']"
                           :title="getCellPlainStatus(((weekScheduleGrid[teacher.email] || {})[day + '-' + period] || {}).cell)"
                           @click="handleCellClick(teacher.email, day, period, currentWeekDates[day-1])"
                         >
@@ -836,13 +836,13 @@
                         {{ formatDateMMDD(dateStr) }}<br><span style="font-weight:400;">{{ ['一','二','三','四','五'][idx] }}</span>
                       </div>
                       <template v-for="period in timetablePeriods" :key="'ct-p-'+period">
-                        <div class="grid-cell-time" :class="{ 'is-lunch-period': isLunchPeriod(period) }">
+                        <div class="grid-cell-time" :class="getPeriodClass(period)">
                           <span class="period">{{ getPeriodLabel(period) }}</span>
                           <span class="time-span" v-if="!isMobile" style="font-size:0.62rem;">{{ getPeriodTimeSpan(period) }}</span>
                         </div>
                         <div v-for="(dateStr, dayIdx) in selectedClassWeekDates" :key="dayIdx"
                           class="grid-cell-class"
-                          :class="getClassCellClassForClass(selectedClass, dayIdx+1, period)">
+                           :class="[getPeriodClass(period), getClassCellClassForClass(selectedClass, dayIdx+1, period)]">
                           <template v-if="classSchedules[selectedClass] && classSchedules[selectedClass][(dayIdx+1) + '-' + period]">
                             <template v-if="classSubstitutionMap[selectedClass + '|' + dateStr + '|' + period]">
                               <div class="class-entry-block" :class="{ 'is-readonly': classReadonlyMode }" @click="handleClassCellClick(selectedClass, dayIdx+1, period, 0)">
@@ -928,7 +928,7 @@
           <!-- 0. 待教學組核准的單據 (僅限管理員，置頂) -->
           <div class="card" v-if="isAdmin" data-tour="pending-admin">
             <div class="card-title" style="flex-wrap: wrap; gap: 8px;">
-              <span>📝 待核准發放 (共 {{ pendingSearchQuery ? (paginatedAdminPending.length + '／篩選') : adminPendingRequests.length + ' 筆' }})</span>
+               <span>📝 待核准發放（共 {{ pendingSearchQuery ? (paginatedAdminPending.length + '／篩選') : adminPendingRequests.length + ' 筆' }}）</span>
               <div class="batch-bar" v-if="adminPendingRequests.length > 0">
                 <button type="button" class="btn btn-secondary pad-6-10-78"  @click="toggleSelectAllAdminPending">
                   {{ paginatedAdminPending.length && paginatedAdminPending.every(r => isAdminPendingSelected(r.id)) ? '取消本頁全選' : '本頁全選' }}
@@ -1072,12 +1072,12 @@
                       </div>
                     </td>
                     <td>{{ tourDemoInvite.requesterName }}</td>
-                    <td>{{ tourDemoInvite.targetTeacherName }} <span class="text-xs-muted">(您)</span></td>
+                     <td>{{ tourDemoInvite.targetTeacherName }} <span class="text-xs-muted">（您）</span></td>
                     <td>
                       <span class="hist-slot-inline">{{ tourDemoInvite.leaveSlot }}</span>
                     </td>
                     <td>
-                      <span class="hist-slot-inline text-muted">—</span>
+                       <span class="hist-slot-inline text-muted">無</span>
                     </td>
                     <td>
                       <span class="status-badge tag-orange w-fit-fs-75">待您簽核</span>
@@ -1106,7 +1106,7 @@
                       </div>
                     </td>
                     <td>{{ req.requesterName }}</td>
-                    <td>{{ req.targetTeacherName }} <span class="text-xs-muted">(您)</span></td>
+                     <td>{{ req.targetTeacherName }} <span class="text-xs-muted">（您）</span></td>
                     <td>
                       <span class="hist-slot-inline">
                         {{ formatLeaveClassSlot(req) }}
@@ -1191,7 +1191,7 @@
                       <span
                         v-if="!(req.isProxySubmit || req.proxyByEmail || (req.note && req.note.indexOf('[行政代申請') >= 0))"
                         class="text-xs-muted"
-                      >(您)</span>
+                       >（您）</span>
                       <div
                         v-if="req.isProxySubmit || req.proxyByEmail || (req.note && req.note.indexOf('[行政代申請') >= 0)"
                         class="req-note-cell no-checkbox"
@@ -1598,7 +1598,7 @@
                         <span v-if="r.sourceRequestId === 'manual'" class="status-badge" style="background:#fff3bf;color:#f59f00;font-size:0.72rem;padding:1px 5px;">手動建立</span>
                       </div>
                       <div class="text-xs-sec-78" >
-                        請假時間：{{ r.leaveTimeType || '' }} {{ r.leaveTime || '—' }}｜鐘點費：1節（NT$ {{ r.feeAmount || 455 }}）
+                         請假時間：{{ r.leaveTimeType || '' }} {{ r.leaveTime || '未填' }}｜鐘點費：1節（NT$ {{ r.feeAmount || 455 }}）
                         <span v-if="r.note" style="margin-left:6px;color:#868e96;">({{ r.note }})</span>
                       </div>
                     </div>
@@ -1609,7 +1609,7 @@
                           type="text" 
                           class="form-input" 
                           style="width:180px;padding:6px 10px;font-size:0.82rem;" 
-                          placeholder="— 搜尋或選擇代導教師 —" 
+                           placeholder="搜尋或選擇代導教師"
                           :list="'dl-hr-cand-'+r.id"
                           :value="getTeacherNameByEmail(homeroomAssignSelections[r.id])"
                           @input="onHomeroomInputSelect(r, $event.target.value)"
@@ -1665,17 +1665,17 @@
                       <td class="num">{{ row.weeklyPeriods }}</td>
                       <td class="num">{{ row.baseHours }}</td>
                       <td class="num">{{ row.weeklyOvertime }}</td>
-                      <td class="num muted">{{ row.reduceDeduction ? ('−' + row.reduceDeduction) : '—' }}</td>
-                      <td class="num danger">{{ row.selfPaidDeduction ? ('−' + row.selfPaidDeduction) : '—' }}</td>
-                      <td class="num warn">{{ row.publicOvertimeUsed ? ('−' + row.publicOvertimeUsed) : '—' }}</td>
+                       <td class="num muted">{{ row.reduceDeduction ? ('−' + row.reduceDeduction) : '無' }}</td>
+                       <td class="num danger">{{ row.selfPaidDeduction ? ('−' + row.selfPaidDeduction) : '無' }}</td>
+                       <td class="num warn">{{ row.publicOvertimeUsed ? ('−' + row.publicOvertimeUsed) : '無' }}</td>
                       <td class="num result" :class="{ danger: row.actualOvertime < 0 }" :title="row.actualOvertime < 0 ? '超鐘不足，自費請假請自行付代課費' : ''">{{ row.actualOvertime }}</td>
-                      <td class="num result" :class="{ danger: row.overtimeFee < 0 }" :title="row.overtimeFee < 0 ? '負數＝應自付代課費約此金額' : ''">{{ row.overtimeFee ? ('$' + row.overtimeFee) : (row.overtimeFee === 0 ? '$0' : '—') }}</td>
-                      <td class="num">{{ row.pubSubCount || '—' }}</td>
-                      <td class="num ok">{{ row.pubSubFee ? ('$' + row.pubSubFee) : '—' }}</td>
-                      <td class="num">{{ row.selfSubCount || '—' }}</td>
-                      <td class="num ok" :title="row.selfSubDetail && row.selfSubDetail !== '無' ? row.selfSubDetail : ''">{{ row.selfSubFee ? ('$' + row.selfSubFee) : '—' }}</td>
-                      <td class="num">{{ row.period8SubCount || '—' }}</td>
-                      <td class="num result-p8">{{ row.period8Fee ? ('$' + row.period8Fee) : '—' }}</td>
+                       <td class="num result" :class="{ danger: row.overtimeFee < 0 }" :title="row.overtimeFee < 0 ? '負數＝應自付代課費約此金額' : ''">{{ row.overtimeFee ? ('$' + row.overtimeFee) : (row.overtimeFee === 0 ? '$0' : '無') }}</td>
+                       <td class="num">{{ row.pubSubCount || '無' }}</td>
+                       <td class="num ok">{{ row.pubSubFee ? ('$' + row.pubSubFee) : '無' }}</td>
+                       <td class="num">{{ row.selfSubCount || '無' }}</td>
+                       <td class="num ok" :title="row.selfSubDetail && row.selfSubDetail !== '無' ? row.selfSubDetail : ''">{{ row.selfSubFee ? ('$' + row.selfSubFee) : '無' }}</td>
+                       <td class="num">{{ row.period8SubCount || '無' }}</td>
+                       <td class="num result-p8">{{ row.period8Fee ? ('$' + row.period8Fee) : '無' }}</td>
                     </tr>
                     <tr v-if="monthlyReportData.length === 0">
                       <td colspan="17" class="billing-empty">請先在「教師名單」設定基本授課鐘點，再選擇月份統計。</td>
@@ -1703,11 +1703,11 @@
                 <thead>
                   <tr>
                     <th>姓名</th>
-                    <th>Email (帳號)</th>
+                     <th>Email（帳號）</th>
                     <th>科目</th>
                     <th>職務</th>
                     <th>超鐘點計畫</th>
-                    <th>基本鐘點 (基鐘)</th>
+                     <th>基本鐘點（基鐘）</th>
                     <th title="可用餘額；點數字可看額度帳本歷程">折抵額度</th>
                     <th>系統角色</th>
                     <th style="width: 130px;">操作</th>
@@ -1718,7 +1718,7 @@
                     <td><strong>{{ t.name }}</strong></td>
                     <td>{{ t.email }}</td>
                     <td>{{ t.subject }}</td>
-                    <td>{{ t.jobTitle || '—' }}</td>
+                     <td>{{ t.jobTitle || '未填' }}</td>
                     <td>{{ t.expensePlan || '預設' }}</td>
                     <td>
                       <!-- 基礎基本鐘點設定 -->
@@ -1762,7 +1762,7 @@
           <div v-if="adminSubTab === 'import'">
             <div class="card">
               <div class="card-title" style="flex-wrap:wrap;gap:8px;">
-                <span>匯入期初全校課表 (Excel 長表)</span>
+                 <span>匯入期初全校課表（Excel 長表）</span>
                 <div style="display:flex;flex-wrap:wrap;gap:6px;margin-left:auto;">
                   <button type="button" class="btn btn-secondary btn-sm-pad" @click="downloadScheduleTemplate">
                     下載空白範本
@@ -1776,7 +1776,7 @@
               <div style="margin-bottom:16px;font-size:0.88rem;color:var(--text-secondary);line-height:1.55;">
                 <p class="mb-8-block"><strong>策略 S1：</strong>匯入時<strong>只清除目前選取學期</strong>的課表（其他學期保留），再一次寫入。</p>
                 <p class="mb-8-block"><strong>格式：</strong>一列一節；<strong>Email 可空白</strong>（依「教師姓名」對應已匯入的教師名單）；同節多班可多列。</p>
-                <p class="m-0">一般課必填：教師姓名、星期、節次、班級、科目。<strong>巡堂</strong>可省略班級／科目（科目或屬性寫「巡堂」即可）。節次可填 1–8，或<strong>午休／45</strong>（12:35–13:15）。併班可填<strong>701、702</strong> 或 701/702。選填：Email、課堂屬性、調課限制。姓名重複或名單沒有時請填 Email，或先匯入教師名單（教師匯入<strong>必填 Email</strong>）。</p>
+                 <p class="m-0">一般課必填：教師姓名、星期、節次、班級、科目。<strong>巡堂</strong>可省略班級／科目（科目或屬性寫「巡堂」即可）。節次可填<strong>早自習／0</strong>、1～8，或<strong>午休／45</strong>（12:35～13:15）。併班可填<strong>701、702</strong> 或 701/702。選填：Email、課堂屬性、調課限制。姓名重複或名單沒有時請填 Email，或先匯入教師名單（教師匯入<strong>必填 Email</strong>）。</p>
               </div>
 
               <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;background:#f8fafc;padding:14px;border-radius:12px;border:1px solid var(--border-color);margin-bottom:16px;">
@@ -1825,10 +1825,10 @@
                       </thead>
                       <tbody>
                         <tr v-for="(s, si) in importPreview.skipList" :key="si" class="td-amber-top">
-                          <td class="p-5-6-nowrap">{{ s.line || '—' }}</td>
-                          <td style="padding:5px 6px;font-weight:600;color:#b45309;">{{ s.missing || '—' }}</td>
+                           <td class="p-5-6-nowrap">{{ s.line || '無' }}</td>
+                           <td style="padding:5px 6px;font-weight:600;color:#b45309;">{{ s.missing || '無' }}</td>
                           <td class="p-5-6">{{ s.reason }}</td>
-                          <td class="p-5-6-amber">{{ s.snippet || '—' }}</td>
+                           <td class="p-5-6-amber">{{ s.snippet || '無' }}</td>
                         </tr>
                       </tbody>
                     </table>
@@ -1868,9 +1868,9 @@
                   <tbody>
                     <tr v-for="ev in classAwayEvents" :key="ev.id">
                       <td><strong>{{ ev.name }}</strong></td>
-                      <td>{{ ev.startDate || '—' }}</td>
+                       <td>{{ ev.startDate || '未設定' }}</td>
                       <td>{{ ev.endDate || '學期結束' }}</td>
-                      <td style="max-width:180px;font-size:0.78rem;">{{ (ev.classes || []).join('、') || '—' }}</td>
+                       <td style="max-width:180px;font-size:0.78rem;">{{ (ev.classes || []).join('、') || '無' }}</td>
                       <td>{{ ev.billingRule === 'reduce' ? '調降' : '不調降' }}</td>
                       <td>{{ ev.forMutual ? '是' : '否' }}</td>
                       <td>{{ ev.enabled !== false ? '是' : '否' }}</td>
@@ -2136,10 +2136,10 @@
                 <div v-if="matchMode === 'exchange'" style="margin-top: 10px; display: flex; align-items: center; gap: 8px;">
                   <label class="form-label" style="margin: 0; font-size: 0.8rem; white-space: nowrap;">對調至週次：</label>
                   <select class="form-control" style="padding: 4px 8px; font-size: 0.8rem; max-width: 150px;" v-model.number="exchangeWeekOffset">
-                    <option :value="0">本週 (同週對調)</option>
-                    <option :value="1">下週 (往後一週)</option>
-                    <option :value="-1">上週 (往前一週)</option>
-                    <option :value="2">下下週 (往後兩週)</option>
+                     <option :value="0">本週（同週對調）</option>
+                     <option :value="1">下週（往後一週）</option>
+                     <option :value="-1">上週（往前一週）</option>
+                     <option :value="2">下下週（往後兩週）</option>
                   </select>
                 </div>
               </div>
@@ -2204,7 +2204,7 @@
                         </td>
                         <td style="padding: 10px 4px; color: var(--text-muted); font-size: 0.8rem;">
                           <template v-if="isBatchMatchFlow && !isBatchPerSlotMode">
-                            全節可代 <span class="text-secondary">(參考日已排: {{ t.todayPeriodCount }}節)</span>
+                             全節可代 <span class="text-secondary">（參考日已排：{{ t.todayPeriodCount }}節）</span>
                             <span v-if="isMutualCover" class="text-mutual-sub">
                               折抵額度：{{ typeof t.remainingReleased === 'number' ? t.remainingReleased : (t.mutualQuota || 0) }}
                               <span v-if="t.pendingDraft" class="text-violet-soft">（已暫定佔 {{ t.pendingDraft }}）</span>
@@ -2214,7 +2214,7 @@
                           <template v-else>
                             <span v-if="t.isReleasedByAway" style="color:#6b21a8;font-weight:600;">外出班釋出</span>
                             <span v-else>空堂</span>
-                            <span class="text-secondary"> (當日已排: {{ t.todayPeriodCount }}節)</span>
+                             <span class="text-secondary">（當日已排：{{ t.todayPeriodCount }}節）</span>
                             <span v-if="isMutualCover" class="text-mutual-sub">
                               折抵額度：{{ typeof t.remainingReleased === 'number' ? t.remainingReleased : (t.mutualQuota || 0) }}
                               <span v-if="t.pendingDraft" class="text-violet-soft">（已暫定佔 {{ t.pendingDraft }}）</span>
@@ -2375,7 +2375,7 @@
               <!-- 左：申請教師當週課表 (A) -->
               <div>
                 <div class="mini-grid-title">
-                  👤 <strong>{{ getTeacherNameByEmail(pendingRequestData.leaveTeacher) }}</strong> 老師當週課表 (請假/申請人)
+                   👤 <strong>{{ getTeacherNameByEmail(pendingRequestData.leaveTeacher) }}</strong> 老師當週課表（請假／申請人）
                 </div>
                 <div class="mini-grid">
                   <div class="mini-grid-cell mini-grid-header">節</div>
@@ -2406,7 +2406,7 @@
               <!-- 右：代課/調課教師當週課表 (B) -->
               <div>
                 <div class="mini-grid-title">
-                  👤 <strong>{{ getTeacherNameByEmail(resolveCompareBEmail()) || '（尚未指定）' }}</strong> 老師當週課表 (代課/受邀人)
+                   👤 <strong>{{ getTeacherNameByEmail(resolveCompareBEmail()) || '（尚未指定）' }}</strong> 老師當週課表（代課／受邀人）
                 </div>
                 <!-- 每節不同人：切換檢視各受邀人課表 -->
                 <div v-if="pendingRequestData.isBatch && pendingRequestData.isPerSlot && batchCompareSubGroups.length > 1" class="batch-slot-chips mb-8-block">
@@ -2502,7 +2502,7 @@
                     <input type="time" class="form-input" style="width:125px;" v-model="pendingRequestData.leaveTimeStart" @change="updatePendingLeaveTime">
                     <span>至</span>
                     <input type="time" class="form-input" style="width:125px;" v-model="pendingRequestData.leaveTimeEnd" @change="updatePendingLeaveTime">
-                    <span class="text-xs-sec-78" >目前：{{ pendingRequestData.leaveTimeType || '—' }}（{{ pendingRequestData.leaveTime || '—' }}）</span>
+                         <span class="text-xs-sec-78" >目前：{{ pendingRequestData.leaveTimeType || '未填' }}（{{ pendingRequestData.leaveTime || '未填' }}）</span>
                   </div>
                   <small style="display:block;margin-top:5px;color:var(--text-muted);">行政人員預設全天 08:00~17:00；非行政預設全天 08:00~16:00，時間可自行修改。</small>
                 </div>
@@ -2529,7 +2529,7 @@
                     </template>
                   </select>
                   <span v-if="isMutualCover && !isPeriod8FeeLocked" style="font-size:0.72rem; color:#5b21b6; display:block; margin-top:4px;">
-                    ＊1–7節：額度&gt;0→扣額度；不足自動改活動公費。第8節固定「第8節代課」。
+                     ＊1～7 節：額度&gt;0→扣額度；不足自動改活動公費。第8節固定「第8節代課」。
                   </span>
                   <div
                     v-if="quotaDeductPreview && quotaDeductPreview.length"
@@ -2829,14 +2829,14 @@
                     </select>
                   </div>
                   <div class="form-group mb-0">
-                    <label class="form-label text-xs">基本鐘點 (選填)</label>
+                     <label class="form-label text-xs">基本鐘點（選填）</label>
                     <select class="form-select btn-input-sm" v-model="teacherMappingFields.baseHours">
                       <option value="">--預設 16 節--</option>
                       <option v-for="h in teacherExcelHeaders" :key="h" :value="h">{{ h }}</option>
                     </select>
                   </div>
                   <div class="form-group mb-0">
-                    <label class="form-label text-xs">系統角色 (選填)</label>
+                     <label class="form-label text-xs">系統角色（選填）</label>
                     <select class="form-select btn-input-sm" v-model="teacherMappingFields.role">
                       <option value="">--預設一般教師--</option>
                       <option v-for="h in teacherExcelHeaders" :key="h" :value="h">{{ h }}</option>
@@ -2870,10 +2870,10 @@
                         </thead>
                         <tbody>
                           <tr v-for="(s, si) in teacherImportPreview.skipList" :key="si" class="td-amber-top">
-                            <td class="p-5-6-nowrap">{{ s.line || '—' }}</td>
-                            <td style="padding:5px 6px;font-weight:600;">{{ s.missing || '—' }}</td>
+                             <td class="p-5-6-nowrap">{{ s.line || '無' }}</td>
+                             <td style="padding:5px 6px;font-weight:600;">{{ s.missing || '無' }}</td>
                             <td class="p-5-6">{{ s.reason }}</td>
-                            <td class="p-5-6-amber">{{ s.snippet || '—' }}</td>
+                             <td class="p-5-6-amber">{{ s.snippet || '無' }}</td>
                           </tr>
                         </tbody>
                       </table>
@@ -2906,7 +2906,7 @@
           </div>
           <div class="modal-body">
             <div class="form-group">
-              <label class="form-label">教師 Email (登入帳號)</label>
+               <label class="form-label">教師 Email（登入帳號）</label>
               <input type="email" class="form-input" placeholder="例如: teacher@school.edu.tw" v-model="teacherForm.email" :disabled="teacherModalMode === 'edit'">
             </div>
             <div class="form-group">
@@ -2938,7 +2938,7 @@
               </select>
             </div>
             <div class="form-group">
-              <label class="form-label">基本授課鐘點 (基鐘)</label>
+             <label class="form-label">基本授課鐘點（基鐘）</label>
               <input type="number" class="form-input" placeholder="導師為12節、專任為16節" v-model.number="teacherForm.baseHours">
             </div>
             <div class="form-group">
@@ -3073,7 +3073,7 @@
           </div>
           <div class="modal-body" style="display:flex;flex-direction:column;gap:10px;max-height:70vh;overflow:auto;">
             <div class="text-xs-muted-78">
-              單號：<strong>{{ historyEditForm.serial || '—' }}</strong>
+               單號：<strong>{{ historyEditForm.serial || '未提供' }}</strong>
               · 類型：{{ historyEditForm.type === 'exchange' || historyEditForm.type === '對調' ? '調課' : '代課' }}
             </div>
             <div class="form-group">
@@ -3088,14 +3088,14 @@
                 <label class="form-label">請假教師</label>
                 <select class="form-select" v-model="historyEditForm.requesterEmail">
                   <option value="" disabled>請選擇...</option>
-                  <option v-for="t in teachersList" :key="'he-leave-'+t.email" :value="t.email">{{ t.name }}（{{ t.subject || '—' }}）</option>
+                   <option v-for="t in teachersList" :key="'he-leave-'+t.email" :value="t.email">{{ t.name }}（{{ t.subject || '無' }}）</option>
                 </select>
               </div>
               <div class="form-group m-0">
                 <label class="form-label">{{ historyEditForm.type === 'exchange' || historyEditForm.type === '對調' ? '對調教師' : '代課教師' }}</label>
                 <select class="form-select" v-model="historyEditForm.targetTeacherEmail">
                   <option value="" disabled>請選擇...</option>
-                  <option v-for="t in teachersList" :key="'he-sub-'+t.email" :value="t.email">{{ t.name }}（{{ t.subject || '—' }}）</option>
+                   <option v-for="t in teachersList" :key="'he-sub-'+t.email" :value="t.email">{{ t.name }}（{{ t.subject || '無' }}）</option>
                 </select>
               </div>
             </div>
@@ -3213,7 +3213,7 @@
               <!-- 異動明細 -->
               <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 0.85rem; background: #f8fafc; padding: 12px; border-radius: 8px; border: 1px solid var(--border-color);">
                 <div>
-                  <span class="text-muted-block">請假教師 (申請)</span>
+                   <span class="text-muted-block">請假教師（申請）</span>
                   <strong>{{ detailRequest.requesterName }}</strong>
                 </div>
                 <div>
@@ -3337,7 +3337,7 @@
                     class="btn btn-success btn-inline-flex"
                     @click="adminApprove(detailRequest.id); showDetailModal = false;"
                   >
-                    ⚡ 准予出單(核准)
+                     ⚡ 准予出單（核准）
                   </button>
                   <button 
                     class="btn btn-danger btn-danger-inline"
@@ -3572,7 +3572,7 @@
                 type="text" 
                 class="form-input" 
                 style="width:100%;padding:6px 10px;font-size:0.82rem;" 
-                placeholder="— 搜尋或選擇代導教師 —" 
+                 placeholder="搜尋或選擇代導教師"
                 list="dl-manual-cover-teachers"
                 :value="getTeacherNameByEmail(manualHomeroomForm.actualTeacherEmail)"
                 @input="onManualCoverTeacherInput($event.target.value)"
@@ -3602,7 +3602,7 @@
           <div class="modal-header">
             <h3>📒 額度歷程
               <span v-if="quotaLedgerTeacher" class="quota-ledger-who">
-                — {{ quotaLedgerTeacher.name }}
+                 ：{{ quotaLedgerTeacher.name }}
                 <span class="quota-ledger-bal">餘額 {{ quotaLedgerTeacher.sheetQuota != null ? quotaLedgerTeacher.sheetQuota : quotaLedgerTeacher.balance }}</span>
               </span>
             </h3>
@@ -3627,7 +3627,7 @@
                 <tbody>
                   <tr v-for="row in quotaLedgerRows" :key="row.id || (row.time + row.delta + row.type)">
                     <td class="quota-ledger-time">{{ row.time }}</td>
-                    <td><span class="quota-type-tag" :class="quotaTypeClass(row.type)">{{ row.typeLabel || row.type || '—' }}</span></td>
+                     <td><span class="quota-type-tag" :class="quotaTypeClass(row.type)">{{ row.typeLabel || row.type || '無' }}</span></td>
                     <td>
                       <strong :class="row.delta > 0 ? 'text-ok-green' : (row.delta < 0 ? 'text-danger-deep' : '')">
                         {{ row.delta > 0 ? ('+' + row.delta) : row.delta }}
@@ -3636,10 +3636,10 @@
                     <td>{{ row.balanceAfter }}</td>
                     <td>
                       <span v-if="row.eventName">{{ row.eventName }}</span>
-                      <span v-else class="text-muted">—</span>
+                       <span v-else class="text-muted">無</span>
                       <span v-if="row.startDate" class="quota-ledger-range"> {{ row.startDate }}{{ row.endDate && row.endDate !== row.startDate ? ('～' + row.endDate) : '' }}</span>
                     </td>
-                    <td class="quota-ledger-note">{{ row.note || (row.operator ? ('操作：' + row.operator) : '—') }}</td>
+                     <td class="quota-ledger-note">{{ row.note || (row.operator ? ('操作：' + row.operator) : '未填') }}</td>
                   </tr>
                 </tbody>
               </table>
@@ -3661,21 +3661,21 @@
   <!-- App Main JS Logic -->
 
   <!-- 模組：defer 依文件順序執行，不擋 HTML 解析；billing/print/export 另延後 -->
-  <script defer src="field-map.js?v=20260815-p10"></script>
-  <script defer src="date-utils.js?v=20260815-p10"></script>
-  <script defer src="gas-api.js?v=20260815-p10"></script>
-  <script defer src="domain-schedule.js?v=20260815-p10"></script>
-  <script defer src="domain-match.js?v=20260815-p10"></script>
+  <script defer src="field-map.js?v=20260817-scheduling-palette"></script>
+  <script defer src="date-utils.js?v=20260817-scheduling-palette"></script>
+  <script defer src="gas-api.js?v=20260817-scheduling-palette"></script>
+  <script defer src="domain-schedule.js?v=20260817-scheduling-palette"></script>
+  <script defer src="domain-match.js?v=20260817-scheduling-palette"></script>
   <!-- domain-activity-cover：活動互代／空堂任務時 ensureDomainActivityCover -->
-  <script defer src="domain-class-away.js?v=20260815-p10"></script>
-  <script defer src="fee-utils.js?v=20260815-p10"></script>
-  <script defer src="ui-activity.js?v=20260815-p10"></script>
-  <script defer src="ui-request.js?v=20260815-p10"></script>
-  <script defer src="ui-timetable.js?v=20260815-p10"></script>
-  <script defer src="ui-approval.js?v=20260815-p10"></script>
+  <script defer src="domain-class-away.js?v=20260817-scheduling-palette"></script>
+  <script defer src="fee-utils.js?v=20260817-scheduling-palette"></script>
+  <script defer src="ui-activity.js?v=20260817-scheduling-palette"></script>
+  <script defer src="ui-request.js?v=20260817-scheduling-palette"></script>
+  <script defer src="ui-timetable.js?v=20260817-scheduling-palette"></script>
+  <script defer src="ui-approval.js?v=20260817-scheduling-palette"></script>
   <!-- ui-admin：僅管理員／後台操作時 ensureUiAdmin -->
-  <script defer src="app-shell-utils.js?v=20260815-p10"></script>
-  <script defer src="app.js?v=20260815-p10"></script>
+  <script defer src="app-shell-utils.js?v=20260817-scheduling-palette"></script>
+  <script defer src="app.js?v=20260817-scheduling-palette"></script>
   <script>
     (function () {
       function loadScript(src) {
@@ -3697,47 +3697,47 @@
       var _uiAdminP = null;
       window.ensureDomainBilling = function () {
         if (window.DomainBilling) return Promise.resolve();
-        if (!_billingP) _billingP = loadScript('domain-billing.js?v=20260815-p10');
+          if (!_billingP) _billingP = loadScript('domain-billing.js?v=20260817-scheduling-palette');
         return _billingP;
       };
       window.ensureExportAccounting = function () {
         if (window.ExportAccounting) return Promise.resolve();
-        if (!_accountingP) _accountingP = loadScript('export-accounting.js?v=20260815-p10');
+          if (!_accountingP) _accountingP = loadScript('export-accounting.js?v=20260817-scheduling-palette');
         return _accountingP;
       };
       /** 活動互代／額度／空堂任務邏輯（首屏不載） */
       window.ensureDomainActivityCover = function () {
         if (window.DomainActivityCover) return Promise.resolve();
-        if (!_domainActivityP) _domainActivityP = loadScript('domain-activity-cover.js?v=20260815-p10');
+          if (!_domainActivityP) _domainActivityP = loadScript('domain-activity-cover.js?v=20260817-scheduling-palette');
         return _domainActivityP;
       };
       /** 後台匯入／教師／課表編輯（教師首屏不載） */
       window.ensureUiAdmin = function () {
         if (window.UiAdmin) return Promise.resolve();
-        if (!_uiAdminP) _uiAdminP = loadScript('ui-admin.js?v=20260815-p10');
+          if (!_uiAdminP) _uiAdminP = loadScript('ui-admin.js?v=20260817-scheduling-palette');
         return _uiAdminP;
       };
       window.ensurePrintHelper = function () {
         if (typeof window.generateFormHtml === 'function') return Promise.resolve();
-        if (!_printP) _printP = loadScript('print-helper.js?v=20260815-p10');
+          if (!_printP) _printP = loadScript('print-helper.js?v=20260817-scheduling-palette');
         return _printP;
       };
       window.ensureExportSchoolTimetable = function () {
         if (window.ExportSchoolTimetable) return Promise.resolve();
-        if (!_exportP) _exportP = loadScript('export-school-timetable.js?v=20260815-p10');
+          if (!_exportP) _exportP = loadScript('export-school-timetable.js?v=20260817-scheduling-palette');
         return _exportP;
       };
       var _activityCoverP = null;
       window.ensureExportActivityCover = function () {
         if (window.ExportActivityCover) return Promise.resolve();
-        if (!_activityCoverP) _activityCoverP = loadScript('export-activity-cover.js?v=20260815-p10');
+          if (!_activityCoverP) _activityCoverP = loadScript('export-activity-cover.js?v=20260817-scheduling-palette');
         return _activityCoverP;
       };
       var _invigP = null;
       var _excelJsP = null;
       window.ensureExportInvigilation = function () {
         if (window.ExportInvigilation) return Promise.resolve();
-        if (!_invigP) _invigP = loadScript('export-invigilation.js?v=20260815-p10');
+          if (!_invigP) _invigP = loadScript('export-invigilation.js?v=20260817-scheduling-palette');
         return _invigP;
       };
       window.ensureExcelJS = function () {

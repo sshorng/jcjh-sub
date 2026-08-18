@@ -987,7 +987,7 @@ createApp({
         if (!dateStr) continue;
         const periodList = (window.DateUtils && window.DateUtils.getTimetablePeriods)
           ? window.DateUtils.getTimetablePeriods()
-          : [1, 2, 3, 4, 5, 6, 7, 8];
+          : [0, 1, 2, 3, 4, 45, 5, 6, 7, 8];
         for (let pi = 0; pi < periodList.length; pi++) {
           const period = periodList[pi];
           try {
@@ -1815,11 +1815,13 @@ createApp({
       const startIso = datePart + 'T' + parts[0].replace(':', '') + '00';
       const endIso = datePart + 'T' + parts[1].replace(':', '') + '00';
 
-      const slotLabel = `${className || ''}${subject || ''}`.trim() || '課堂';
-      const title = `【${titleTag}】${slotLabel}`;
-      let details = `${actionLine}\n\n請假教師：${req.requesterName || ''}\n代課／對調教師：${req.targetTeacherName || ''}\n假別事由：${req.reason || '請假'}\n單號：${req.serial || ''}`;
+       const slotLabel = `${className || ''}${subject || ''}`.trim() || '課堂';
+       const periodText = formatPeriodText(eventPeriod);
+       const title = `【${titleTag}】${slotLabel}`;
+       let details = `${actionLine}\n\n請假教師：${req.requesterName || ''}\n代課／對調教師：${req.targetTeacherName || ''}\n假別事由：${req.reason || '請假'}\n單號：${req.serial || ''}`;
+       details += `\n節次：${periodText}`;
       if (isExchange) {
-        details += `\n對調：${req.requestDate || ''}第${req.requestPeriod || ''}節 ⇄ ${req.targetDate || ''}第${req.targetPeriod || ''}節`;
+         details += `\n對調：${req.requestDate || ''}${formatPeriodText(req.requestPeriod)} ⇄ ${req.targetDate || ''}${formatPeriodText(req.targetPeriod)}`;
       }
       details += `\n（建成國中調代課系統）`;
 
@@ -2173,7 +2175,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       slots.forEach((s, i) => {
         const dayT = getWeekDayText(s.day);
         const mmdd = formatDateMMDD(s.date) || s.date || '';
-        const line = `${i + 1}. ${mmdd}（${dayT}）第${s.period || ''}節 ${s.className || ''} ${s.subject || ''}`.replace(/\s+/g, ' ').trim();
+        const line = `${i + 1}. ${mmdd}（${dayT}）${formatPeriodText(s.period)} ${s.className || ''} ${s.subject || ''}`.replace(/\s+/g, ' ').trim();
         const agree = `${currentUrl}?action=respond&id=${encodeURIComponent(s.id)}&status=agree`;
         const decline = `${currentUrl}?action=respond&id=${encodeURIComponent(s.id)}&status=decline`;
         text += `\n\n${line}\n👉 同意此節：${agree}\n👉 拒絕此節：${decline}`;
@@ -2860,7 +2862,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
 
     const timetablePeriods = (window.DateUtils && window.DateUtils.getTimetablePeriods)
       ? window.DateUtils.getTimetablePeriods()
-      : [1, 2, 3, 4, 5, 6, 7, 8];
+      : [0, 1, 2, 3, 4, 45, 5, 6, 7, 8];
     const getPeriodLabel = (p) =>
       (window.DateUtils && window.DateUtils.getPeriodLabel)
         ? window.DateUtils.getPeriodLabel(p)
@@ -2868,9 +2870,16 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     const formatPeriodText = (p) =>
       (window.DateUtils && window.DateUtils.formatPeriodText)
         ? window.DateUtils.formatPeriodText(p)
-        : ('第' + p + '節');
+         : (Number(p) === 0 ? '早自習' : (Number(p) === 45 ? '午休' : ('第' + p + '節')));
     const isLunchPeriod = (p) =>
       !!(window.DateUtils && window.DateUtils.isLunchPeriod && window.DateUtils.isLunchPeriod(p));
+    const getPeriodClass = (p) => {
+      const period = Number(p);
+      if (period === 0) return 'is-early-period';
+      if (isLunchPeriod(p)) return 'is-lunch-period';
+      if (period === 8) return 'is-p8-period';
+      return '';
+    };
     const formatClassName = (raw) =>
       (window.DateUtils && window.DateUtils.formatClassName)
         ? window.DateUtils.formatClassName(raw)
@@ -7932,7 +7941,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         const d = new Date(dateStr.replace(/-/g, '/'));
         if (!Number.isNaN(d.getTime())) dayOfWeek = d.getDay() === 0 ? 7 : d.getDay();
       }
-      if (!dateStr || !period) {
+      if (!dateStr || !Number.isFinite(period)) {
         showToast('缺少日期或節次', 'warning');
         return;
       }
@@ -8500,7 +8509,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       reportMonthOptions, personalChanges, recommendedExchangeList, displayedExchangeList,
       loginWithGoogle, logout, gsiButtonReady, gsiButtonError, gsiLoggingIn, reloadGsiLoginButton,
       changeWeek,       getPeriodTimeSpan, getWeekDayText, formatDateMMDD,
-      timetablePeriods, getPeriodLabel, formatPeriodText, isLunchPeriod, formatClassName, isCombinedClass,
+      timetablePeriods, getPeriodLabel, formatPeriodText, isLunchPeriod, getPeriodClass, formatClassName, isCombinedClass,
       getClassCellClassForDate, getClassCellClassForClass, getScheduleForDate, weekScheduleGrid, cellFromGrid, handleCellClick, handleClassCellClick,
       isMatchSourceCell, isMatchSourceEntry, isMatchHoverCell, isMatchHoverEntry,
       selectMatchPreviewSub, selectMatchPreviewExchange, clearMatchPreview, closeMatchModal, isMatchPreviewSelected,

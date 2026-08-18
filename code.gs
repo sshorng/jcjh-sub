@@ -1132,7 +1132,7 @@ function validateScheduleImportRows_(rows, semesterId) {
     if (!email || !/^[^@\s]+@[^@\s]+$/.test(email)) rowErrors.push("教師Email不正確");
     if (!name) rowErrors.push("缺少教師姓名");
     if (!/^\d+$/.test(dayRaw) || day < 1 || day > 5) rowErrors.push("星期須為1至5");
-    if (!/^\d+$/.test(periodRaw) || !(period === 45 || (period >= 1 && period <= 8))) rowErrors.push("節次須為1至8或45");
+    if (!/^\d+$/.test(periodRaw) || !(period === 0 || period === 45 || (period >= 1 && period <= 8))) rowErrors.push("節次須為0至8或45");
     if (!isPatrol && !className) rowErrors.push("缺少班級");
     if (!isPatrol && !subject) rowErrors.push("缺少科目");
     if (id && seenIds[id]) rowErrors.push("課表ID重複");
@@ -4033,7 +4033,7 @@ function validateRequestRow_(row, semesterId) {
   var period = parseInt(row && (row["異動節次"] || row.requestPeriod || 0), 10);
   var day = row && (row["異動星期"] != null ? row["異動星期"] : row.requestPeriodDay);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) throw new Error("異動日期格式必須為 YYYY-MM-DD！");
-  if (!period || period < 1 || period > 8) throw new Error("異動節次必須介於 1 至 8！");
+  if (!(period === 0 || period === 45 || (period >= 1 && period <= 8))) throw new Error("異動節次必須為早自習0、1至8或午休45！");
   if (day !== undefined && day !== null && day !== "" && (parseInt(day, 10) < 1 || parseInt(day, 10) > 7)) {
     throw new Error("異動星期格式不正確！");
   }
@@ -4044,7 +4044,7 @@ function validateRequestRow_(row, semesterId) {
   if (type === "exchange" || type === "對調") {
     var targetDate = String(row["對調目標日期"] || row.targetDate || "").trim().slice(0, 10);
     var targetPeriod = parseInt(row["對調目標節次"] || row.targetPeriod || 0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate) || !targetPeriod || targetPeriod < 1 || targetPeriod > 8) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate) || !(targetPeriod === 0 || targetPeriod === 45 || (targetPeriod >= 1 && targetPeriod <= 8))) {
       throw new Error("對調日期與節次格式不正確！");
     }
   }
@@ -5890,6 +5890,7 @@ function _batchModeKind_(rows) {
 /** 建成國中節次時間（與 date-utils.js 一致） */
 function _periodTimeSpan_(p) {
   var times = {
+    "0": "07:40-08:30", "45": "12:35-13:15",
     "1": "08:30-09:15", "2": "09:25-10:10", "3": "10:20-11:05", "4": "11:15-12:00",
     "5": "13:20-14:05", "6": "14:15-15:00", "7": "15:15-16:00", "8": "16:10-16:55"
   };
@@ -5922,7 +5923,7 @@ function _lookupScheduleClassSubject_(email, dayOfWeek, period, semesterId) {
   var em = String(email || "").toLowerCase().trim();
   var day = parseInt(dayOfWeek, 10);
   var per = parseInt(period, 10);
-  if (!em || !day || !per) return out;
+  if (!em || !day || !Number.isFinite(per) || !(per === 0 || per === 45 || (per >= 1 && per <= 8))) return out;
   try {
     var schedules = getTableData("教師課表") || [];
     var sid = String(semesterId || "").trim();

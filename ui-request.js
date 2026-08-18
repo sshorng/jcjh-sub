@@ -253,7 +253,7 @@ window.UiSubmitHelpers = (function () {
         ? window.DateUtils.decodeTimeKey(pending.timeB)
         : {
             day: parseInt(String(pending.timeB).charAt(0), 10),
-            period: parseInt(String(pending.timeB).slice(-1), 10)
+            period: parseInt(String(pending.timeB).split('-')[1] || String(pending.timeB).slice(-1), 10)
           };
       newRequest["對調目標節次"] = parseInt(tb.period, 10);
       newRequest["對調目標星期"] = parseInt(tb.day, 10);

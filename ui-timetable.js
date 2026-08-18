@@ -128,7 +128,7 @@ window.UiTimetable = (function () {
           if (!dateStr) continue;
           var periodList = (window.DateUtils && window.DateUtils.getTimetablePeriods)
             ? window.DateUtils.getTimetablePeriods()
-            : [1, 2, 3, 4, 5, 6, 7, 8];
+             : [0, 1, 2, 3, 4, 45, 5, 6, 7, 8];
           for (var pi = 0; pi < periodList.length; pi++) {
             var period = periodList[pi];
             var cell = getScheduleForDate(t.email, dateStr, period, day);

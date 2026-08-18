@@ -104,6 +104,7 @@ window.UiAdmin = (function () {
     function normalizeAttrImport(raw, period, subject) {
       var attr = String(raw || '').trim() || '一般';
       if (attr === '基本') attr = '一般';
+      if (period === 0 || period === 45) return '抽離';
       if (!raw && period === 8) attr = '課輔';
       if (!raw && period === 8 && /^[單雙]/.test(String(subject || ''))) {
         var m = String(subject).match(/^([單雙])/);
@@ -144,7 +145,14 @@ window.UiAdmin = (function () {
       if (email) parts.push(email);
       var slot = '';
       if (dayRaw) slot += '週' + dayRaw;
-      if (periodRaw) slot += '第' + periodRaw + '節';
+       if (periodRaw) {
+         var parsedPeriod = window.DateUtils && window.DateUtils.parsePeriod
+           ? window.DateUtils.parsePeriod(periodRaw)
+           : parseInt(periodRaw, 10);
+         slot += window.DateUtils && window.DateUtils.formatPeriodText
+           ? window.DateUtils.formatPeriodText(parsedPeriod)
+           : (parsedPeriod === 0 ? '早自習' : (parsedPeriod === 45 ? '午休' : '第' + periodRaw + '節'));
+       }
       if (slot) parts.push(slot);
       var course = ((className || '') + (subject || '')).trim();
       if (course) parts.push(course);
@@ -168,7 +176,7 @@ window.UiAdmin = (function () {
       if (kind === 'ambiguous') return '缺：可辨識的唯一 Email（姓名重複）';
       if (kind === 'not_found') return '缺：教師名單中的對應，或本列 Email';
       if (kind === 'day') return '缺：合法星期（1–5 或 一～五）' + (extra ? '，目前「' + extra + '」' : '');
-      if (kind === 'period') return '缺：合法節次（1–8 或 午休/45）' + (extra ? '，目前「' + extra + '」' : '');
+      if (kind === 'period') return '缺：合法節次（早自習/0、1–8 或 午休/45）' + (extra ? '，目前「' + extra + '」' : '');
       return extra || '';
     }
 
@@ -216,7 +224,10 @@ window.UiAdmin = (function () {
           : '';
         var subject = String(row[mappingFields.value.subject] || '').trim();
         var dayRaw = String(row[mappingFields.value.dayOfWeek] || '').trim();
-        var periodRaw = String(row[mappingFields.value.period] || '').replace(/[^\d]/g, '').trim();
+       var periodSource = String(row[mappingFields.value.period] || '').trim();
+       var periodRaw = /早自習|早讀|晨間|morning|early/i.test(periodSource)
+         ? '0'
+         : (/午休|午|lunch/i.test(periodSource) ? '45' : periodSource.replace(/[^\d]/g, '').trim());
         // 巡堂常無班碼：勿用 normalize 洗掉「巡堂」字樣
         var classNameRaw = mappingFields.value.className
           ? String(row[mappingFields.value.className] || '').trim()
@@ -234,7 +245,7 @@ window.UiAdmin = (function () {
 
         if (!name && !emailRaw && !subject && !dayRaw && !periodRaw && !className && !attrRaw) continue;
 
-        // 巡堂：姓名＋星期＋節次即可；班級／科目可空，自動填「巡堂」
+       // 巡堂：姓名＋星期＋節次即可；班級／科目留白，屬性固定為「巡堂」
         if (isPatrol) {
           if (!name || !dayRaw || !periodRaw) {
             var missP = [];
@@ -245,8 +256,8 @@ window.UiAdmin = (function () {
               '缺：' + missP.join('、') + '（巡堂可省略班級／科目）');
             continue;
           }
-           subject = '';
-           className = '';
+          subject = '';
+          className = '';
         } else if (!name || !subject || !dayRaw || !periodRaw || !className) {
           pushSkip(skippedRows, lineNo, '欄位不完整', snippet,
             buildSkipMissing(name, emailRaw, dayRaw, periodRaw, className, subject, 'incomplete'));
@@ -286,24 +297,24 @@ window.UiAdmin = (function () {
             buildSkipMissing(name, emailRaw, dayRaw, periodRaw, className, subject, 'day', dayRaw));
           continue;
         }
-         var period = (window.DateUtils && window.DateUtils.parsePeriod)
-           ? window.DateUtils.parsePeriod(periodRaw)
-           : parseInt(periodRaw, 10);
-        if (isNaN(period) || !(period === 45 || (period >= 1 && period <= 8))) {
+        var period = (window.DateUtils && window.DateUtils.parsePeriod)
+          ? window.DateUtils.parsePeriod(periodRaw)
+          : parseInt(periodRaw, 10);
+         if (isNaN(period) || !(period === 0 || period === 45 || (period >= 1 && period <= 8))) {
           pushSkip(skippedRows, lineNo, '節次格式錯誤', snippet,
             buildSkipMissing(name, emailRaw, dayRaw, periodRaw, className, subject, 'period', periodRaw));
-           continue;
-         }
-         if (isPatrol) {
-           var patrolSlotKey = dayOfWeek + '|' + period;
-           if (patrolSlotKeys[patrolSlotKey]) {
-             pushSkip(skippedRows, lineNo, '同一星期與節次已有巡堂', snippet,
-               '同一星期、節次只能安排一位巡堂教師');
-             continue;
-           }
-           patrolSlotKeys[patrolSlotKey] = true;
-         }
-         var slotKey = email + '|' + dayOfWeek + '|' + period;
+          continue;
+        }
+        if (isPatrol) {
+          var patrolSlotKey = dayOfWeek + '|' + period;
+          if (patrolSlotKeys[patrolSlotKey]) {
+            pushSkip(skippedRows, lineNo, '同一星期與節次已有巡堂', snippet,
+              '同一星期、節次只能安排一位巡堂教師');
+            continue;
+          }
+          patrolSlotKeys[patrolSlotKey] = true;
+        }
+        var slotKey = email + '|' + dayOfWeek + '|' + period;
         multiSlotKeys[slotKey] = (multiSlotKeys[slotKey] || 0) + 1;
 
         // 僅當列有填 Email 且名單沒有時，才一併新建教師
@@ -1169,7 +1180,7 @@ window.UiAdmin = (function () {
         teacherEmail: 'Email（選填，可空白靠姓名對應）',
         subject: '科目（必填）',
         dayOfWeek: '星期 1-5（必填）',
-        period: '節次 1-8 或 午休/45（必填）',
+        period: '節次 早自習/0、1-8 或 午休/45（必填）',
         className: '班級（必填）',
         attr: '課堂屬性（選填）',
         restriction: '調課限制／綁課（選填）'
@@ -1208,6 +1219,14 @@ window.UiAdmin = (function () {
 
       var leaveEmail = src.requesterEmail || rec.originalTeacherEmail || rec.requesterEmail || '';
       var subEmail = src.targetTeacherEmail || rec.actualTeacherEmail || rec.targetTeacherEmail || '';
+      var readHistoryPeriod = function () {
+        for (var pi = 0; pi < arguments.length; pi++) {
+          if (arguments[pi] == null || arguments[pi] === '') continue;
+          var parsed = parseInt(arguments[pi], 10);
+          if (Number.isFinite(parsed)) return parsed;
+        }
+        return 1;
+      };
 
       historyEditForm.value = {
         id: rid,
@@ -1220,10 +1239,10 @@ window.UiAdmin = (function () {
         subject: src.subject || rec.subject || '',
         requestDate: reqDate,
         requestPeriodDay: src.requestPeriodDay || dayOfWeekFromDateStr(reqDate),
-        requestPeriod: parseInt(src.requestPeriod || rec.requestPeriod || rec.period || 1, 10) || 1,
+         requestPeriod: readHistoryPeriod(src.requestPeriod, rec.requestPeriod, rec.period),
         targetDate: tgtDate,
         targetDayOfWeek: src.targetDayOfWeek || dayOfWeekFromDateStr(tgtDate),
-        targetPeriod: parseInt(src.targetPeriod || rec.targetPeriod || 1, 10) || 1,
+         targetPeriod: readHistoryPeriod(src.targetPeriod, rec.targetPeriod),
         reason: reason,
         leaveTimeType: src.leaveTimeType || rec.leaveTimeType || '',
         leaveTime: src.leaveTime || rec.leaveTime || '',

@@ -4720,14 +4720,54 @@ td.table-empty {
 
 .timetable-grid .grid-cell-time.is-lunch-period,
 .class-timetable .grid-cell-time.is-lunch-period {
-  background: #effaf7;
-  border-color: #d2f1e9;
-  color: #0f766e;
+  background: #f5f8fc;
+  border-color: var(--tt-line);
+  color: var(--tt-ink-2);
+}
+
+.timetable-grid .grid-cell-time.is-p8-period,
+.class-timetable .grid-cell-time.is-p8-period {
+  background: #fffaf0;
+  border-color: var(--tt-line);
+  color: var(--tt-ink-2);
 }
 
 .timetable-grid .grid-cell-time.is-lunch-period .period,
 .class-timetable .grid-cell-time.is-lunch-period .period {
-  color: #0f766e;
+  color: var(--tt-ink);
+}
+
+.timetable-grid .grid-cell-time.is-early-period,
+.class-timetable .grid-cell-time.is-early-period {
+  background: #f5f8fc;
+  border-color: var(--tt-line);
+  color: var(--tt-ink-2);
+}
+
+.timetable-grid .grid-cell-time.is-early-period .period,
+.class-timetable .grid-cell-time.is-early-period .period,
+.timetable-grid .grid-cell-time.is-p8-period .period,
+.class-timetable .grid-cell-time.is-p8-period .period {
+  color: var(--tt-ink);
+}
+
+/* 早自習標籤較長，縮小並禁止直向拆字，避免超出節次欄。 */
+.timetable-grid .grid-cell-time.is-early-period .period,
+.class-timetable .grid-cell-time.is-early-period .period {
+  font-size: 1rem;
+  line-height: 1;
+  white-space: nowrap;
+  letter-spacing: 0;
+  transform: scaleX(0.72);
+  transform-origin: center;
+}
+
+.timetable-grid .grid-cell-time.is-early-period .time-span,
+.class-timetable .grid-cell-time.is-early-period .time-span {
+  font-size: 0.66rem;
+  line-height: 1.15;
+  white-space: normal;
+  letter-spacing: normal;
 }
 
 .timetable-grid .grid-cell-class,
@@ -4761,7 +4801,7 @@ td.table-empty {
 
 .timetable-grid .grid-cell-class.is-empty,
 .class-timetable .grid-cell-class.is-empty {
-  background: var(--tt-empty) !important;
+  background: var(--tt-surface) !important;
   border-color: var(--tt-line-soft) !important;
   border-left-color: var(--tt-line-soft) !important;
   opacity: 1 !important;
@@ -4774,6 +4814,39 @@ td.table-empty {
   border-color: #d4e2f2 !important;
   border-left-color: #d4e2f2 !important;
   box-shadow: inset 0 0 0 1px #b7d0ef;
+}
+
+/* 特殊節次即使沒有課，也保留淡色列底；一般無課格仍維持白底。 */
+.timetable-grid .grid-cell-class.is-early-period,
+.class-timetable .grid-cell-class.is-early-period {
+  background: #f5f8fc;
+}
+
+.timetable-grid .grid-cell-class.is-lunch-period,
+.class-timetable .grid-cell-class.is-lunch-period {
+  background: #f5f8fc;
+}
+
+.timetable-grid .grid-cell-class.is-p8-period,
+.class-timetable .grid-cell-class.is-p8-period {
+  background: #fffaf0;
+}
+
+.timetable-grid .grid-cell-class.is-early-period.is-empty,
+.class-timetable .grid-cell-class.is-early-period.is-empty {
+  background: #f5f8fc !important;
+}
+
+.timetable-grid .grid-cell-class.is-lunch-period.is-empty,
+.class-timetable .grid-cell-class.is-lunch-period.is-empty {
+  background: #f5f8fc !important;
+}
+
+.timetable-grid .grid-cell-class.is-p8-period.is-empty,
+.class-timetable .grid-cell-class.is-p8-period.is-empty {
+  background: #fffaf0 !important;
+  opacity: 1 !important;
+  color: transparent !important;
 }
 
 .timetable-grid .grid-cell-class.is-empty .cell-empty-label,

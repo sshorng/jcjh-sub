@@ -437,6 +437,14 @@
     font-size: 0.78rem !important;
     font-weight: 700 !important;
   }
+  .grid-cell-time.is-early-period .period {
+    font-size: 0.78rem !important;
+    line-height: 1 !important;
+    white-space: nowrap !important;
+    letter-spacing: 0 !important;
+    transform: scaleX(0.74) !important;
+    transform-origin: center !important;
+  }
   .grid-cell-time .time-span {
     display: none !important; /* 手機省寬度 */
   }

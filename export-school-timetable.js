@@ -1,6 +1,6 @@
 /**
  * 全校課表彙整匯出（真實 .docx）
- * 列＝教師（試算表順序）；欄＝日期×第 1～8 節；格內＝班級；空堂空白；異動灰底
+ * 列＝教師（試算表順序）；欄＝日期×早自習／第 1～8 節／午休；格內＝班級；空堂空白；異動灰底
  */
 window.ExportSchoolTimetable = (function () {
   var DAY_ZH = { 1: '一', 2: '二', 3: '三', 4: '四', 5: '五', 6: '六', 0: '日' };
@@ -112,7 +112,7 @@ window.ExportSchoolTimetable = (function () {
         var dayOfWeek = d ? d.getDay() : 0;
         var periodList = (window.DateUtils && window.DateUtils.getTimetablePeriods)
           ? window.DateUtils.getTimetablePeriods()
-          : [1, 2, 3, 4, 5, 6, 7, 8];
+           : [0, 1, 2, 3, 4, 45, 5, 6, 7, 8];
         for (var pi = 0; pi < periodList.length; pi++) {
           var p = periodList[pi];
           var cell = getCell ? getCell(t.email, dateStr, p, dayOfWeek) : null;
@@ -145,7 +145,7 @@ window.ExportSchoolTimetable = (function () {
       var dayOfWeek = d ? d.getDay() : 0;
       var periodList = (window.DateUtils && window.DateUtils.getTimetablePeriods)
         ? window.DateUtils.getTimetablePeriods()
-        : [1, 2, 3, 4, 5, 6, 7, 8];
+         : [0, 1, 2, 3, 4, 45, 5, 6, 7, 8];
       for (var pi = 0; pi < periodList.length; pi++) {
         if (isChangedCell(getCell(email, dateStr, periodList[pi], dayOfWeek))) return true;
       }
@@ -302,7 +302,7 @@ window.ExportSchoolTimetable = (function () {
 
     var periodListHdr = (window.DateUtils && window.DateUtils.getTimetablePeriods)
       ? window.DateUtils.getTimetablePeriods()
-      : [1, 2, 3, 4, 5, 6, 7, 8];
+      : [0, 1, 2, 3, 4, 45, 5, 6, 7, 8];
     var pCount = periodListHdr.length;
     var gridCols = '<w:gridCol w:w="' + nameW + '"/>';
     for (var gi = 0; gi < dates.length * pCount; gi++) gridCols += '<w:gridCol w:w="' + periodW + '"/>';
@@ -351,7 +351,7 @@ window.ExportSchoolTimetable = (function () {
       + para(legend, false, false, 14)
       + '<w:tbl>'
       + '<w:tblPr>'
-      + '<w:tblW w:w="' + (nameW + periodW * dates.length * 8) + '" w:type="dxa"/>'
+      + '<w:tblW w:w="' + (nameW + periodW * dates.length * pCount) + '" w:type="dxa"/>'
       + '<w:tblLayout w:type="fixed"/>'
       + '<w:tblBorders>'
       + '<w:top w:val="single" w:sz="4" w:space="0" w:color="64748B"/>'
