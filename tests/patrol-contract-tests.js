@@ -58,4 +58,36 @@ assert.equal(mapped.className, '');
 assert.equal(mapped.subject, '');
 assert.equal(mapped.attr, '巡堂');
 
+const specialMapped = fieldContext.window.FieldMap.mapSchedule({
+  '課表ID': 'S2',
+  '班級': '701',
+  '科目': '體育',
+  '課堂屬性': '超鐘點',
+  '調課限制': '綁課',
+  '特殊標記': '併班、綁課、預排',
+  '教師Email': 'b@school.example',
+  '星期': 1,
+  '節次': 2
+});
+assert.equal(specialMapped.attr, '超鐘點');
+assert.equal(specialMapped.restriction, 'restricted');
+assert.equal(specialMapped.specialTags, '併班、綁課、預排');
+assert.equal(specialMapped.isPreplanned, true);
+
+assert.doesNotThrow(function () {
+  context.validateScheduleImportRows_([{
+    '學期代號': '115-1',
+    '課表ID': 'S2',
+    '教師Email': 'b@school.example',
+    '教師姓名': '乙',
+    '星期': 1,
+    '節次': 2,
+    '班級': '701、702',
+    '科目': '體育',
+    '課堂屬性': '超鐘點',
+    '調課限制': 'restricted',
+    '特殊標記': '併班、綁課'
+  }], '115-1');
+});
+
 console.log('patrol contract tests PASS');

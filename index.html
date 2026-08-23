@@ -643,7 +643,7 @@
                                     <span class="class-color-badge" :style="getClassBadgeStyle(slot.cell.className)">
                                       {{ formatClassName(slot.cell.className) || slot.cell.className }}
                                     </span>
-                                    <span v-if="isCombinedClass(slot.cell.className)" class="cell-badge tag-combined" title="併班">併班</span>
+                                   <span v-if="isCombinedClass(slot.cell.className) || hasScheduleSpecialTag(slot.cell, '併班')" class="cell-badge tag-combined" title="併班">併班</span>
                                   </div>
                                   <div class="cell-subject">
                                     {{ slot.cell.subject }}<span v-if="slot.cell.attr === '超鐘點'" title="超鐘點">（超）</span>
@@ -665,7 +665,8 @@
                                   <span v-if="slot.cell.isSubstitutionDuty" class="cell-badge" :class="slot.cell.isEmptySlotAssign ? 'tag-purple' : (slot.cell.isMutualCover ? 'tag-purple' : 'tag-green')">
                                     {{ slot.cell.subType === 'exchange' ? '調入' : (slot.cell.isEmptySlotAssign ? '空堂任務' : (slot.cell.isMutualCover ? '互代' : '代課')) }}
                                   </span>
-                                  <span v-if="slot.cell.isElastic" class="cell-badge tag-green badge-elastic">實支</span>
+                                   <span v-if="slot.cell.isElastic" class="cell-badge tag-green badge-elastic">實支</span>
+                                   <span v-if="slot.cell.attr === '超鐘點'" class="cell-badge tag-overtime">超鐘點</span>
                                   <span v-if="slot.cell.attr === '單週'" class="cell-badge tag-week">單週</span>
                                   <span v-if="slot.cell.attr === '雙週'" class="cell-badge tag-week">雙週</span>
                                   <span
@@ -673,7 +674,8 @@
                                     class="cell-badge tag-blue"
                                   >課輔</span>
                                   <span v-if="slot.cell.isPullOut || slot.cell.attr === '抽離'" class="cell-badge tag-pullout">抽離</span>
-                                  <span v-if="slot.cell.restriction === 'restricted'" class="cell-badge tag-restricted">綁課</span>
+                                   <span v-if="slot.cell.restriction === 'restricted' || hasScheduleSpecialTag(slot.cell, '綁課')" class="cell-badge tag-restricted">綁課</span>
+                                   <span v-if="hasScheduleSpecialTag(slot.cell, '預排')" class="cell-badge tag-preplanned">預排</span>
                                   <span 
                                     v-if="slot.cell.isPending"
                                     class="cell-badge"
@@ -873,7 +875,10 @@
                                       {{ entry.subject }}
                                     </span>
                                     <span v-if="entry.attr === '單週' || entry.attr === '雙週'" style="font-size:0.65rem;color:var(--text-muted);margin-left:2px;">({{ entry.attr }})</span>
-                                    <span v-if="entry._isCombined || isCombinedClass(entry.className)" class="cell-badge tag-combined" title="併班">併班</span>
+                                     <span v-if="entry._isCombined || isCombinedClass(entry.className) || hasScheduleSpecialTag(entry, '併班')" class="cell-badge tag-combined" title="併班">併班</span>
+                                     <span v-if="entry.restriction === 'restricted' || hasScheduleSpecialTag(entry, '綁課')" class="cell-badge tag-restricted">綁課</span>
+                                     <span v-if="entry.attr === '超鐘點'" class="cell-badge tag-overtime">超鐘點</span>
+                                     <span v-if="hasScheduleSpecialTag(entry, '預排')" class="cell-badge tag-preplanned">預排</span>
                                   </div>
                                   <div class="cell-class-name">
                                     {{ getRealTeacherName(entry) }}
@@ -1776,7 +1781,7 @@
               <div style="margin-bottom:16px;font-size:0.88rem;color:var(--text-secondary);line-height:1.55;">
                 <p class="mb-8-block"><strong>策略 S1：</strong>匯入時<strong>只清除目前選取學期</strong>的課表（其他學期保留），再一次寫入。</p>
                 <p class="mb-8-block"><strong>格式：</strong>一列一節；<strong>Email 可空白</strong>（依「教師姓名」對應已匯入的教師名單）；同節多班可多列。</p>
-                 <p class="m-0">一般課必填：教師姓名、星期、節次、班級、科目。<strong>巡堂</strong>可省略班級／科目（科目或屬性寫「巡堂」即可）。節次可填<strong>早自習／0</strong>、1～8，或<strong>午休／45</strong>（12:35～13:15）。併班可填<strong>701、702</strong> 或 701/702。選填：Email、課堂屬性、調課限制。姓名重複或名單沒有時請填 Email，或先匯入教師名單（教師匯入<strong>必填 Email</strong>）。</p>
+                 <p class="m-0">一般課必填：教師姓名、星期、節次、班級、科目。<strong>巡堂</strong>可省略班級／科目（科目或屬性寫「巡堂」即可）。節次可填<strong>早自習／0</strong>、1～8，或<strong>午休／45</strong>（12:35～13:15）。併班可填<strong>701、702</strong> 或 701/702。選填：Email、課堂屬性、調課限制、特殊標記。特殊標記支援<strong>併班、綁課、預排</strong>，匯入後會保留並顯示於課表。姓名重複或名單沒有時請填 Email，或先匯入教師名單（教師匯入<strong>必填 Email</strong>）。</p>
               </div>
 
               <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;background:#f8fafc;padding:14px;border-radius:12px;border:1px solid var(--border-color);margin-bottom:16px;">
@@ -2789,7 +2794,7 @@
           <div class="modal-body p-20">
             <div style="margin-bottom: 20px;">
               <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 12px; line-height: 1.5;">
-                請上傳教師名單 Excel。以 Email 為唯一鍵更新／新增。<strong>姓名、Email、科目為必填</strong>（課表匯入可只填姓名，靠此名單對應 Email）。
+                 請上傳教師名單 Excel。以 Email 為唯一鍵更新／新增。<strong>姓名、Email 為必填</strong>，任教科目可留白（行政或尚未分科教師仍會保留）。（課表匯入可只填姓名，靠此名單對應 Email）。
               </p>
               
               <div style="display: flex; gap: 12px; align-items: center; background: #f8fafc; padding: 16px; border-radius: 12px; border: 1px solid var(--border-color); margin-bottom: 16px;">
@@ -2815,7 +2820,7 @@
                     </select>
                   </div>
                   <div class="form-group mb-0">
-                    <label class="form-label text-xs">任教科目 *</label>
+                      <label class="form-label text-xs">任教科目（選填）</label>
                     <select class="form-select btn-input-sm" v-model="teacherMappingFields.subject">
                       <option value="">--請選擇--</option>
                       <option v-for="h in teacherExcelHeaders" :key="h" :value="h">{{ h }}</option>
@@ -2888,7 +2893,7 @@
             <button class="btn btn-secondary" @click="showImportTeachersModal = false">取消</button>
             <button 
               class="btn btn-primary" 
-              :disabled="!teacherExcelData.length || !teacherMappingFields.name || !teacherMappingFields.email || !teacherMappingFields.subject || !teacherImportPreview || !teacherImportPreview.ok"
+               :disabled="!teacherExcelData.length || !teacherMappingFields.name || !teacherMappingFields.email || !teacherImportPreview || !teacherImportPreview.ok"
               @click="importTeachersBatch"
             >
               確認匯入（{{ teacherImportPreview && teacherImportPreview.ok ? teacherImportPreview.ok : 0 }} 人）

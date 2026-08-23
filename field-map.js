@@ -111,6 +111,36 @@ window.FieldMap = (function () {
     return 'teacher';
   }
 
+  function normalizeSpecialTags(raw) {
+    const aliases = {
+      '合班': '併班',
+      '綁班': '綁課',
+      '綁課': '綁課',
+      '併班': '併班',
+      '抽離': '抽離',
+      '超鐘點': '超鐘點',
+      '實支': '實支',
+      '預排': '預排'
+    };
+    const seen = {};
+    return String(raw == null ? '' : raw)
+      .split(/[,，、;；\/／|｜\n]+/)
+      .map(function (value) { return aliases[String(value || '').trim()] || String(value || '').trim(); })
+      .filter(function (value) {
+        if (!value || seen[value]) return false;
+        seen[value] = true;
+        return true;
+      })
+      .join('、');
+  }
+
+  function isRestrictedScheduleValue(raw) {
+    const value = String(raw == null ? '' : raw).trim().toLowerCase();
+    return value === 'restricted' || value === '限制' || value === '綁課' || value === '綁班'
+      || value.indexOf('綁') >= 0 || value.indexOf('限制') >= 0
+      || value === 'y' || value === 'yes' || value === '是' || value === 'true';
+  }
+
   function mapTeacher(t) {
     return {
       email: pick(t, ['教師Email', 'email']),
@@ -152,7 +182,13 @@ window.FieldMap = (function () {
       className: cn,
       subject: subj,
       attr: attr,
-      restriction: pick(s, ['調課限制', 'restriction']) || ''
+      restriction: (function () {
+        const raw = pick(s, ['調課限制', 'restriction']) || '';
+        const tags = normalizeSpecialTags(pick(s, ['特殊標記', 'specialTags', 'specialTagsText']) || '');
+        return isRestrictedScheduleValue(raw) || tags.split('、').indexOf('綁課') >= 0 ? 'restricted' : raw;
+      })(),
+      specialTags: normalizeSpecialTags(pick(s, ['特殊標記', 'specialTags', 'specialTagsText']) || ''),
+      isPreplanned: attr === '預排' || normalizeSpecialTags(pick(s, ['特殊標記', 'specialTags', 'specialTagsText']) || '').split('、').indexOf('預排') >= 0
     };
   }
 
@@ -437,6 +473,8 @@ window.FieldMap = (function () {
     mapSemester,
     mapClassAwayEvent,
     mapTeacher,
+    normalizeSpecialTags,
+    isRestrictedScheduleValue,
     mapSchedule,
     mapSubstitution,
     mapHomeroomRecord,

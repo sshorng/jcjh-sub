@@ -792,6 +792,22 @@ body {
   font-weight: 500;
   font-size: 0.65rem;
 }
+/* 預排：保留排課端的下一階段課程識別 */
+.cell-badge.tag-preplanned {
+  background: #f5f3ff;
+  color: #6d28d9;
+  border: 1px solid #c4b5fd;
+  font-weight: 600;
+  font-size: 0.65rem;
+}
+/* 超鐘點：與一般課程並列但維持醒目識別 */
+.cell-badge.tag-overtime {
+  background: #fff7ed;
+  color: #c2410c;
+  border: 1px solid #fdba74;
+  font-weight: 700;
+  font-size: 0.65rem;
+}
 /* 抽離：青綠色小標籤（可與綁課並存） */
 .cell-badge.tag-pullout,
 .badge-match.badge-pullout {

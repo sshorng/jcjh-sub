@@ -69,7 +69,7 @@ window.UiAdmin = (function () {
     var excelHeaders = useRef('excelHeaders', []);
     var mappingFields = useRef('mappingFields', {
       teacherName: '', teacherEmail: '', subject: '', dayOfWeek: '',
-      period: '', className: '', attr: '', restriction: ''
+      period: '', className: '', attr: '', restriction: '', specialTags: ''
     });
     /** 乾跑預覽結果 */
     var importPreview = useRef('importPreview', null);
@@ -94,11 +94,40 @@ window.UiAdmin = (function () {
 
     function normalizeRestrictionImport(raw) {
       var s = String(raw || '').trim();
+      var lower = s.toLowerCase();
       if (!s) return '';
-      if (s === 'restricted' || s.indexOf('綁') >= 0 || s.indexOf('限制') >= 0 || s === 'Y' || s === '是') {
+      if (lower === 'restricted' || s.indexOf('綁') >= 0 || s.indexOf('限制') >= 0
+          || lower === 'y' || lower === 'yes' || s === '是' || lower === 'true') {
         return 'restricted';
       }
       return '';
+    }
+
+    function normalizeSpecialTagsImport(raw) {
+      if (window.FieldMap && typeof window.FieldMap.normalizeSpecialTags === 'function') {
+        return window.FieldMap.normalizeSpecialTags(raw);
+      }
+      var seen = {};
+      return String(raw || '').split(/[,，、;；\/／|｜\n]+/).map(function (value) {
+        var tag = String(value || '').trim();
+        if (tag === '合班') tag = '併班';
+        if (tag === '綁班') tag = '綁課';
+        return tag;
+      }).filter(function (tag) {
+        if (!tag || seen[tag]) return false;
+        seen[tag] = true;
+        return true;
+      }).join('、');
+    }
+
+    function specialTagList(raw) {
+      return normalizeSpecialTagsImport(raw).split('、').map(function (value) {
+        return String(value || '').trim();
+      }).filter(Boolean);
+    }
+
+    function hasSpecialTag(raw, tag) {
+      return specialTagList(raw).indexOf(String(tag || '').trim()) >= 0;
     }
 
     function normalizeAttrImport(raw, period, subject) {
@@ -235,15 +264,18 @@ window.UiAdmin = (function () {
         var className = classNameRaw.indexOf('巡堂') >= 0
           ? classNameRaw
           : normalizeClassNameImport(classNameRaw);
-        var attrRaw = '';
-        if (mappingFields.value.attr && row[mappingFields.value.attr] != null) {
-          attrRaw = String(row[mappingFields.value.attr]).trim();
-        }
+         var attrRaw = '';
+         if (mappingFields.value.attr && row[mappingFields.value.attr] != null) {
+           attrRaw = String(row[mappingFields.value.attr]).trim();
+         }
+         var specialRaw = mappingFields.value.specialTags
+           ? String(row[mappingFields.value.specialTags] || '').trim()
+           : '';
         var isPatrol = isPatrolImportRow(subject, classNameRaw || className, attrRaw);
         var snippet = formatSkipSnippet(name, emailRaw, dayRaw, periodRaw, className || classNameRaw, subject);
         var lineNo = i + 2;
 
-        if (!name && !emailRaw && !subject && !dayRaw && !periodRaw && !className && !attrRaw) continue;
+         if (!name && !emailRaw && !subject && !dayRaw && !periodRaw && !className && !attrRaw && !specialRaw) continue;
 
        // 巡堂：姓名＋星期＋節次即可；班級／科目留白，屬性固定為「巡堂」
         if (isPatrol) {
@@ -334,13 +366,31 @@ window.UiAdmin = (function () {
             });
           }
         }
-        var attr = isPatrol ? '巡堂' : normalizeAttrImport(attrRaw, period, subject);
-        var restriction = '';
-        if (mappingFields.value.restriction && row[mappingFields.value.restriction] != null) {
-          restriction = normalizeRestrictionImport(row[mappingFields.value.restriction]);
-        }
-        // 巡堂不綁課
-        if (isPatrol) restriction = '';
+         var attr = isPatrol ? '巡堂' : normalizeAttrImport(attrRaw, period, subject);
+         var restriction = '';
+         if (mappingFields.value.restriction && row[mappingFields.value.restriction] != null) {
+           restriction = normalizeRestrictionImport(row[mappingFields.value.restriction]);
+         }
+         // 巡堂不綁課
+         if (isPatrol) restriction = '';
+         var specialTags = specialTagList(specialRaw);
+         if (!isPatrol && (attr === '一般' || !attrRaw)) {
+           if (specialTags.indexOf('抽離') >= 0) attr = '抽離';
+           else if (specialTags.indexOf('超鐘點') >= 0) attr = '超鐘點';
+           else if (specialTags.indexOf('實支') >= 0) attr = '實支';
+           else if (specialTags.indexOf('預排') >= 0) attr = '預排';
+         }
+         if (!isPatrol && specialTags.indexOf('綁課') >= 0) restriction = 'restricted';
+         if (!isPatrol && window.DateUtils && window.DateUtils.isCombinedClass
+             && window.DateUtils.isCombinedClass(className) && specialTags.indexOf('併班') < 0) {
+           specialTags.push('併班');
+         }
+         if (!isPatrol && restriction === 'restricted' && specialTags.indexOf('綁課') < 0) {
+           specialTags.push('綁課');
+         }
+         if (!isPatrol && attr === '預排' && specialTags.indexOf('預排') < 0) {
+           specialTags.push('預排');
+         }
         var id = 'sched_' + email.split('@')[0] + '_' + dayOfWeek + '_' + period + '_' +
           (isPatrol ? 'patrol' : className) + '_' + Math.random().toString(36).substr(2, 6);
         list.push({
@@ -351,10 +401,11 @@ window.UiAdmin = (function () {
           '星期': dayOfWeek,
           '節次': period,
           '班級': className,
-          '科目': subject,
-          '課堂屬性': attr,
-          '調課限制': restriction
-        });
+           '科目': subject,
+           '課堂屬性': attr,
+           '調課限制': restriction,
+           '特殊標記': specialTags.join('、')
+         });
       }
       var multiSlots = 0;
       Object.keys(multiSlotKeys).forEach(function (k) {
@@ -384,9 +435,10 @@ window.UiAdmin = (function () {
         multiSlots: parsed.multiSlots,
         resolvedByName: parsed.resolvedByName || 0,
         skipList: parsed.skipped.slice(),
-        sampleRows: parsed.list.slice(0, 5).map(function (r) {
-          return r['教師姓名'] + ' 週' + r['星期'] + '第' + r['節次'] + ' ' + r['班級'] + r['科目'];
-        })
+         sampleRows: parsed.list.slice(0, 5).map(function (r) {
+           return r['教師姓名'] + ' 週' + r['星期'] + '第' + r['節次'] + ' ' + r['班級'] + r['科目']
+             + (r['特殊標記'] ? '「' + r['特殊標記'] + '」' : '');
+         })
       };
       if (!parsed.list.length) {
         showToast('沒有可匯入的有效列，請檢查欄位對應與資料', 'warning');
@@ -407,51 +459,56 @@ window.UiAdmin = (function () {
             'Email': '',
             '星期': 1,
             '節次': 2,
-            '班級': '701',
-            '科目': '國文',
-            '課堂屬性': '一般',
-            '調課限制': ''
-          },
+             '班級': '701',
+             '科目': '國文',
+             '課堂屬性': '一般',
+             '調課限制': '',
+             '特殊標記': ''
+           },
           {
             '教師姓名': '王小明',
             'Email': '',
             '星期': 1,
             '節次': 2,
-            '班級': '702',
-            '科目': '國文',
-            '課堂屬性': '一般',
-            '調課限制': ''
-          },
+             '班級': '702',
+             '科目': '國文',
+             '課堂屬性': '一般',
+             '調課限制': '',
+             '特殊標記': '併班'
+           },
           {
             '教師姓名': '李美華',
             'Email': 'lee@example.edu.tw',
             '星期': 3,
             '節次': 5,
-            '班級': '801',
-            '科目': '數學',
-            '課堂屬性': '一般',
-            '調課限制': '綁課'
-          },
+             '班級': '801',
+             '科目': '數學',
+             '課堂屬性': '一般',
+             '調課限制': '綁課',
+             '特殊標記': '併班、綁課'
+           },
           {
             '教師姓名': '陳志強',
             'Email': '',
             '星期': 2,
             '節次': 8,
-            '班級': '901',
-            '科目': '課輔',
-            '課堂屬性': '課輔',
-            '調課限制': ''
-          },
+             '班級': '901',
+             '科目': '課輔',
+             '課堂屬性': '課輔',
+             '調課限制': '',
+             '特殊標記': '預排'
+           },
           {
             '教師姓名': '林巡堂',
             'Email': '',
             '星期': 4,
             '節次': 3,
-            '班級': '',
-            '科目': '巡堂',
-            '課堂屬性': '巡堂',
-            '調課限制': ''
-          }
+             '班級': '',
+             '科目': '巡堂',
+             '課堂屬性': '巡堂',
+             '調課限制': '',
+             '特殊標記': ''
+           }
         ];
         var ws = XLSX.utils.json_to_sheet(rows);
         var wb = XLSX.utils.book_new();
@@ -476,19 +533,24 @@ window.UiAdmin = (function () {
           return;
         }
         var rows = (allSchedules.value || []).map(function (s) {
-          var restrict = s.restriction === 'restricted' || s.restriction === '限制' ? '綁課' : (s.restriction || '');
-          var attr = s.attr || s.attribute || '一般';
-          if (attr === '基本') attr = '一般';
-          return {
+           var restrict = s.restriction === 'restricted' || s.restriction === '限制' ? '綁課' : (s.restriction || '');
+           var attr = s.attr || s.attribute || '一般';
+           if (attr === '基本') attr = '一般';
+           var special = normalizeSpecialTagsImport(s.specialTags || s.specialTagsText || '');
+           if (!special && window.DateUtils && window.DateUtils.isCombinedClass
+               && window.DateUtils.isCombinedClass(s.className)) special = '併班';
+           if (restrict && !hasSpecialTag(special, '綁課')) special = special ? special + '、綁課' : '綁課';
+           return {
             '教師姓名': s.teacherName || getTeacherNameByEmail(s.teacherEmail) || '',
             'Email': s.teacherEmail || '',
             '星期': s.dayOfWeek != null ? s.dayOfWeek : '',
             '節次': s.period != null ? s.period : '',
             '班級': s.className || '',
-            '科目': s.subject || '',
-            '課堂屬性': attr,
-            '調課限制': restrict
-          };
+             '科目': s.subject || '',
+             '課堂屬性': attr,
+             '調課限制': restrict,
+             '特殊標記': special
+           };
         });
         if (!rows.length) {
           showToast('目前沒有課表資料可匯出', 'warning');
@@ -927,10 +989,10 @@ window.UiAdmin = (function () {
       var list = [];
       var skipped = [];
       var emailSeen = {};
-      if (!teacherMappingFields.value.name || !teacherMappingFields.value.email || !teacherMappingFields.value.subject) {
+      if (!teacherMappingFields.value.name || !teacherMappingFields.value.email) {
         return {
           list: [],
-          skipped: [{ line: 0, reason: '請完成必填欄位對應', snippet: '', missing: '缺：姓名／Email／科目欄位對應' }]
+          skipped: [{ line: 0, reason: '請完成必填欄位對應', snippet: '', missing: '缺：姓名／Email 欄位對應' }]
         };
       }
       for (var i = 0; i < teacherExcelData.value.length; i++) {
@@ -947,7 +1009,6 @@ window.UiAdmin = (function () {
         var miss = [];
         if (!name) miss.push('姓名');
         if (!email) miss.push('Email');
-        if (!subject) miss.push('科目');
         if (miss.length) {
           skipped.push({ line: lineNo, reason: '欄位不完整', snippet: snippet, missing: '缺：' + miss.join('、') });
           continue;
@@ -1133,11 +1194,11 @@ window.UiAdmin = (function () {
         var sheetData = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
         if (sheetData.length > 0) {
           excelHeaders.value = Object.keys(sheetData[0]);
-          excelData.value = sheetData;
-          mappingFields.value = {
-            teacherName: '', teacherEmail: '', subject: '', dayOfWeek: '',
-            period: '', className: '', attr: '', restriction: ''
-          };
+         excelData.value = sheetData;
+         mappingFields.value = {
+           teacherName: '', teacherEmail: '', subject: '', dayOfWeek: '',
+           period: '', className: '', attr: '', restriction: '', specialTags: ''
+         };
           importPreview.value = null;
           excelHeaders.value.forEach(function (h) {
             var hl = String(h);
@@ -1163,10 +1224,14 @@ window.UiAdmin = (function () {
             if (!mappingFields.value.attr && (hl === '屬性' || hl.indexOf('課堂屬性') >= 0 || hl.indexOf('attr') >= 0)) {
               mappingFields.value.attr = h;
             }
-            if (!mappingFields.value.restriction &&
-                (hl === '限制' || hl.indexOf('調課限制') >= 0 || hl.indexOf('綁課') >= 0 || hl.indexOf('restriction') >= 0)) {
-              mappingFields.value.restriction = h;
-            }
+           if (!mappingFields.value.restriction &&
+                 (hl === '限制' || hl.indexOf('調課限制') >= 0 || hl.indexOf('綁課') >= 0 || hl.indexOf('restriction') >= 0)) {
+               mappingFields.value.restriction = h;
+             }
+             if (!mappingFields.value.specialTags &&
+                 (hl.indexOf('特殊標記') >= 0 || hl.indexOf('特殊標籤') >= 0 || hl.indexOf('special') >= 0 || hl.indexOf('tag') >= 0)) {
+               mappingFields.value.specialTags = h;
+             }
           });
           showToast('已載入 ' + sheetData.length + ' 列，請確認欄位對應後按「預覽」', 'info');
         }
@@ -1182,9 +1247,10 @@ window.UiAdmin = (function () {
         dayOfWeek: '星期 1-5（必填）',
         period: '節次 早自習/0、1-8 或 午休/45（必填）',
         className: '班級（必填）',
-        attr: '課堂屬性（選填）',
-        restriction: '調課限制／綁課（選填）'
-      };
+         attr: '課堂屬性（選填）',
+         restriction: '調課限制／綁課（選填）',
+         specialTags: '特殊標記（選填）'
+       };
       return labels[key] || key;
     }
 

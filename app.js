@@ -2886,6 +2886,14 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         : String(raw || '');
     const isCombinedClass = (raw) =>
       !!(window.DateUtils && window.DateUtils.isCombinedClass && window.DateUtils.isCombinedClass(raw));
+    const getScheduleSpecialTags = (entry) => {
+      const raw = entry && (entry.specialTags || entry['特殊標記'] || '');
+      if (window.FieldMap && typeof window.FieldMap.normalizeSpecialTags === 'function') {
+        return window.FieldMap.normalizeSpecialTags(raw).split('、').filter(Boolean);
+      }
+      return String(raw || '').split(/[,，、;；\/／|｜\n]+/).map(value => String(value || '').trim()).filter(Boolean);
+    };
+    const hasScheduleSpecialTag = (entry, tag) => getScheduleSpecialTags(entry).includes(String(tag || '').trim());
 
     const currentWeekDates = computed(() => {
       const dates = [];
@@ -7678,7 +7686,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     const excelHeaders = ref([]);
     const mappingFields = ref({
       teacherName: '', teacherEmail: '', subject: '', dayOfWeek: '',
-      period: '', className: '', attr: '', restriction: ''
+      period: '', className: '', attr: '', restriction: '', specialTags: ''
     });
     const importPreview = ref(null);
 
@@ -8509,7 +8517,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       reportMonthOptions, personalChanges, recommendedExchangeList, displayedExchangeList,
       loginWithGoogle, logout, gsiButtonReady, gsiButtonError, gsiLoggingIn, reloadGsiLoginButton,
       changeWeek,       getPeriodTimeSpan, getWeekDayText, formatDateMMDD,
-      timetablePeriods, getPeriodLabel, formatPeriodText, isLunchPeriod, getPeriodClass, formatClassName, isCombinedClass,
+       timetablePeriods, getPeriodLabel, formatPeriodText, isLunchPeriod, getPeriodClass, formatClassName, isCombinedClass, getScheduleSpecialTags, hasScheduleSpecialTag,
       getClassCellClassForDate, getClassCellClassForClass, getScheduleForDate, weekScheduleGrid, cellFromGrid, handleCellClick, handleClassCellClick,
       isMatchSourceCell, isMatchSourceEntry, isMatchHoverCell, isMatchHoverEntry,
       selectMatchPreviewSub, selectMatchPreviewExchange, clearMatchPreview, closeMatchModal, isMatchPreviewSelected,
