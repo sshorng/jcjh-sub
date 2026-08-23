@@ -4004,7 +4004,7 @@ function handleReadAction_(postData) {
   const action = postData.action;
   const semesterId = postData.semesterId;
   const idToken = postData.idToken;
-  const reqData = postData.data || {};
+  let reqData = postData.data || {};
   const scope = String(reqData.scope || postData.scope || "full").toLowerCase();
 
   // 公開班級課表：免登入（節流 + 短快取）
@@ -4611,7 +4611,7 @@ function doPost(e) {
     // 驗證／權限在鎖外（Token＋教師快取），縮短鎖持有時間
     const idToken = postData.idToken;
     const semesterId = postData.semesterId;
-    const reqData = postData.data;
+    let reqData = postData.data;
     const currentUrl = postData.currentUrl || "";
     const user = verifyGoogleIdToken(idToken);
     const userEmail = user.email.toLowerCase();
