@@ -581,8 +581,8 @@ createApp({
         showToast('全校課表已分頁；可用上方搜尋姓名快速定位', 'info', 2800);
       }
     });
-    const teachersList = ref([]); // 所有教師 [{email, name, subject, role, baseHours}]
-    const allSchedules = ref([]); // 基礎課表 [{id, teacherEmail, teacherName, dayOfWeek, period, className, subject, attr}]
+    const teachersList = ref([]); // roster [{loginEmail, teacherName, subject, role, baseHours}]
+    const allSchedules = ref([]); // name-keyed base schedule
     const substitutionRecords = ref([]);
     const homeroomRecords = ref([]);
     const homeroomAssignSelections = ref({});
@@ -728,6 +728,17 @@ createApp({
       const slotKey = (dateStr, period) => String(dateStr || '') + '|' + (parseInt(period, 10) || 0);
       const pushSub = (rec) => {
         if (!rec) return;
+        // Keep non-enumerable legacy aliases for calculation modules; the persisted/API key is the name.
+        if (!Object.prototype.hasOwnProperty.call(rec, 'originalTeacherEmail')) {
+          Object.defineProperty(rec, 'originalTeacherEmail', {
+            configurable: true, enumerable: false, get: () => rec.originalTeacherName || ''
+          });
+        }
+        if (!Object.prototype.hasOwnProperty.call(rec, 'actualTeacherEmail')) {
+          Object.defineProperty(rec, 'actualTeacherEmail', {
+            configurable: true, enumerable: false, get: () => rec.actualTeacherName || ''
+          });
+        }
         subs.push(rec);
         const k = slotKey(rec.date, rec.period);
         if (!slotIndex[k]) slotIndex[k] = [];
@@ -776,8 +787,8 @@ createApp({
             id: req.id,
             date: req.requestDate,
             period: req.requestPeriod,
-            originalTeacherEmail: req.requesterEmail,
-            actualTeacherEmail: req.targetTeacherEmail,
+            originalTeacherName: req.requesterName,
+            actualTeacherName: req.targetTeacherName,
             actualTeacherName: req.actualTeacherName || req.targetTeacherName || '',
             className: leaveCls,
             subject: leaveSubj,
@@ -851,8 +862,8 @@ createApp({
             id: req.id + '_1',
             date: req.targetDate,
             period: req.targetPeriod,
-            originalTeacherEmail: req.targetTeacherEmail,
-            actualTeacherEmail: req.requesterEmail,
+            originalTeacherName: req.targetTeacherName,
+            actualTeacherName: req.requesterName,
             actualTeacherName: req.requesterName || '',
             className: leaveCls,
             subject: leaveSubj,
@@ -871,8 +882,8 @@ createApp({
             id: req.id + '_2',
             date: req.requestDate,
             period: req.requestPeriod,
-            originalTeacherEmail: req.requesterEmail,
-            actualTeacherEmail: req.targetTeacherEmail,
+            originalTeacherName: req.requesterName,
+            actualTeacherName: req.targetTeacherName,
             actualTeacherName: req.targetTeacherName || '',
             className: targetCls,
             subject: targetSubj,
@@ -889,7 +900,7 @@ createApp({
       });
       return subs;
     };
-    const requestsList = ref([]); // 已核准 substitutions [{id, date, period, originalTeacherEmail, actualTeacherEmail, className, subject, requestId, type, printed, subFee, reason, note}]
+    const requestsList = ref([]); // Approved substitutions keyed by teacher names.
 
     // 單/雙週課輔課輔助
     const semesterStartDate = computed(() => {
@@ -979,7 +990,7 @@ createApp({
     /** 導覽用：找登入者本週第一格有課（非巡堂、非調出）；同一次導覽快取 */
     const findDemoScheduleCell = () => {
       if (_tourDemoCellCache) return _tourDemoCellCache;
-      const email = user.value && user.value.email;
+      const email = user.value && getTeacherNameByEmail(user.value.email);
       if (!email) return null;
       const dates = currentWeekDates.value || [];
       for (let day = 1; day <= 5; day++) {
@@ -1515,16 +1526,17 @@ createApp({
       rows.forEach(r => {
         const fee = r['經費來源'] || r.subFee || '';
         if (!shouldDeduct(fee)) return;
-        const em = String(r['受邀人Email'] || r.targetTeacherEmail || '').toLowerCase();
-        if (!em) return;
-        deductMap[em] = (deductMap[em] || 0) + 1;
+         const teacherName = String(r['受邀人姓名'] || r.targetTeacherName || '').trim();
+         const key = teacherName.toLowerCase();
+         if (!key) return;
+         deductMap[key] = (deductMap[key] || 0) + 1;
       });
-      Object.keys(deductMap).forEach(em => {
-        const t = lookupTeacher(em);
-        const prev = t ? (parseFloat(t.mutualQuota) || 0) : 0;
-        // 每節扣 1；畫面樂觀更新（不足 1 時後端不會扣）
-        const next = Math.round(Math.max(0, prev - deductMap[em]) * 1000) / 1000;
-        patchLocalMutualQuota(t ? t.email : em, next);
+       Object.keys(deductMap).forEach(key => {
+         const t = lookupTeacher(key);
+         const prev = t ? (parseFloat(t.mutualQuota) || 0) : 0;
+         // 每節扣 1；畫面樂觀更新（不足 1 時後端不會扣）
+         const next = Math.round(Math.max(0, prev - deductMap[key]) * 1000) / 1000;
+         patchLocalMutualQuota(t ? t.teacherName || t.name : key, next);
       });
     };
     /**
@@ -1543,16 +1555,17 @@ createApp({
         if (terminal[st]) return;
         const fee = r.subFee || r['經費來源'] || '';
         if (!isQuotaDeductFee(fee)) return;
-        const em = String(r.targetTeacherEmail || r['受邀人Email'] || r.actualTeacherEmail || '').toLowerCase();
-        if (!em) return;
-        addMap[em] = (addMap[em] || 0) + 1;
+         const teacherName = String(r.targetTeacherName || r['受邀人姓名'] || r.actualTeacherName || '').trim();
+         const key = teacherName.toLowerCase();
+         if (!key) return;
+         addMap[key] = (addMap[key] || 0) + 1;
       });
-      Object.keys(addMap).forEach(em => {
-        const t = lookupTeacher(em);
-        if (!t) return;
-        const prev = parseFloat(t.mutualQuota) || 0;
-        const next = Math.round((prev + addMap[em]) * 1000) / 1000;
-        patchLocalMutualQuota(t.email, next);
+       Object.keys(addMap).forEach(key => {
+         const t = lookupTeacher(key);
+         if (!t) return;
+         const prev = parseFloat(t.mutualQuota) || 0;
+         const next = Math.round((prev + addMap[key]) * 1000) / 1000;
+         patchLocalMutualQuota(t.teacherName || t.name, next);
       });
     };
     const selectedClass = ref('');
@@ -1713,12 +1726,12 @@ createApp({
      */
     const getCalendarDetails = (req) => {
       if (!req) return null;
-      const userEmail = user.value ? String(user.value.email).toLowerCase() : '';
-      const requesterEmail = req.requesterEmail ? String(req.requesterEmail).toLowerCase() : '';
-      const targetTeacherEmail = req.targetTeacherEmail ? String(req.targetTeacherEmail).toLowerCase() : '';
+      const userName = user.value ? String(getTeacherNameByEmail(user.value.email) || '').toLowerCase() : '';
+      const requesterName = req.requesterName ? String(req.requesterName).toLowerCase() : '';
+      const targetTeacherName = req.targetTeacherName ? String(req.targetTeacherName).toLowerCase() : '';
       const isExchange = req.type === 'exchange' || req.type === '對調';
-      const isLeaveSide = !!(userEmail && userEmail === requesterEmail);
-      const isCoverSide = !!(userEmail && userEmail === targetTeacherEmail);
+      const isLeaveSide = !!(userName && userName === requesterName);
+      const isCoverSide = !!(userName && userName === targetTeacherName);
 
       const subs = (substitutionRecords.value || []).filter(r => r && String(r.requestId) === String(req.id));
       const findSubAt = (dateStr, period, asActual) => {
@@ -1727,8 +1740,8 @@ createApp({
           String(r.date || '') === String(dateStr || '')
           && parseInt(r.period, 10) === p
           && (asActual
-            ? (r.actualTeacherEmail && String(r.actualTeacherEmail).toLowerCase() === userEmail)
-            : (r.originalTeacherEmail && String(r.originalTeacherEmail).toLowerCase() === userEmail))
+             ? (r.actualTeacherName && String(r.actualTeacherName).toLowerCase() === userName)
+             : (r.originalTeacherName && String(r.originalTeacherName).toLowerCase() === userName))
         ) || null;
       };
       const pickClassSubject = (rec, fallbackClass, fallbackSubj) => {
@@ -2274,7 +2287,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       const asProxy = !!(
         p.leaveTeacher
         && user.value
-        && String(p.leaveTeacher).toLowerCase() !== String(user.value.email || '').toLowerCase()
+        && String(p.leaveTeacher).toLowerCase() !== String(getTeacherNameByEmail(user.value.email) || '').toLowerCase()
       );
       const tkA = (window.DateUtils && window.DateUtils.decodeTimeKey)
         ? window.DateUtils.decodeTimeKey(p.timeKey)
@@ -2970,7 +2983,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     /** 目前是否處於「代別人申請」模式（代理對象 ≠ 自己） */
     const isProxySubmitActive = computed(() => {
       if (!canStaffProxySubmit.value || !user.value) return false;
-      const me = String(user.value.email || '').toLowerCase();
+      const me = String(getTeacherNameByEmail(user.value.email) || '').toLowerCase();
       const tgt = String(proxyTargetEmail.value || '').toLowerCase();
       return !!(tgt && tgt !== me);
     });
@@ -2982,15 +2995,16 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     const filteredProxyTeachers = computed(() => {
       const q = String(proxyTargetQuery.value || '').trim().toLowerCase();
       const list = teachersList.value || [];
-      const me = user.value ? String(user.value.email || '').toLowerCase() : '';
+      const me = user.value ? String(getTeacherNameByEmail(user.value.email) || '').toLowerCase() : '';
       return list.filter(t => {
-        const em = String(t.email || '').toLowerCase();
+        const em = String(t.teacherName || t.name || '').toLowerCase();
+        const loginEmail = String(t.loginEmail || '').toLowerCase();
         if (!em || em === me) return false;
         if (t.role === 'admin') return false;
         if (!q) return true;
         const name = String(t.name || '').toLowerCase();
         const sub = String(t.subject || '').toLowerCase();
-        return name.includes(q) || em.includes(q) || sub.includes(q);
+        return name.includes(q) || em.includes(q) || loginEmail.includes(q) || sub.includes(q);
       });
     });
     /** 後台：僅「行政」角色可被勾選授權（非全校教師） */
@@ -2998,7 +3012,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       const q = String(proxyGrantQuery.value || '').trim().toLowerCase();
       return (teachersList.value || []).filter(t => {
         if (t.role !== 'staff') return false;
-        const em = String(t.email || '').toLowerCase();
+        const em = String(t.loginEmail || '').toLowerCase();
         if (!em) return false;
         if (!q) return true;
         const name = String(t.name || '').toLowerCase();
@@ -3010,7 +3024,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       const set = {};
       (proxySubmitEmails.value || []).forEach(e => { set[e] = 1; });
       return (teachersList.value || []).filter(t =>
-        t.role === 'staff' && set[String(t.email || '').toLowerCase()]
+        t.role === 'staff' && set[String(t.loginEmail || '').toLowerCase()]
       );
     });
     const isProxySubmitEmailGranted = (email) => {
@@ -3044,7 +3058,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
      */
     const canOperateOnTeacherEmail = (teacherEmail) => {
       if (!user.value) return false;
-      const me = String(user.value.email || '').toLowerCase();
+      const me = String(getTeacherNameByEmail(user.value.email) || '').toLowerCase();
       const em = String(teacherEmail || '').toLowerCase();
       if (!em) return false;
       if (em === me) return true;
@@ -3057,7 +3071,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     /** 點別人課格時，若是已授權行政，自動把該人設為代申請對象 */
     const ensureProxyTargetForTeacher = (teacherEmail) => {
       if (!canStaffProxySubmit.value || !user.value) return;
-      const me = String(user.value.email || '').toLowerCase();
+      const me = String(getTeacherNameByEmail(user.value.email) || '').toLowerCase();
       const em = String(teacherEmail || '').trim().toLowerCase();
       if (!em || em === me) return;
       if (String(proxyTargetEmail.value || '').toLowerCase() === em) return;
@@ -3093,10 +3107,10 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     };
 
     /** 請假人不是自己，且目前帳號是已授權行政 → 應走代申請 */
-    const shouldProxySubmitForLeave = (leaveEmail) => {
+    const shouldProxySubmitForLeave = (leaveName) => {
       if (!canStaffProxySubmit.value || !user.value) return false;
-      const me = String(user.value.email || '').trim().toLowerCase();
-      const leave = String(leaveEmail || '').trim().toLowerCase();
+      const me = String(getTeacherNameByEmail(user.value.email) || '').trim().toLowerCase();
+      const leave = String(getTeacherNameByEmail(leaveName) || leaveName || '').trim().toLowerCase();
       return !!(me && leave && leave !== me);
     };
 
@@ -3137,7 +3151,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       const staffSet = {};
       (teachersList.value || []).forEach(t => {
         if (t.role === 'staff') {
-          const em = String(t.email || '').toLowerCase();
+          const em = String(t.loginEmail || '').toLowerCase();
           if (em) staffSet[em] = 1;
         }
       });
@@ -3204,7 +3218,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       const em = String(email || '').trim().toLowerCase();
       if (!em) return;
       const t = (teachersList.value || []).find(x =>
-        String(x.email || '').toLowerCase() === em
+        String(x.loginEmail || '').toLowerCase() === em
       );
       if (!t || t.role !== 'staff') {
         showToast('只能授權「行政」角色', 'warning');
@@ -3243,17 +3257,17 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
 
     const filteredTeachers = computed(() => {
       if (!user.value) return [];
-      const myEmail = String(user.value.email || '').toLowerCase();
+      const myName = String(getTeacherNameByEmail(user.value.email) || '').toLowerCase();
       // 一般教師：只看自己；行政／教學組可看全校
       if (!canViewAllTimetables.value) {
-        return teachersList.value.filter(t => String(t.email || '').toLowerCase() === myEmail);
+        return teachersList.value.filter(t => String(t.teacherName || t.name || '').toLowerCase() === myName);
       }
       const query = searchQuery.value.trim().toLowerCase();
       const subj = selectedSubject.value;
       // 預設「我的課表」：只顯示自己（有搜尋姓名時改看全校比對）
       if (subj === 'mine' && !query) {
-        const self = lookupTeacher(myEmail);
-        return self ? [self] : teachersList.value.filter(t => String(t.email || '').toLowerCase() === myEmail);
+        const self = lookupTeacher(user.value.email);
+        return self ? [self] : teachersList.value.filter(t => String(t.teacherName || t.name || '').toLowerCase() === myName);
       }
       // all＝全校；指定科目＝該領域；mine+搜尋＝用姓名在全校找
       let list = teachersList.value.slice();
@@ -3275,11 +3289,11 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       const me = [];
       const others = [];
       list.forEach(t => {
-        if (String(t.email || '').toLowerCase() === myEmail) me.push(t);
+        if (String(t.teacherName || t.name || '').toLowerCase() === myName) me.push(t);
         else others.push(t);
       });
       if (!me.length && subj === 'all') {
-        const self = lookupTeacher(myEmail);
+        const self = lookupTeacher(user.value.email);
         if (self) me.push(self);
       }
       return me.concat(others);
@@ -3342,8 +3356,8 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     );
 
     const allTeachersList = computed(() => {
-      const excludeEmail = activeCell.value?.teacherEmail || user.value?.email;
-      return teachersList.value.filter(t => t.email !== excludeEmail);
+      const excludeName = activeCell.value?.teacherEmail || getTeacherNameByEmail(user.value?.email);
+      return teachersList.value.filter(t => (t.teacherName || t.name) !== excludeName);
     });
 
     const teachersListDetails = computed(() => teachersList.value);
@@ -3351,12 +3365,12 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     const pendingHomeroomRecords = computed(() => {
       return (homeroomRecords.value || [])
         .filter(r => r && r.enabled !== false && String(r.status || '').toLowerCase() !== 'cancelled')
-        .filter(r => !r.actualTeacherEmail);
+        .filter(r => !r.actualTeacherName);
     });
     const getHomeroomCoverCandidates = (record) => {
-      const original = String(record && record.originalTeacherEmail || '').toLowerCase();
+      const original = String(record && record.originalTeacherName || '').toLowerCase();
       return (teachersList.value || [])
-        .filter(t => t && t.email && String(t.email).toLowerCase() !== original)
+        .filter(t => t && (t.teacherName || t.name) && String(t.teacherName || t.name).toLowerCase() !== original)
         .slice()
         .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'zh-Hant'));
     };
@@ -3416,13 +3430,13 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
 
     const assignHomeroomTeacher = async (record) => {
       if (!record || !record.id) return;
-      const email = String(homeroomAssignSelections.value[record.id] || '').trim().toLowerCase();
-      if (!email) {
+      const teacherName = String(homeroomAssignSelections.value[record.id] || '').trim();
+      if (!teacherName) {
         showToast('請先選擇代導教師', 'info');
         return;
       }
-      const actualTeacher = teachersList.value.find(t => t.email === email);
-      const actualName = actualTeacher ? actualTeacher.name : email;
+      const actualTeacher = teachersList.value.find(t => (t.teacherName || t.name) === teacherName);
+      const actualName = actualTeacher ? (actualTeacher.teacherName || actualTeacher.name) : teacherName;
 
       await executeOptimisticAction({
         optimistic: () => {
@@ -3431,7 +3445,6 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
           const idx = next.findIndex(r => r.id === record.id);
           if (idx >= 0) {
             next[idx] = Object.assign({}, next[idx], {
-              actualTeacherEmail: email,
               actualTeacherName: actualName,
               status: 'assigned'
             });
@@ -3448,7 +3461,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         apiCall: () => callGasApi('saveHomeroomCoverTeacher', {
           semesterId: currentSemester.value,
           recordId: record.id,
-          actualTeacherEmail: email
+           actualTeacherName: actualName
         }),
         successMessage: `✅ 代導教師（${actualName}）指定成功，已同步至雲端`,
         errorMessagePrefix: `指定代導教師（${actualName}）失敗`
@@ -3473,11 +3486,11 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       const found = candidates.find(t => t.name === cleanVal || t.email === cleanVal) ||
                     (teachersListDetails.value || []).find(t => t.name === cleanVal || t.email === cleanVal);
       if (found) {
-        homeroomAssignSelections.value[record.id] = found.email;
+        homeroomAssignSelections.value[record.id] = found.teacherName || found.name;
       } else {
         const partial = candidates.find(t => t.name.indexOf(cleanVal) >= 0) ||
                         (teachersListDetails.value || []).find(t => t.name.indexOf(cleanVal) >= 0);
-        if (partial) homeroomAssignSelections.value[record.id] = partial.email;
+        if (partial) homeroomAssignSelections.value[record.id] = partial.teacherName || partial.name;
       }
     };
 
@@ -3489,10 +3502,10 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       }
       const found = (teachersListDetails.value || []).find(t => t.name === cleanVal || t.email === cleanVal);
       if (found) {
-        manualHomeroomForm.value.actualTeacherEmail = found.email;
+        manualHomeroomForm.value.actualTeacherEmail = found.teacherName || found.name;
       } else {
         const partial = (teachersListDetails.value || []).find(t => t.name.indexOf(cleanVal) >= 0);
-        if (partial) manualHomeroomForm.value.actualTeacherEmail = partial.email;
+        if (partial) manualHomeroomForm.value.actualTeacherEmail = partial.teacherName || partial.name;
       }
     };
 
@@ -3589,11 +3602,11 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     });
 
     const currentMonthHomeroomAssignedCount = computed(() => {
-      return (currentMonthHomeroomRecords.value || []).filter(r => !!r.actualTeacherEmail).length;
+      return (currentMonthHomeroomRecords.value || []).filter(r => !!r.actualTeacherName).length;
     });
 
     const currentMonthHomeroomPendingCount = computed(() => {
-      return (currentMonthHomeroomRecords.value || []).filter(r => !r.actualTeacherEmail).length;
+      return (currentMonthHomeroomRecords.value || []).filter(r => !r.actualTeacherName).length;
     });
 
     const saveManualHomeroomRecord = async () => {
@@ -3615,13 +3628,11 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
             id: 'mentor_manual_temp_' + Date.now(),
             semesterId: currentSemester.value,
             sourceRequestId: 'manual',
-            originalTeacherEmail: form.leaveEmail,
             originalTeacherName: origName,
             className: form.className || '導師班',
             date: form.date,
             leaveTimeType: form.leaveTimeType,
             leaveTime: form.leaveTime,
-            actualTeacherEmail: form.actualTeacherEmail || '',
             actualTeacherName: actualName,
             feeAmount: 455,
             status: form.actualTeacherEmail ? 'assigned' : 'pending',
@@ -3636,12 +3647,12 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         },
         apiCall: () => callGasApi('saveManualHomeroomRecord', {
           semesterId: currentSemester.value,
-          leaveEmail: form.leaveEmail,
+           leaveName: form.leaveEmail,
           className: form.className,
           date: form.date,
           leaveTimeType: form.leaveTimeType,
           leaveTime: form.leaveTime,
-          actualTeacherEmail: form.actualTeacherEmail,
+           actualTeacherName: form.actualTeacherEmail,
           note: form.note
         }),
         onSuccess: () => loadHomeroomRecords({ silent: true }),
@@ -3732,21 +3743,21 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     // 所有歷史紀錄 (掛載虛擬屬性以供前端表格渲染)
     // P3：reqById／peerByRequestId 一次建表，避免 map 內 O(n) find
     const filteredHistoryRecords = computed(() => {
-      const email = user.value ? user.value.email.toLowerCase() : '';
+      const teacherName = user.value ? String(getTeacherNameByEmail(user.value.email) || '').toLowerCase() : '';
       let filteredRecords = substitutionRecords.value;
       
       // 非教學組：預設只看自己相關；行政另含「我代送」的單
-      if (!isAdmin.value && email) {
+      if (!isAdmin.value && teacherName) {
         filteredRecords = substitutionRecords.value.filter(r => {
           const related =
-            (r.originalTeacherEmail && r.originalTeacherEmail.toLowerCase() === email) ||
-            (r.actualTeacherEmail && r.actualTeacherEmail.toLowerCase() === email);
+            (r.originalTeacherName && r.originalTeacherName.toLowerCase() === teacherName) ||
+            (r.actualTeacherName && r.actualTeacherName.toLowerCase() === teacherName);
           if (related) return true;
           if (isStaff.value && r.requestId) {
             const req = (requestsList.value || []).find(x => x && x.id === r.requestId);
             if (req && isProxySubmitRequest(req)) {
-              const proxyEm = String(req.proxyByEmail || '').toLowerCase();
-              if (proxyEm && proxyEm === email) return true;
+              const proxyName = String(req.proxyByName || '').toLowerCase();
+              if (proxyName && proxyName === teacherName) return true;
             }
           }
           return false;
@@ -3793,8 +3804,8 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
 
         let leaveDate = rec.date;
         let leavePeriod = rec.period;
-        let leaveTeacher = rec.originalTeacherEmail;
-        let subTeacher = rec.actualTeacherEmail;
+        let leaveTeacher = rec.originalTeacherName;
+        let subTeacher = rec.actualTeacherName;
         let leaveClassName = rec.className || '';
         let leaveSubject = rec.subject || '';
         let targetDate = '---';
@@ -3842,8 +3853,8 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
             if (leaveEdge) {
               leaveDate = leaveEdge.date;
               leavePeriod = leaveEdge.period;
-              leaveTeacher = leaveEdge.originalTeacherEmail;
-              subTeacher = leaveEdge.actualTeacherEmail;
+              leaveTeacher = leaveEdge.originalTeacherName;
+              subTeacher = leaveEdge.actualTeacherName;
             }
             if (targetEdge) {
               targetDate = targetEdge.date;
@@ -3861,16 +3872,16 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         return {
           ...rec,
           // 歷史列統一：original＝請假師、actual＝代課／對調師
-          originalTeacherEmail: leaveTeacher || rec.originalTeacherEmail,
-          actualTeacherEmail: subTeacher || rec.actualTeacherEmail,
+          originalTeacherName: leaveTeacher || rec.originalTeacherName,
+          actualTeacherName: subTeacher || rec.actualTeacherName,
           className: leaveClassName || rec.className,
           subject: leaveSubject || rec.subject,
           serial: matchedReq ? (matchedReq.serial || '---') : '---',
           batchId: (matchedReq && matchedReq.batchId) || rec.batchId || '',
           note: (matchedReq && matchedReq.note) || rec.note || '',
           directApprove: !!(matchedReq && matchedReq.directApprove),
-          requesterName: getTeacherNameByEmail(leaveTeacher || rec.originalTeacherEmail),
-          targetTeacherName: getTeacherNameByEmail(subTeacher || rec.actualTeacherEmail),
+          requesterName: leaveTeacher || rec.originalTeacherName || '',
+          targetTeacherName: subTeacher || rec.actualTeacherName || '',
           requestDate: leaveDate,
           requestPeriod: leavePeriod,
           createdAt: createdAtFull,
@@ -4152,11 +4163,11 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     // 個人調代課摘要 (未來排前，過去排後且淡化)
     const personalChanges = computed(() => {
       if (!user.value) return [];
-      const email = user.value.email.toLowerCase();
+       const email = String(getTeacherNameByEmail(user.value.email) || '').toLowerCase();
       const todayStr = getTodayString();
-      const records = substitutionRecords.value.filter(r => 
-        (r.originalTeacherEmail && r.originalTeacherEmail.toLowerCase() === email) || 
-        (r.actualTeacherEmail && r.actualTeacherEmail.toLowerCase() === email)
+       const records = substitutionRecords.value.filter(r =>
+         (r.originalTeacherName && r.originalTeacherName.toLowerCase() === email) ||
+         (r.actualTeacherName && r.actualTeacherName.toLowerCase() === email)
       );
       const exchangePeersByRequestId = Object.create(null);
       substitutionRecords.value.forEach(r => {
@@ -4172,7 +4183,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       
       records.forEach(r => {
         if (r.type === 'exchange') {
-          if (r.actualTeacherEmail && r.actualTeacherEmail.toLowerCase() === email) {
+           if (r.actualTeacherName && r.actualTeacherName.toLowerCase() === email) {
             deduped.push(r);
             seenExchange.add(r.requestId);
           }
@@ -4210,8 +4221,8 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         const reason = String(r.reason || '').trim();
         const note = String(r.note || '');
         if (reason === '空堂排班' || note.indexOf('[空堂排班]') >= 0) return true;
-        const o = String(r.originalTeacherEmail || '').toLowerCase();
-        const a = String(r.actualTeacherEmail || '').toLowerCase();
+         const o = String(r.originalTeacherName || '').toLowerCase();
+         const a = String(r.actualTeacherName || '').toLowerCase();
         return !!(o && a && o === a && (reason === '空堂排班' || note.indexOf('空堂') >= 0));
       };
       const isMutualRec = (r) => {
@@ -4232,7 +4243,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
 
       const list = deduped.map(r => {
         const isPast = r.date < todayStr;
-        const isRequester = r.originalTeacherEmail && r.originalTeacherEmail.toLowerCase() === email;
+         const isRequester = r.originalTeacherName && r.originalTeacherName.toLowerCase() === email;
         const isSwap = r.type === 'exchange';
 
         let classLine = '';
@@ -4246,8 +4257,8 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
             const peerSlot = fmtPeerSlot(peer.date, peer.period);
             desc = `🔄 原${peerSlot}第${peer.period}節 由 ${peerTeacherName}老師上課（${peer.subject}）`;
           } else {
-            const otherEmail = r.actualTeacherEmail && r.actualTeacherEmail.toLowerCase() === email ? r.originalTeacherEmail : r.actualTeacherEmail;
-            const otherName = getTeacherNameByEmail(otherEmail);
+             const otherName = r.actualTeacherName && r.actualTeacherName.toLowerCase() === email
+               ? r.originalTeacherName : r.actualTeacherName;
             desc = `🔄 與 ${otherName} 老師調課`;
           }
         } else if (isEmptySlotRec(r)) {
@@ -4257,8 +4268,8 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
           desc = `📌 空堂任務：${task}`;
         } else {
           classLine = fmtClassLine(r.date, r.period, r.className, r.subject, isRequester ? '' : '上');
-          const otherSub = getTeacherNameByEmail(r.actualTeacherEmail);
-          const otherLeave = getTeacherNameByEmail(r.originalTeacherEmail);
+           const otherSub = r.actualTeacherName || '';
+           const otherLeave = r.originalTeacherName || '';
           const reason = String(r.reason || '').trim();
           if (isRequester) {
             if (isMutualRec(r)) {
@@ -5911,15 +5922,17 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     const formatDateMMDD = (dateStr) => window.DateUtils.formatDateMMDD(dateStr);
     const getTodayString = () => window.DateUtils.getTodayString();
 
-    // P4：email → 教師 O(1) 查表（大小寫皆可）
+    // P4：name/loginEmail → teacher O(1) lookup.
     const teachersByEmail = computed(() => {
       const map = Object.create(null);
       (teachersList.value || []).forEach(t => {
-        if (!t || !t.email) return;
-        const raw = String(t.email);
-        map[raw] = t;
-        const low = raw.toLowerCase();
-        if (low !== raw) map[low] = t;
+        if (!t) return;
+        [t.teacherName || t.name, t.loginEmail].filter(Boolean).forEach(rawValue => {
+          const raw = String(rawValue);
+          map[raw] = t;
+          const low = raw.toLowerCase();
+          if (low !== raw) map[low] = t;
+        });
       });
       return map;
     });
@@ -6031,7 +6044,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     const isProxySubmitRequest = (r) => {
       if (!r) return false;
       if (r.isProxySubmit === true) return true;
-      if (r.proxyByEmail) return true;
+      if (r.proxyByName) return true;
       const note = String(r.note || '');
       return note.indexOf('[行政代申請') >= 0;
     };
@@ -6051,28 +6064,29 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       if (!r || !email) return false;
       if (isAdminDirectRequest(r)) return false;
       const me = String(email).toLowerCase().trim();
-      const reqEm = String(r.requesterEmail || '').toLowerCase().trim();
-      const proxyEm = String(r.proxyByEmail || '').toLowerCase().trim();
+      const myName = String(getTeacherNameByEmail(me) || '').toLowerCase().trim();
+      const reqName = String(r.requesterName || '').toLowerCase().trim();
+      const proxyName = String(r.proxyByName || '').toLowerCase().trim();
       const note = String(r.note || '');
       const noteIsProxy = note.indexOf('[行政代申請') >= 0;
       // 只要有代申請跡象：絕不能用「請假人＝我」混進來
-      if (proxyEm || noteIsProxy || r.isProxySubmit === true) {
-        if (proxyEm) return proxyEm === me;
+      if (proxyName || noteIsProxy || r.isProxySubmit === true) {
+        if (proxyName) return proxyName === myName;
         // 無代申請人 Email 欄時：用備註姓名對 lookup（模擬 displayName 去「(模擬)」）
         const m = note.match(/\[行政代申請[：:]\s*([^代\]]+?)\s*代/);
         if (m) {
           const proxyName = String(m[1] || '').trim();
-          const myName = String(getTeacherNameByEmail(me) || '')
+           const noteMyName = String(getTeacherNameByEmail(me) || '')
             .trim()
             .replace(/\s*\(模擬\)\s*$/, '');
           const disp = String((user.value && user.value.displayName) || '')
             .trim()
             .replace(/\s*\(模擬\)\s*$/, '');
-          if (proxyName && (proxyName === myName || proxyName === disp)) return true;
+           if (proxyName && (proxyName === noteMyName || proxyName === disp)) return true;
         }
         return false;
       }
-      return reqEm === me;
+      return reqName === myName;
     };
 
     const applyInitialPayload = (res) => {
@@ -6112,9 +6126,10 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         bumpRequestsWatermarkFromRows(sortedAll);
         if (user.value) {
           // 模擬身份時用被模擬者 Email（user.value.email），不用 JWT 原帳
-          const email = effectiveUserEmail.value || String(user.value.email || '').toLowerCase();
-          mySentRequests.value = sortedAll.filter(r => isMySentRequest(r, email));
-          myPendingRequests.value = sortedAll.filter(r => r.targetTeacherEmail && r.targetTeacherEmail.toLowerCase() === email && r.status === 'pending_teacher');
+           const email = effectiveUserEmail.value || String(user.value.email || '').toLowerCase();
+           const name = String(getTeacherNameByEmail(email) || '').toLowerCase();
+           mySentRequests.value = sortedAll.filter(r => isMySentRequest(r, email));
+           myPendingRequests.value = sortedAll.filter(r => r.targetTeacherName && r.targetTeacherName.toLowerCase() === name && r.status === 'pending_teacher');
           // 待核准僅教學組；模擬成行政／教師時清空，避免誤以為「我的送出」
           const stOf = (r) => (window.FieldMap && window.FieldMap.normalizeRequestStatus)
             ? window.FieldMap.normalizeRequestStatus(r && r.status)
@@ -6229,6 +6244,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       if (!user.value) return;
       // 模擬身份：一律用目前 user.value.email（被模擬者），勿用 originalUser／JWT
       const email = effectiveUserEmail.value || String(user.value.email || '').toLowerCase().trim();
+      const name = String(getTeacherNameByEmail(email) || '').toLowerCase().trim();
       const all = sortRequestListDesc(requestsList.value || []);
       requestsList.value = all;
       const stOf = (r) => (window.FieldMap && window.FieldMap.normalizeRequestStatus)
@@ -6236,7 +6252,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         : String((r && r.status) || '').toLowerCase();
       mySentRequests.value = all.filter(r => isMySentRequest(r, email));
       myPendingRequests.value = all.filter(r =>
-        r.targetTeacherEmail && String(r.targetTeacherEmail).toLowerCase() === email
+        r.targetTeacherName && String(r.targetTeacherName).toLowerCase() === name
         && stOf(r) === 'pending_teacher'
       );
       adminPendingRequests.value = (userRole.value === 'admin')
@@ -6633,7 +6649,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         if (semesterModalMode.value === 'add') {
           const teachersToCopy = teachersList.value.map(t => ({
             "學期代號": form.id.trim(),
-            "教師Email": t.email,
+             "教師Email": t.loginEmail || t.email,
             "教師姓名": t.name,
             "授課科目": t.subject,
             "系統角色": t.role,
@@ -7340,6 +7356,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       loading,
       loadingMessage,
       getStatusText,
+      getTeacherNameByEmail,
       restoreMutualQuotaForRows,
       optimisticPatchRequestStatus,
       optimisticPatchRequestStatuses,
@@ -7677,7 +7694,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     const showScheduleEditModal = ref(false);
     const scheduleForm = ref({
       id: null, teacherEmail: '', teacherName: '', dayOfWeek: 1, period: 1,
-      className: '', subject: '', attr: '基本', restriction: ''
+       className: '', subject: '', attr: '一般', restriction: ''
     });
     const showTeacherModal = ref(false);
     const teacherModalMode = ref('add');
@@ -7685,7 +7702,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     const excelData = ref([]);
     const excelHeaders = ref([]);
     const mappingFields = ref({
-      teacherName: '', teacherEmail: '', subject: '', dayOfWeek: '',
+      teacherName: '', subject: '', dayOfWeek: '',
       period: '', className: '', attr: '', restriction: '', specialTags: ''
     });
     const importPreview = ref(null);
@@ -7758,6 +7775,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     };
     const runTeacherImportPreview = (...a) => needUiAdmin('runTeacherImportPreview', ...a);
     const importSchedules = (...a) => needUiAdmin('importSchedules', ...a);
+    const migrateNameKeySchema = (...a) => needUiAdmin('migrateNameKeySchema', ...a);
     const runImportPreview = (...a) => needUiAdmin('runImportPreview', ...a);
     const downloadScheduleTemplate = (...a) => needUiAdmin('downloadScheduleTemplate', ...a);
     const downloadCurrentSchedules = (...a) => needUiAdmin('downloadCurrentSchedules', ...a);
@@ -7847,7 +7865,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       }
       quotaLedgerLoading.value = !hasStale;
       try {
-        const res = await fetchMutualQuotaLedger({ email: t.email, limit: 50 });
+        const res = await fetchMutualQuotaLedger({ name: t.teacherName || t.name, limit: 50 });
         // 後端已倒序；前端再保險排一次
         const rows = ((res && res.ledger) || []).slice().sort((a, b) => {
           const ta = String((a && a.time) || '').replace('T', ' ').trim();
@@ -8531,7 +8549,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       closeSuccessGoPending, closeSuccessStayTimetable, closeSuccessCopyLine,
       openScheduleEditModal, saveScheduleCell, clearScheduleCell, updateTeacherBaseHours, pickScheduleAttr,
       openAddTeacherModal, openEditTeacherModal, saveTeacher, deleteTeacher,
-      handleFileChange, getMappingLabel, importSchedules, toggleSelectAllRecords, loadTeacherClassesForExchange,
+       handleFileChange, getMappingLabel, importSchedules, migrateNameKeySchema, toggleSelectAllRecords, loadTeacherClassesForExchange,
       printSelectedForms, sendSelectedBatchNotices, calculateMonthlyReport, exportReportToExcel, exportSubFeeToExcel,
       schoolExportStart, schoolExportEnd, schoolExportIncludeWeekend, schoolExportOnlyChanged,
       schoolExportSelectedEmails, schoolExportTeacherFilter, filteredSchoolExportTeachers,

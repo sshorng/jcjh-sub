@@ -21,6 +21,15 @@ window.FieldMap = (function () {
     return undefined;
   }
 
+  function alias(obj, property, getter) {
+    Object.defineProperty(obj, property, {
+      configurable: true,
+      enumerable: false,
+      get: getter
+    });
+    return obj;
+  }
+
   function asBool(v) {
     return v === true || v === 'TRUE' || v === 'true' || v === 1 || v === '1';
   }
@@ -142,9 +151,14 @@ window.FieldMap = (function () {
   }
 
   function mapTeacher(t) {
+    const loginEmail = pick(t, ['教師Email', 'loginEmail', 'email']) || '';
+    const name = pick(t, ['教師姓名', 'teacherName', 'name']) || '';
     return {
-      email: pick(t, ['教師Email', 'email']),
-      name: pick(t, ['教師姓名', 'name']),
+      loginEmail: loginEmail,
+      // Email is retained only as the roster login field; domain keys use teacherName.
+      email: name,
+      teacherName: name,
+      name: name,
       subject: pick(t, ['授課科目', '任課科目', 'subject']) || '',
       jobTitle: String(pick(t, ['職務', '職稱', 'jobTitle']) || ''),
       expensePlan: String(pick(t, ['鐘點支出計畫', '鐘點支出來源', '支出計畫', '計畫', 'expensePlan', 'plan']) || '').trim(),
@@ -173,10 +187,9 @@ window.FieldMap = (function () {
       cn = '';
       subj = '';
     }
-    return {
+    const mapped = {
       id: pick(s, ['課表ID', 'id']),
-      teacherEmail: pick(s, ['教師Email', 'teacherEmail']),
-      teacherName: pick(s, ['教師姓名', 'teacherName']),
+      teacherName: pick(s, ['教師姓名', 'teacherName']) || '',
       dayOfWeek: asInt(pick(s, ['星期', 'dayOfWeek']), 0),
       period: asInt(pick(s, ['節次', 'period']), 0),
       className: cn,
@@ -190,15 +203,16 @@ window.FieldMap = (function () {
       specialTags: normalizeSpecialTags(pick(s, ['特殊標記', 'specialTags', 'specialTagsText']) || ''),
       isPreplanned: attr === '預排' || normalizeSpecialTags(pick(s, ['特殊標記', 'specialTags', 'specialTagsText']) || '').split('、').indexOf('預排') >= 0
     };
+    alias(mapped, 'teacherEmail', function () { return mapped.teacherName; });
+    return mapped;
   }
 
   function mapSubstitution(sub) {
-    return {
+    const mapped = {
       id: pick(sub, ['紀錄ID', 'id']),
       date: pick(sub, ['異動日期', 'date']),
       period: asInt(pick(sub, ['節次', 'period']), 0),
-      originalTeacherEmail: pick(sub, ['原授課教師Email', '原任課教師Email', 'originalTeacherEmail']),
-      actualTeacherEmail: pick(sub, ['實際授課教師Email', 'actualTeacherEmail']),
+      originalTeacherName: pick(sub, ['原授課教師姓名', '原任課教師姓名', '原導師姓名', 'originalTeacherName']) || '',
       actualTeacherName: pick(sub, ['\u5be6\u969b\u6388\u8ab2\u6559\u5e2b\u59d3\u540d', '\u4ee3\u8ab2\u6559\u5e2b\u59d3\u540d', 'actualTeacherName']) || '',
       className: String(pick(sub, ['班級', 'className']) || ''),
       subject: pick(sub, ['科目', 'subject']) || '',
@@ -216,6 +230,9 @@ window.FieldMap = (function () {
         return reason === '空堂排班' || note.indexOf('[空堂排班]') >= 0 || sub.isEmptySlotAssign === true;
       })()
     };
+    alias(mapped, 'originalTeacherEmail', function () { return mapped.originalTeacherName; });
+    alias(mapped, 'actualTeacherEmail', function () { return mapped.actualTeacherName; });
+    return mapped;
   }
 
   /** 狀態：中文表頭／舊別名 → 英文碼（前端過濾用） */
@@ -246,14 +263,12 @@ window.FieldMap = (function () {
   function mapRequest(r) {
     const targetDay = pick(r, ['對調目標星期', 'targetDayOfWeek']);
     const targetPeriod = pick(r, ['對調目標節次', 'targetPeriod']);
-    return {
+    const mapped = {
       id: pick(r, ['申請單ID', 'id']),
       serial: pick(r, ['單號', 'serial']),
       batchId: pick(r, ['批次ID', 'batchId']) || '',
       status: normalizeRequestStatus(pick(r, ['狀態', 'status'])),
-      requesterEmail: pick(r, ['申請人Email', 'requesterEmail']),
       requesterName: pick(r, ['申請人姓名', 'requesterName']),
-      targetTeacherEmail: pick(r, ['受邀人Email', 'targetTeacherEmail']),
       targetTeacherName: pick(r, ['受邀人姓名', 'targetTeacherName']),
       actualTeacherName: pick(r, ['實際授課教師姓名', 'actualTeacherName']) || '',
       className: String(pick(r, ['班級', 'className']) || ''),
@@ -279,16 +294,11 @@ window.FieldMap = (function () {
         return n.indexOf('[直接核准]') >= 0 || r.directApprove === true;
       })(),
       // 行政代申請：代申請人 Email；備註 [行政代申請…] 備援
-      proxyByEmail: (function () {
-        const em = pick(r, ['代申請人Email', 'proxyByEmail', 'proxySubmitBy']);
-        if (em) return String(em).trim().toLowerCase();
-        return '';
-      })(),
       proxyByName: String(pick(r, ['代申請人姓名', 'proxyByName']) || ''),
       isProxySubmit: (function () {
         if (r.isProxySubmit === true || r.proxySubmit === true) return true;
         const em = pick(r, ['代申請人Email', 'proxyByEmail', 'proxySubmitBy']);
-        if (em) return true;
+        if (em || pick(r, ['代申請人姓名', 'proxyByName'])) return true;
         const n = String(pick(r, ['備註', 'note']) || '');
         return n.indexOf('[行政代申請') >= 0;
       })(),
@@ -299,6 +309,10 @@ window.FieldMap = (function () {
         return reason === '空堂排班' || note.indexOf('[空堂排班]') >= 0;
       })()
     };
+    alias(mapped, 'requesterEmail', function () { return mapped.requesterName || ''; });
+    alias(mapped, 'targetTeacherEmail', function () { return mapped.targetTeacherName || ''; });
+    alias(mapped, 'proxyByEmail', function () { return mapped.proxyByName || ''; });
+    return mapped;
   }
 
   /** 前端 → Sheets：教師寫入列（同時寫入授課科目/任課科目別名，相容舊表頭） */
@@ -311,7 +325,7 @@ window.FieldMap = (function () {
       : (t["折抵額度"] !== undefined ? t["折抵額度"] : 0);
     return {
       "學期代號": semesterId || t.semesterId || '',
-      "教師Email": t.email || t["教師Email"],
+      "教師Email": t.loginEmail || t["教師Email"] || t.email,
       "教師姓名": t.name || t["教師姓名"],
       "授課科目": subject,
       "任課科目": subject,
@@ -337,17 +351,15 @@ window.FieldMap = (function () {
 
   /** 代導紀錄：Sheets → 前端 */
   function mapHomeroomRecord(r) {
-    return {
+    const mapped = {
       id: String(pick(r, ['代導紀錄ID', 'id']) || ''),
       semesterId: String(pick(r, ['學期代號', 'semesterId']) || ''),
       sourceRequestId: String(pick(r, ['來源申請單ID', 'sourceRequestId']) || ''),
-      originalTeacherEmail: String(pick(r, ['原導師Email', 'originalTeacherEmail']) || '').toLowerCase(),
       originalTeacherName: String(pick(r, ['原導師姓名', 'originalTeacherName']) || ''),
       className: String(pick(r, ['班級', 'className']) || ''),
       date: String(pick(r, ['代導日期', 'date']) || '').slice(0, 10),
       leaveTimeType: String(pick(r, ['請假時間類型', 'leaveTimeType']) || ''),
       leaveTime: String(pick(r, ['請假時間', 'leaveTime', 'timeRange']) || ''),
-      actualTeacherEmail: String(pick(r, ['代導教師Email', 'actualTeacherEmail']) || '').toLowerCase(),
       actualTeacherName: String(pick(r, ['代導教師姓名', 'actualTeacherName']) || ''),
       periodCount: asFloat(pick(r, ['代導節數', 'periodCount']), 1),
       feeAmount: asFloat(pick(r, ['鐘點費', 'feeAmount']), 455),
@@ -355,23 +367,27 @@ window.FieldMap = (function () {
       enabled: pick(r, ['啟用', 'enabled']) === undefined || pick(r, ['啟用', 'enabled']) === '' ? true : asBool(pick(r, ['啟用', 'enabled'])),
       createdAt: String(pick(r, ['建立時間', 'createdAt']) || ''),
       updatedAt: String(pick(r, ['更新時間', 'updatedAt']) || ''),
-      operatorEmail: String(pick(r, ['操作者', 'operatorEmail']) || ''),
+      operatorName: String(pick(r, ['操作者', 'operatorName']) || ''),
       note: String(pick(r, ['備註', 'note']) || '')
     };
+    alias(mapped, 'originalTeacherEmail', function () { return mapped.originalTeacherName; });
+    alias(mapped, 'actualTeacherEmail', function () { return mapped.actualTeacherName; });
+    alias(mapped, 'operatorEmail', function () { return mapped.operatorName; });
+    return mapped;
   }
 
   /** 前端 → Sheets：調代課紀錄寫入列（同時寫入原授課/原任課別名） */
   function substitutionToSheet(opts) {
-    const original = opts.originalTeacherEmail;
+    const original = opts.originalTeacherName || opts.originalTeacherEmail;
     return {
       "學期代號": opts.semesterId,
       "紀錄ID": opts.id,
       "申請單ID": opts.requestId,
       "異動日期": opts.date,
       "節次": opts.period,
-      "原授課教師Email": original,
-      "原任課教師Email": original,
-      "實際授課教師Email": opts.actualTeacherEmail,
+      "原授課教師姓名": original,
+      "原任課教師姓名": original,
+      "實際授課教師姓名": opts.actualTeacherName || opts.actualTeacherEmail,
       "班級": opts.className,
       "科目": opts.subject,
       "異動類型": opts.type,

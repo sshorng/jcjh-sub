@@ -384,9 +384,12 @@ window.UiTimetable = (function () {
         }).then(function (res) {
           var raw = (res && res.candidates) || [];
           var list = raw.map(function (c) {
+            var teacherName = c.teacherName || c.name || c.email || '';
             return {
-              email: c.email,
-              name: c.name,
+              // Domain candidate key is teacher name; email remains a local legacy alias only.
+              email: teacherName,
+              teacherName: teacherName,
+              name: teacherName,
               subject: c.subject,
               role: c.role || 'teacher',
               baseHours: c.baseHours,
@@ -544,7 +547,7 @@ window.UiTimetable = (function () {
           canActOnOther = !!clickDeps.canOperateOnTeacherEmail(teacherEmail);
         }
         if (!canActOnOther && user.value
-            && String(teacherEmail).toLowerCase() !== String(user.value.email).toLowerCase()) {
+            && String(teacherEmail).toLowerCase() !== String(getTeacherNameByEmail(user.value.email) || '').toLowerCase()) {
           showToast('一般教師只能批次自己的課；行政需先被教學組授權代申請', 'warning');
           return;
         }
@@ -614,11 +617,11 @@ window.UiTimetable = (function () {
         canClick = !!clickDeps.canOperateOnTeacherEmail(teacherEmail);
       }
       if (!canClick && user.value
-          && String(teacherEmail).toLowerCase() === String(user.value.email).toLowerCase()) {
+          && String(teacherEmail).toLowerCase() === String(getTeacherNameByEmail(user.value.email) || '').toLowerCase()) {
         canClick = true;
       }
       if (!canClick) {
-        var me = user.value ? String(user.value.email || '').toLowerCase() : '';
+        var me = user.value ? String(getTeacherNameByEmail(user.value.email) || '').toLowerCase() : '';
         var other = String(teacherEmail || '').toLowerCase() !== me;
         if (other) {
           showToast('無法代此教師申請。請確認您是「已授權的行政」（後台有勾選您）。', 'warning');

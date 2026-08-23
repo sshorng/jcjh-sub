@@ -68,7 +68,10 @@ const api = uiContext.window.UiAdmin.create({
   loadWeeklyData: async function () {},
   getTeacherNameByEmail: function (email) { return email === 'wang@example.edu.tw' ? '王老師' : ''; },
   currentSemester: ref('115-1'),
-  teachersList: ref([{ email: 'wang@example.edu.tw', name: '王老師' }]),
+  teachersList: ref([
+    { email: 'wang@example.edu.tw', name: '王老師' },
+    { email: 'patrol@example.edu.tw', name: '巡堂老師' }
+  ]),
   allSchedules: ref([]),
   leaveReasonOptions: [],
   historyEditForm: ref({}),

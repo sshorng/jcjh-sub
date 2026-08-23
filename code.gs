@@ -61,6 +61,7 @@ var CACHE_TTL_META_ = parseInt(getConfig_("CACHE_TTL_META", "300"), 10) || 300;
 var CACHE_TTL_REQ_ = parseInt(getConfig_("CACHE_TTL_REQ", "90"), 10) || 90; // 申請單時間窗
 var CACHE_TTL_PENDING_ = parseInt(getConfig_("CACHE_TTL_PENDING", "45"), 10) || 45; // pendingOnly
 var CACHE_TTL_MATCH_ = parseInt(getConfig_("CACHE_TTL_MATCH", "45"), 10) || 45; // 媒合候選短快取
+var CACHE_SCHEMA_VERSION_ = "namekey1";
 
 function getAllowedHdList_() {
   // 系統設定可覆寫（走 mem 快取，勿每次整表）
@@ -203,6 +204,462 @@ function requestVisibleToReader_(req, readerEmail, readerIsAdmin) {
   return false;
 }
 
+// ----------------- 姓名鍵資料契約 -----------------
+// Domain sheets store names only. Email remains confined to 教師名單／auth／mail.
+var NAME_KEY_DOMAIN_SHEETS_ = ["教師課表", "申請單", "代導紀錄", "額度帳本"];
+var NAME_KEY_EMAIL_FIELDS_ = {
+  "教師課表": ["教師Email", "teacherEmail"],
+  "申請單": ["申請人Email", "受邀人Email", "代申請人Email", "requesterEmail", "targetTeacherEmail", "proxyByEmail"],
+  "代導紀錄": ["原導師Email", "代導教師Email", "originalTeacherEmail", "actualTeacherEmail", "operatorEmail"],
+  "額度帳本": ["教師Email", "email", "operatorEmail"]
+};
+
+function isNameKeyDomainSheet_(sheetName) {
+  return NAME_KEY_DOMAIN_SHEETS_.indexOf(String(sheetName || "")) !== -1;
+}
+
+function nameKeyText_(value) {
+  return String(value == null ? "" : value).trim();
+}
+
+function nameKeyNorm_(value) {
+  return nameKeyText_(value).toLowerCase();
+}
+
+function nameKeySemester_(row, fallback) {
+  return nameKeyText_((row && (row["學期代號"] !== undefined ? row["學期代號"] : row.semesterId)) || fallback);
+}
+
+function nameKeyDirectoryKey_(semesterId, value) {
+  return nameKeyText_(semesterId) + "|" + nameKeyNorm_(value);
+}
+
+function nameKeyTeacherEmail_(teacher) {
+  return nameKeyNorm_(teacher && (teacher["教師Email"] !== undefined ? teacher["教師Email"] : (teacher.email || teacher.loginEmail)));
+}
+
+function nameKeyTeacherName_(teacher) {
+  return nameKeyText_(teacher && (teacher["教師姓名"] !== undefined ? teacher["教師姓名"] : (teacher.name || teacher.teacherName)));
+}
+
+function nameKeyEmailForName_(semesterId, name, directory) {
+  var hit = directory.byName[nameKeyDirectoryKey_(semesterId, name)];
+  return hit ? hit.email : "";
+}
+
+function buildNameKeyDirectory_(teacherRows) {
+  var byName = {};
+  var byEmail = {};
+  var globalName = {};
+  (teacherRows || []).forEach(function (teacher, index) {
+    var sid = nameKeySemester_(teacher);
+    var name = nameKeyTeacherName_(teacher);
+    var email = nameKeyTeacherEmail_(teacher);
+    if (!sid || !name) throw new Error("教師名單第" + (index + 1) + "列缺少學期代號或教師姓名");
+    var nameKey = nameKeyDirectoryKey_(sid, name);
+    if (byName[nameKey]) {
+      throw new Error("同學期教師姓名重複：" + sid + "／" + name + "，已停止寫入");
+    }
+    var entry = { semesterId: sid, name: name, email: email, row: teacher, index: index };
+    var globalNameKey = nameKeyNorm_(name);
+    if (globalName[globalNameKey] && globalName[globalNameKey].email !== email) {
+      throw new Error("教師姓名必須全歷史唯一：" + name + "，目前對應多個登入 Email，已停止寫入");
+    }
+    globalName[globalNameKey] = entry;
+    byName[nameKey] = entry;
+    if (email) {
+      var emailKey = nameKeyDirectoryKey_(sid, email);
+      if (byEmail[emailKey] && byEmail[emailKey].name !== name) {
+        throw new Error("同學期教師 Email 對應多位教師：" + sid + "／" + email + "，已停止寫入");
+      }
+      byEmail[emailKey] = entry;
+    }
+  });
+  return { byName: byName, byEmail: byEmail };
+}
+
+function assertTeacherRosterNameKeys_(rowsToSave) {
+  var existing = getTableData("教師名單") || [];
+  var merged = {};
+  existing.forEach(function (row) {
+    var sid = nameKeySemester_(row);
+    var email = nameKeyTeacherEmail_(row);
+    if (sid && email) merged[sid + "|" + email] = Object.assign({}, row);
+  });
+  (rowsToSave || []).forEach(function (row) {
+    var sid = nameKeySemester_(row);
+    var email = nameKeyTeacherEmail_(row);
+    var name = nameKeyTeacherName_(row);
+    if (!sid || !email || !name) throw new Error("教師名單資料必須包含學期代號、教師Email與教師姓名");
+    var key = sid + "|" + email;
+    merged[key] = Object.assign({}, merged[key] || {}, row, {
+      "學期代號": sid,
+      "教師Email": email,
+      "教師姓名": name
+    });
+  });
+  buildNameKeyDirectory_(Object.keys(merged).map(function (key) { return merged[key]; }));
+}
+
+function resolveNameKeyTeacher_(value, semesterId, directory, label, allowBlank) {
+  var raw = nameKeyText_(value);
+  if (!raw && allowBlank) return "";
+  if (!raw) throw new Error((label || "教師") + "不可空白");
+  var byName = directory.byName[nameKeyDirectoryKey_(semesterId, raw)];
+  if (byName) return byName.name;
+  var byEmail = directory.byEmail[nameKeyDirectoryKey_(semesterId, raw)];
+  if (byEmail) return byEmail.name;
+  throw new Error((label || "教師") + "無法對應目前學期教師名單：" + raw);
+}
+
+function resolveNameKeyPair_(nameValue, emailValue, semesterId, directory, label, allowBlank) {
+  var name = nameKeyText_(nameValue);
+  var email = nameKeyText_(emailValue);
+  var fromName = name ? resolveNameKeyTeacher_(name, semesterId, directory, label, false) : "";
+  var fromEmail = email ? resolveNameKeyTeacher_(email, semesterId, directory, label, false) : "";
+  if (fromName && fromEmail && nameKeyNorm_(fromName) !== nameKeyNorm_(fromEmail)) {
+    throw new Error((label || "教師") + "姓名與 Email 對應不一致：" + name + "／" + email);
+  }
+  if (!fromName && !fromEmail && allowBlank) return "";
+  return fromName || fromEmail || resolveNameKeyTeacher_("", semesterId, directory, label, false);
+}
+
+function nameKeyPick_(row, names) {
+  var source = row || {};
+  for (var i = 0; i < names.length; i++) {
+    var value = source[names[i]];
+    if (value !== undefined && value !== null && nameKeyText_(value) !== "") return value;
+  }
+  return "";
+}
+
+function nameKeyDropEmailFields_(row, sheetName) {
+  var out = Object.assign({}, row || {});
+  var fields = NAME_KEY_EMAIL_FIELDS_[sheetName] || [];
+  fields.forEach(function (field) { delete out[field]; });
+  Object.keys(out).forEach(function (field) {
+    if (/email|電子郵件|e-mail/i.test(field)) delete out[field];
+  });
+  return out;
+}
+
+function normalizeNameKeyDomainRow_(sheetName, row, teacherRows, fallbackSemesterId, directoryArg) {
+  if (!isNameKeyDomainSheet_(sheetName)) return Object.assign({}, row || {});
+  var source = Object.assign({}, row || {});
+  var sid = nameKeySemester_(source, fallbackSemesterId);
+  if (!sid) throw new Error(sheetName + "資料缺少學期代號");
+  var directory = directoryArg || buildNameKeyDirectory_(teacherRows || getTableData("教師名單"));
+  var out = nameKeyDropEmailFields_(source, sheetName);
+  out["學期代號"] = sid;
+  if (sheetName === "教師課表") {
+    out["教師姓名"] = resolveNameKeyPair_(nameKeyPick_(source, ["教師姓名", "teacherName"]), nameKeyPick_(source, ["教師Email", "teacherEmail"]), sid, directory, "課表教師", false);
+  } else if (sheetName === "申請單") {
+    out["申請人姓名"] = resolveNameKeyPair_(nameKeyPick_(source, ["申請人姓名", "requesterName"]), nameKeyPick_(source, ["申請人Email", "requesterEmail"]), sid, directory, "申請人", false);
+    out["受邀人姓名"] = resolveNameKeyPair_(nameKeyPick_(source, ["受邀人姓名", "targetTeacherName"]), nameKeyPick_(source, ["受邀人Email", "targetTeacherEmail"]), sid, directory, "受邀人", false);
+    out["代申請人姓名"] = resolveNameKeyPair_(nameKeyPick_(source, ["代申請人姓名", "proxyByName"]), nameKeyPick_(source, ["代申請人Email", "proxyByEmail"]), sid, directory, "代申請人", true);
+  } else if (sheetName === "代導紀錄") {
+    out["原導師姓名"] = resolveNameKeyPair_(nameKeyPick_(source, ["原導師姓名", "originalTeacherName"]), nameKeyPick_(source, ["原導師Email", "originalTeacherEmail"]), sid, directory, "原導師", false);
+    out["代導教師姓名"] = resolveNameKeyPair_(nameKeyPick_(source, ["代導教師姓名", "actualTeacherName"]), nameKeyPick_(source, ["代導教師Email", "actualTeacherEmail"]), sid, directory, "代導教師", true);
+    out["操作者"] = resolveNameKeyPair_(nameKeyPick_(source, ["操作者", "operatorName"]), nameKeyPick_(source, ["operatorEmail"]), sid, directory, "操作者", true);
+  } else if (sheetName === "額度帳本") {
+    out["教師姓名"] = resolveNameKeyPair_(nameKeyPick_(source, ["教師姓名", "name"]), nameKeyPick_(source, ["教師Email", "email"]), sid, directory, "額度教師", false);
+    out["操作者"] = resolveNameKeyPair_(nameKeyPick_(source, ["操作者", "operatorName"]), nameKeyPick_(source, ["operatorEmail"]), sid, directory, "操作者", true);
+    out["索引鍵"] = sid + "|" + nameKeyNorm_(out["教師姓名"]);
+  }
+  return out;
+}
+
+function normalizeNameKeyRows_(sheetName, rows, teacherRows, fallbackSemesterId) {
+  var directory = buildNameKeyDirectory_(teacherRows || getTableData("教師名單"));
+  return (rows || []).map(function (row) {
+    return normalizeNameKeyDomainRow_(sheetName, row, teacherRows, fallbackSemesterId, directory);
+  });
+}
+
+// Request actions still need Email internally for auth and mail routing; persistence remains name-only.
+function prepareNameKeyRequestRow_(row, semesterId, teacherRows) {
+  var source = Object.assign({}, row || {});
+  var directory = buildNameKeyDirectory_(teacherRows || getTableData("教師名單"));
+  var requesterName = resolveNameKeyPair_(
+    nameKeyPick_(source, ["申請人姓名", "requesterName"]),
+    nameKeyPick_(source, ["申請人Email", "requesterEmail"]),
+    semesterId, directory, "申請人", false
+  );
+  var targetName = resolveNameKeyPair_(
+    nameKeyPick_(source, ["受邀人姓名", "targetTeacherName"]),
+    nameKeyPick_(source, ["受邀人Email", "targetTeacherEmail"]),
+    semesterId, directory, "受邀人", false
+  );
+  var proxyRaw = nameKeyPick_(source, ["代申請人姓名", "proxyByName", "代申請人Email", "proxyByEmail"]);
+  var proxyName = proxyRaw
+    ? resolveNameKeyPair_(
+      nameKeyPick_(source, ["代申請人姓名", "proxyByName"]),
+      nameKeyPick_(source, ["代申請人Email", "proxyByEmail"]),
+      semesterId, directory, "代申請人", true
+    )
+    : "";
+  var requesterEmail = nameKeyEmailForName_(semesterId, requesterName, directory);
+  var targetEmail = nameKeyEmailForName_(semesterId, targetName, directory);
+  var proxyEmail = proxyName ? nameKeyEmailForName_(semesterId, proxyName, directory) : "";
+  if (!requesterEmail || !targetEmail) throw new Error("教師名單缺少申請人或受邀人的登入 Email");
+
+  source["學期代號"] = semesterId;
+  source["申請人姓名"] = requesterName;
+  source["受邀人姓名"] = targetName;
+  source["代申請人姓名"] = proxyName;
+  // Internal compatibility fields are removed by normalizeNameKeyDomainRow_ before persistence.
+  source["申請人Email"] = requesterEmail;
+  source["受邀人Email"] = targetEmail;
+  source["代申請人Email"] = proxyEmail;
+  source.requesterName = requesterName;
+  source.targetTeacherName = targetName;
+  source.proxyByName = proxyName;
+  source.requesterEmail = requesterEmail;
+  source.targetTeacherEmail = targetEmail;
+  source.proxyByEmail = proxyEmail;
+  return source;
+}
+
+function nameKeyCanonicalHeaders_(sheetName) {
+  var map = {
+    "教師課表": ["學期代號", "課表ID", "教師姓名", "星期", "節次", "班級", "科目", "課堂屬性", "調課限制", "特殊標記"],
+    "申請單": ["學期代號", "申請單ID", "單號", "批次ID", "狀態", "申請人姓名", "受邀人姓名", "代申請人姓名", "班級", "科目", "異動日期", "異動星期", "異動節次", "異動類型", "對調目標日期", "對調目標星期", "對調目標節次", "經費來源", "請假事由", "請假時間類型", "請假時間", "是否已印", "備註", "建立時間", "更新時間"],
+    "代導紀錄": ["學期代號", "代導紀錄ID", "來源申請單ID", "原導師姓名", "班級", "代導日期", "請假時間類型", "請假時間", "代導教師姓名", "代導節數", "鐘點費", "狀態", "啟用", "建立時間", "更新時間", "操作者", "備註"],
+    "額度帳本": ["學期代號", "流水ID", "時間", "教師姓名", "異動", "餘額後", "類型", "包ID", "事件ID", "事件名稱", "起日", "迄日", "申請單ID", "操作者", "備註", "索引鍵"]
+  };
+  return (map[sheetName] || []).slice();
+}
+
+function nameKeyPublicRow_(sheetName, row) {
+  if (!isNameKeyDomainSheet_(sheetName)) return row;
+  var out = {};
+  var fields = NAME_KEY_EMAIL_FIELDS_[sheetName] || [];
+  Object.keys(row || {}).forEach(function (field) {
+    if (fields.indexOf(field) !== -1 || /email|電子郵件|e-mail/i.test(field)) return;
+    out[field] = row[field];
+  });
+  return out;
+}
+
+function nameKeyPublicRows_(sheetName, rows) {
+  return (rows || []).map(function (row) { return nameKeyPublicRow_(sheetName, row); });
+}
+
+// Internal compatibility aliases let legacy business rules run without persisting Email columns.
+function hydrateNameKeyDomainRow_(sheetName, row) {
+  if (!isNameKeyDomainSheet_(sheetName) || !row) return row;
+  var teacherRows = getTableData("教師名單") || [];
+  var directory = buildNameKeyDirectory_(teacherRows);
+  var sid = nameKeySemester_(row);
+  if (!sid) return row;
+  var resolve = function (name, email, label, allowBlank) {
+    return resolveNameKeyPair_(name, email, sid, directory, label, allowBlank);
+  };
+  if (sheetName === "教師課表") {
+    row["教師姓名"] = resolve(row["教師姓名"] || row.teacherName, row["教師Email"] || row.teacherEmail, "課表教師", false);
+    row["教師Email"] = nameKeyEmailForName_(sid, row["教師姓名"], directory) || nameKeyNorm_(row["教師Email"] || row.teacherEmail);
+    row.teacherName = row["教師姓名"];
+    row.teacherEmail = row["教師Email"];
+  } else if (sheetName === "申請單") {
+    row["申請人姓名"] = resolve(row["申請人姓名"] || row.requesterName, row["申請人Email"] || row.requesterEmail, "申請人", false);
+    row["受邀人姓名"] = resolve(row["受邀人姓名"] || row.targetTeacherName, row["受邀人Email"] || row.targetTeacherEmail, "受邀人", false);
+    row["代申請人姓名"] = resolve(row["代申請人姓名"] || row.proxyByName, row["代申請人Email"] || row.proxyByEmail, "代申請人", true);
+    row["申請人Email"] = nameKeyEmailForName_(sid, row["申請人姓名"], directory) || nameKeyNorm_(row["申請人Email"] || row.requesterEmail);
+    row["受邀人Email"] = nameKeyEmailForName_(sid, row["受邀人姓名"], directory) || nameKeyNorm_(row["受邀人Email"] || row.targetTeacherEmail);
+    row["代申請人Email"] = row["代申請人姓名"] ? (nameKeyEmailForName_(sid, row["代申請人姓名"], directory) || nameKeyNorm_(row["代申請人Email"] || row.proxyByEmail)) : "";
+    row.requesterName = row["申請人姓名"];
+    row.targetTeacherName = row["受邀人姓名"];
+    row.proxyByName = row["代申請人姓名"] || "";
+    row.requesterEmail = row["申請人Email"];
+    row.targetTeacherEmail = row["受邀人Email"];
+    row.proxyByEmail = row["代申請人Email"];
+  } else if (sheetName === "代導紀錄") {
+    row["原導師姓名"] = resolve(row["原導師姓名"] || row.originalTeacherName, row["原導師Email"] || row.originalTeacherEmail, "原導師", false);
+    row["代導教師姓名"] = resolve(row["代導教師姓名"] || row.actualTeacherName, row["代導教師Email"] || row.actualTeacherEmail, "代導教師", true);
+    row["操作者"] = resolve(row["操作者"] || row.operatorName, row.operatorEmail, "操作者", true);
+    row["原導師Email"] = nameKeyEmailForName_(sid, row["原導師姓名"], directory) || nameKeyNorm_(row["原導師Email"] || row.originalTeacherEmail);
+    row["代導教師Email"] = row["代導教師姓名"] ? (nameKeyEmailForName_(sid, row["代導教師姓名"], directory) || nameKeyNorm_(row["代導教師Email"] || row.actualTeacherEmail)) : "";
+    row.originalTeacherName = row["原導師姓名"];
+    row.actualTeacherName = row["代導教師姓名"] || "";
+    row.originalTeacherEmail = row["原導師Email"];
+    row.actualTeacherEmail = row["代導教師Email"];
+    row.operatorName = row["操作者"] || "";
+  } else if (sheetName === "額度帳本") {
+    row["教師姓名"] = resolve(row["教師姓名"] || row.name, row["教師Email"] || row.email, "額度教師", false);
+    row["操作者"] = resolve(row["操作者"] || row.operatorName, row.operatorEmail, "操作者", true);
+    row["教師Email"] = nameKeyEmailForName_(sid, row["教師姓名"], directory) || nameKeyNorm_(row["教師Email"] || row.email);
+    row.email = row["教師Email"];
+    row.name = row["教師姓名"];
+    row.operatorName = row["操作者"] || "";
+    row["索引鍵"] = sid + "|" + nameKeyNorm_(row["教師姓名"]);
+  }
+  return row;
+}
+
+function nameKeyRawRows_(sheet) {
+  if (!sheet || sheet.getLastRow() < 2) return { headers: [], rows: [] };
+  var values = sheet.getDataRange().getValues();
+  var headers = values[0].map(function (value) { return nameKeyText_(value); });
+  var rows = values.slice(1).map(function (valuesRow) {
+    var row = {};
+    headers.forEach(function (header, index) { if (header) row[header] = valuesRow[index]; });
+    return row;
+  }).filter(function (row) {
+    return Object.keys(row).some(function (field) { return row[field] !== "" && row[field] !== null && row[field] !== undefined; });
+  });
+  return { headers: headers, rows: rows };
+}
+
+function migrateNameKeySchema_() {
+  var ss = getSpreadsheet();
+  var teacherSheet = ss.getSheetByName("教師名單");
+  if (!teacherSheet) throw new Error("找不到教師名單，無法進行姓名鍵 migration");
+  var teacherRaw = nameKeyRawRows_(teacherSheet).rows;
+  buildNameKeyDirectory_(teacherRaw);
+  var prepared = [];
+  NAME_KEY_DOMAIN_SHEETS_.forEach(function (sheetName) {
+    var sheet = ss.getSheetByName(sheetName);
+    if (!sheet) return;
+    var raw = nameKeyRawRows_(sheet);
+    var rows = raw.rows.map(function (row) {
+      return normalizeNameKeyDomainRow_(sheetName, row, teacherRaw, row["學期代號"]);
+    });
+    var canonical = nameKeyCanonicalHeaders_(sheetName);
+    var extra = raw.headers.filter(function (header) {
+      return header && canonical.indexOf(header) === -1 && !/email|電子郵件|e-mail/i.test(header);
+    });
+    prepared.push({ sheet: sheet, sheetName: sheetName, headers: canonical.concat(extra), rows: rows });
+  });
+  prepared.forEach(function (item) {
+    var values = [item.headers].concat(item.rows.map(function (row) {
+      return item.headers.map(function (header) { return translateCellForSheet_(item.sheetName, header, row[header] === undefined ? "" : row[header]); });
+    }));
+    item.sheet.clearContents();
+    item.sheet.getRange(1, 1, values.length, item.headers.length).setValues(values);
+    item.sheet.getRange(1, 1, 1, item.headers.length).setFontWeight("bold").setBackground("#f1f5f9");
+  });
+  _tableDataMem_ = {};
+  _headersMem_ = {};
+  prepared.forEach(function (item) { bustTableDataMem_(item.sheetName); });
+  (getTableData("學期設定") || []).forEach(function (semester) {
+    invalidateScheduleCaches_(semester["學期代號"] || semester.id || "");
+  });
+  return prepared.map(function (item) { return { sheet: item.sheetName, count: item.rows.length, headers: item.headers }; });
+}
+
+function renameTeacherNameKey_(semesterId, fromName, toName) {
+  var sid = nameKeyText_(semesterId);
+  var from = nameKeyText_(fromName);
+  var to = nameKeyText_(toName);
+  if (!sid || !from || !to) throw new Error("改名需要學期、原姓名與新姓名");
+  if (nameKeyNorm_(from) === nameKeyNorm_(to)) throw new Error("新舊姓名不可相同");
+  NAME_KEY_DOMAIN_SHEETS_.forEach(function (sheetName) {
+    var headers = getHeadersForSheet(sheetName);
+    if (headers.some(function (header) { return /email|電子郵件|e-mail/i.test(String(header || "")); })) {
+      throw new Error("工作表「" + sheetName + "」仍是舊 Email schema，請先執行姓名鍵資料遷移");
+    }
+  });
+
+  var teacherRows = getTableData("教師名單") || [];
+  var directory = buildNameKeyDirectory_(teacherRows);
+  var source = directory.byName[nameKeyDirectoryKey_(sid, from)];
+  if (!source || !source.email) throw new Error("找不到目前學期教師或教師缺少登入 Email：" + from);
+  var sourceEmail = source.email;
+  var affectedSemesters = {};
+  var nextTeachers = teacherRows.map(function (row) {
+    var next = Object.assign({}, row);
+    if (nameKeyTeacherEmail_(next) === sourceEmail) {
+      affectedSemesters[nameKeySemester_(next)] = true;
+      next["教師姓名"] = to;
+    }
+    return next;
+  });
+  // 先檢查所有學期，避免改名後才發現某一學期撞名。
+  buildNameKeyDirectory_(nextTeachers);
+
+  var relationFields = {
+    "教師課表": [["教師姓名", "教師Email"]],
+    "申請單": [["申請人姓名", "申請人Email"], ["受邀人姓名", "受邀人Email"], ["代申請人姓名", "代申請人Email"]],
+    "代導紀錄": [["原導師姓名", "原導師Email"], ["代導教師姓名", "代導教師Email"], ["操作者", "operatorEmail"]],
+    "額度帳本": [["教師姓名", "教師Email"], ["操作者", "operatorEmail"]]
+  };
+  var related = {};
+  var changedCounts = {};
+  NAME_KEY_DOMAIN_SHEETS_.forEach(function (sheetName) {
+    var rows = getTableData(sheetName) || [];
+    var fields = relationFields[sheetName] || [];
+    var changed = 0;
+    related[sheetName] = rows.map(function (row) {
+      var next = Object.assign({}, row);
+      var rowSid = nameKeySemester_(next);
+      var rowDirectory = directory;
+      fields.forEach(function (pair) {
+        var nameField = pair[0];
+        var emailField = pair[1];
+        var currentName = nameKeyText_(next[nameField]);
+        var currentEmail = emailField ? nameKeyNorm_(next[emailField]) : "";
+        var nameBelongsToSource = currentName
+          && nameKeyNorm_(nameKeyEmailForName_(rowSid, currentName, rowDirectory)) === sourceEmail;
+        if (currentEmail === sourceEmail || nameBelongsToSource) {
+          next[nameField] = to;
+          changed++;
+        }
+      });
+      if (sheetName === "額度帳本" && nameKeyText_(next["教師姓名"])) {
+        next["索引鍵"] = rowSid + "|" + nameKeyNorm_(next["教師姓名"]);
+      }
+      return next;
+    });
+    changedCounts[sheetName] = changed;
+  });
+
+  saveRows("教師名單", nextTeachers, "教師Email");
+  NAME_KEY_DOMAIN_SHEETS_.forEach(function (sheetName) {
+    if (related[sheetName]) saveRows(sheetName, related[sheetName], {
+      "教師課表": "課表ID",
+      "申請單": "申請單ID",
+      "代導紀錄": "代導紀錄ID",
+      "額度帳本": "流水ID"
+    }[sheetName]);
+  });
+  Object.keys(affectedSemesters).forEach(function (affectedSid) {
+    invalidateScheduleCaches_(affectedSid);
+  });
+  return {
+    semesterId: sid,
+    fromName: from,
+    toName: to,
+    loginEmail: sourceEmail,
+    counts: changedCounts
+  };
+}
+
+function assertTeacherNameKeyCanDelete_(semesterId, teacherEmail) {
+  var sid = nameKeyText_(semesterId);
+  var email = nameKeyNorm_(teacherEmail);
+  var teacher = (getTableData("教師名單") || []).find(function (row) {
+    return nameKeySemester_(row) === sid && nameKeyTeacherEmail_(row) === email;
+  });
+  if (!teacher) return;
+  var name = nameKeyNorm_(nameKeyTeacherName_(teacher));
+  var fieldsBySheet = {
+    "教師課表": ["教師姓名"],
+    "申請單": ["申請人姓名", "受邀人姓名", "代申請人姓名"],
+    "代導紀錄": ["原導師姓名", "代導教師姓名", "操作者"],
+    "額度帳本": ["教師姓名", "操作者"]
+  };
+  NAME_KEY_DOMAIN_SHEETS_.forEach(function (sheetName) {
+    (getTableData(sheetName) || []).forEach(function (row) {
+      if (nameKeySemester_(row) !== sid) return;
+      (fieldsBySheet[sheetName] || []).forEach(function (field) {
+        if (nameKeyNorm_(row[field]) === name) {
+          throw new Error("教師「" + nameKeyTeacherName_(teacher) + "」仍被「" + sheetName + "」使用，請改名或停用，不要刪除");
+        }
+      });
+    });
+  });
+}
+
 function sheetsReady_() {
   var ss = getSpreadsheet();
   var need = ["學期設定", "教師名單", "教師課表", "申請單", "系統設定", "空堂事件", "代導紀錄"];
@@ -222,15 +679,14 @@ function getHeadersForSheet(sheetName) {
   if (cachedHeaders) return cachedHeaders;
   const defaults = {
     "學期設定": ["學期代號", "學期名稱", "開始日期", "結束日期", "結算日期", "是否預設"],
-    // 表頭與前端 FieldMap / 寫入 Key 對齊；field-map.js 讀取時另支援舊別名（任課科目、原任課教師Email）
+    // Teacher roster keeps login Email; the four domain sheets use names as relation keys.
     "教師名單": ["學期代號", "教師Email", "教師姓名", "授課科目", "職務", "鐘點支出計畫", "系統角色", "基本鐘點", "折抵額度"],
-    "教師課表": ["學期代號", "課表ID", "教師Email", "教師姓名", "星期", "節次", "班級", "科目", "課堂屬性", "調課限制", "特殊標記"],
-    "申請單": ["學期代號", "申請單ID", "單號", "批次ID", "狀態", "申請人Email", "申請人姓名", "受邀人Email", "受邀人姓名", "代申請人Email", "代申請人姓名", "班級", "科目", "異動日期", "異動星期", "異動節次", "異動類型", "對調目標日期", "對調目標星期", "對調目標節次", "經費來源", "請假事由", "請假時間類型", "請假時間", "是否已印", "備註", "建立時間", "更新時間"],
+    "教師課表": ["學期代號", "課表ID", "教師姓名", "星期", "節次", "班級", "科目", "課堂屬性", "調課限制", "特殊標記"],
+    "申請單": ["學期代號", "申請單ID", "單號", "批次ID", "狀態", "申請人姓名", "受邀人姓名", "代申請人姓名", "班級", "科目", "異動日期", "異動星期", "異動節次", "異動類型", "對調目標日期", "對調目標星期", "對調目標節次", "經費來源", "請假事由", "請假時間類型", "請假時間", "是否已印", "備註", "建立時間", "更新時間"],
     "空堂事件": ["學期代號", "事件ID", "事件名稱", "起日", "迄日", "班級清單", "鐘點規則", "可進互代", "啟用", "備註"],
-    "代導紀錄": ["學期代號", "代導紀錄ID", "來源申請單ID", "原導師Email", "原導師姓名", "班級", "代導日期", "請假時間類型", "請假時間", "代導教師Email", "代導教師姓名", "代導節數", "鐘點費", "狀態", "啟用", "建立時間", "更新時間", "操作者", "備註"],
-    // 額度帳本（單表）：流水即真相；包剩餘＝同包ID異動加總；教師名單「折抵額度」為快取
-    // 索引鍵＝學期代號|教師Email（小寫），讀歷程可先 filter 再掃
-    "額度帳本": ["學期代號", "流水ID", "時間", "教師Email", "教師姓名", "異動", "餘額後", "類型", "包ID", "事件ID", "事件名稱", "起日", "迄日", "申請單ID", "操作者", "備註", "索引鍵"],
+    "代導紀錄": ["學期代號", "代導紀錄ID", "來源申請單ID", "原導師姓名", "班級", "代導日期", "請假時間類型", "請假時間", "代導教師姓名", "代導節數", "鐘點費", "狀態", "啟用", "建立時間", "更新時間", "操作者", "備註"],
+    // Ledger truth: index = semester|teacher name; roster quota remains a cache.
+    "額度帳本": ["學期代號", "流水ID", "時間", "教師姓名", "異動", "餘額後", "類型", "包ID", "事件ID", "事件名稱", "起日", "迄日", "申請單ID", "操作者", "備註", "索引鍵"],
     "系統設定": ["設定名稱", "設定值"]
   };
   
@@ -239,6 +695,13 @@ function getHeadersForSheet(sheetName) {
   if (sheet && sheet.getLastRow() > 0) {
     var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
     var defaultHeaders = defaults[sheetName] || [];
+    // Do not silently mix old Email schema with the new schema. Migration owns the rewrite.
+    if (isNameKeyDomainSheet_(sheetName) && headers.some(function (header) {
+      return /email|電子郵件|e-mail/i.test(String(header || ""));
+    })) {
+      _headersMem_[sheetName] = headers;
+      return headers;
+    }
     defaultHeaders.forEach(function (h) {
       if (headers.indexOf(h) === -1) {
         headers.push(h);
@@ -357,7 +820,7 @@ function rowArrayToObject_(sheetName, headers, row) {
       hasValue = true;
     }
   }
-  return hasValue ? obj : null;
+  return hasValue ? hydrateNameKeyDomainRow_(sheetName, obj) : null;
 }
 
 // 同一次 doPost／doGet 內的服務物件與資料快取。
@@ -535,11 +998,25 @@ function rowKeyForSheet_(sheetName, row, keyName) {
 
 // 批次儲存/更新（增量：只更新變更列或 append，避免整表 clearContents）
 function saveRows(sheetName, rowsToSave, keyName) {
+  if (isNameKeyDomainSheet_(sheetName)) {
+    var teacherRowsForWrite = getTableData("教師名單") || [];
+    rowsToSave = normalizeNameKeyRows_(sheetName, rowsToSave || [], teacherRowsForWrite);
+  } else if (sheetName === "教師名單") {
+    rowsToSave = rowsToSave || [];
+    assertTeacherRosterNameKeys_(rowsToSave);
+  } else {
+    rowsToSave = rowsToSave || [];
+  }
   const ss = getSpreadsheet();
   let sheet = ss.getSheetByName(sheetName);
   if (!sheet) return;
   const headers = getHeadersForSheet(sheetName);
   if (!headers || headers.length === 0) return;
+  if (isNameKeyDomainSheet_(sheetName) && headers.some(function (header) {
+    return /email|電子郵件|e-mail/i.test(String(header || ""));
+  })) {
+    throw new Error("工作表「" + sheetName + "」仍是舊 Email schema，請先執行姓名鍵 migration；原資料未刪除");
+  }
 
   // 確保有表頭
   if (sheet.getLastRow() === 0) {
@@ -1013,7 +1490,7 @@ function removeCacheChunkedMany_(keys) {
 }
 
 function getCacheGeneration_(namespace, semesterId) {
-  var key = "jcjh_gen_" + String(namespace || "data") + "_" + String(semesterId || "");
+  var key = "jcjh_gen_" + CACHE_SCHEMA_VERSION_ + "_" + String(namespace || "data") + "_" + String(semesterId || "");
   var cache = CacheService.getScriptCache();
   var value = cache.get(key);
   if (value) return String(value);
@@ -1022,7 +1499,7 @@ function getCacheGeneration_(namespace, semesterId) {
 }
 
 function bumpCacheGeneration_(namespace, semesterId) {
-  var key = "jcjh_gen_" + String(namespace || "data") + "_" + String(semesterId || "");
+  var key = "jcjh_gen_" + CACHE_SCHEMA_VERSION_ + "_" + String(namespace || "data") + "_" + String(semesterId || "");
   var cache = CacheService.getScriptCache();
   var previous = parseInt(cache.get(key) || "0", 10) || 0;
   var next = String(Math.max(Date.now(), previous + 1));
@@ -1116,8 +1593,8 @@ function validateScheduleImportRows_(rows, semesterId) {
     var rowErrors = [];
     var rowSid = String(row["學期代號"] || "").trim();
     var id = String(row["課表ID"] || "").trim();
-    var email = String(row["教師Email"] || "").trim().toLowerCase();
     var name = String(row["教師姓名"] || "").trim();
+    var legacyEmail = String(row["教師Email"] || "").trim();
     var dayRaw = String(row["星期"] == null ? "" : row["星期"]).trim();
     var periodRaw = String(row["節次"] == null ? "" : row["節次"]).trim();
     var className = String(row["班級"] || "").trim();
@@ -1130,8 +1607,8 @@ function validateScheduleImportRows_(rows, semesterId) {
 
     if (rowSid !== sid) rowErrors.push("學期不一致");
     if (!id) rowErrors.push("缺少課表ID");
-    if (!email || !/^[^@\s]+@[^@\s]+$/.test(email)) rowErrors.push("教師Email不正確");
     if (!name) rowErrors.push("缺少教師姓名");
+    if (legacyEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(legacyEmail)) rowErrors.push("教師Email不正確");
     if (!/^\d+$/.test(dayRaw) || day < 1 || day > 5) rowErrors.push("星期須為1至5");
     if (!/^\d+$/.test(periodRaw) || !(period === 0 || period === 45 || (period >= 1 && period <= 8))) rowErrors.push("節次須為0至8或45");
     if (!isPatrol && !className) rowErrors.push("缺少班級");
@@ -1143,8 +1620,8 @@ function validateScheduleImportRows_(rows, semesterId) {
       if (day && period && seenPatrolSlots[patrolSlotKey]) rowErrors.push("同一星期與節次只能安排一位巡堂教師");
       if (!rowErrors.length) seenPatrolSlots[patrolSlotKey] = true;
     } else {
-      var slotKey = [email, day, period, className.toLowerCase(), subject.toLowerCase(), attr, restriction].join("|");
-      if (email && day && period && className && subject && seenSlots[slotKey]) rowErrors.push("同一教師／時段／班級／科目重複");
+      var slotKey = [name.toLowerCase(), day, period, className.toLowerCase(), subject.toLowerCase(), attr, restriction].join("|");
+      if (name && day && period && className && subject && seenSlots[slotKey]) rowErrors.push("同一教師／時段／班級／科目重複");
       if (!rowErrors.length) seenSlots[slotKey] = true;
     }
 
@@ -1263,6 +1740,7 @@ function invalidateRequestCaches_(semesterId) {
   cacheKeys.push("jcjh_req_" + sid + "_all");
   cacheKeys.push("jcjh_pending_" + sid + "_a");
   cacheKeys.push("jcjh_pending_v2_" + sid + "_a");
+  cacheKeys.push("jcjh_pending_v3_namekey_" + sid + "_a");
   // 媒合快取：代次戳失效（不逐 key 刪）
   try {
     CacheService.getScriptCache().put("jcjh_match_gen_" + sid, String(Date.now()), 3600);
@@ -1284,7 +1762,7 @@ function invalidateRequestCaches_(semesterId) {
 function invalidateScheduleCaches_(semesterId) {
   var sid = String(semesterId || "");
   removeCacheChunkedMany_([
-    "jcjh_sched_" + sid,
+    "jcjh_sched_" + CACHE_SCHEMA_VERSION_ + "_" + sid,
     "jcjh_teachers_" + sid,
     "jcjh_meta_" + sid,
     "jcjh_away_" + sid
@@ -1381,7 +1859,7 @@ function sanitizeSettingsForReader_(settings, readerEmail, isAdmin, isStaff, tea
 
 /** 分層讀取：課表（長 TTL）— 快取存瘦身列 */
 function getSemesterSchedulesCached_(semesterId) {
-  var key = "jcjh_sched_" + String(semesterId || "");
+  var key = "jcjh_sched_" + CACHE_SCHEMA_VERSION_ + "_" + String(semesterId || "");
   assertScheduleReadable_(semesterId);
   var raw = getCacheChunked(key);
   if (raw) {
@@ -1824,7 +2302,7 @@ var _quotaLedgerMem_ = { key: "", rows: null, ts: 0 };
 var _quotaIndexBackfillDone_ = false;
 var CACHE_TTL_QLEDGER_ = 180; // 學期帳本列快取（寫入會 bust）
 function quotaLedgerCacheKey_(semesterId) {
-  return "jcjh_qled_all_" + String(semesterId || "");
+  return "jcjh_qled_all_" + CACHE_SCHEMA_VERSION_ + "_" + String(semesterId || "");
 }
 function getQuotaLedgerRows_(semesterId) {
   var sid = String(semesterId || "");
@@ -1863,7 +2341,7 @@ function getQuotaLedgerRows_(semesterId) {
 }
 
 /**
- * 舊帳本列補「索引鍵」＝學期|email（小寫）。
+ * 舊帳本列補「索引鍵」＝學期|教師姓名（正規化）。
  * 僅在寫入鎖內呼叫（earn／spend／adjust）；讀路徑不寫表。
  */
 function backfillQuotaLedgerIndexKeys_() {
@@ -1875,22 +2353,22 @@ function backfillQuotaLedgerIndexKeys_() {
   var headers = getHeadersForSheet(QUOTA_LEDGER_SHEET_);
   var idxCol = headers.indexOf("索引鍵") + 1;
   var sidCol = headers.indexOf("學期代號") + 1;
-  var emCol = headers.indexOf("教師Email") + 1;
-  if (idxCol < 1 || sidCol < 1 || emCol < 1) return 0;
+  var nameCol = headers.indexOf("教師姓名") + 1;
+  if (idxCol < 1 || sidCol < 1 || nameCol < 1) return 0;
   var last = sheet.getLastRow();
   var n = last - 1;
   if (n < 1) return 0;
   var idxVals = sheet.getRange(2, idxCol, n, 1).getValues();
   var sidVals = sheet.getRange(2, sidCol, n, 1).getValues();
-  var emVals = sheet.getRange(2, emCol, n, 1).getValues();
+  var nameVals = sheet.getRange(2, nameCol, n, 1).getValues();
   var changed = 0;
   for (var i = 0; i < n; i++) {
     var cur = String(idxVals[i][0] || "").trim();
     if (cur) continue;
     var sid = String(sidVals[i][0] || "").trim();
-    var em = String(emVals[i][0] || "").toLowerCase().trim();
-    if (!sid || !em) continue;
-    idxVals[i][0] = makeQuotaLedgerIndexKey_(sid, em);
+    var name = String(nameVals[i][0] || "").trim();
+    if (!sid || !name) continue;
+    idxVals[i][0] = makeQuotaLedgerIndexKey_(sid, name);
     changed++;
   }
   if (changed > 0) {
@@ -1909,7 +2387,7 @@ function bustQuotaLedgerScriptCache_(semesterId) {
 }
 /**
  * 額度寫入後：清教師快取＋歷程快取（不必清課表）
- * emails：可選，受影響教師 email 陣列；有則精準清 jcjh_qled_sid_email_limit
+ * names：可選，受影響教師姓名陣列；有則精準清姓名快取。
  */
 function invalidateQuotaCaches_(semesterId, emails) {
   var sid = String(semesterId || "");
@@ -1924,11 +2402,12 @@ function invalidateQuotaCaches_(semesterId, emails) {
     var seen = {};
     var limits = [40, 50, 80, 200];
     list.forEach(function (raw) {
-      var em = String(raw || "").toLowerCase().trim();
-      if (!em || seen[em]) return;
-      seen[em] = 1;
+      var teacherName = quotaTeacherNameForKey_(sid, raw);
+      var nameKey = nameKeyNorm_(teacherName);
+      if (!nameKey || seen[nameKey]) return;
+      seen[nameKey] = 1;
       limits.forEach(function (lim) {
-        try { cache.remove("jcjh_qled_" + sid + "_" + em + "_" + lim); } catch (e1) {}
+        try { cache.remove("jcjh_qled_" + sid + "_" + nameKey + "_" + lim); } catch (e1) {}
       });
     });
   } catch (e) {}
@@ -2085,9 +2564,21 @@ function batchEarnMutualQuota_(semesterId, earnList, meta) {
   };
 }
 
-/** 帳本索引鍵：學期|email（小寫），讀歷程／filter 用 */
-function makeQuotaLedgerIndexKey_(semesterId, email) {
-  return String(semesterId || "").trim() + "|" + String(email || "").toLowerCase().trim();
+function quotaTeacherNameForKey_(semesterId, value) {
+  var raw = nameKeyText_(value);
+  if (!raw) return "";
+  if (raw.indexOf("@") < 0) return raw;
+  var teachers = getTableData("教師名單") || [];
+  var hit = teachers.find(function (teacher) {
+    return nameKeySemester_(teacher) === String(semesterId || "")
+      && nameKeyTeacherEmail_(teacher) === nameKeyNorm_(raw);
+  });
+  return hit ? nameKeyTeacherName_(hit) : raw;
+}
+
+/** Ledger index uses semester|teacher name, never a persisted Email key. */
+function makeQuotaLedgerIndexKey_(semesterId, value) {
+  return String(semesterId || "").trim() + "|" + nameKeyNorm_(quotaTeacherNameForKey_(semesterId, value));
 }
 
 /** 帳本新列：直接 append，不做 key 掃描 */
@@ -2098,6 +2589,11 @@ function appendQuotaLedgerRowsFast_(rows) {
   var sheet = ss.getSheetByName(QUOTA_LEDGER_SHEET_);
   if (!sheet) throw new Error("找不到工作表「" + QUOTA_LEDGER_SHEET_ + "」，請先建立分頁。");
   var headers = getHeadersForSheet(QUOTA_LEDGER_SHEET_);
+  if (headers.some(function (header) { return /email|電子郵件|e-mail/i.test(String(header || "")); })) {
+    throw new Error("額度帳本仍是舊 Email schema，請先執行姓名鍵 migration；原資料未刪除");
+  }
+  var teacherRows = getTableData("教師名單") || [];
+  rows = normalizeNameKeyRows_(QUOTA_LEDGER_SHEET_, rows, teacherRows);
   if (sheet.getLastRow() === 0) {
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
     sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold").setBackground("#f1f5f9");
@@ -2106,7 +2602,7 @@ function appendQuotaLedgerRowsFast_(rows) {
   rows.forEach(function (row) {
     if (!row) return;
     if (!row["索引鍵"]) {
-      row["索引鍵"] = makeQuotaLedgerIndexKey_(row["學期代號"], row["教師Email"]);
+      row["索引鍵"] = makeQuotaLedgerIndexKey_(row["學期代號"], row["教師姓名"]);
     }
   });
   var arrs = rows.map(function (row) {
@@ -2948,7 +3444,9 @@ function personalizeSharedPayload_(shared, readerEmail, readerIsAdmin, opts) {
     }
   }
   out.userRole = readerIsAdmin ? "admin" : (opts.isStaff ? "staff" : "teacher");
-  out.requests = rows;
+  out.requests = nameKeyPublicRows_("申請單", rows);
+  if (out.schedules) out.schedules = nameKeyPublicRows_("教師課表", out.schedules);
+  if (out.homeroomRecords) out.homeroomRecords = nameKeyPublicRows_("代導紀錄", out.homeroomRecords);
   if (Object.prototype.hasOwnProperty.call(shared, "teachers")) {
     out.teachers = sanitizeTeacherRowsForReader_(shared.teachers || [], readerEmail, readerIsAdmin, !!opts.isStaff);
   }
@@ -3200,7 +3698,7 @@ function buildMatchCandidates_(semesterId, opts) {
       if (c && !isPatrol(c) && !isAwayReleased(c)) busy++;
     }
     freeList.push({
-      email: em,
+      teacherName: String(t["教師姓名"] || t.name || "").trim(),
       name: String(t["教師姓名"] || t.name || "").trim(),
       subject: String(t["授課科目"] || t.subject || "").trim(),
       role: String(t["系統角色"] || t.role || "teacher"),
@@ -3275,7 +3773,7 @@ function buildRequestsDelta_(semesterId, readerEmail, readerIsAdmin, updatedSinc
   return {
     success: true,
     kind: "requestsDelta",
-    requests: changed,
+    requests: nameKeyPublicRows_("申請單", changed),
     count: changed.length,
     updatedSince: String(updatedSinceRaw || ""),
     serverTime: serverTime,
@@ -3409,16 +3907,10 @@ function buildPublicClassPayload_(semesterId, className) {
     ? semesterSchedules.filter(function (s) { return String(s["班級"] || s["className"] || "") === cls; })
     : [];
 
-  var teacherNames = {};
-  (getSemesterTeachersCached_(sid) || []).forEach(function (t) {
-    var em = String(t["教師Email"] || t.email || "").toLowerCase().trim();
-    if (em) teacherNames[em] = String(t["教師姓名"] || t.name || "").trim();
-  });
   var schedules = scheduleRows.map(function (s, idx) {
-    var em = String(s["教師Email"] || s.teacherEmail || "").toLowerCase().trim();
     return {
       "課表ID": "public_" + String(sid) + "_" + idx,
-      "教師姓名": s["教師姓名"] || s.teacherName || teacherNames[em] || "",
+      "教師姓名": s["教師姓名"] || s.teacherName || "",
       "星期": s["星期"] != null ? s["星期"] : s.dayOfWeek,
       "節次": s["節次"] != null ? s["節次"] : s.period,
       "班級": s["班級"] || s.className || "",
@@ -3429,10 +3921,10 @@ function buildPublicClassPayload_(semesterId, className) {
   });
 
   // 僅該班相關教師（姓名顯示用），不回全校
-  var emailNeed = {};
+  var teacherNameNeed = {};
   schedules.forEach(function (s) {
-    var em = String(s["教師Email"] || s.teacherEmail || "").toLowerCase();
-    if (em) emailNeed[em] = 1;
+    var teacherName = String(s["教師姓名"] || s.teacherName || "").trim().toLowerCase();
+    if (teacherName) teacherNameNeed[teacherName] = 1;
   });
 
   // 申請：用學期快取後再 filter 已核准＋該班（公開不需 pending）
@@ -3464,7 +3956,7 @@ function buildPublicClassPayload_(semesterId, className) {
   });
 
   var teachers = (getSemesterTeachersCached_(sid) || []).filter(function (t) {
-    return emailNeed[String(t["教師Email"] || t.email || "").toLowerCase()];
+    return teacherNameNeed[String(t["教師姓名"] || t.name || "").trim().toLowerCase()];
   }).map(function (t) {
     return {
       "教師姓名": t["教師姓名"] || t.name || "",
@@ -3521,7 +4013,7 @@ function handleReadAction_(postData) {
     var pubCls = reqData.className || reqData.class || postData.className || "";
     var pubSid = semesterId || reqData.semesterId || "";
      var pubGeneration = getCacheGeneration_("public", pubSid);
-     var pubCacheKey = "jcjh_pub_v2_" + pubSid + "_" + pubGeneration + "_" + String(pubCls).trim();
+     var pubCacheKey = "jcjh_pub_v3_" + CACHE_SCHEMA_VERSION_ + "_" + pubSid + "_" + pubGeneration + "_" + String(pubCls).trim();
     var pubCached = getCacheChunked(pubCacheKey);
     if (pubCached) {
       return ContentService.createTextOutput(pubCached).setMimeType(ContentService.MimeType.JSON);
@@ -3546,8 +4038,17 @@ function handleReadAction_(postData) {
 
   // 代課媒合候選（讀取、不佔寫鎖；短快取 45s，申請寫入時代次戳失效）
   if (action === "getMatchCandidates") {
-    var mLeave = String(reqData.leaveEmail || "").toLowerCase().trim();
-    if (!mLeave) mLeave = readerEmail;
+    var mLeaveRaw = nameKeyText_(reqData.leaveName || reqData.leaveEmail || "");
+    var mLeave = readerEmail;
+    var mLeaveName = "";
+    if (mLeaveRaw) {
+      var mDirectory = buildNameKeyDirectory_(readerTeachers);
+      mLeaveName = resolveNameKeyTeacher_(mLeaveRaw, semesterId, mDirectory, "原教師", false);
+      mLeave = nameKeyEmailForName_(semesterId, mLeaveName, mDirectory);
+      if (!mLeave) throw new Error("原教師缺少登入 Email");
+      reqData = Object.assign({}, reqData, { leaveEmail: mLeave, leaveName: mLeaveName });
+    }
+    if (!mLeaveRaw) reqData = Object.assign({}, reqData, { leaveEmail: mLeave });
     if (!readerIsAdmin && mLeave !== readerEmail
         && !(readerIsStaff && canUserProxySubmit_(readerEmail, readerTeachers))) {
       throw new Error("您無權查詢其他教師的媒合候選！");
@@ -3569,7 +4070,7 @@ function handleReadAction_(postData) {
     } catch (eGen) {}
     // key 控長：away 取前 80 字
     if (mAway.length > 80) mAway = mAway.slice(0, 80);
-    var matchCacheKey = "jcjh_match_" + String(semesterId || "") + "_" + mGen + "_"
+     var matchCacheKey = "jcjh_match_" + CACHE_SCHEMA_VERSION_ + "_" + String(semesterId || "") + "_" + mGen + "_"
       + mDate + "_" + mDay + "_" + mPer + "_" + mLeave + "_" + mAct + "_"
       + mCls + "_" + mCourse + "_" + mAway;
     if (scope !== "fresh") {
@@ -3627,7 +4128,7 @@ function handleReadAction_(postData) {
     var teachersP = getSemesterTeachersCached_(semesterId);
     var isAdminP = resolveIsAdmin_(readerEmail, teachersP);
     // v2：中文狀態掃描修正後換 key，避免舊空陣列快取鎖 45s
-    var pendingKey = "jcjh_pending_v2_" + semesterId + "_a";
+    var pendingKey = "jcjh_pending_v3_namekey_" + semesterId + "_a";
     var pending = null;
     if (scope !== "fresh") {
       var pendingCached = getCacheChunked(pendingKey);
@@ -3655,7 +4156,7 @@ function handleReadAction_(postData) {
     return ContentService.createTextOutput(JSON.stringify({
       success: true,
       kind: "pendingOnly",
-      requests: pending || [],
+      requests: nameKeyPublicRows_("申請單", pending || []),
       count: (pending || []).length
     })).setMimeType(ContentService.MimeType.JSON);
   }
@@ -3672,7 +4173,7 @@ function handleReadAction_(postData) {
       })).setMimeType(ContentService.MimeType.JSON);
     }
     // 單月快取 60s（admin 全校）— 先查快取再掃
-    var histKey = "jcjh_hist_" + semesterId + "_" + monthStr + (isAdminH ? "_a" : "_u");
+     var histKey = "jcjh_hist_" + CACHE_SCHEMA_VERSION_ + "_" + semesterId + "_" + monthStr + (isAdminH ? "_a" : "_u");
     if (isAdminH) {
       var histCached = getCacheChunked(histKey);
       if (histCached) {
@@ -3690,7 +4191,7 @@ function handleReadAction_(postData) {
       success: true,
       kind: "historyMonth",
       month: monthStr,
-      requests: monthRows,
+      requests: nameKeyPublicRows_("申請單", monthRows),
       count: monthRows.length
     };
     var histJson = JSON.stringify(histPayload);
@@ -3702,32 +4203,42 @@ function handleReadAction_(postData) {
 
   // 折抵額度歷程：讀「額度帳本」列（管理員可查任一師；教師僅自己）
   if (action === "getMutualQuotaLedger") {
-    var targetEmail = String(reqData.email || reqData.teacherEmail || postData.email || "").toLowerCase().trim();
-    if (!targetEmail) targetEmail = readerEmail;
-    // 權限：先快路徑（查自己免整包教師）；查他人才載教師名單
+    var targetRaw = nameKeyText_(reqData.name || reqData.teacherName || reqData.email || reqData.teacherEmail || postData.name || postData.email);
+    var teachersL = getSemesterTeachersCached_(semesterId) || [];
+    var readerHitL = teachersL.find(function (teacher) {
+      return nameKeyTeacherEmail_(teacher) === readerEmail;
+    });
+    var targetName = targetRaw && targetRaw.indexOf("@") < 0 ? targetRaw : "";
+    var targetEmail = targetRaw && targetRaw.indexOf("@") >= 0 ? nameKeyNorm_(targetRaw) : "";
+    if (!targetRaw) {
+      targetEmail = readerEmail;
+      targetName = readerHitL ? nameKeyTeacherName_(readerHitL) : "";
+    }
+    if (targetName) {
+      var targetHitByName = teachersL.find(function (teacher) {
+        return nameKeyTeacherName_(teacher) === targetName;
+      });
+      if (!targetHitByName) throw new Error("查無目前學期教師姓名：" + targetName);
+      targetEmail = nameKeyTeacherEmail_(targetHitByName);
+    }
     var isSelfLed = targetEmail === readerEmail;
-    var teachersL = null;
-    var isAdminL = false;
-    if (!isSelfLed) {
-      teachersL = getSemesterTeachersCached_(semesterId);
-      isAdminL = resolveIsAdmin_(readerEmail, teachersL);
-      if (!isAdminL) {
-        return ContentService.createTextOutput(JSON.stringify({
-          success: false,
-          error: "僅能查看自己的額度歷程"
-        })).setMimeType(ContentService.MimeType.JSON);
-      }
-    } else {
-      // 自己：輕量確認是否 admin（顯示用姓名可後補）
-      try {
-        teachersL = getSemesterTeachersCached_(semesterId);
-        isAdminL = resolveIsAdmin_(readerEmail, teachersL);
-      } catch (eT) { teachersL = []; }
+    var isAdminL = resolveIsAdmin_(readerEmail, teachersL);
+    if (!isSelfLed && !isAdminL) {
+      return ContentService.createTextOutput(JSON.stringify({
+        success: false,
+        error: "僅能查看自己的額度歷程"
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+    if (!targetName && targetEmail) {
+      var targetHitByEmail = teachersL.find(function (teacher) {
+        return nameKeyTeacherEmail_(teacher) === targetEmail;
+      });
+      targetName = targetHitByEmail ? nameKeyTeacherName_(targetHitByEmail) : "";
     }
     var limitL = parseInt(reqData.limit != null ? reqData.limit : 50, 10) || 50;
     if (limitL > 120) limitL = 120;
-    // 分師結果快取 120s（寫入會精準 bust）
-    var ledCacheKey = "jcjh_qled_" + semesterId + "_" + targetEmail + "_" + limitL;
+    // Per-teacher cache key is name-based; Email is only used for auth lookup.
+    var ledCacheKey = "jcjh_qled_" + semesterId + "_" + nameKeyNorm_(targetName) + "_" + limitL;
     try {
       var ledCached = CacheService.getScriptCache().get(ledCacheKey);
       if (ledCached) {
@@ -3736,7 +4247,7 @@ function handleReadAction_(postData) {
     } catch (eLedC) {}
     // 走 getQuotaLedgerRows_（ScriptCache＋mem）；再 filter 教師
     var sidL = String(semesterId || "");
-    var idxKeyL = makeQuotaLedgerIndexKey_(sidL, targetEmail);
+    var idxKeyL = makeQuotaLedgerIndexKey_(sidL, targetName);
     var balSum = 0;
     var rowsL = [];
     (getQuotaLedgerRows_(sidL) || []).forEach(function (r) {
@@ -3781,7 +4292,6 @@ function handleReadAction_(postData) {
       return {
         id: r["流水ID"] || "",
         time: r["時間"] || "",
-        email: r["教師Email"] || "",
         name: r["教師姓名"] || "",
         delta: d,
         balanceAfter: ba,
@@ -3814,7 +4324,6 @@ function handleReadAction_(postData) {
     if (tHit && sheetQLed != null) balance = sheetQLed;
     var outLed = {
       success: true,
-      email: targetEmail,
       name: tHit ? (tHit["教師姓名"] || tHit.name || "") : (ledger[0] && ledger[0].name) || "",
       balance: balance,
       sheetQuota: sheetQLed,
@@ -3837,7 +4346,7 @@ function handleReadAction_(postData) {
     }
     return ContentService.createTextOutput(JSON.stringify({
       success: true,
-      homeroomRecords: getSemesterHomeroomRecords_(semesterId)
+      homeroomRecords: nameKeyPublicRows_("代導紀錄", getSemesterHomeroomRecords_(semesterId))
     })).setMimeType(ContentService.MimeType.JSON);
   }
 
@@ -4123,7 +4632,8 @@ function doPost(e) {
       adminApprove: 1, adminReject: 1, adminApproveBatch: 1, adminRejectBatch: 1,
       saveHomeroomCoverTeacher: 1,
       deleteSubstitutionRecord: 1,
-      saveHistoryEdit: 1, batchMarkPrinted: 1, saveMailSettings: 1, sendBatchNotices: 1
+      saveHistoryEdit: 1, batchMarkPrinted: 1, saveMailSettings: 1, sendBatchNotices: 1,
+      migrateNameKeySchema: 1, renameTeacherNameKey: 1
     };
     if (ADMIN_ONLY_ACTIONS[action] && !isAdmin) {
       throw new Error("權限不足：此操作僅限教學組管理員！");
@@ -4149,7 +4659,28 @@ function doPost(e) {
 
     
     // 1. 管理員專屬權限 Actions
-    if (action === "saveSemester") {
+    if (action === "migrateNameKeySchema") {
+      if (!isAdmin) throw new Error("無管理員權限！");
+      var migrationSummary = migrateNameKeySchema_();
+      return ContentService.createTextOutput(JSON.stringify({
+        success: true,
+        migrated: true,
+        sheets: migrationSummary
+      })).setMimeType(ContentService.MimeType.JSON);
+
+    } else if (action === "renameTeacherNameKey") {
+      if (!isAdmin) throw new Error("無管理員權限！");
+      var renameResult = renameTeacherNameKey_(
+        reqData.semesterId || semesterId,
+        reqData.fromName || reqData.oldName,
+        reqData.toName || reqData.newName
+      );
+      return ContentService.createTextOutput(JSON.stringify({
+        success: true,
+        renamed: renameResult
+      })).setMimeType(ContentService.MimeType.JSON);
+
+    } else if (action === "saveSemester") {
       if (!isAdmin) throw new Error("無管理員權限！");
       const teachersToCopy = reqData.teachersToCopy;
       delete reqData.teachersToCopy;
@@ -4251,6 +4782,16 @@ function doPost(e) {
       if (!isAdmin) throw new Error("無管理員權限！");
       reqData["學期代號"] = semesterId;
       reqData["教師Email"] = normalizeEmail_(reqData["教師Email"] || reqData.email, "教師 Email");
+      reqData["教師姓名"] = nameKeyText_(reqData["教師姓名"] || reqData.name);
+      if (!reqData["教師姓名"]) throw new Error("教師姓名不可空白");
+      var rosterBeforeSave = getTableData("教師名單") || [];
+      var oldTeacher = rosterBeforeSave.find(function (row) {
+        return nameKeySemester_(row) === String(semesterId || "")
+          && nameKeyTeacherEmail_(row) === reqData["教師Email"];
+      });
+      if (oldTeacher && nameKeyNorm_(nameKeyTeacherName_(oldTeacher)) !== nameKeyNorm_(reqData["教師姓名"])) {
+        renameTeacherNameKey_(semesterId, nameKeyTeacherName_(oldTeacher), reqData["教師姓名"]);
+      }
       if (reqData["系統角色"] != null || reqData.role != null) {
         reqData["系統角色"] = normalizeRole_(reqData["系統角色"] != null ? reqData["系統角色"] : reqData.role);
       }
@@ -4260,6 +4801,7 @@ function doPost(e) {
     } else if (action === "deleteTeacher") {
       if (!isAdmin) throw new Error("無管理員權限！");
       var deleteTeacherEmail = normalizeEmail_(reqData.email || reqData["教師Email"], "教師 Email");
+      assertTeacherNameKeyCanDelete_(semesterId, deleteTeacherEmail);
       deleteRows("教師名單", "教師Email", deleteTeacherEmail, function (row) {
         return String(row["學期代號"] || "").trim() === String(semesterId || "").trim();
       });
@@ -4267,13 +4809,34 @@ function doPost(e) {
       
     } else if (action === "importTeachersBatch") {
       if (!isAdmin) throw new Error("無管理員權限！");
-      const list = reqData.list.map(function (t) {
+      const list = (reqData.list || []).map(function (t) {
         t["學期代號"] = semesterId;
         t["教師Email"] = normalizeEmail_(t["教師Email"] || t.email, "教師 Email");
+        t["教師姓名"] = nameKeyText_(t["教師姓名"] || t.name);
+        if (!t["教師姓名"]) throw new Error("教師姓名不可空白");
         if (t["系統角色"] != null || t.role != null) {
           t["系統角色"] = normalizeRole_(t["系統角色"] != null ? t["系統角色"] : t.role);
         }
         return t;
+      });
+      var importNamesByEmail = {};
+      list.forEach(function (row) {
+        var em = row["教師Email"];
+        var nm = nameKeyNorm_(row["教師姓名"]);
+        if (importNamesByEmail[em] && importNamesByEmail[em] !== nm) {
+          throw new Error("同一批教師匯入中，Email 對應多個姓名：" + em);
+        }
+        importNamesByEmail[em] = nm;
+      });
+      var rosterBeforeImport = getTableData("教師名單") || [];
+      Object.keys(importNamesByEmail).forEach(function (em) {
+        var oldRow = rosterBeforeImport.find(function (row) {
+          return nameKeySemester_(row) === String(semesterId || "") && nameKeyTeacherEmail_(row) === em;
+        });
+        var incoming = list.find(function (row) { return row["教師Email"] === em; });
+        if (oldRow && incoming && nameKeyNorm_(nameKeyTeacherName_(oldRow)) !== nameKeyNorm_(incoming["教師姓名"])) {
+          renameTeacherNameKey_(semesterId, nameKeyTeacherName_(oldRow), incoming["教師姓名"]);
+        }
       });
       // 一次性批次覆蓋/儲存
       saveRows("教師名單", list, "教師Email");
@@ -4472,12 +5035,18 @@ function doPost(e) {
       var teacherHeadersImp = getHeadersForSheet("教師名單");
       var semKey = "學期代號";
       var sidStr = String(semesterId || "");
+      if (headersImp.some(function (header) { return /email|電子郵件|e-mail/i.test(String(header || "")); })) {
+        throw new Error("教師課表仍是舊 Email schema，請先執行姓名鍵 migration；原資料未刪除");
+      }
+      var allTeacherExisting = getTableData("教師名單") || [];
+      // 課表只允許連接既有教師姓名；教師帳號與 Email 必須先在教師名單建立。
+      var importTeacherRows = allTeacherExisting;
 
-      var list = importList.map(function (s) {
+      var list = normalizeNameKeyRows_("教師課表", importList, importTeacherRows, sidStr).map(function (s) {
         s[semKey] = semesterId;
         if (!s["課表ID"]) {
-          var em0 = String(s["教師Email"] || "").split("@")[0] || "t";
-          s["課表ID"] = "sched_" + em0 + "_" + s["星期"] + "_" + s["節次"] + "_" +
+          var name0 = String(s["教師姓名"] || "t").replace(/\s+/g, "_");
+          s["課表ID"] = "sched_" + name0 + "_" + s["星期"] + "_" + s["節次"] + "_" +
             String(s["班級"] || "x") + "_" + Utilities.getUuid().replace(/-/g, "").substr(0, 8);
         }
         return s;
@@ -4486,7 +5055,6 @@ function doPost(e) {
       validateScheduleImportRows_(list, sidStr);
       // 所有快照先在寫入閘門外準備，避免內部回復讀取被匯入狀態阻擋。
       var allExisting = getTableData("教師課表") || [];
-      var allTeacherExisting = getTableData("教師名單") || [];
       var scheduleBackupRows = allExisting.map(function (row) {
         return buildRowArray_("教師課表", headersImp, row);
       });
@@ -4588,7 +5156,12 @@ function doPost(e) {
     } else if (action === "saveHomeroomCoverTeacher") {
       if (!isAdmin) throw new Error("無管理員權限！");
       var recordId = String(reqData.recordId || reqData.id || "").trim();
-      var actualEmail = String(reqData.actualTeacherEmail || reqData.teacherEmail || "").trim().toLowerCase();
+      var coverDirectory = buildNameKeyDirectory_(teachers);
+      var actualRaw = nameKeyText_(reqData.actualTeacherName || reqData.actualTeacherEmail || reqData.teacherName || reqData.teacherEmail);
+      var actualName = actualRaw
+        ? resolveNameKeyTeacher_(actualRaw, semesterId, coverDirectory, "代導教師", false)
+        : "";
+      var actualEmail = actualName ? nameKeyEmailForName_(semesterId, actualName, coverDirectory) : "";
       if (!recordId || !actualEmail) throw new Error("缺少代導紀錄或代導教師");
       var coverRows = getSemesterHomeroomRecords_(semesterId);
       var coverRow = coverRows.find(function (r) {
@@ -4611,7 +5184,7 @@ function doPost(e) {
           && String(r["代導教師Email"] || "").trim().toLowerCase() === actualEmail;
       });
       if (duplicate) throw new Error("同日同班的代導教師已有另一筆代導紀錄");
-      var coverName = String(coverTeacher["教師姓名"] || coverTeacher.name || actualEmail);
+       var coverName = String(coverTeacher["教師姓名"] || coverTeacher.name || actualName);
       var nowCover = toLocalTimeStr(new Date());
       coverRow["代導教師Email"] = actualEmail;
       coverRow["代導教師姓名"] = coverName;
@@ -4631,25 +5204,33 @@ function doPost(e) {
 
     } else if (action === "saveManualHomeroomRecord") {
       if (!isAdmin) throw new Error("無管理員權限！");
-      var leaveEmail = String(reqData.leaveEmail || reqData.originalTeacherEmail || "").toLowerCase().trim();
+      var manualDirectory = buildNameKeyDirectory_(teachers);
+      var leaveRaw = nameKeyText_(reqData.leaveName || reqData.leaveEmail || reqData.originalTeacherName || reqData.originalTeacherEmail);
+      var leaveName = leaveRaw
+        ? resolveNameKeyTeacher_(leaveRaw, semesterId, manualDirectory, "原導師", false)
+        : "";
+      var leaveEmail = leaveName ? nameKeyEmailForName_(semesterId, leaveName, manualDirectory) : "";
       var dateStr = String(reqData.date || reqData.dateStr || "").trim().slice(0, 10);
       if (!leaveEmail || !dateStr) throw new Error("請提供原導師與代導日期");
       var origTeacher = findSemesterTeacher_(semesterId, leaveEmail);
       if (!origTeacher) throw new Error("原導師不在目前學期教師名單");
-      var origName = String(origTeacher["教師姓名"] || origTeacher.name || leaveEmail);
+      var origName = String(origTeacher["教師姓名"] || origTeacher.name || leaveName);
       var className = extractHomeroomClass_(origTeacher, reqData.className);
       var fallbackTime = homeroomDefaultTime_(origTeacher);
       var timeType = String(reqData.leaveTimeType || "").trim() || fallbackTime.type;
       var timeRange = homeroomNormalizeRange_(reqData.leaveTime || "") || fallbackTime.range;
 
-      var actualEmail = String(reqData.actualTeacherEmail || "").toLowerCase().trim();
-      var actualName = "";
-      var status = "pending";
+       var actualRaw = nameKeyText_(reqData.actualTeacherName || reqData.actualTeacherEmail);
+       var actualName = actualRaw
+         ? resolveNameKeyTeacher_(actualRaw, semesterId, manualDirectory, "代導教師", false)
+         : "";
+       var actualEmail = actualName ? nameKeyEmailForName_(semesterId, actualName, manualDirectory) : "";
+       var status = "pending";
       if (actualEmail) {
         if (actualEmail === leaveEmail) throw new Error("代導教師不可與原導師相同");
         var actualTeacher = findSemesterTeacher_(semesterId, actualEmail);
         if (!actualTeacher) throw new Error("代導教師不在目前學期教師名單");
-        actualName = String(actualTeacher["教師姓名"] || actualTeacher.name || actualEmail);
+         actualName = String(actualTeacher["教師姓名"] || actualTeacher.name || actualName);
         status = "assigned";
       }
 
@@ -4848,23 +5429,20 @@ function doPost(e) {
        var targetReq = findRowByKey_("申請單", "申請單ID", reqId, semesterId);
       if (!targetReq) throw new Error("找不到該紀錄");
 
-      var leaveEmail = String(reqData.requesterEmail || reqData["申請人Email"] || "").trim();
-      var subEmail = String(reqData.targetTeacherEmail || reqData["受邀人Email"] || "").trim();
-      if (!leaveEmail || !subEmail) throw new Error("請假教師與代課／對調教師皆必填");
-      var leaveName = String(reqData.requesterName || reqData["申請人姓名"] || "").trim();
-      var subName = String(reqData.targetTeacherName || reqData["受邀人姓名"] || "").trim();
-      if (!leaveName || !subName) {
-        var tAll = getSemesterTeachersCached_(semesterId) || [];
-        var findT = function (em) {
-          em = String(em || "").toLowerCase();
-          var hit = tAll.find(function (t) {
-            return String(t["教師Email"] || t.email || "").toLowerCase() === em;
-          });
-          return hit ? String(hit["教師姓名"] || hit.name || "") : em;
-        };
-        if (!leaveName) leaveName = findT(leaveEmail);
-        if (!subName) subName = findT(subEmail);
-      }
+       var editDirectory = buildNameKeyDirectory_(teachers);
+       var leaveName = resolveNameKeyPair_(
+         nameKeyPick_(reqData, ["requesterName", "申請人姓名"]),
+         nameKeyPick_(reqData, ["requesterEmail", "申請人Email"]),
+         semesterId, editDirectory, "申請人", false
+       );
+       var subName = resolveNameKeyPair_(
+         nameKeyPick_(reqData, ["targetTeacherName", "受邀人姓名"]),
+         nameKeyPick_(reqData, ["targetTeacherEmail", "受邀人Email"]),
+         semesterId, editDirectory, "受邀人", false
+       );
+       var leaveEmail = nameKeyEmailForName_(semesterId, leaveName, editDirectory);
+       var subEmail = nameKeyEmailForName_(semesterId, subName, editDirectory);
+       if (!leaveEmail || !subEmail) throw new Error("教師名單缺少請假教師或代課教師 Email");
 
       var isEx = reqData.type === "exchange" || reqData.type === "對調"
         || targetReq["異動類型"] === "exchange" || targetReq["異動類型"] === "對調";
@@ -5009,9 +5587,9 @@ function doPost(e) {
        assertNotTooFrequent_(userEmail, "submitRequest");
        // 發起調代課申請（狀態一律由伺服器決定，忽略前端竄改）
        if (!reqData.request || typeof reqData.request !== "object") throw new Error("缺少申請單資料！");
-       reqData.request["學期代號"] = semesterId;
-       var leaveEmailOne = normalizeEmail_(reqData.request["申請人Email"] || reqData.request.requesterEmail, "申請人 Email");
-       var targetEmailOne = normalizeEmail_(reqData.request["受邀人Email"] || reqData.request.targetTeacherEmail, "受邀人 Email");
+       reqData.request = prepareNameKeyRequestRow_(reqData.request, semesterId, teachers);
+       var leaveEmailOne = normalizeEmail_(reqData.request["申請人Email"], "申請人 Email");
+       var targetEmailOne = normalizeEmail_(reqData.request["受邀人Email"], "受邀人 Email");
        if (!findSemesterTeacher_(semesterId, leaveEmailOne)) throw new Error("申請人不在目前學期教師名單！");
        if (!findSemesterTeacher_(semesterId, targetEmailOne)) throw new Error("受邀人不在目前學期教師名單！");
        if (leaveEmailOne === targetEmailOne) throw new Error("申請人與受邀人不可為同一人！");
@@ -5105,9 +5683,12 @@ function doPost(e) {
     } else if (action === "submitRequestBatch") {
       // 方案 A：多筆申請單＋同一批次ID（每節仍獨立簽核）
       assertNotTooFrequent_(userEmail, "submitRequestBatch");
-      var list = reqData.requests || [];
-      if (!list.length) throw new Error("批次申請清單為空！");
-      if (list.length > 20) throw new Error("單次批次最多 20 節！");
+       var rawList = reqData.requests || [];
+       if (!rawList.length) throw new Error("批次申請清單為空！");
+       if (rawList.length > 20) throw new Error("單次批次最多 20 節！");
+       var list = rawList.map(function (rawRow) {
+         return prepareNameKeyRequestRow_(rawRow, semesterId, teachers);
+       });
       var batchId = String(reqData.batchId || ("bat_" + Date.now())).trim();
       if (!batchId) throw new Error("缺少批次 ID！");
       var staffCanProxyBatch = canUserProxySubmit_(userEmail, teachers);

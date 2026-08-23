@@ -169,7 +169,8 @@ const adminOnlyActions = [
   'earnMutualQuotaFromActivity', 'saveScheduleCell', 'clearScheduleCell',
   'importSchedulesBatch', 'adminApprove', 'adminReject', 'adminApproveBatch',
   'adminRejectBatch', 'saveHomeroomCoverTeacher', 'deleteSubstitutionRecord',
-  'saveHistoryEdit', 'batchMarkPrinted', 'saveMailSettings', 'sendBatchNotices'
+  'saveHistoryEdit', 'batchMarkPrinted', 'saveMailSettings', 'sendBatchNotices',
+  'migrateNameKeySchema', 'renameTeacherNameKey'
 ];
 
 for (const [email, label] of [[STAFF_EMAIL, 'staff'], [TEACHER_EMAIL, 'teacher']]) {
@@ -187,7 +188,7 @@ resetMutationState();
 const adminSave = invoke({
   email: ADMIN_EMAIL,
   action: 'saveTeacher',
-  data: { '教師Email': 'new-teacher@school.example' }
+  data: { '教師Email': 'new-teacher@school.example', '教師姓名': '新教師' }
 });
 assert.strictEqual(adminSave.success, true);
 assert.strictEqual(mutationCalls, 1, 'admin action did not reach its write path');
@@ -229,7 +230,7 @@ resetMutationState();
 const teacherSelfRequest = invoke({
   email: TEACHER_EMAIL,
   action: 'submitRequest',
-  data: { request: makeRequest({ '申請人Email': TEACHER_EMAIL }) }
+  data: { request: makeRequest({ '申請人Email': TEACHER_EMAIL, '申請人姓名': '教師' }) }
 });
 assert.strictEqual(teacherSelfRequest.success, true);
 assert.strictEqual(persistedRows[0]['狀態'], 'pending_teacher');

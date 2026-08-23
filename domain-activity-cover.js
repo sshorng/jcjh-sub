@@ -960,8 +960,8 @@ window.DomainActivityCover = (function () {
     opts = opts || {};
     var task = String(opts.taskName || '').trim();
     var cls = String(opts.className || '').trim();
-    var em = String(opts.teacherEmail || '').trim().toLowerCase();
-    var nm = String(opts.teacherName || '').trim() || em;
+    var nm = String(opts.teacherName || '').trim();
+    if (!nm) throw new Error('空堂排班缺少教師姓名');
     var noteBase = String(opts.note || '').trim();
     var noteOut = noteBase ? ('[直接核准] [空堂排班] ' + noteBase) : '[直接核准] [空堂排班]';
     var newRequest = {
@@ -969,9 +969,7 @@ window.DomainActivityCover = (function () {
       "申請單ID": opts.requestId,
       "單號": opts.serial,
       "異動類型": 'substitution',
-      "申請人Email": em,
       "申請人姓名": nm,
-      "受邀人Email": em,
       "受邀人姓名": nm,
       "異動日期": String(opts.date || '').slice(0, 10),
       "異動節次": parseInt(opts.period, 10) || 0,

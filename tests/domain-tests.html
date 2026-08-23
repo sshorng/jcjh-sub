@@ -530,7 +530,10 @@
         });
         assert('payload 扣額度', ep.request['經費來源'] === '扣額度');
         assert('payload 不寄信', ep.skipNotify === true);
-        assert('payload 同人', ep.request['申請人Email'] === 't@x' && ep.request['受邀人Email'] === 't@x');
+         assert('payload 同人', ep.request['申請人姓名'] === '測試'
+           && ep.request['受邀人姓名'] === '測試'
+           && ep.request['申請人Email'] === undefined
+           && ep.request['受邀人Email'] === undefined);
         assert('payload 科目任務名', ep.request['科目'] === '段考巡堂');
         assert('payload 班級可空', ep.request['班級'] === '');
         assert('payload 事由', ep.request['請假事由'] === '空堂排班');

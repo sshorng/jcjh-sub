@@ -30,9 +30,9 @@ window.UiSubmitHelpers = (function () {
     return '';
   }
 
-  function shouldProxySubmitForLeave(deps, leaveEmail) {
+   function shouldProxySubmitForLeave(deps, leaveNameOrEmail) {
     if (deps.shouldProxySubmitForLeave && typeof deps.shouldProxySubmitForLeave === 'function') {
-      return !!deps.shouldProxySubmitForLeave(leaveEmail);
+      return !!deps.shouldProxySubmitForLeave(leaveNameOrEmail);
     }
     var can = false;
     if (deps.canStaffProxySubmit) {
@@ -42,7 +42,11 @@ window.UiSubmitHelpers = (function () {
     }
     if (!can) return false;
     var me = resolveUserEmail(deps);
-    var leave = String(leaveEmail || '').trim().toLowerCase();
+    var nameFn = deps.getTeacherNameByEmail;
+    var meName = nameFn ? String(nameFn(me) || '').trim().toLowerCase() : '';
+    var leaveName = nameFn ? String(nameFn(leaveNameOrEmail) || '').trim().toLowerCase() : '';
+    if (meName && leaveName) return meName !== leaveName;
+    var leave = String(leaveNameOrEmail || '').trim().toLowerCase();
     return !!(me && leave && leave !== me);
   }
 
@@ -163,8 +167,10 @@ window.UiSubmitHelpers = (function () {
       if (!proxyByName && proxyByEmail) {
         proxyByName = getTeacherNameByEmail(proxyByEmail) || proxyByEmail;
       }
-      // 實際是自己的課 → 不當代申請
-      if (proxyByEmail && leaveEm0 && leaveEm0 === proxyByEmail) {
+      // 實際是自己的課 → 不當代申請；domain key 使用姓名，Email 只留在登入／通知層。
+      var leaveNameKey = String(getTeacherNameByEmail(pending.leaveTeacher) || pending.leaveTeacher || '').trim().toLowerCase();
+      var proxyNameKey = String(proxyByName || getTeacherNameByEmail(proxyByEmail) || '').trim().toLowerCase();
+      if (proxyNameKey && leaveNameKey && leaveNameKey === proxyNameKey) {
         proxyActive = false;
         proxyByEmail = '';
         proxyByName = '';
@@ -212,10 +218,8 @@ window.UiSubmitHelpers = (function () {
       "申請單ID": requestId,
       "單號": serial,
       "異動類型": pending.mode,
-      "申請人Email": pending.leaveTeacher,
-      "申請人姓名": getTeacherNameByEmail(pending.leaveTeacher),
-      "受邀人Email": pending.subTeacher,
-      "受邀人姓名": getTeacherNameByEmail(pending.subTeacher),
+       "申請人姓名": getTeacherNameByEmail(pending.leaveTeacher),
+       "受邀人姓名": getTeacherNameByEmail(pending.subTeacher),
       "異動日期": pending.date,
       "異動節次": (function () {
         var tk = (window.DateUtils && window.DateUtils.decodeTimeKey)
@@ -239,12 +243,10 @@ window.UiSubmitHelpers = (function () {
       "狀態": initialStatus,
       directApprove: doDirectApprove,
       isProxySubmit: !!proxyActive,
-      proxyByEmail: proxyByEmail || '',
-      proxyByName: proxyByName || ''
-    };
+       proxyByName: proxyByName || ''
+     };
     if (proxyActive && proxyByEmail) {
-      newRequest["代申請人Email"] = proxyByEmail;
-      newRequest["代申請人姓名"] = proxyByName || getTeacherNameByEmail(proxyByEmail) || '';
+       newRequest["代申請人姓名"] = proxyByName || getTeacherNameByEmail(proxyByEmail) || '';
     }
 
     if (isExchange) {
@@ -803,7 +805,7 @@ window.UiSubmitHelpers = (function () {
       var newRequest = built.newRequest;
       var isExchange = built.isExchange;
       // 送出前再強制一次：已授權行政代別人 → pending_admin + proxySubmit
-      if (shouldProxySubmitForLeave(deps, newRequest['申請人Email'] || pendingRequestData.value.leaveTeacher)) {
+       if (shouldProxySubmitForLeave(deps, newRequest['申請人姓名'] || pendingRequestData.value.leaveTeacher)) {
         newRequest['狀態'] = 'pending_admin';
         newRequest.isProxySubmit = true;
         payload.proxySubmit = true;
@@ -812,15 +814,13 @@ window.UiSubmitHelpers = (function () {
         var actor2 = deps.getProxyActor ? (deps.getProxyActor() || {}) : {};
         var actorEm2 = String(actor2.email || resolveUserEmail(deps) || '').trim().toLowerCase();
         var nameFn = deps.getTeacherNameByEmail || function (e) { return e; };
-        if (actorEm2) {
-          newRequest['代申請人Email'] = actorEm2;
-          newRequest['代申請人姓名'] = actor2.name || nameFn(actorEm2) || actorEm2;
-          newRequest.proxyByEmail = actorEm2;
-          newRequest.proxyByName = newRequest['代申請人姓名'];
+         if (actorEm2) {
+           newRequest['代申請人姓名'] = actor2.name || nameFn(actorEm2) || actorEm2;
+           newRequest.proxyByName = newRequest['代申請人姓名'];
         }
         var note2 = String(newRequest['備註'] || '').trim();
         if (note2.indexOf('[行政代申請') < 0) {
-          var leaveNm2 = newRequest['申請人姓名'] || newRequest['申請人Email'];
+           var leaveNm2 = newRequest['申請人姓名'] || pendingRequestData.value.leaveTeacher;
           var tag2 = '[行政代申請：' + (newRequest['代申請人姓名'] || actorEm2) + ' 代 ' + leaveNm2 + ']';
           newRequest['備註'] = note2 ? (tag2 + ' ' + note2) : tag2;
         }

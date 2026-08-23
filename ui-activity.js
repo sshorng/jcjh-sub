@@ -977,9 +977,7 @@ window.UiMutualSubmit = (function () {
               "單號": serialRoot + '-' + (offset + i + 1),
               "批次ID": batchId,
               "異動類型": 'substitution',
-              "申請人Email": leaveEmail,
               "申請人姓名": leaveName,
-              "受邀人Email": s.subTeacherEmail,
               "受邀人姓名": s.subTeacherName,
               "異動日期": s.dateStr,
               "異動節次": s.period,
@@ -1033,7 +1031,7 @@ window.UiMutualSubmit = (function () {
         var currentUrl = window.location.origin + window.location.pathname;
         var bySub = {};
         allRows.forEach(function (r) {
-          var em = String(r['受邀人Email'] || '').toLowerCase();
+           var em = String(r['受邀人姓名'] || '').toLowerCase();
           if (!bySub[em]) bySub[em] = { name: r['受邀人姓名'], rows: [] };
           bySub[em].rows.push(r);
         });
@@ -1257,7 +1255,7 @@ window.UiBatchSubmit = (function () {
         proxyByName = getTeacherNameByEmail(proxyByEmail) || proxyByEmail;
       }
       // 批次對象若是自己 → 不當代申請
-      if (proxyActive && proxyByEmail && leaveEmBatch === proxyByEmail) {
+       if (proxyActive && proxyByName && leaveEmBatch === String(proxyByName).toLowerCase()) {
         proxyActive = false;
         proxyByEmail = '';
         proxyByName = '';
@@ -1288,10 +1286,8 @@ window.UiBatchSubmit = (function () {
           "單號": serialRoot + '-' + (i + 1),
           "批次ID": batchId,
           "異動類型": 'substitution',
-          "申請人Email": leaveEmail,
-          "申請人姓名": leaveName,
-          "受邀人Email": s.subTeacherEmail,
-          "受邀人姓名": s.subTeacherName || getTeacherNameByEmail(s.subTeacherEmail),
+           "申請人姓名": leaveName,
+           "受邀人姓名": s.subTeacherName || getTeacherNameByEmail(s.subTeacherEmail),
           "異動日期": s.dateStr,
           "異動節次": s.period,
           "異動星期": s.dayOfWeek,
@@ -1307,12 +1303,10 @@ window.UiBatchSubmit = (function () {
           "建立時間": '',
           directApprove: doDirectApprove,
           isProxySubmit: !!proxyActive,
-          proxyByEmail: proxyByEmail || '',
-          proxyByName: proxyByName || ''
-        };
-        if (proxyActive && proxyByEmail) {
-          row["代申請人Email"] = proxyByEmail;
-          row["代申請人姓名"] = proxyByName || '';
+           proxyByName: proxyByName || ''
+         };
+         if (proxyActive && proxyByEmail) {
+           row["代申請人姓名"] = proxyByName || '';
         }
         return row;
       });
@@ -1342,7 +1336,7 @@ window.UiBatchSubmit = (function () {
       var n = rows.length;
       var groups = {};
       rows.forEach(function (r) {
-        var em = String(r["受邀人Email"] || '').toLowerCase();
+         var em = String(r["受邀人姓名"] || '').toLowerCase();
         if (!groups[em]) groups[em] = { name: r["受邀人姓名"], rows: [] };
         groups[em].rows.push(r);
       });

@@ -3,7 +3,7 @@
  * JWT / Token 檢查 / 錯誤格式化 / callGasApi（讀寫皆 POST，Token 不進 URL）/ SWR 分鍵
  */
 window.GasApi = (function () {
-  var APP_VERSION = '2026-08-17-special-periods';
+  var APP_VERSION = '2026-08-24-name-key';
   // 未取得明確網域設定時，前端也採 fail-closed；公開課表仍可免登入使用。
   var DEFAULT_ALLOWED_HD = [];
   var WRITE_ACTIONS = {
@@ -13,7 +13,8 @@ window.GasApi = (function () {
     saveTeacher: 1, deleteTeacher: 1, importTeachersBatch: 1, updateMutualQuotas: 1,
     earnMutualQuotaFromActivity: 1,
     saveScheduleCell: 1, clearScheduleCell: 1, importSchedulesBatch: 1,
-    saveSemester: 1, deleteSemester: 1, setDefaultSemester: 1,
+     saveSemester: 1, deleteSemester: 1, setDefaultSemester: 1,
+     migrateNameKeySchema: 1, renameTeacherNameKey: 1,
     saveClassAwayEvent: 1, deleteClassAwayEvent: 1,
     saveHistoryEdit: 1, saveHomeroomCoverTeacher: 1, saveManualHomeroomRecord: 1, deleteHomeroomRecord: 1, batchMarkPrinted: 1, saveMailSettings: 1, sendBatchNotices: 1
   };
@@ -29,7 +30,8 @@ window.GasApi = (function () {
     saveTeacher: 1, deleteTeacher: 1, importTeachersBatch: 1, updateMutualQuotas: 1,
     earnMutualQuotaFromActivity: 1,
     saveScheduleCell: 1, clearScheduleCell: 1, importSchedulesBatch: 1,
-    saveSemester: 1, deleteSemester: 1, setDefaultSemester: 1,
+     saveSemester: 1, deleteSemester: 1, setDefaultSemester: 1,
+     migrateNameKeySchema: 1, renameTeacherNameKey: 1,
     saveClassAwayEvent: 1, deleteClassAwayEvent: 1, saveMailSettings: 1
   };
 
@@ -624,13 +626,13 @@ window.GasApi = (function () {
 
     /**
      * 代課媒合候選（後端算；教師端無全校課表時用）
-     * options: leaveEmail, dateStr, dayOfWeek, period, myCourse, myDomain, myClass, awayClasses, activityMode, limit
+      * options: leaveName, dateStr, dayOfWeek, period, myCourse, myDomain, myClass, awayClasses, activityMode, limit
      */
     async function fetchMatchCandidates(options) {
       options = options || {};
       const semesterId = options.semesterId || opts.getSemesterId();
       return await postJson('getMatchCandidates', {
-        leaveEmail: options.leaveEmail,
+        leaveName: options.leaveName || options.leaveEmail || '',
         dateStr: options.dateStr,
         dayOfWeek: options.dayOfWeek != null ? options.dayOfWeek : options.targetDay,
         period: options.period != null ? options.period : options.targetPeriod,
@@ -650,7 +652,7 @@ window.GasApi = (function () {
       options = options || {};
       const semesterId = options.semesterId || opts.getSemesterId();
       return await postJson('getMutualQuotaLedger', {
-        email: options.email || options.teacherEmail || '',
+        name: options.name || options.teacherName || '',
         limit: options.limit != null ? options.limit : 50
       }, { abortPrevious: true, semesterId: semesterId });
     }

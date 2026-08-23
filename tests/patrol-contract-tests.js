@@ -52,11 +52,14 @@ const fieldContext = { window: {} };
 vm.createContext(fieldContext);
 vm.runInContext(fs.readFileSync(path.join(root, 'field-map.js'), 'utf8'), fieldContext, { filename: 'field-map.js' });
 const mapped = fieldContext.window.FieldMap.mapSchedule({
-  '班級': '', '科目': '', '課堂屬性': '巡堂', '教師Email': 'a@school.example', '星期': 2, '節次': 3
+  '班級': '', '科目': '', '課堂屬性': '巡堂', '教師姓名': '甲', '教師Email': 'a@school.example', '星期': 2, '節次': 3
 });
 assert.equal(mapped.className, '');
 assert.equal(mapped.subject, '');
 assert.equal(mapped.attr, '巡堂');
+assert.equal(mapped.teacherName, '甲');
+assert.equal(mapped.teacherEmail, '甲');
+assert.equal(Object.keys(mapped).some(function (key) { return /email/i.test(key); }), false);
 
 const specialMapped = fieldContext.window.FieldMap.mapSchedule({
   '課表ID': 'S2',
@@ -65,6 +68,7 @@ const specialMapped = fieldContext.window.FieldMap.mapSchedule({
   '課堂屬性': '超鐘點',
   '調課限制': '綁課',
   '特殊標記': '併班、綁課、預排',
+  '教師姓名': '乙',
   '教師Email': 'b@school.example',
   '星期': 1,
   '節次': 2
@@ -73,6 +77,20 @@ assert.equal(specialMapped.attr, '超鐘點');
 assert.equal(specialMapped.restriction, 'restricted');
 assert.equal(specialMapped.specialTags, '併班、綁課、預排');
 assert.equal(specialMapped.isPreplanned, true);
+
+const mappedRequest = fieldContext.window.FieldMap.mapRequest({
+  '申請人姓名': '甲', '受邀人姓名': '乙', '代申請人姓名': '丙', '狀態': '待受邀人簽核'
+});
+assert.equal(mappedRequest.requesterEmail, '甲');
+assert.equal(mappedRequest.targetTeacherEmail, '乙');
+assert.equal(Object.keys(mappedRequest).some(function (key) { return /email/i.test(key); }), false);
+
+const mappedHomeroom = fieldContext.window.FieldMap.mapHomeroomRecord({
+  '原導師姓名': '甲', '代導教師姓名': '乙', '操作者': '丙'
+});
+assert.equal(mappedHomeroom.originalTeacherEmail, '甲');
+assert.equal(mappedHomeroom.actualTeacherEmail, '乙');
+assert.equal(Object.keys(mappedHomeroom).some(function (key) { return /email/i.test(key); }), false);
 
 assert.doesNotThrow(function () {
   context.validateScheduleImportRows_([{

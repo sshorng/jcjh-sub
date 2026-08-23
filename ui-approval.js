@@ -12,6 +12,7 @@ window.UiApproval = (function () {
     var loading = deps.loading;
     var loadingMessage = deps.loadingMessage;
     var getStatusText = deps.getStatusText;
+    var getTeacherNameByEmail = deps.getTeacherNameByEmail || function (value) { return value || ''; };
     var restoreMutualQuotaForRows = deps.restoreMutualQuotaForRows || function () {};
     var optimisticPatchRequestStatus = deps.optimisticPatchRequestStatus;
     var optimisticPatchRequestStatuses = deps.optimisticPatchRequestStatuses || function (updates) {
@@ -167,14 +168,15 @@ window.UiApproval = (function () {
         loading.value = true;
         loadingMessage.value = '正在通過信件進行線上簽核回應中...';
         try {
-          var email = currentUser.email.toLowerCase();
-          var req = findRequestById(id);
-          if (!req) {
-            showToast('⚠️ 找不到該申請單，或資料庫尚未同步完成！', 'warning');
-          } else if (String(req.targetTeacherEmail || '').toLowerCase() !== email) {
-            showToast(
-              '⚠️ 簽核失敗！此簽核連結限由 ' + req.targetTeacherName +
-              ' 老師點選。您目前登入的帳號是：' + email,
+           var loginEmail = currentUser.email.toLowerCase();
+           var loginName = String(getTeacherNameByEmail(loginEmail) || '').toLowerCase();
+           var req = findRequestById(id);
+           if (!req) {
+             showToast('⚠️ 找不到該申請單，或資料庫尚未同步完成！', 'warning');
+           } else if (String(req.targetTeacherName || req.targetTeacherEmail || '').toLowerCase() !== loginName) {
+             showToast(
+               '⚠️ 簽核失敗！此簽核連結限由 ' + req.targetTeacherName +
+               ' 老師點選。您目前登入的帳號是：' + loginEmail,
               'error'
             );
           } else if (req.status !== 'pending_teacher') {

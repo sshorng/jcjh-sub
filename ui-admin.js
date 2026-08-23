@@ -1,5 +1,5 @@
 /**
- * ui-admin.js — 後台匯入／教師 CRUD／課表格編輯／歷史編輯（方案甲殼瘦身 B）
+ * ui-admin.js：後台匯入／教師 CRUD／課表格編輯／歷史編輯（方案甲殼瘦身 B）
  * 對外：window.UiAdmin.create(deps)
  */
 window.UiAdmin = (function () {
@@ -58,7 +58,7 @@ window.UiAdmin = (function () {
     var showScheduleEditModal = useRef('showScheduleEditModal', false);
     var scheduleForm = useRef('scheduleForm', {
       id: null, teacherEmail: '', teacherName: '', dayOfWeek: 1, period: 1,
-      className: '', subject: '', attr: '基本', restriction: ''
+       className: '', subject: '', attr: '一般', restriction: ''
     });
 
     var showTeacherModal = useRef('showTeacherModal', false);
@@ -68,7 +68,7 @@ window.UiAdmin = (function () {
     var excelData = useRef('excelData', []);
     var excelHeaders = useRef('excelHeaders', []);
     var mappingFields = useRef('mappingFields', {
-      teacherName: '', teacherEmail: '', subject: '', dayOfWeek: '',
+      teacherName: '', subject: '', dayOfWeek: '',
       period: '', className: '', attr: '', restriction: '', specialTags: ''
     });
     /** 乾跑預覽結果 */
@@ -204,8 +204,8 @@ window.UiAdmin = (function () {
       if (kind === 'email_format') return 'Email 格式不正確（需含 @）';
       if (kind === 'ambiguous') return '缺：可辨識的唯一 Email（姓名重複）';
       if (kind === 'not_found') return '缺：教師名單中的對應，或本列 Email';
-      if (kind === 'day') return '缺：合法星期（1–5 或 一～五）' + (extra ? '，目前「' + extra + '」' : '');
-      if (kind === 'period') return '缺：合法節次（早自習/0、1–8 或 午休/45）' + (extra ? '，目前「' + extra + '」' : '');
+      if (kind === 'day') return '缺：合法星期（1～5 或 一～五）' + (extra ? '，目前「' + extra + '」' : '');
+      if (kind === 'period') return '缺：合法節次（早自習/0、1～8 或 午休/45）' + (extra ? '，目前「' + extra + '」' : '');
       return extra || '';
     }
 
@@ -248,9 +248,7 @@ window.UiAdmin = (function () {
       for (var i = 0; i < excelData.value.length; i++) {
         var row = excelData.value[i];
         var name = String(row[mappingFields.value.teacherName] || '').trim();
-        var emailRaw = mappingFields.value.teacherEmail
-          ? String(row[mappingFields.value.teacherEmail] || '').trim().toLowerCase()
-          : '';
+         var emailRaw = '';
         var subject = String(row[mappingFields.value.subject] || '').trim();
         var dayRaw = String(row[mappingFields.value.dayOfWeek] || '').trim();
        var periodSource = String(row[mappingFields.value.period] || '').trim();
@@ -353,7 +351,7 @@ window.UiAdmin = (function () {
         if (!teachersSet.has(email)) {
           teachersSet.add(email);
           var exists = teachersList.value.some(function (t) {
-            return t.email && t.email.toLowerCase() === email;
+            return t.loginEmail && t.loginEmail.toLowerCase() === email;
           });
           if (!exists && emailRaw) {
             teachersListToImport.push({
@@ -393,11 +391,10 @@ window.UiAdmin = (function () {
          }
         var id = 'sched_' + email.split('@')[0] + '_' + dayOfWeek + '_' + period + '_' +
           (isPatrol ? 'patrol' : className) + '_' + Math.random().toString(36).substr(2, 6);
-        list.push({
-          '學期代號': currentSemester.value,
-          '課表ID': id,
-          '教師Email': email,
-          '教師姓名': name,
+         list.push({
+           '學期代號': currentSemester.value,
+           '課表ID': id,
+           '教師姓名': name,
           '星期': dayOfWeek,
           '節次': period,
           '班級': className,
@@ -456,8 +453,7 @@ window.UiAdmin = (function () {
         var rows = [
           {
             '教師姓名': '王小明',
-            'Email': '',
-            '星期': 1,
+             '星期': 1,
             '節次': 2,
              '班級': '701',
              '科目': '國文',
@@ -467,8 +463,7 @@ window.UiAdmin = (function () {
            },
           {
             '教師姓名': '王小明',
-            'Email': '',
-            '星期': 1,
+             '星期': 1,
             '節次': 2,
              '班級': '702',
              '科目': '國文',
@@ -478,8 +473,7 @@ window.UiAdmin = (function () {
            },
           {
             '教師姓名': '李美華',
-            'Email': 'lee@example.edu.tw',
-            '星期': 3,
+             '星期': 3,
             '節次': 5,
              '班級': '801',
              '科目': '數學',
@@ -489,8 +483,7 @@ window.UiAdmin = (function () {
            },
           {
             '教師姓名': '陳志強',
-            'Email': '',
-            '星期': 2,
+             '星期': 2,
             '節次': 8,
              '班級': '901',
              '科目': '課輔',
@@ -500,8 +493,7 @@ window.UiAdmin = (function () {
            },
           {
             '教師姓名': '林巡堂',
-            'Email': '',
-            '星期': 4,
+             '星期': 4,
             '節次': 3,
              '班級': '',
              '科目': '巡堂',
@@ -514,7 +506,7 @@ window.UiAdmin = (function () {
         var wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, '課表長表');
         XLSX.writeFile(wb, '課表匯入範本_長表.xlsx');
-        showToast('已下載課表長表範本（含巡堂列；Email 可空白）', 'success');
+         showToast('已下載姓名鍵課表長表範本（含巡堂列）', 'success');
       };
       if (typeof window.ensureXlsx === 'function') {
         window.ensureXlsx().then(doDownload).catch(function () {
@@ -540,10 +532,9 @@ window.UiAdmin = (function () {
            if (!special && window.DateUtils && window.DateUtils.isCombinedClass
                && window.DateUtils.isCombinedClass(s.className)) special = '併班';
            if (restrict && !hasSpecialTag(special, '綁課')) special = special ? special + '、綁課' : '綁課';
-           return {
-            '教師姓名': s.teacherName || getTeacherNameByEmail(s.teacherEmail) || '',
-            'Email': s.teacherEmail || '',
-            '星期': s.dayOfWeek != null ? s.dayOfWeek : '',
+            return {
+             '教師姓名': s.teacherName || getTeacherNameByEmail(s.teacherEmail) || '',
+             '星期': s.dayOfWeek != null ? s.dayOfWeek : '',
             '節次': s.period != null ? s.period : '',
             '班級': s.className || '',
              '科目': s.subject || '',
@@ -599,9 +590,9 @@ window.UiAdmin = (function () {
         '【S1 本學期覆寫】\n\n' +
         '只清除學期「' + currentSemester.value + '」的課表（其他學期不動），再一次寫入：\n' +
         '• 有效 ' + parsed.list.length + ' 節\n' +
-        '• 教師 ' + parsed.teacherCount + ' 人（有 Email 且名單沒有者新增 ' + parsed.teachers.length + '）\n' +
+         '• 教師 ' + parsed.teacherCount + ' 人（依教師姓名對應）\n' +
         '• 略過 ' + parsed.skipped.length + ' 列\n' +
-        (parsed.resolvedByName ? '• 靠姓名對應 Email：' + parsed.resolvedByName + ' 列\n' : '') +
+         (parsed.resolvedByName ? '• 靠姓名對應教師：' + parsed.resolvedByName + ' 列\n' : '') +
         (parsed.multiSlots ? '• 同節多班列：' + parsed.multiSlots + ' 筆\n' : '') +
         '\n確定匯入？',
         '確認匯入課表'
@@ -632,6 +623,30 @@ window.UiAdmin = (function () {
       } catch (e) {
         console.error('排課匯入失敗：', e);
         showToast('匯入失敗：' + e.message, 'error');
+      } finally {
+        loading.value = false;
+      }
+    }
+
+    async function migrateNameKeySchema() {
+      var ok = await showConfirm(
+        '這會先驗證教師姓名是否唯一，再把教師課表、申請單、代導紀錄、額度帳本的 Email 欄位轉成姓名並重寫表頭。\n\n若有無法對應或同名資料，系統會停止且不刪除原資料。確定執行？',
+        '執行姓名鍵資料遷移'
+      );
+      if (!ok) return;
+      loading.value = true;
+      loadingMessage.value = '正在驗證並遷移姓名鍵資料，請勿關閉頁面…';
+      try {
+        var res = await callGasApiWithProgress('migrateNameKeySchema', {}, '姓名鍵資料遷移');
+        var sheets = (res && res.sheets) || [];
+        var summary = sheets.map(function (item) {
+          return item.sheet + ' ' + item.count + ' 列';
+        }).join('、');
+        showToast('姓名鍵資料遷移完成：' + (summary || '無需遷移'), 'success', 6000);
+        if (typeof loadWeeklyData === 'function') await loadWeeklyData({ force: true });
+      } catch (e) {
+        console.error('姓名鍵資料遷移失敗：', e);
+        showToast('姓名鍵資料遷移失敗：' + (e && e.message ? e.message : e), 'error', 7000);
       } finally {
         loading.value = false;
       }
@@ -728,17 +743,16 @@ window.UiAdmin = (function () {
             return s.teacherEmail === scheduleForm.value.teacherEmail &&
               parseInt(s.dayOfWeek, 10) === parseInt(scheduleForm.value.dayOfWeek, 10) &&
               parseInt(s.period, 10) === currentPeriod &&
-              (s.attr || '基本') === attr;
+               normSchedAttr(s.attr) === attr;
           });
           if (dup) docId = dup.id;
         }
-        var reqPayload = {
-          '課表ID': docId || ('sched_' + scheduleForm.value.teacherEmail.split('@')[0] + '_' +
-            scheduleForm.value.dayOfWeek + '_' + currentPeriod + '_' +
-            (scheduleForm.value.className.trim() || 'any') + '_' +
-            Math.random().toString(36).substr(2, 5)),
-          '教師Email': scheduleForm.value.teacherEmail,
-          '教師姓名': scheduleForm.value.teacherName,
+          var reqPayload = {
+           '課表ID': docId || ('sched_' + scheduleForm.value.teacherEmail.split('@')[0] + '_' +
+             scheduleForm.value.dayOfWeek + '_' + currentPeriod + '_' +
+             (scheduleForm.value.className.trim() || 'any') + '_' +
+             Math.random().toString(36).substr(2, 5)),
+           '教師姓名': scheduleForm.value.teacherName,
           '星期': parseInt(scheduleForm.value.dayOfWeek, 10),
           '節次': currentPeriod,
           '班級': scheduleForm.value.className.trim(),
@@ -821,10 +835,10 @@ window.UiAdmin = (function () {
     async function updateTeacherBaseHours(email, hours) {
       loading.value = true;
       try {
-        var teacher = teachersList.value.find(function (t) { return t.email === email; });
-        if (!teacher) throw new Error('找不到該教師');
-        var reqPayload = {
-          '教師Email': email,
+         var teacher = teachersList.value.find(function (t) { return t.email === email || t.loginEmail === email; });
+         if (!teacher) throw new Error('找不到該教師');
+         var reqPayload = {
+           '教師Email': teacher.loginEmail || email,
           '教師姓名': teacher.name,
           '授課科目': teacher.subject,
           '鐘點支出計畫': teacher.expensePlan || '',
@@ -836,7 +850,7 @@ window.UiAdmin = (function () {
           })()
         };
         await callGasApi('saveTeacher', reqPayload);
-        var i = teachersList.value.findIndex(function (t) { return t.email === email; });
+         var i = teachersList.value.findIndex(function (t) { return t.email === email || t.loginEmail === email; });
         if (i >= 0) {
           var copy = teachersList.value.slice();
           var bh = (hours === 0 || hours === '0') ? 0 : (parseInt(hours, 10) || 16);
@@ -861,7 +875,7 @@ window.UiAdmin = (function () {
     function openEditTeacherModal(t) {
       teacherModalMode.value = 'edit';
       teacherForm.value = {
-        email: t.email,
+        email: t.loginEmail || t.email,
         name: t.name,
         subject: t.subject,
         jobTitle: t.jobTitle || '',
@@ -879,9 +893,23 @@ window.UiAdmin = (function () {
     async function saveTeacher() {
       loading.value = true;
       var email = teacherForm.value.email.trim();
+      var nextName = teacherForm.value.name.trim();
+      var existingTeacher = (teachersList.value || []).find(function (teacher) {
+        return String(teacher.loginEmail || '').toLowerCase() === email.toLowerCase();
+      });
+      if (existingTeacher && String(existingTeacher.name || '').trim() !== nextName) {
+        var renameOk = await showConfirm(
+          '這會把「' + String(existingTeacher.name || '') + '」改為「' + nextName + '」，並同步更新所有歷史課表、申請、代導與額度資料。確定改名？',
+          '教師姓名連動更新'
+        );
+        if (!renameOk) {
+          loading.value = false;
+          return;
+        }
+      }
       var reqPayload = {
         '教師Email': email,
-        '教師姓名': teacherForm.value.name.trim(),
+        '教師姓名': nextName,
         '授課科目': teacherForm.value.subject.trim(),
         '職務': String(teacherForm.value.jobTitle || '').trim(),
         '鐘點支出計畫': String(teacherForm.value.expensePlan || '').trim(),
@@ -899,7 +927,10 @@ window.UiAdmin = (function () {
         showTeacherModal.value = false;
         var mapped = window.FieldMap.mapTeacher(reqPayload);
         var list = teachersList.value.slice();
-        var i = list.findIndex(function (x) { return x.email === mapped.email; });
+         var i = list.findIndex(function (x) {
+           return String(x.loginEmail || '').toLowerCase() === String(mapped.loginEmail || '').toLowerCase()
+             || x.email === mapped.email;
+         });
         if (i >= 0) list[i] = Object.assign({}, list[i], mapped);
         else list.push(mapped);
         teachersList.value = list;
@@ -1037,7 +1068,7 @@ window.UiAdmin = (function () {
               line: lineNo,
               reason: '基本鐘點不合理',
               snippet: snippet,
-              missing: '缺：合法基本鐘點（0–40）'
+              missing: '缺：合法基本鐘點（0～40）'
             });
             continue;
           }
@@ -1056,8 +1087,8 @@ window.UiAdmin = (function () {
             role = 'staff';
           }
         }
-        var exists = (teachersList.value || []).some(function (t) {
-          return t.email && t.email.toLowerCase() === email;
+         var exists = (teachersList.value || []).some(function (t) {
+           return (t.loginEmail || '').toLowerCase() === email;
         });
         list.push({
           '學期代號': currentSemester.value,
@@ -1196,18 +1227,14 @@ window.UiAdmin = (function () {
           excelHeaders.value = Object.keys(sheetData[0]);
          excelData.value = sheetData;
          mappingFields.value = {
-           teacherName: '', teacherEmail: '', subject: '', dayOfWeek: '',
-           period: '', className: '', attr: '', restriction: '', specialTags: ''
+            teacherName: '', subject: '', dayOfWeek: '',
+            period: '', className: '', attr: '', restriction: '', specialTags: ''
          };
           importPreview.value = null;
           excelHeaders.value.forEach(function (h) {
             var hl = String(h);
             if (!mappingFields.value.teacherName && (hl.indexOf('姓名') >= 0 || hl === '教師')) {
               mappingFields.value.teacherName = h;
-            }
-            if (!mappingFields.value.teacherEmail &&
-                (hl.indexOf('Email') >= 0 || hl.indexOf('email') >= 0 || hl.indexOf('帳號') >= 0 || hl.indexOf('信箱') >= 0 || hl === 'Email')) {
-              mappingFields.value.teacherEmail = h;
             }
             if (!mappingFields.value.subject && (hl.indexOf('科目') >= 0 || hl.indexOf('領域') >= 0 || hl.indexOf('課程') >= 0)) {
               mappingFields.value.subject = h;
@@ -1242,7 +1269,6 @@ window.UiAdmin = (function () {
     function getMappingLabel(key) {
       var labels = {
         teacherName: '教師姓名（必填）',
-        teacherEmail: 'Email（選填，可空白靠姓名對應）',
         subject: '科目（必填）',
         dayOfWeek: '星期 1-5（必填）',
         period: '節次 早自習/0、1-8 或 午休/45（必填）',
@@ -1281,7 +1307,8 @@ window.UiAdmin = (function () {
       var isEx = (src.type || rec.type) === 'exchange' || (src.type || rec.type) === '對調';
       var reqDate = src.requestDate || rec.requestDate || rec.date || '';
       var tgtRaw = src.targetDate || rec.targetDate || '';
-      var tgtDate = (tgtRaw && tgtRaw !== '---' && tgtRaw !== '—') ? tgtRaw : '';
+      var unknownDate = String.fromCharCode(0x2014);
+      var tgtDate = (tgtRaw && tgtRaw !== '---' && tgtRaw !== unknownDate) ? tgtRaw : '';
 
       var leaveEmail = src.requesterEmail || rec.originalTeacherEmail || rec.requesterEmail || '';
       var subEmail = src.targetTeacherEmail || rec.actualTeacherEmail || rec.targetTeacherEmail || '';
@@ -1403,6 +1430,7 @@ window.UiAdmin = (function () {
       excelHeaders: excelHeaders,
       mappingFields: mappingFields,
       importSchedules: importSchedules,
+      migrateNameKeySchema: migrateNameKeySchema,
       importPreview: importPreview,
       runImportPreview: runImportPreview,
       downloadScheduleTemplate: downloadScheduleTemplate,
