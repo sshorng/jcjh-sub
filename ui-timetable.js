@@ -40,9 +40,14 @@ window.UiTimetable = (function () {
         : { rows: [], bySlot: {} };
     });
 
-    function resolveBaseSlot(dateStr, dayOfWeek, period) {
+    function resolveBaseSlot(dateStr, dayOfWeek, period, teacherEmail) {
       return window.DomainSchoolSwap
-        ? window.DomainSchoolSwap.resolveSlot(schoolSwapIndex.value, dateStr, dayOfWeek, period)
+        ? (teacherEmail && window.DomainSchoolSwap.resolveSlotForTeacher
+          ? window.DomainSchoolSwap.resolveSlotForTeacher(
+            schoolSwapIndex.value, dateStr, dayOfWeek, period, teacherEmail,
+            scheduleIndex.value, allSchedules.value
+          )
+          : window.DomainSchoolSwap.resolveSlot(schoolSwapIndex.value, dateStr, dayOfWeek, period))
         : { dayOfWeek: dayOfWeek, period: period, row: null, endpoint: '' };
     }
 
@@ -63,7 +68,7 @@ window.UiTimetable = (function () {
     function getApprovedScheduleForDate(teacherEmail, dateStr, period, dayOfWeek) {
       var key = dateStr + '_' + period;
       var lookup = substitutionsLookup.value || {};
-      var baseSlot = resolveBaseSlot(dateStr, dayOfWeek, period);
+      var baseSlot = resolveBaseSlot(dateStr, dayOfWeek, period, teacherEmail);
       var cell = window.DomainSchedule.resolveApprovedSchedule({
         teacherEmail: teacherEmail,
         dateStr: dateStr,
@@ -99,7 +104,7 @@ window.UiTimetable = (function () {
     function getScheduleForDate(teacherEmail, dateStr, period, dayOfWeek) {
       var memoKey = teacherEmail + '|' + dateStr + '|' + period;
       if (_scheduleCache.has(memoKey)) return _scheduleCache.get(memoKey);
-      var baseSlot = resolveBaseSlot(dateStr, dayOfWeek, period);
+      var baseSlot = resolveBaseSlot(dateStr, dayOfWeek, period, teacherEmail);
       var cell = getApprovedScheduleForDate(teacherEmail, dateStr, period, dayOfWeek);
       var merged = window.DomainSchedule.applyPendingOverlay({
         cell: cell,

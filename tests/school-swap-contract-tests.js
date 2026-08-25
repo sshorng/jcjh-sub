@@ -80,4 +80,23 @@ assert.equal(swapped.subject, '數學');
 assert.equal(swapped.schoolSwapEndpoint, 'A');
 api.clearScheduleCache();
 
+const patrolSchedules = [
+  { teacherEmail: 'patrol@example.edu.tw', dayOfWeek: 1, period: 2, attr: '巡堂' },
+  { teacherEmail: 'patrol@example.edu.tw', dayOfWeek: 2, period: 3, className: '702', subject: '數學', attr: '一般' }
+];
+const swapIndex = context.window.DomainSchoolSwap.buildIndex(schoolSwaps.value);
+const patrolScheduleIndex = context.window.DomainSchedule.buildScheduleIndex(patrolSchedules);
+const patrolAtA = context.window.DomainSchoolSwap.resolveSlotForTeacher(
+  swapIndex, '2026-08-17', 1, 2, 'patrol@example.edu.tw', patrolScheduleIndex, patrolSchedules
+);
+const patrolAtB = context.window.DomainSchoolSwap.resolveSlotForTeacher(
+  swapIndex, '2026-08-18', 2, 3, 'patrol@example.edu.tw', patrolScheduleIndex, patrolSchedules
+);
+assert.equal(patrolAtA.dayOfWeek, 1);
+assert.equal(patrolAtA.period, 2);
+assert.equal(patrolAtA.row, null);
+assert.equal(patrolAtB.dayOfWeek, 2);
+assert.equal(patrolAtB.period, 3);
+assert.equal(patrolAtB.row, null);
+
 console.log('school swap contract tests PASS');

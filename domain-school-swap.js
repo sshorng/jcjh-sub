@@ -117,6 +117,46 @@ window.DomainSchoolSwap = (function () {
     };
   }
 
+  function isPatrolSchedule(row) {
+    if (!row) return false;
+    if (row.isPatrol === true) return true;
+    var attr = String(pick(row, ['課堂屬性', 'attr']) || '').trim();
+    var className = String(pick(row, ['班級', 'className']) || '').trim();
+    var subject = String(pick(row, ['科目', 'subject']) || '').trim();
+    return attr === '巡堂' || attr.indexOf('巡堂') >= 0
+      || className === '巡堂' || subject === '巡堂';
+  }
+
+  function scheduleRowsAtSlot(scheduleIndex, allSchedules, teacherEmail, dayOfWeek, period) {
+    var email = String(teacherEmail || '').toLowerCase();
+    var key = email + '|' + parseInt(dayOfWeek, 10) + '|' + parseInt(period, 10);
+    if (scheduleIndex && scheduleIndex.byTeacherSlot && scheduleIndex.byTeacherSlot[key]) {
+      return scheduleIndex.byTeacherSlot[key];
+    }
+    return (allSchedules || []).filter(function (row) {
+      return String(row && (row.teacherEmail || row['教師Email'] || row.teacherName) || '').toLowerCase() === email
+        && parseInt(row.dayOfWeek != null ? row.dayOfWeek : row['星期'], 10) === parseInt(dayOfWeek, 10)
+        && parseInt(row.period != null ? row.period : row['節次'], 10) === parseInt(period, 10);
+    });
+  }
+
+  // 巡堂是教師原地勤務，不隨全校課表對調移動。
+  function resolveSlotForTeacher(index, dateStr, dayOfWeek, period, teacherEmail, scheduleIndex, allSchedules) {
+    var resolved = resolveSlot(index, dateStr, dayOfWeek, period);
+    if (!teacherEmail || !resolved.row) return resolved;
+    var actualRows = scheduleRowsAtSlot(scheduleIndex, allSchedules, teacherEmail, dayOfWeek, period);
+    var sourceRows = scheduleRowsAtSlot(scheduleIndex, allSchedules, teacherEmail, resolved.dayOfWeek, resolved.period);
+    if (actualRows.some(isPatrolSchedule) || sourceRows.some(isPatrolSchedule)) {
+      return {
+        dayOfWeek: parseInt(dayOfWeek, 10),
+        period: parseInt(period, 10),
+        row: null,
+        endpoint: ''
+      };
+    }
+    return resolved;
+  }
+
   function getForSlot(index, dateStr, period) {
     var hit = index && index.bySlot ? index.bySlot[slotKey(dateStr, period)] : null;
     return hit ? hit.row : null;
@@ -135,6 +175,8 @@ window.DomainSchoolSwap = (function () {
     normalizeRows: normalizeRows,
     buildIndex: buildIndex,
     resolveSlot: resolveSlot,
+    resolveSlotForTeacher: resolveSlotForTeacher,
+    isPatrolSchedule: isPatrolSchedule,
     getForSlot: getForSlot,
     label: label,
     slotKey: slotKey

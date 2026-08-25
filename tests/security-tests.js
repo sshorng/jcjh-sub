@@ -275,6 +275,18 @@ assert.doesNotThrow(() => assertSchoolSwapNoConflict_(schoolSwapOtherSemester, [
 const resolvedSchoolSwap = resolveSchoolSwapSlot_([schoolSwapA], '2026-08-17', 1, 1);
 assert.strictEqual(resolvedSchoolSwap.dayOfWeek, 2);
 assert.strictEqual(resolvedSchoolSwap.period, 2);
+const patrolSchedules = [
+  { '教師Email': 'patrol@example.edu.tw', '星期': 1, '節次': 1, '課堂屬性': '巡堂' },
+  { '教師Email': 'patrol@example.edu.tw', '星期': 2, '節次': 2, '班級': '702', '科目': '數學' }
+];
+const patrolSwapAtA = resolveSchoolSwapSlotForTeacher_([schoolSwapA], '2026-08-17', 1, 1, patrolSchedules, 'patrol@example.edu.tw');
+assert.strictEqual(patrolSwapAtA.dayOfWeek, 1);
+assert.strictEqual(patrolSwapAtA.period, 1);
+assert.strictEqual(patrolSwapAtA.row, null);
+const patrolSwapAtB = resolveSchoolSwapSlotForTeacher_([schoolSwapA], '2026-08-18', 2, 2, patrolSchedules, 'patrol@example.edu.tw');
+assert.strictEqual(patrolSwapAtB.dayOfWeek, 2);
+assert.strictEqual(patrolSwapAtB.period, 2);
+assert.strictEqual(patrolSwapAtB.row, null);
 assert.strictEqual(resolveTeacherRole_('unknown@school.example', []), '');
 assert.strictEqual(rowKeyForSheet_('教師名單', { '學期代號': '115-1', '教師Email': 'Teacher@School.Example' }, '教師Email'), '115-1|teacher@school.example');
 assert.strictEqual(translateStatusToEn('已核准'), 'approved');

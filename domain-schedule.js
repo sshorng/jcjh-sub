@@ -346,7 +346,7 @@ window.DomainSchedule = (function () {
             } catch (ePd) {}
              if (peerDay != null) {
                var peerBase = h.resolveBaseSlot
-                 ? h.resolveBaseSlot(peerIn.date, peerDay, peerIn.period)
+                  ? h.resolveBaseSlot(peerIn.date, peerDay, peerIn.period, bringEmail)
                  : { dayOfWeek: peerDay, period: peerIn.period };
                var atPeer = getCandidates(index, bringEmail, peerBase.dayOfWeek, peerBase.period, allSchedules)[0];
               if (atPeer) {
@@ -605,7 +605,7 @@ window.DomainSchedule = (function () {
       var pExcA = findExchangeInA();
       if (pExcA) {
         var targetDay = parseInt(pExcA.targetDayOfWeek, 10);
-        var targetBase = resolveBaseSlot(pExcA.targetDate, targetDay, pExcA.targetPeriod);
+        var targetBase = resolveBaseSlot(pExcA.targetDate, targetDay, pExcA.targetPeriod, pExcA.targetTeacherEmail);
         var schedCands = getCandidates(index, pExcA.targetTeacherEmail, targetBase.dayOfWeek, targetBase.period, allSchedules);
         var sched = schedCands[0] || null;
         var finalSubject = sched ? sched.subject : (pExcA.targetSubject || pExcA.subject || '自習');

@@ -2055,6 +2055,40 @@ function resolveSchoolSwapSlot_(rows, dateStr, dayOfWeek, period) {
   return fallback;
 }
 
+function isPatrolScheduleRow_(row) {
+  if (!row) return false;
+  if (row.isPatrol === true) return true;
+  var attr = String(row["課堂屬性"] || row.attr || "").trim();
+  var className = String(row["班級"] || row.className || "").trim();
+  var subject = String(row["科目"] || row.subject || "").trim();
+  return attr === "巡堂" || attr.indexOf("巡堂") >= 0
+    || className === "巡堂" || subject === "巡堂";
+}
+
+function resolveSchoolSwapSlotForTeacher_(rows, dateStr, dayOfWeek, period, schedules, teacherEmail) {
+  var resolved = resolveSchoolSwapSlot_(rows, dateStr, dayOfWeek, period);
+  if (!teacherEmail || !resolved.row) return resolved;
+  var email = String(teacherEmail || "").toLowerCase().trim();
+  function hasPatrolAt(day, per) {
+    return (schedules || []).some(function (row) {
+      var rowEmail = String(row["教師Email"] || row.teacherEmail || row.teacherName || "").toLowerCase().trim();
+      var rowDay = parseInt(row["星期"] != null ? row["星期"] : row.dayOfWeek, 10);
+      var rowPeriod = parseInt(row["節次"] != null ? row["節次"] : row.period, 10);
+      return rowEmail === email && rowDay === parseInt(day, 10) && rowPeriod === parseInt(per, 10)
+        && isPatrolScheduleRow_(row);
+    });
+  }
+  if (hasPatrolAt(dayOfWeek, period) || hasPatrolAt(resolved.dayOfWeek, resolved.period)) {
+    return {
+      dayOfWeek: parseInt(dayOfWeek, 10),
+      period: parseInt(period, 10),
+      row: null,
+      endpoint: ""
+    };
+  }
+  return resolved;
+}
+
 function schoolSwapSlotKey_(dateStr, period) {
   return String(dateStr || "") + "|" + String(parseInt(period, 10));
 }
@@ -3887,7 +3921,7 @@ function buildMatchCandidates_(semesterId, opts) {
 
   function cellAt(email, d, p) {
     var em = String(email || "").toLowerCase().trim();
-    var effective = resolveSchoolSwapSlot_(schoolSwaps, dateStr, d, p);
+    var effective = resolveSchoolSwapSlotForTeacher_(schoolSwaps, dateStr, d, p, schedules, em);
     var key = em + "|" + effective.dayOfWeek + "|" + effective.period;
     var base = baseMap[key] || null;
     var dateKey = em + "|" + dateStr + "|" + p;

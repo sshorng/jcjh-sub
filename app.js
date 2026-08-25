@@ -4527,14 +4527,29 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       const ownSchedules = (allSchedules.value || []).filter(s =>
         String(s && s.teacherName || '').trim().toLowerCase() === email
       );
+      const isPatrolSchedule = (schedule) => {
+        if (!schedule) return false;
+        if (schedule.isPatrol === true) return true;
+        const attr = String(schedule.attr || '').trim();
+        const className = String(schedule.className || '').trim();
+        const subject = String(schedule.subject || '').trim();
+        return attr === '巡堂' || attr.includes('巡堂') || className === '巡堂' || subject === '巡堂';
+      };
       if (window.DomainSchoolSwap && ownSchedules.length) {
         const activeSwaps = window.DomainSchoolSwap.normalizeRows(schoolSwaps.value || [])
           .filter(row => row.enabled);
         activeSwaps.forEach(row => {
-          [
+          const endpoints = [
             { endpoint: 'A', date: row.dateA, period: row.periodA, sourceDate: row.dateB, sourceDay: row.dayB, sourcePeriod: row.periodB },
             { endpoint: 'B', date: row.dateB, period: row.periodB, sourceDate: row.dateA, sourceDay: row.dayA, sourcePeriod: row.periodA }
-          ].forEach(endpoint => {
+          ];
+          // 只要任一端是巡堂，這位教師整筆對調不套用。
+          if (endpoints.some(endpoint => ownSchedules.some(s =>
+            parseInt(s.dayOfWeek, 10) === parseInt(endpoint.sourceDay, 10)
+              && parseInt(s.period, 10) === parseInt(endpoint.sourcePeriod, 10)
+              && isPatrolSchedule(s)
+          ))) return;
+          endpoints.forEach(endpoint => {
             ownSchedules
               .filter(s => {
                 if (parseInt(s.dayOfWeek, 10) !== parseInt(endpoint.sourceDay, 10)
@@ -4542,6 +4557,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
                 const attr = String(s.attr || '').trim();
                 if (attr === '單週' && !isSingleWeek(endpoint.date)) return false;
                 if (attr === '雙週' && isSingleWeek(endpoint.date)) return false;
+                if (isPatrolSchedule(s)) return false;
                 return !!(String(s.className || '').trim() || String(s.subject || '').trim() || attr);
               })
               .forEach((schedule, index) => {
@@ -4855,8 +4871,8 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       consecAlertsA: consecAlertsA,
       consecAlertsB: consecAlertsB,
        directApproveMode: directApproveMode,
-       paperMode: paperMode,
-       notificationsSuppressed: notificationsSuppressed,
+        paperMode: paperMode,
+        notificationsSuppressed: notificationsSuppressed,
        openPaperPrintDraft: function () { return openPaperPrintDraftFromCompare(); },
        openPaperPrintMutualDrafts: function () { return openPaperPrintMutualDrafts(); },
        teachersList: teachersList,
@@ -8740,7 +8756,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       // 登出不強制改分頁；重整／再登入仍依 localStorage 還原上次位置
       teachersList.value = [];
       allSchedules.value = [];
-      schoolSwaps.value = [];
+       schoolSwaps.value = [];
       classDirectory.value = [];
       classViewSchedules.value = [];
       classViewSchoolSwaps.value = [];

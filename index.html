@@ -2726,6 +2726,12 @@
             </template>
             <template v-else>
               <button
+                v-if="isAdmin"
+                type="button"
+                class="btn btn-primary"
+                @click="openPaperPrintDraftFromCompare"
+              >🖨️ 列印紙本通知</button>
+              <button
                 class="btn btn-success"
                 :disabled="(!isMutualCover && quotaDeductInsufficient) || isSubmitting || loading"
                 :title="(!isMutualCover && quotaDeductInsufficient) ? '額度不足，請改自費排代' : (isMutualCover && quotaDeductInsufficient ? '額度不足將改活動公費後送出' : (isSubmitting || loading ? '送出中，請稍候' : ''))"
