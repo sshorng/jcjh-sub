@@ -503,7 +503,7 @@ createApp({
     const TAB_LS_KEY = 'jcjh_active_tab';
     const ADMIN_SUBTAB_LS_KEY = 'jcjh_admin_sub_tab';
     const VALID_TABS = ['timetable', 'pending', 'records', 'class', 'admin'];
-    const VALID_ADMIN_SUBTABS = ['billing', 'teachers', 'import', 'classAway', 'settings', 'schoolExport'];
+     const VALID_ADMIN_SUBTABS = ['billing', 'teachers', 'import', 'classAway', 'schoolSwap', 'settings', 'schoolExport'];
     const readHashTab = () => {
       try {
         const h = String(window.location.hash || '').replace(/^#/, '').split('?')[0].trim().toLowerCase();
@@ -595,6 +595,7 @@ createApp({
     });
     const teachersList = ref([]); // roster [{loginEmail, teacherName, subject, role, baseHours}]
     const allSchedules = ref([]); // name-keyed base schedule
+    const schoolSwaps = ref([]); // 全校指定日期節次對調
     const substitutionRecords = ref([]);
     const homeroomRecords = ref([]);
     const homeroomAssignSelections = ref({});
@@ -975,6 +976,130 @@ createApp({
       );
       return { names, classes, count: classes.length };
     });
+
+    // 全校日期節次對調：獨立於固定週課表保存，僅影響指定實際日期。
+    const showSchoolSwapModal = ref(false);
+    const schoolSwapModalMode = ref('add');
+    const schoolSwapSaving = ref(false);
+    const schoolSwapForm = ref({
+      id: '',
+      name: '',
+      dateA: '',
+      periodA: 1,
+      dateB: '',
+      periodB: 1,
+      enabled: true,
+      note: ''
+    });
+    const schoolSwapRows = computed(() => {
+      const rows = window.DomainSchoolSwap
+        ? window.DomainSchoolSwap.normalizeRows(schoolSwaps.value)
+        : [];
+      return rows.slice().sort((a, b) => String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')));
+    });
+    const schoolSwapWeekdayNumber = (dateStr) => {
+      const parts = String(dateStr || '').split('-').map(x => parseInt(x, 10));
+      if (parts.length !== 3 || parts.some(x => Number.isNaN(x))) return 0;
+      const d = new Date(parts[0], parts[1] - 1, parts[2]);
+      const day = d.getDay();
+      return day === 0 ? 7 : day;
+    };
+    const schoolSwapWeekdayText = (dateStr) => {
+      const day = schoolSwapWeekdayNumber(dateStr);
+      return day >= 1 && day <= 5 ? getWeekDayText(day) : '非上課日';
+    };
+    const openAddSchoolSwapModal = () => {
+      const dates = currentWeekDates.value || [];
+      schoolSwapModalMode.value = 'add';
+      schoolSwapForm.value = {
+        id: '',
+        name: '',
+        dateA: dates[0] || '',
+        periodA: 1,
+        dateB: dates[1] || '',
+        periodB: 1,
+        enabled: true,
+        note: ''
+      };
+      showSchoolSwapModal.value = true;
+    };
+    const openEditSchoolSwapModal = (row) => {
+      const mapped = window.FieldMap.mapSchoolSwap(row || {});
+      schoolSwapModalMode.value = 'edit';
+      schoolSwapForm.value = {
+        id: mapped.id,
+        name: mapped.name,
+        dateA: mapped.dateA,
+        periodA: mapped.periodA,
+        dateB: mapped.dateB,
+        periodB: mapped.periodB,
+        enabled: mapped.enabled,
+        note: mapped.note
+      };
+      showSchoolSwapModal.value = true;
+    };
+    const saveSchoolSwap = async () => {
+      const form = schoolSwapForm.value || {};
+      if (!String(form.name || '').trim() || !form.dateA || !form.dateB) {
+        showToast('請填寫名稱及兩個日期！', 'warning');
+        return;
+      }
+      const dayA = schoolSwapWeekdayNumber(form.dateA);
+      const dayB = schoolSwapWeekdayNumber(form.dateB);
+      if (dayA < 1 || dayA > 5 || dayB < 1 || dayB > 5) {
+        showToast('全校對調日期必須是週一至週五！', 'warning');
+        return;
+      }
+      if (String(form.dateA) + '|' + String(form.periodA) === String(form.dateB) + '|' + String(form.periodB)) {
+        showToast('兩個對調端點不可相同！', 'warning');
+        return;
+      }
+      schoolSwapSaving.value = true;
+      try {
+        const res = await callGasApi('saveSchoolSwap', {
+          對調ID: form.id || '',
+          事件名稱: String(form.name || '').trim(),
+          日期A: form.dateA,
+          星期A: dayA,
+          節次A: parseInt(form.periodA, 10),
+          日期B: form.dateB,
+          星期B: dayB,
+          節次B: parseInt(form.periodB, 10),
+          啟用: !!form.enabled,
+          備註: String(form.note || '').trim()
+        });
+        if (!res || res.success === false) throw new Error(res && res.error ? res.error : '儲存失敗');
+        const saved = window.FieldMap.mapSchoolSwap(res.schoolSwap || form);
+        const next = schoolSwaps.value.slice();
+        const index = next.findIndex(row => String(window.FieldMap.mapSchoolSwap(row).id) === String(saved.id));
+        if (index >= 0) next[index] = saved;
+        else next.unshift(saved);
+        schoolSwaps.value = next;
+        showSchoolSwapModal.value = false;
+        clearScheduleCache();
+        showToast(schoolSwapModalMode.value === 'add' ? '已新增全校對調' : '已更新全校對調', 'success');
+        if (typeof softRefreshInBackground === 'function') softRefreshInBackground({ force: true, delay: 300 });
+      } catch (err) {
+        showToast('儲存全校對調失敗：' + (err && err.message ? err.message : err), 'error');
+      } finally {
+        schoolSwapSaving.value = false;
+      }
+    };
+    const deleteSchoolSwap = async (row) => {
+      const id = String(row && (row.id || row['對調ID']) || '').trim();
+      if (!id) return;
+      const ok = await showConfirm('確定刪除這筆全校對調設定？\n刪除後不會再影響課表。', '刪除全校對調');
+      if (!ok) return;
+      try {
+        await callGasApi('deleteSchoolSwap', { id: id });
+        schoolSwaps.value = schoolSwaps.value.filter(item => String(window.FieldMap.mapSchoolSwap(item).id) !== id);
+        clearScheduleCache();
+        showToast('已刪除全校對調', 'success');
+        if (typeof softRefreshInBackground === 'function') softRefreshInBackground({ force: true, delay: 300 });
+      } catch (err) {
+        showToast('刪除全校對調失敗：' + (err && err.message ? err.message : err), 'error');
+      }
+    };
 
     // 新手引導 UI（簡潔版：置中卡牌，無 spotlight，手機友善）
     // ── 新手 Spotlight 導覽（懶載入 onboarding-tour.js）──
@@ -1588,6 +1713,7 @@ createApp({
     const pendingClassView = ref('');
     const classDirectory = ref([]);
     const classViewSchedules = ref([]);
+    const classViewSchoolSwaps = ref([]);
     const classViewSubstitutionRecords = ref([]);
     const classViewClassAwayEvents = ref([]);
     const classViewLoadedClass = ref('');
@@ -2894,18 +3020,39 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       if (!cls) return map;
       const weekDates = selectedClassWeekDates.value || [];
       const rows = classScheduleIndex.value[cls] || [];
+      const useClassViewSwaps = classReadonlyMode.value || userRole.value === 'teacher';
+      const swapIndex = window.DomainSchoolSwap
+        ? window.DomainSchoolSwap.buildIndex(useClassViewSwaps ? classViewSchoolSwaps.value : schoolSwaps.value)
+        : { rows: [], bySlot: {} };
+      const periods = (window.DateUtils && window.DateUtils.getTimetablePeriods)
+        ? window.DateUtils.getTimetablePeriods()
+        : [0, 1, 2, 3, 4, 45, 5, 6, 7, 8];
       rows.forEach(entry => {
         const s = entry.schedule;
-        const dateStr = weekDates[parseInt(s.dayOfWeek, 10) - 1];
-        if (s.attr === '單週' && dateStr && !isSingleWeek(dateStr)) return;
-        if (s.attr === '雙週' && dateStr && isSingleWeek(dateStr)) return;
-        if (!map[cls]) map[cls] = {};
-        const key = `${s.dayOfWeek}-${s.period}`;
-        if (!map[cls][key]) map[cls][key] = [];
-        map[cls][key].push(Object.assign({}, s, {
-          _isCombined: entry.isCombined,
-          _combinedWith: entry.combinedWith
-        }));
+        const sourceDay = parseInt(s.dayOfWeek, 10);
+        const sourcePeriod = parseInt(s.period, 10);
+        for (let actualDay = 1; actualDay <= 5; actualDay++) {
+          const dateStr = weekDates[actualDay - 1];
+          if (!dateStr) continue;
+          for (let pi = 0; pi < periods.length; pi++) {
+            const actualPeriod = periods[pi];
+            const resolved = window.DomainSchoolSwap
+              ? window.DomainSchoolSwap.resolveSlot(swapIndex, dateStr, actualDay, actualPeriod)
+              : { dayOfWeek: actualDay, period: actualPeriod, row: null };
+            if (parseInt(resolved.dayOfWeek, 10) !== sourceDay || parseInt(resolved.period, 10) !== sourcePeriod) continue;
+            if (s.attr === '單週' && !isSingleWeek(dateStr)) continue;
+            if (s.attr === '雙週' && isSingleWeek(dateStr)) continue;
+            if (!map[cls]) map[cls] = {};
+            const key = `${actualDay}-${actualPeriod}`;
+            if (!map[cls][key]) map[cls][key] = [];
+            map[cls][key].push(Object.assign({}, s, {
+              _isCombined: entry.isCombined,
+              _combinedWith: entry.combinedWith,
+              _schoolSwap: resolved.row || null,
+              _schoolSwapEndpoint: resolved.endpoint || ''
+            }));
+          }
+        }
       });
       return map;
     });
@@ -2967,7 +3114,8 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     const classScheduleRows = computed(() => classUsesPublicData.value ? classViewSchedules.value : allSchedules.value);
     const classSubstitutionRows = computed(() => classUsesPublicData.value ? classViewSubstitutionRecords.value : substitutionRecords.value);
     const classViewerReadonly = computed(() => classUsesPublicData.value);
-    const paperMode = computed(() => !onlineSubstitutionEnabled.value);
+    const notificationsSuppressed = computed(() => !onlineSubstitutionEnabled.value);
+    const paperMode = computed(() => notificationsSuppressed.value && !isAdmin.value);
     const getLeaveTimeDefaults = (leaveEmail) => {
       const t = lookupTeacher(leaveEmail);
       const isAdministrative = !!(t && (t.role === 'admin' || t.role === 'staff'));
@@ -4663,6 +4811,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       consecAlertsB: consecAlertsB,
        directApproveMode: directApproveMode,
        paperMode: paperMode,
+       notificationsSuppressed: notificationsSuppressed,
        openPaperPrintDraft: function () { return openPaperPrintDraftFromCompare(); },
        openPaperPrintMutualDrafts: function () { return openPaperPrintMutualDrafts(); },
        teachersList: teachersList,
@@ -4693,7 +4842,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
 
     // ── 主函數③：執行提交（ui-request.js）──
     const executeSubmitRequest = async () => {
-      if (paperMode.value) {
+      if (paperMode.value && !isAdmin.value) {
         openPaperPrintDraftFromCompare();
         return;
       }
@@ -4711,7 +4860,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         callGasApi, showCompareModal, showMatchModal, optimisticUpsertRequest, sheetRequestToFront,
         deductMutualQuotaForRows, softRefreshInBackground, isQuotaDeductFee, buildLineInviteText,
         successModalTitle, successModalMessage, lineCopyText, hasLineTemplate, showSuccessModal, showToast,
-        successFlowMode,
+        successFlowMode, paperMode, notificationsSuppressed,
         canStaffProxySubmit: function () { return canStaffProxySubmit.value; },
         shouldProxySubmitForLeave: shouldProxySubmitForLeave,
         getProxyActor: getProxyActor,
@@ -4735,8 +4884,8 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         return null;
       }
       _timetableApi = window.UiTimetable.create({
-        computed,
-        allSchedules, substitutionRecords, substitutionsLookup, allPendingRequests,
+         computed,
+         allSchedules, schoolSwaps, substitutionRecords, substitutionsLookup, allPendingRequests,
         // 只用目前可見頁的教師建 grid，全校模式才真正省算力
         displayTimetableTeachers: visibleTimetableTeachers, currentWeekDates,
         getTeacherNameByEmail, getTeacherSubjectByEmail, formatDateMMDD, isSingleWeek,
@@ -5813,6 +5962,10 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         showToast('僅管理員可批次發通知', 'warning');
         return;
       }
+      if (notificationsSuppressed.value) {
+        showToast('目前為紙本模式，不寄送通知信', 'info');
+        return;
+      }
       // 與列印相同：勾選可能只在 DOM，先同步再取 id
       try {
         if (typeof syncHistorySelectionFromDom === 'function') syncHistorySelectionFromDom();
@@ -6335,6 +6488,9 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       if (res.schedules) {
         allSchedules.value = res.schedules.map(s => window.FieldMap.mapSchedule(s));
       }
+      if (Array.isArray(res.schoolSwaps)) {
+        schoolSwaps.value = res.schoolSwaps.map(s => window.FieldMap.mapSchoolSwap(s));
+      }
       if (Array.isArray(res.homeroomRecords)) {
         homeroomRecords.value = res.homeroomRecords.map(r => window.FieldMap.mapHomeroomRecord(r));
       }
@@ -6781,6 +6937,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         semestersList.value.sort((a, b) => a.id.localeCompare(b.id));
       }
       classViewSchedules.value = (res.schedules || []).map(s => window.FieldMap.mapSchedule(s));
+      classViewSchoolSwaps.value = (res.schoolSwaps || []).map(s => window.FieldMap.mapSchoolSwap(s));
       classViewLoadedClass.value = String(className || res.className || '').trim();
       classViewSubstitutionRecords.value = mapPublicClassRequests(res.requests || [], classViewLoadedClass.value);
       classViewClassAwayEvents.value = (res.classAwayEvents || []).map(e => window.FieldMap.mapClassAwayEvent(e));
@@ -7899,7 +8056,8 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       const isPatrol = cell.isPatrol || cell.attr === '巡堂';
       if (isPatrol) return '巡堂';
       const cls = `${cell.className || ''} ${cell.subject || ''}`.trim();
-      const head = cls || '有課';
+      const swapName = cell.schoolSwap && cell.schoolSwap.name ? String(cell.schoolSwap.name) : '';
+      const head = (cls || '有課') + (swapName ? `\n↔ 全校對調：${swapName}` : '');
       if (cell.isPending) {
         if (cell.pendingType === 'substitution_out') {
           return `${head}\n⏳ 代課申請中\n${cell.pendingText || '待對方或行政確認'}`;
@@ -8248,7 +8406,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       quota: 0
     });
     const openEmptySlotAssign = async (teacherEmail, dayOfWeek, period, dateStr, cell) => {
-      if (paperMode.value) {
+      if (paperMode.value && !isAdmin.value) {
         showToast('目前為紙本模式，空堂排班不建立線上申請', 'info');
         return;
       }
@@ -8324,7 +8482,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       return (parseInt(emptySlotForm.value.quota, 10) || 0) <= 0;
     });
     const executeEmptySlotAssign = async () => {
-      if (paperMode.value) {
+      if (paperMode.value && !isAdmin.value) {
         showToast('目前為紙本模式，空堂排班不建立線上申請', 'info');
         return;
       }
@@ -8501,7 +8659,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         deductMutualQuotaForRows, softRefreshInBackground, persistMutualPanelDraft, activityBalanceCtx,
         PERIOD8_FEE, ACTIVITY_PUBLIC_FEE, successModalTitle, successModalMessage,
          hasLineTemplate, lineBatchParts, lineCopyText, showSuccessModal, buildLineBatchInviteText, DAC,
-         successFlowMode, paperMode,
+          successFlowMode, paperMode, notificationsSuppressed,
          openPaperPrintMutualDrafts: function () { return openPaperPrintMutualDrafts(); }
        });
     };
@@ -8534,8 +8692,10 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       // 登出不強制改分頁；重整／再登入仍依 localStorage 還原上次位置
       teachersList.value = [];
       allSchedules.value = [];
+      schoolSwaps.value = [];
       classDirectory.value = [];
       classViewSchedules.value = [];
+      classViewSchoolSwaps.value = [];
       classViewSubstitutionRecords.value = [];
       classViewClassAwayEvents.value = [];
       classViewLoadedClass.value = '';
@@ -8828,7 +8988,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       currentSemester, availableSemesters, currentSemesterName, semestersList, showSemesterModal, semesterModalMode, semesterForm,
       currentWeekDates, selectedWeekDate, currentWeekNumber,
        classList, classSchedules, selectedClass, classReadonlyMode, classViewerReadonly, selectClassForView, getClassReadonlyLink, copyClassReadonlyLink,
-      searchQuery, selectedSubject, teachersList, allSchedules, substitutionRecords, homeroomRecords, requestsList,
+       searchQuery, selectedSubject, teachersList, allSchedules, schoolSwaps, substitutionRecords, homeroomRecords, requestsList,
       mySentRequests, myPendingRequests, adminPendingRequests, allPendingRequests,
       matchMode, activeCell, inputRequestDate, recommendedTeachers, recommendationLoading,
       batchSelectMode, batchSlots, showBatchConfirmModal, batchSubTeacher, batchReason, batchSubFee, batchNote,
@@ -8862,7 +9022,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       reportMonth, reportWeeksCount, monthlyReportData,
       accountingPeriod, accountingExportLoading,
       excelData, excelHeaders, mappingFields, importPreview, runImportPreview, downloadScheduleTemplate, downloadCurrentSchedules,
-       directApproveMode, onlineSubstitutionEnabled, paperMode, setOnlineSubstitutionEnabled, googleClientId, gasApiUrl, saveClientSettings,
+        directApproveMode, onlineSubstitutionEnabled, paperMode, notificationsSuppressed, setOnlineSubstitutionEnabled, googleClientId, gasApiUrl, saveClientSettings,
       isSubFeeLockedToSelf, isPeriod8FeeLocked, quotaDeductPreview, quotaDeductInsufficient, switchQuotaDeductToSelfPay, hasSubTeacherConflict,
       isAdmin, isStaff, canViewAllTimetables, canStaffProxySubmit, isProxySubmitActive, isProxySubmitGranted,
       proxySubmitEnabled, proxySubmitEnabledBy, proxySubmitEnabledAt, setProxySubmitEnabled,
@@ -8916,11 +9076,14 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       toLocalDateStr,
       // 單/雙週課輔課
       isSingleWeek, semesterStartDate,
-      // 空堂事件
-      classAwayEvents, semesterEndDate, activeAwayBanner, isClassAwayOnDate,
-      showClassAwayModal, classAwayModalMode, classAwayForm,
-      openAddClassAwayModal, openEditClassAwayModal, toggleClassAwayFormClass,
-      isClassAwayFormClassSelected, selectClassAwayGrade, saveClassAwayEvent, deleteClassAwayEvent,
+       // 空堂事件
+       classAwayEvents, semesterEndDate, activeAwayBanner, isClassAwayOnDate,
+       showClassAwayModal, classAwayModalMode, classAwayForm,
+       openAddClassAwayModal, openEditClassAwayModal, toggleClassAwayFormClass,
+       isClassAwayFormClassSelected, selectClassAwayGrade, saveClassAwayEvent, deleteClassAwayEvent,
+       // 全校日期節次對調
+       schoolSwapRows, showSchoolSwapModal, schoolSwapModalMode, schoolSwapSaving, schoolSwapForm,
+       schoolSwapWeekdayText, openAddSchoolSwapModal, openEditSchoolSwapModal, saveSchoolSwap, deleteSchoolSwap,
       mutualImportableEvents, mutualImportEventId, applyClassAwayEventById, applyClassAwayToMutualPanel,
       // 新手引導
       showOnboarding, onboardingStep, onboardingSteps,

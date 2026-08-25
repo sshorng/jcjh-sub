@@ -256,6 +256,25 @@ assert.ok(cacheStats.getAll > 0);
 removeCacheChunkedMany_(['security-cache']);
 assert.strictEqual(getCacheChunked('security-cache'), null);
 assert.ok(cacheStats.removeAll > 0);
+const schoolSwapA = {
+  '學期代號': '115-1', '對調ID': 'swap-a', '日期A': '2026-08-17', '星期A': 1, '節次A': 1,
+  '日期B': '2026-08-18', '星期B': 2, '節次B': 2, '啟用': 'TRUE'
+};
+const schoolSwapSameSemester = Object.assign({}, schoolSwapA, {
+  '對調ID': 'swap-b', '日期A': '2026-08-19', '星期A': 3, '節次A': 1,
+  '日期B': '2026-08-18', '星期B': 2, '節次B': 2
+});
+const schoolSwapOtherSemester = Object.assign({}, schoolSwapSameSemester, {
+  '對調ID': 'swap-c', '學期代號': '115-2'
+});
+assert.throws(
+  () => assertSchoolSwapNoConflict_(schoolSwapSameSemester, [schoolSwapA]),
+  /啟用中的全校對調時段重疊/
+);
+assert.doesNotThrow(() => assertSchoolSwapNoConflict_(schoolSwapOtherSemester, [schoolSwapA]));
+const resolvedSchoolSwap = resolveSchoolSwapSlot_([schoolSwapA], '2026-08-17', 1, 1);
+assert.strictEqual(resolvedSchoolSwap.dayOfWeek, 2);
+assert.strictEqual(resolvedSchoolSwap.period, 2);
 assert.strictEqual(resolveTeacherRole_('unknown@school.example', []), '');
 assert.strictEqual(rowKeyForSheet_('教師名單', { '學期代號': '115-1', '教師Email': 'Teacher@School.Example' }, '教師Email'), '115-1|teacher@school.example');
 assert.strictEqual(translateStatusToEn('已核准'), 'approved');

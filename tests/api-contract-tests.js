@@ -114,6 +114,19 @@ function lastPayload() {
   assert.ok(Array.from(storageMap.keys()).some(key => /_meta$/.test(key)));
 
   const swrPrefix = 'jcjh_swr_' + context.window.GasApi.APP_VERSION + '_115-1';
+  responses.push({ status: 200, body: {
+    success: true,
+    semesters: [{ '學期代號': '115-1' }],
+    teachers: [],
+    schedules: [],
+    schoolSwaps: [{ '對調ID': 'swap-1', '事件名稱': '校慶補課' }],
+    settings: {}
+  } });
+  const initialResult = await client.fetchInitialData({ force: true });
+  assert.equal(initialResult.schoolSwaps[0]['對調ID'], 'swap-1');
+  const structureCache = JSON.parse(storageMap.get(swrPrefix + '_structure'));
+  assert.equal(structureCache.data.schoolSwaps[0]['事件名稱'], '校慶補課');
+
   sessionStorage.setItem(swrPrefix + '_requests', 'fixture');
   sessionStorage.setItem(swrPrefix, 'fixture');
   responses.push({ status: 200, body: { success: true } });

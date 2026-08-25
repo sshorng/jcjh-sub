@@ -902,7 +902,7 @@ window.UiMutualSubmit = (function () {
     var DAC = deps.DAC || function () { return window.DomainActivityCover; };
     var isSubmitting = deps.isSubmitting;
 
-    if (deps.paperMode && deps.paperMode.value) {
+    if (deps.paperMode && deps.paperMode.value && !(isAdmin && isAdmin.value)) {
       if (typeof deps.openPaperPrintMutualDrafts === 'function') {
         deps.openPaperPrintMutualDrafts();
       } else {
@@ -1006,7 +1006,10 @@ window.UiMutualSubmit = (function () {
           await callGasApi('submitRequestBatch', {
             batchId: batchId,
             directApprove: !!(isAdmin.value && directApproveMode.value),
-            skipNotify: !!mutualSkipNotify.value,
+            skipNotify: !!(
+              mutualSkipNotify.value
+              || (deps.notificationsSuppressed && deps.notificationsSuppressed.value && isAdmin.value)
+            ),
             requests: rows
           });
           rows.forEach(function (r) {
@@ -1139,7 +1142,7 @@ window.UiBatchSubmit = (function () {
     var DAC = deps.DAC || function () { return window.DomainActivityCover; };
     var isSubmitting = deps.isSubmitting;
 
-    if (deps.paperMode && deps.paperMode.value) {
+    if (deps.paperMode && deps.paperMode.value && !(isAdmin && isAdmin.value)) {
       if (typeof deps.openPaperPrintDraft === 'function') {
         deps.openPaperPrintDraft();
       } else {
@@ -1332,6 +1335,7 @@ window.UiBatchSubmit = (function () {
         (isMutualCover.value && mutualSkipNotify.value)
         || (doDirectApprove && directApproveSkipNotify.value)
         || proxyActive
+        || (deps.notificationsSuppressed && deps.notificationsSuppressed.value && isAdmin.value)
       );
       await callGasApi('submitRequestBatch', {
         batchId: batchId,
@@ -2006,6 +2010,7 @@ window.UiBatchPanel = (function () {
         activityBalanceCtx, successModalTitle, successModalMessage, hasLineTemplate, lineBatchParts, lineCopyText,
          showSuccessModal, showCompareModal, showMatchModal, batchSelectMode, clearBatchSlots, buildLineBatchInviteText, DAC,
          paperMode: deps.paperMode,
+         notificationsSuppressed: deps.notificationsSuppressed,
          openPaperPrintDraft: deps.openPaperPrintDraft
        });
     };

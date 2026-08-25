@@ -109,6 +109,37 @@ window.FieldMap = (function () {
     };
   }
 
+  function mapSchoolSwap(row) {
+    function dateText(value) {
+      if (value === undefined || value === null || value === '') return '';
+      if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value.getTime())) {
+        return value.getFullYear() + '-' + String(value.getMonth() + 1).padStart(2, '0') + '-' + String(value.getDate()).padStart(2, '0');
+      }
+      return String(value).trim().slice(0, 10);
+    }
+    const dateA = dateText(pick(row, ['日期A', 'dateA']));
+    const dateB = dateText(pick(row, ['日期B', 'dateB']));
+    const periodA = asInt(pick(row, ['節次A', 'periodA']), null);
+    const periodB = asInt(pick(row, ['節次B', 'periodB']), null);
+    return {
+      id: String(pick(row, ['對調ID', 'id', 'swapId']) || ''),
+      semesterId: String(pick(row, ['學期代號', 'semesterId']) || ''),
+      name: String(pick(row, ['事件名稱', 'name', 'title']) || '全校對調'),
+      dateA: dateA,
+      dayA: asInt(pick(row, ['星期A', 'dayA']), 0),
+      periodA: periodA,
+      dateB: dateB,
+      dayB: asInt(pick(row, ['星期B', 'dayB']), 0),
+      periodB: periodB,
+      enabled: pick(row, ['啟用', 'enabled']) === undefined || pick(row, ['啟用', 'enabled']) === null || pick(row, ['啟用', 'enabled']) === ''
+        ? true
+        : asBool(pick(row, ['啟用', 'enabled'])),
+      createdAt: String(pick(row, ['建立時間', 'createdAt']) || ''),
+      updatedAt: String(pick(row, ['更新時間', 'updatedAt']) || ''),
+      note: String(pick(row, ['備註', 'note']) || '')
+    };
+  }
+
   /** 系統角色正規化：admin／staff／teacher */
   function normalizeRole(raw) {
     const s = String(raw == null ? '' : raw).trim().toLowerCase();
@@ -486,8 +517,9 @@ window.FieldMap = (function () {
     asFloat,
     normalizeRole,
     normalizeRequestStatus,
-    mapSemester,
-    mapClassAwayEvent,
+       mapSemester,
+       mapClassAwayEvent,
+       mapSchoolSwap,
     mapTeacher,
     normalizeSpecialTags,
     isRestrictedScheduleValue,

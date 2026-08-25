@@ -12,10 +12,11 @@
   </style>
 </head>
 <body>
-  <h1>domain-match / domain-schedule / domain-class-away 單元測試</h1>
+  <h1>domain-match / domain-school-swap / domain-schedule / domain-class-away 單元測試</h1>
   <p id="summary"></p>
   <pre id="log"></pre>
   <script src="../domain-match.js"></script>
+  <script src="../domain-school-swap.js"></script>
   <script src="../domain-schedule.js"></script>
   <script src="../domain-class-away.js"></script>
   <script src="../domain-activity-cover.js"></script>
@@ -122,6 +123,50 @@
         }
       });
       assert('resolve 基礎課', base && base.subject === '國文' && base.className === '701');
+
+      // ── 全校日期節次對調 ──
+      var swapRows = [
+        {
+          對調ID: 'swap-1', 事件名稱: '校慶補課', 日期A: '2026-07-13', 星期A: 1, 節次A: 2,
+          日期B: '2026-07-14', 星期B: 2, 節次B: 3, 啟用: true
+        },
+        {
+          對調ID: 'swap-disabled', 事件名稱: '停用事件', 日期A: '2026-07-15', 星期A: 3, 節次A: 1,
+          日期B: '2026-07-16', 星期B: 4, 節次B: 1, 啟用: false
+        }
+      ];
+      var swapIndex = window.DomainSchoolSwap.buildIndex(swapRows);
+      var swapA = window.DomainSchoolSwap.resolveSlot(swapIndex, '2026-07-13', 1, 2);
+      var swapB = window.DomainSchoolSwap.resolveSlot(swapIndex, '2026-07-14', 2, 3);
+      var swapOff = window.DomainSchoolSwap.resolveSlot(swapIndex, '2026-07-15', 3, 1);
+      assert('對調 A 端解析來源 B 端', swapA.dayOfWeek === 2 && swapA.period === 3 && swapA.endpoint === 'A');
+      assert('對調 B 端解析來源 A 端', swapB.dayOfWeek === 1 && swapB.period === 2 && swapB.endpoint === 'B');
+      assert('停用對調不套用', swapOff.dayOfWeek === 3 && swapOff.period === 1 && !swapOff.row);
+      assert('對調標籤含事件名稱', window.DomainSchoolSwap.label(swapA.row).indexOf('校慶補課') >= 0);
+
+      var swappedSchedules = schedules.concat([
+        { teacherEmail: 'a@x', dayOfWeek: 2, period: 3, className: '702', subject: '數學' }
+      ]);
+      var swappedCell = window.DomainSchedule.resolveApprovedSchedule({
+        teacherEmail: 'a@x',
+        dateStr: '2026-07-13',
+        period: 2,
+        dayOfWeek: 1,
+        scheduleDayOfWeek: swapA.dayOfWeek,
+        schedulePeriod: swapA.period,
+        allSchedules: swappedSchedules,
+        scheduleIndex: window.DomainSchedule.buildScheduleIndex(swappedSchedules),
+        periodSubs: [],
+        allSubs: [],
+        helpers: {
+          getTeacherNameByEmail: function () { return 'X'; },
+          getTeacherSubjectByEmail: function () { return ''; },
+          formatDateMMDD: function (d) { return d; },
+          isSingleWeek: function () { return true; },
+          isClassAway: function () { return false; }
+        }
+      });
+      assert('課表對調使用來源星期／節次', swappedCell && swappedCell.className === '702' && swappedCell.subject === '數學');
 
       // 代課出：a 的課由 d 代
       var subRec = {

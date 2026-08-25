@@ -783,6 +783,7 @@ window.UiSubmitHelpers = (function () {
     var hasLineTemplate = deps.hasLineTemplate;
     var showSuccessModal = deps.showSuccessModal;
     var showToast = deps.showToast;
+    var notificationsSuppressed = deps.notificationsSuppressed;
 
     // 防連點：一進來就鎖，避免 validate／confirm 期間重複點
     if (isSubmitting && isSubmitting.value) {
@@ -832,6 +833,7 @@ window.UiSubmitHelpers = (function () {
       var skipNotify = !!(
         (isMutualCover.value && mutualSkipNotify.value)
         || (isAdmin.value && directApproveMode.value && directApproveSkipNotify.value)
+        || (notificationsSuppressed && notificationsSuppressed.value && isAdmin.value)
         || isProxyPayload
       );
       payload.skipNotify = skipNotify;

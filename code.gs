@@ -62,6 +62,8 @@ var CACHE_TTL_REQ_ = parseInt(getConfig_("CACHE_TTL_REQ", "90"), 10) || 90; // �
 var CACHE_TTL_PENDING_ = parseInt(getConfig_("CACHE_TTL_PENDING", "45"), 10) || 45; // pendingOnly
 var CACHE_TTL_MATCH_ = parseInt(getConfig_("CACHE_TTL_MATCH", "45"), 10) || 45; // 媒合候選短快取
 var CACHE_SCHEMA_VERSION_ = "namekey1";
+var DATA_PAYLOAD_VERSION_ = "schoolSwap1";
+var SCHOOL_SWAP_SHEET_ = "全校對調";
 
 function getAllowedHdList_() {
   // 系統設定可覆寫（走 mem 快取，勿每次整表）
@@ -662,7 +664,7 @@ function assertTeacherNameKeyCanDelete_(semesterId, teacherEmail) {
 
 function sheetsReady_() {
   var ss = getSpreadsheet();
-  var need = ["學期設定", "教師名單", "教師課表", "申請單", "系統設定", "空堂事件", "代導紀錄"];
+  var need = ["學期設定", "教師名單", "教師課表", "申請單", "系統設定", "空堂事件", "代導紀錄", SCHOOL_SWAP_SHEET_];
   for (var i = 0; i < need.length; i++) {
     if (!ss.getSheetByName(need[i])) return false;
   }
@@ -685,6 +687,7 @@ function getHeadersForSheet(sheetName) {
     "申請單": ["學期代號", "申請單ID", "單號", "批次ID", "狀態", "申請人姓名", "受邀人姓名", "代申請人姓名", "班級", "科目", "異動日期", "異動星期", "異動節次", "異動類型", "對調目標日期", "對調目標星期", "對調目標節次", "經費來源", "請假事由", "請假時間類型", "請假時間", "是否已印", "備註", "建立時間", "更新時間"],
     "空堂事件": ["學期代號", "事件ID", "事件名稱", "起日", "迄日", "班級清單", "鐘點規則", "可進互代", "啟用", "備註"],
     "代導紀錄": ["學期代號", "代導紀錄ID", "來源申請單ID", "原導師姓名", "班級", "代導日期", "請假時間類型", "請假時間", "代導教師姓名", "代導節數", "鐘點費", "狀態", "啟用", "建立時間", "更新時間", "操作者", "備註"],
+    "全校對調": ["學期代號", "對調ID", "事件名稱", "日期A", "星期A", "節次A", "日期B", "星期B", "節次B", "啟用", "建立時間", "更新時間", "操作者", "備註"],
     // Ledger truth: index = semester|teacher name; roster quota remains a cache.
     "額度帳本": ["學期代號", "流水ID", "時間", "教師姓名", "異動", "餘額後", "類型", "包ID", "事件ID", "事件名稱", "起日", "迄日", "申請單ID", "操作者", "備註", "索引鍵"],
     "系統設定": ["設定名稱", "設定值"]
@@ -750,10 +753,11 @@ function initSheets() {
     var newName = null;
     if (oldName === "教師課表" || oldName === "教師名單" ||
         oldName === "學期設定" ||
-        oldName === "申請單"      || oldName === "系統設定" ||
-        oldName === "空堂事件" ||
-        oldName === "額度帳本" ||
-        oldName === "代導紀錄" ||
+         oldName === "申請單"      || oldName === "系統設定" ||
+         oldName === "空堂事件" ||
+         oldName === "額度帳本" ||
+         oldName === "代導紀錄" ||
+         oldName === SCHOOL_SWAP_SHEET_ ||
         oldName === "系統日誌" || oldName === "操作日誌" ||
         oldName === "課表匯入暫存" || oldName === "課表匯入備份" ||
         oldName === "教師匯入備份") {
@@ -772,7 +776,7 @@ function initSheets() {
   });
 
   // 2. 標準建置工作表
-  const sheets = ["學期設定","教師名單","教師課表","申請單","空堂事件","額度帳本","代導紀錄","系統設定","系統日誌"];
+  const sheets = ["學期設定","教師名單","教師課表","申請單","空堂事件","額度帳本","代導紀錄",SCHOOL_SWAP_SHEET_,"系統設定","系統日誌"];
   sheets.forEach(name => {
     let sheet = ss.getSheetByName(name);
     if (!sheet) { sheet = ss.insertSheet(name); }
@@ -985,7 +989,7 @@ function buildRowArray_(sheetName, headers, obj) {
 }
 
 function isSemesterScopedSheet_(sheetName) {
-  return ["教師名單", "教師課表", "申請單", "空堂事件", "額度帳本", "代導紀錄"].indexOf(sheetName) !== -1;
+  return ["教師名單", "教師課表", "申請單", "空堂事件", "額度帳本", "代導紀錄", SCHOOL_SWAP_SHEET_].indexOf(sheetName) !== -1;
 }
 
 function rowKeyForSheet_(sheetName, row, keyName) {
@@ -1729,6 +1733,8 @@ function invalidateRequestCaches_(semesterId) {
     [7, 14, 21, 30, 60, 90, 120].forEach(function (d) {
       cacheKeys.push("jcjh_data_" + sid + "_admin_w" + d);
       cacheKeys.push("jcjh_data_" + sid + "_teacher_w" + d);
+      cacheKeys.push("jcjh_data_" + DATA_PAYLOAD_VERSION_ + "_" + sid + "_admin_w" + d);
+      cacheKeys.push("jcjh_data_" + DATA_PAYLOAD_VERSION_ + "_" + sid + "_teacher_w" + d);
       cacheKeys.push("jcjh_req_" + sid + "_w" + d);
       cacheKeys.push("jcjh_reqonly_" + sid + "_admin_w" + d);
       cacheKeys.push("jcjh_reqonly_" + sid + "_teacher_w" + d);
@@ -1763,6 +1769,7 @@ function invalidateScheduleCaches_(semesterId) {
   var sid = String(semesterId || "");
   removeCacheChunkedMany_([
     "jcjh_sched_" + CACHE_SCHEMA_VERSION_ + "_" + sid,
+    "jcjh_school_swap_" + CACHE_SCHEMA_VERSION_ + "_" + sid,
     "jcjh_teachers_" + sid,
     "jcjh_meta_" + sid,
     "jcjh_away_" + sid
@@ -1882,6 +1889,258 @@ function getSemesterSchedulesCached_(semesterId) {
   return slim;
 }
 
+
+function schoolSwapPick_(row, names) {
+  var source = row || {};
+  for (var i = 0; i < names.length; i++) {
+    var value = source[names[i]];
+    if (value !== undefined && value !== null && value !== "") return value;
+  }
+  return "";
+}
+
+function schoolSwapEnabled_(row) {
+  if (!row) return false;
+  var raw = schoolSwapPick_(row, ["啟用", "enabled"]);
+  if (raw === "" || raw === null || raw === undefined) return true;
+  var text = String(raw).trim().toLowerCase();
+  return !(raw === false || text === "false" || text === "0" || text === "否"
+    || text === "no" || text === "停用" || text === "off");
+}
+
+function schoolSwapDate_(raw, label) {
+  var value = raw;
+  if (Object.prototype.toString.call(value) === "[object Date]" && !isNaN(value.getTime())) {
+    value = toLocalDateStr(value);
+  }
+  var text = String(value == null ? "" : value).trim().slice(0, 10);
+  var match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) throw new Error((label || "日期") + "格式必須為 YYYY-MM-DD！");
+  var year = parseInt(match[1], 10);
+  var month = parseInt(match[2], 10);
+  var day = parseInt(match[3], 10);
+  var date = new Date(year, month - 1, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
+    throw new Error((label || "日期") + "不是有效日期！");
+  }
+  return text;
+}
+
+function schoolSwapWeekdayForDate_(dateStr) {
+  var parts = String(dateStr || "").split("-").map(function (value) { return parseInt(value, 10); });
+  var date = new Date(parts[0], parts[1] - 1, parts[2]);
+  var day = date.getDay();
+  return day === 0 ? 7 : day;
+}
+
+function schoolSwapPeriod_(raw, label) {
+  var period = parseInt(raw, 10);
+  if (!(period === 0 || period === 45 || (period >= 1 && period <= 8))) {
+    throw new Error((label || "節次") + "必須為早自習0、1至8或午休45！");
+  }
+  return period;
+}
+
+function schoolSwapSemester_(semesterId) {
+  var sid = String(semesterId || "").trim();
+  var semester = (getTableData("學期設定") || []).find(function (row) {
+    return String(row["學期代號"] || row.id || "").trim() === sid;
+  });
+  if (!semester) throw new Error("找不到目前學期設定：" + sid);
+  return semester;
+}
+
+function schoolSwapAssertDateInSemester_(dateStr, semester, label) {
+  var start = String(semester["開始日期"] || semester.startDate || "").slice(0, 10);
+  var end = String(semester["結束日期"] || semester.endDate || "").slice(0, 10);
+  if ((start && dateStr < start) || (end && dateStr > end)) {
+    throw new Error((label || "對調日期") + "不在目前學期範圍內！");
+  }
+  if (schoolSwapWeekdayForDate_(dateStr) > 5) {
+    throw new Error((label || "對調日期") + "必須是週一至週五！");
+  }
+}
+
+function schoolSwapStoredRow_(row) {
+  if (!row) return null;
+  var dateA = "";
+  var dateB = "";
+  try {
+    dateA = schoolSwapDate_(schoolSwapPick_(row, ["日期A", "dateA"]), "日期A");
+    dateB = schoolSwapDate_(schoolSwapPick_(row, ["日期B", "dateB"]), "日期B");
+  } catch (e) {
+    return null;
+  }
+  var periodA = parseInt(schoolSwapPick_(row, ["節次A", "periodA"]), 10);
+  var periodB = parseInt(schoolSwapPick_(row, ["節次B", "periodB"]), 10);
+  if (!(periodA === 0 || periodA === 45 || (periodA >= 1 && periodA <= 8))
+      || !(periodB === 0 || periodB === 45 || (periodB >= 1 && periodB <= 8))) return null;
+  var sid = String(schoolSwapPick_(row, ["學期代號", "semesterId"])).trim();
+  return {
+    "學期代號": sid,
+    "對調ID": String(schoolSwapPick_(row, ["對調ID", "id", "swapId"])).trim(),
+    "事件名稱": String(schoolSwapPick_(row, ["事件名稱", "name"])).trim(),
+    "日期A": dateA,
+    "星期A": parseInt(schoolSwapPick_(row, ["星期A", "dayA"]), 10) || schoolSwapWeekdayForDate_(dateA),
+    "節次A": periodA,
+    "日期B": dateB,
+    "星期B": parseInt(schoolSwapPick_(row, ["星期B", "dayB"]), 10) || schoolSwapWeekdayForDate_(dateB),
+    "節次B": periodB,
+    "啟用": schoolSwapEnabled_(row) ? "TRUE" : "FALSE",
+    "建立時間": String(schoolSwapPick_(row, ["建立時間", "createdAt"])).trim(),
+    "更新時間": String(schoolSwapPick_(row, ["更新時間", "updatedAt"])).trim(),
+    "備註": String(schoolSwapPick_(row, ["備註", "note"])).trim()
+  };
+}
+
+function schoolSwapPublicRow_(row) {
+  var normalized = schoolSwapStoredRow_(row);
+  if (!normalized) return null;
+  return {
+    "對調ID": normalized["對調ID"],
+    "事件名稱": normalized["事件名稱"],
+    "日期A": normalized["日期A"],
+    "星期A": normalized["星期A"],
+    "節次A": normalized["節次A"],
+    "日期B": normalized["日期B"],
+    "星期B": normalized["星期B"],
+    "節次B": normalized["節次B"],
+    "啟用": "TRUE",
+    "備註": normalized["備註"]
+  };
+}
+
+function getSemesterSchoolSwapsCached_(semesterId) {
+  var sid = String(semesterId || "").trim();
+  var key = "jcjh_school_swap_" + CACHE_SCHEMA_VERSION_ + "_" + sid;
+  var raw = getCacheChunked(key);
+  if (raw) {
+    try {
+      var cached = JSON.parse(raw);
+      if (Array.isArray(cached)) return cached;
+    } catch (e) {}
+  }
+  var rows = getTableData(SCHOOL_SWAP_SHEET_).filter(function (row) {
+    return String(row["學期代號"] || row.semesterId || "").trim() === sid;
+  }).map(schoolSwapStoredRow_).filter(function (row) { return !!row; });
+  try { putCacheChunked(key, JSON.stringify(rows), CACHE_TTL_SCHED_); } catch (e2) {}
+  return rows;
+}
+
+function getActiveSchoolSwapRows_(semesterId) {
+  return getSemesterSchoolSwapsCached_(semesterId).filter(function (row) {
+    return schoolSwapEnabled_(row);
+  });
+}
+
+function resolveSchoolSwapSlot_(rows, dateStr, dayOfWeek, period) {
+  var date = String(dateStr || "").slice(0, 10);
+  var day = parseInt(dayOfWeek, 10);
+  var per = parseInt(period, 10);
+  var fallback = { dayOfWeek: day, period: per, row: null, endpoint: "" };
+  (rows || []).some(function (row) {
+    if (!schoolSwapEnabled_(row)) return false;
+    var aHit = row["日期A"] === date && parseInt(row["節次A"], 10) === per;
+    var bHit = row["日期B"] === date && parseInt(row["節次B"], 10) === per;
+    if (aHit) {
+      fallback = { dayOfWeek: parseInt(row["星期B"], 10), period: parseInt(row["節次B"], 10), row: row, endpoint: "A" };
+      return true;
+    }
+    if (bHit) {
+      fallback = { dayOfWeek: parseInt(row["星期A"], 10), period: parseInt(row["節次A"], 10), row: row, endpoint: "B" };
+      return true;
+    }
+    return false;
+  });
+  return fallback;
+}
+
+function schoolSwapSlotKey_(dateStr, period) {
+  return String(dateStr || "") + "|" + String(parseInt(period, 10));
+}
+
+function normalizeSchoolSwapInput_(input, semesterId, existing) {
+  var source = input || {};
+  var sid = String(semesterId || source["學期代號"] || source.semesterId || "").trim();
+  if (!sid) throw new Error("缺少學期代號！");
+  var semester = schoolSwapSemester_(sid);
+  var name = String(schoolSwapPick_(source, ["事件名稱", "name", "title"])).trim();
+  if (!name) throw new Error("請填全校對調名稱！");
+  if (name.length > 80) throw new Error("全校對調名稱不可超過80字！");
+  var dateA = schoolSwapDate_(schoolSwapPick_(source, ["日期A", "dateA", "sourceDate"]), "日期A");
+  var dateB = schoolSwapDate_(schoolSwapPick_(source, ["日期B", "dateB", "targetDate"]), "日期B");
+  var periodA = schoolSwapPeriod_(schoolSwapPick_(source, ["節次A", "periodA", "sourcePeriod"]), "節次A");
+  var periodB = schoolSwapPeriod_(schoolSwapPick_(source, ["節次B", "periodB", "targetPeriod"]), "節次B");
+  var dayA = parseInt(schoolSwapPick_(source, ["星期A", "dayA", "sourceDay"]), 10);
+  var dayB = parseInt(schoolSwapPick_(source, ["星期B", "dayB", "targetDay"]), 10);
+  var actualDayA = schoolSwapWeekdayForDate_(dateA);
+  var actualDayB = schoolSwapWeekdayForDate_(dateB);
+  if (isNaN(dayA)) dayA = actualDayA;
+  if (isNaN(dayB)) dayB = actualDayB;
+  if (dayA !== actualDayA || dayB !== actualDayB) throw new Error("日期與星期不一致，請重新選擇！");
+  schoolSwapAssertDateInSemester_(dateA, semester, "日期A");
+  schoolSwapAssertDateInSemester_(dateB, semester, "日期B");
+  if (schoolSwapSlotKey_(dateA, periodA) === schoolSwapSlotKey_(dateB, periodB)) {
+    throw new Error("兩個對調端點不可相同！");
+  }
+  var id = String(schoolSwapPick_(source, ["對調ID", "id", "swapId"])).trim();
+  if (!id) id = "swap_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
+  var note = String(schoolSwapPick_(source, ["備註", "note"])).trim();
+  if (note.length > 300) throw new Error("備註不可超過300字！");
+  return {
+    "學期代號": sid,
+    "對調ID": id,
+    "事件名稱": name,
+    "日期A": dateA,
+    "星期A": dayA,
+    "節次A": periodA,
+    "日期B": dateB,
+    "星期B": dayB,
+    "節次B": periodB,
+    "啟用": schoolSwapEnabled_(source) ? "TRUE" : "FALSE",
+    "建立時間": existing && existing["建立時間"] ? existing["建立時間"] : toLocalTimeStr(new Date()),
+    "更新時間": toLocalTimeStr(new Date()),
+    "備註": note
+  };
+}
+
+function assertSchoolSwapNoConflict_(row, existingRows) {
+  if (!schoolSwapEnabled_(row)) return;
+  var keys = [
+    schoolSwapSlotKey_(row["日期A"], row["節次A"]),
+    schoolSwapSlotKey_(row["日期B"], row["節次B"])
+  ];
+  (existingRows || []).forEach(function (other) {
+    if (!other || String(other["對調ID"] || "").trim() === String(row["對調ID"] || "").trim()) return;
+    if (!schoolSwapEnabled_(other)) return;
+    var normalized = schoolSwapStoredRow_(other);
+    if (!normalized) return;
+    if (String(normalized["學期代號"] || "").trim() !== String(row["學期代號"] || "").trim()) return;
+    var otherKeys = [
+      schoolSwapSlotKey_(normalized["日期A"], normalized["節次A"]),
+      schoolSwapSlotKey_(normalized["日期B"], normalized["節次B"])
+    ];
+    if (keys.some(function (key) { return otherKeys.indexOf(key) !== -1; })) {
+      throw new Error("啟用中的全校對調時段重疊，請先停用既有設定！");
+    }
+  });
+}
+
+function saveSchoolSwapRow_(input, semesterId, operatorEmail) {
+  var sid = String(semesterId || "").trim();
+  var existingRows = getTableData(SCHOOL_SWAP_SHEET_) || [];
+  var requestedId = String(schoolSwapPick_(input || {}, ["對調ID", "id", "swapId"])).trim();
+  var existing = existingRows.find(function (row) {
+    return String(row["學期代號"] || "").trim() === sid
+      && String(row["對調ID"] || "").trim() === requestedId;
+  });
+  var row = normalizeSchoolSwapInput_(input, sid, existing);
+  assertSchoolSwapNoConflict_(row, existingRows);
+  row["操作者"] = String(operatorEmail || "").toLowerCase().trim();
+  saveRows(SCHOOL_SWAP_SHEET_, [row], "對調ID");
+  invalidateScheduleCaches_(sid);
+  return schoolSwapStoredRow_(row);
+}
 
 var HOMEROOM_SHEET_ = "代導紀錄";
 var HOMEROOM_FEE_ = 455;
@@ -3337,6 +3596,15 @@ function buildSettingsMap_() {
   return settings;
 }
 
+/** 紙本模式仍允許教學組寫入，但所有調代課通知信一律停寄。 */
+function isOnlineSubstitutionEnabled_() {
+  var raw = buildSettingsMap_().onlineSubstitutionEnabled;
+  if (raw === undefined || raw === null || String(raw).trim() === "") return true;
+  var text = String(raw).trim().toLowerCase();
+  return !(raw === false || text === "false" || text === "0" || text === "no"
+    || text === "否" || text === "關" || text === "關閉" || text === "off");
+}
+
 /** 申請單時間窗：未結案一律保留；已結案只留近 N 天（異動日或建立時間） */
 function requestInWindow_(req, cutoffYmd) {
   var stRaw = String(req["狀態"] || req.status || "").trim();
@@ -3454,6 +3722,11 @@ function personalizeSharedPayload_(shared, readerEmail, readerIsAdmin, opts) {
   out.userRole = readerIsAdmin ? "admin" : (opts.isStaff ? "staff" : "teacher");
   out.requests = nameKeyPublicRows_("申請單", rows);
   if (out.schedules) out.schedules = nameKeyPublicRows_("教師課表", out.schedules);
+  if (Array.isArray(shared.schoolSwaps)) {
+    out.schoolSwaps = readerIsAdmin
+      ? shared.schoolSwaps
+      : shared.schoolSwaps.filter(function (row) { return schoolSwapEnabled_(row); }).map(schoolSwapPublicRow_).filter(function (row) { return !!row; });
+  }
   if (out.homeroomRecords) out.homeroomRecords = nameKeyPublicRows_("代導紀錄", out.homeroomRecords);
   if (Object.prototype.hasOwnProperty.call(shared, "teachers")) {
     out.teachers = sanitizeTeacherRowsForReader_(shared.teachers || [], readerEmail, readerIsAdmin, !!opts.isStaff);
@@ -3521,6 +3794,7 @@ function buildMatchCandidates_(semesterId, opts) {
 
   var teachers = getSemesterTeachersCached_(semesterId) || [];
   var schedules = getSemesterSchedulesCached_(semesterId) || [];
+  var schoolSwaps = getActiveSchoolSwapRows_(semesterId) || [];
   var reqPack = getSemesterRequestsCached_(semesterId, false, 14);
   var allReqRows = reqPack.rows || [];
   var approved = allReqRows.filter(function (r) {
@@ -3613,7 +3887,8 @@ function buildMatchCandidates_(semesterId, opts) {
 
   function cellAt(email, d, p) {
     var em = String(email || "").toLowerCase().trim();
-    var key = em + "|" + d + "|" + p;
+    var effective = resolveSchoolSwapSlot_(schoolSwaps, dateStr, d, p);
+    var key = em + "|" + effective.dayOfWeek + "|" + effective.period;
     var base = baseMap[key] || null;
     var dateKey = em + "|" + dateStr + "|" + p;
     if (pendingBusy[dateKey]) {
@@ -3857,6 +4132,7 @@ function buildFullSemesterPayload_(semesterId, opts) {
   const semesters = getTableData("學期設定");
   const allTeachers = getSemesterTeachersCached_(semesterId);
   const allSchedules = getSemesterSchedulesCached_(semesterId);
+  const schoolSwaps = getSemesterSchoolSwapsCached_(semesterId);
 
   return {
     success: true,
@@ -3864,6 +4140,7 @@ function buildFullSemesterPayload_(semesterId, opts) {
     semesters: semesters,
     teachers: allTeachers,
     schedules: allSchedules,
+    schoolSwaps: schoolSwaps,
     classNames: buildClassNames_(allSchedules),
     substitutions: [],
     homeroomRecords: isAdmin ? getSemesterHomeroomRecords_(semesterId) : [],
@@ -3999,6 +4276,7 @@ function buildPublicClassPayload_(semesterId, className) {
   });
 
   var classAwayEvents = getSemesterClassAwayCached_(sid);
+  var schoolSwaps = getActiveSchoolSwapRows_(sid).map(schoolSwapPublicRow_).filter(function (row) { return !!row; });
 
   return {
     success: true,
@@ -4012,6 +4290,7 @@ function buildPublicClassPayload_(semesterId, className) {
     substitutions: [],
     requests: approved,
     classAwayEvents: classAwayEvents,
+    schoolSwaps: schoolSwaps,
     settings: { public: true }
   };
 }
@@ -4448,8 +4727,8 @@ function handleReadAction_(postData) {
     // ── 全量：admin／教師共用底包（課表全校；申請全校列，回傳前淺拷 filter）──
     // 行政與教學組皆吃 full 底包（課表不瘦身）；一般教師用 teacher 鍵（內容相同，個人化再瘦）
     var fullSharedKey = (readerIsAdmin || readerIsStaff)
-      ? ("jcjh_data_" + semesterId + "_" + dataGeneration + "_admin_w" + wDays)
-      : ("jcjh_data_" + semesterId + "_" + dataGeneration + "_teacher_w" + wDays);
+      ? ("jcjh_data_" + DATA_PAYLOAD_VERSION_ + "_" + semesterId + "_" + dataGeneration + "_admin_w" + wDays)
+      : ("jcjh_data_" + DATA_PAYLOAD_VERSION_ + "_" + semesterId + "_" + dataGeneration + "_teacher_w" + wDays);
     var fullShared = null;
     if (!historyAllFlag && scope !== "fresh") {
       var fullCached = getCacheChunked(fullSharedKey);
@@ -4475,7 +4754,7 @@ function handleReadAction_(postData) {
           // 教師／admin 底包內容相同時互寫，提高命中（共用字串，少 stringify 一次）
           if (readerIsAdmin || readerIsStaff) {
             putCacheChunked(
-              "jcjh_data_" + semesterId + "_" + dataGeneration + "_teacher_w" + wDays,
+              "jcjh_data_" + DATA_PAYLOAD_VERSION_ + "_" + semesterId + "_" + dataGeneration + "_teacher_w" + wDays,
               fullSharedJson,
               CACHE_TTL_TEACHER_FULL_
             );
@@ -4654,7 +4933,8 @@ function doPost(e) {
     const isStaff = resolveIsStaff_(userEmail, teachers);
     var ADMIN_ONLY_ACTIONS = {
       saveSemester: 1, deleteSemester: 1, setDefaultSemester: 1,
-      saveClassAwayEvent: 1, deleteClassAwayEvent: 1,
+       saveClassAwayEvent: 1, deleteClassAwayEvent: 1,
+       saveSchoolSwap: 1, deleteSchoolSwap: 1,
       saveTeacher: 1, deleteTeacher: 1, importTeachersBatch: 1, updateMutualQuotas: 1,
       earnMutualQuotaFromActivity: 1,
       saveScheduleCell: 1, clearScheduleCell: 1, importSchedulesBatch: 1,
@@ -4733,7 +5013,7 @@ function doPost(e) {
       if (deleteIsDefault === "true" || deleteIsDefault === "是" || deleteIsDefault === "1") {
         throw new Error("請先將其他學期設為預設，再刪除此學期！");
       }
-      ["教師名單", "教師課表", "申請單", "空堂事件", "額度帳本", "代導紀錄"].forEach(function (sheetName) {
+       ["教師名單", "教師課表", "申請單", "空堂事件", "額度帳本", "代導紀錄", SCHOOL_SWAP_SHEET_].forEach(function (sheetName) {
         deleteRowsBySemester_(sheetName, deleteSid);
       });
       deleteRows("學期設定", "學期代號", deleteSid);
@@ -4747,6 +5027,27 @@ function doPost(e) {
       });
       saveRows("學期設定", sems, "學期代號");
       sems.forEach(function (s) { invalidateSemesterCaches_(s["學期代號"]); });
+
+    } else if (action === "saveSchoolSwap") {
+      if (!isAdmin) throw new Error("無管理員權限！");
+      var savedSchoolSwap = saveSchoolSwapRow_(reqData || {}, semesterId, userEmail);
+      return ContentService.createTextOutput(JSON.stringify({
+        success: true,
+        schoolSwap: savedSchoolSwap
+      })).setMimeType(ContentService.MimeType.JSON);
+
+    } else if (action === "deleteSchoolSwap") {
+      if (!isAdmin) throw new Error("無管理員權限！");
+      var deleteSchoolSwapId = String((reqData && (reqData.id || reqData["對調ID"])) || "").trim();
+      if (!deleteSchoolSwapId) throw new Error("缺少對調ID！");
+      deleteRows(SCHOOL_SWAP_SHEET_, "對調ID", deleteSchoolSwapId, function (row) {
+        return String(row["學期代號"] || "").trim() === String(semesterId || "").trim();
+      });
+      invalidateScheduleCaches_(semesterId);
+      return ContentService.createTextOutput(JSON.stringify({
+        success: true,
+        id: deleteSchoolSwapId
+      })).setMimeType(ContentService.MimeType.JSON);
 
     } else if (action === "saveClassAwayEvent") {
       if (!isAdmin) throw new Error("無管理員權限！");
@@ -5708,7 +6009,7 @@ function doPost(e) {
       // 行政代申請／pending_admin：絕不寄受邀邀請信（受邀者不需同意；教學組核准時再寄）
       var statusOne = String(reqData.request["狀態"] || "");
       var skipNotifyOne = reqData.skipNotify === true || reqData.skipNotify === "true"
-        || isProxyOne || statusOne === "pending_admin";
+         || isProxyOne || statusOne === "pending_admin" || !isOnlineSubstitutionEnabled_();
       if (!skipNotifyOne) {
         if (statusOne === "approved") {
           queueMail_("sendAdminApproveEmail", function () { sendAdminApproveEmail_(reqData.request, currentUrl); });
@@ -5809,7 +6110,7 @@ function doPost(e) {
       }
       // skipNotify=true：只寫單不寄信；代申請／pending_admin 不寄邀請信
       var skipNotifyBatch = reqData.skipNotify === true || reqData.skipNotify === "true"
-        || isProxyBatch || finalStatus === "pending_admin";
+         || isProxyBatch || finalStatus === "pending_admin" || !isOnlineSubstitutionEnabled_();
       if (!skipNotifyBatch) {
         queueMail_("submitRequestBatchMail", function () {
           var byInvitee = {};
@@ -5848,6 +6149,20 @@ function doPost(e) {
     } else if (action === "sendBatchNotices") {
       // 歷史紀錄後發通知：核准信寄雙方；邀請信只寄受邀人；同人合併
       if (!isAdmin) throw new Error("僅管理員可批次發通知！");
+      if (!isOnlineSubstitutionEnabled_()) {
+        return ContentService.createTextOutput(JSON.stringify({
+          success: true,
+          skipped: true,
+          reason: "paperMode",
+          found: 0,
+          approved: 0,
+          pending: 0,
+          mailCount: 0,
+          recipientEst: 0,
+          sent: 0,
+          failed: 0
+        })).setMimeType(ContentService.MimeType.JSON);
+      }
       assertNotTooFrequent_(userEmail, "sendBatchNotices");
       var noticeIds = reqData.requestIds || reqData.ids || [];
       if (!noticeIds.length) throw new Error("請先選擇要通知的申請單！");
@@ -6219,6 +6534,7 @@ function beginDeferredMails_() {
   _deferredMails_ = [];
 }
 function queueMail_(label, fn) {
+  if (!isOnlineSubstitutionEnabled_()) return;
   if (!_deferredMails_) {
     try { fn(); } catch (e) { logError_(label || "mail", e); }
     return;

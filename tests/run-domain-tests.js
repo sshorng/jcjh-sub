@@ -14,6 +14,7 @@ global.window = global;
 const DIR = path.join(__dirname, '..');
 const FILES = [
   'domain-match.js',
+  'domain-school-swap.js',
   'domain-schedule.js',
   'domain-class-away.js',
   'domain-activity-cover.js',

@@ -9,6 +9,7 @@ window.UiTimetable = (function () {
   function create(deps) {
     var computed = deps.computed;
     var allSchedules = deps.allSchedules;
+    var schoolSwaps = deps.schoolSwaps;
     var substitutionRecords = deps.substitutionRecords;
     var substitutionsLookup = deps.substitutionsLookup; // computed Map-like
     var allPendingRequests = deps.allPendingRequests;
@@ -33,6 +34,18 @@ window.UiTimetable = (function () {
       return window.DomainSchedule.buildScheduleIndex(allSchedules.value);
     });
 
+    var schoolSwapIndex = computed(function () {
+      return window.DomainSchoolSwap
+        ? window.DomainSchoolSwap.buildIndex(schoolSwaps ? schoolSwaps.value : [])
+        : { rows: [], bySlot: {} };
+    });
+
+    function resolveBaseSlot(dateStr, dayOfWeek, period) {
+      return window.DomainSchoolSwap
+        ? window.DomainSchoolSwap.resolveSlot(schoolSwapIndex.value, dateStr, dayOfWeek, period)
+        : { dayOfWeek: dayOfWeek, period: period, row: null, endpoint: '' };
+    }
+
     var pendingIndex = computed(function () {
       if (window.DomainSchedule && window.DomainSchedule.buildPendingIndex) {
         return window.DomainSchedule.buildPendingIndex(allPendingRequests.value);
@@ -44,16 +57,20 @@ window.UiTimetable = (function () {
 
     function clearScheduleCache() {
       _scheduleCache.clear();
+      fetchRecommendations._cache = {};
     }
 
     function getApprovedScheduleForDate(teacherEmail, dateStr, period, dayOfWeek) {
       var key = dateStr + '_' + period;
       var lookup = substitutionsLookup.value || {};
-      return window.DomainSchedule.resolveApprovedSchedule({
+      var baseSlot = resolveBaseSlot(dateStr, dayOfWeek, period);
+      var cell = window.DomainSchedule.resolveApprovedSchedule({
         teacherEmail: teacherEmail,
         dateStr: dateStr,
         period: period,
         dayOfWeek: dayOfWeek,
+        schedulePeriod: baseSlot.period,
+        scheduleDayOfWeek: baseSlot.dayOfWeek,
         allSchedules: allSchedules.value,
         scheduleIndex: scheduleIndex.value,
         periodSubs: lookup[key] || [],
@@ -64,14 +81,25 @@ window.UiTimetable = (function () {
           formatDateMMDD: formatDateMMDD,
           isSingleWeek: isSingleWeek,
           isClassAway: isClassAwayOnDate,
-          getWeekDayText: getWeekDayText
+          getWeekDayText: getWeekDayText,
+          resolveBaseSlot: resolveBaseSlot
         }
       });
+      if (cell && baseSlot.row) {
+        cell = Object.assign({}, cell, {
+          schoolSwap: baseSlot.row,
+          schoolSwapEndpoint: baseSlot.endpoint,
+          schoolSwapSourceDay: baseSlot.dayOfWeek,
+          schoolSwapSourcePeriod: baseSlot.period
+        });
+      }
+      return cell;
     }
 
     function getScheduleForDate(teacherEmail, dateStr, period, dayOfWeek) {
       var memoKey = teacherEmail + '|' + dateStr + '|' + period;
       if (_scheduleCache.has(memoKey)) return _scheduleCache.get(memoKey);
+      var baseSlot = resolveBaseSlot(dateStr, dayOfWeek, period);
       var cell = getApprovedScheduleForDate(teacherEmail, dateStr, period, dayOfWeek);
       var merged = window.DomainSchedule.applyPendingOverlay({
         cell: cell,
@@ -82,8 +110,17 @@ window.UiTimetable = (function () {
         pendingIndex: pendingIndex.value,
         getWeekDayText: getWeekDayText,
         allSchedules: allSchedules.value,
-        scheduleIndex: scheduleIndex.value
+        scheduleIndex: scheduleIndex.value,
+        resolveBaseSlot: resolveBaseSlot
       });
+      if (merged && baseSlot.row && !merged.schoolSwap) {
+        merged = Object.assign({}, merged, {
+          schoolSwap: baseSlot.row,
+          schoolSwapEndpoint: baseSlot.endpoint,
+          schoolSwapSourceDay: baseSlot.dayOfWeek,
+          schoolSwapSourcePeriod: baseSlot.period
+        });
+      }
       if (merged && merged.className && !merged.isClassAway && isClassAwayOnDate(merged.className, dateStr)) {
         merged = Object.assign({}, merged, { isClassAway: true });
       }
@@ -113,6 +150,7 @@ window.UiTimetable = (function () {
       // 明確依賴索引／lookup，避免 memo 命中時漏追蹤、異動後不重畫
       void pendingIndex.value;
       void scheduleIndex.value;
+      void schoolSwapIndex.value;
       void substitutionsLookup.value;
       void mutualDraftIndex.value;
       void batchSelectMode.value;
@@ -901,7 +939,9 @@ window.UiTimetable = (function () {
     }
 
     return {
-      scheduleIndex: scheduleIndex,
+       scheduleIndex: scheduleIndex,
+       schoolSwapIndex: schoolSwapIndex,
+       resolveBaseSlot: resolveBaseSlot,
       getApprovedScheduleForDate: getApprovedScheduleForDate,
       getScheduleForDate: getScheduleForDate,
       clearScheduleCache: clearScheduleCache,

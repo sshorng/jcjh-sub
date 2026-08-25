@@ -3,7 +3,7 @@
  * JWT / Token 檢查 / 錯誤格式化 / callGasApi（讀寫皆 POST，Token 不進 URL）/ SWR 分鍵
  */
 window.GasApi = (function () {
-  var APP_VERSION = '2026-08-24-name-key';
+  var APP_VERSION = '2026-08-26-school-swap';
   // 未取得明確網域設定時，前端也採 fail-closed；公開課表仍可免登入使用。
   var DEFAULT_ALLOWED_HD = [];
   var WRITE_ACTIONS = {
@@ -16,6 +16,7 @@ window.GasApi = (function () {
      saveSemester: 1, deleteSemester: 1, setDefaultSemester: 1,
      migrateNameKeySchema: 1, renameTeacherNameKey: 1,
     saveClassAwayEvent: 1, deleteClassAwayEvent: 1,
+    saveSchoolSwap: 1, deleteSchoolSwap: 1,
     saveHistoryEdit: 1, saveHomeroomCoverTeacher: 1, saveManualHomeroomRecord: 1, deleteHomeroomRecord: 1, batchMarkPrinted: 1, saveMailSettings: 1, sendBatchNotices: 1
   };
   /** 只動申請／空堂對齊 → 只清 requests 分鍵，保留 meta／structure 快取 */
@@ -33,6 +34,7 @@ window.GasApi = (function () {
      saveSemester: 1, deleteSemester: 1, setDefaultSemester: 1,
      migrateNameKeySchema: 1, renameTeacherNameKey: 1,
     saveClassAwayEvent: 1, deleteClassAwayEvent: 1, saveMailSettings: 1
+    , saveSchoolSwap: 1, deleteSchoolSwap: 1
   };
 
   function decodeJwt(token) {
@@ -182,6 +184,7 @@ window.GasApi = (function () {
       }
       if (structure) {
         if (structure.schedules) out.schedules = structure.schedules;
+        if (structure.schoolSwaps) out.schoolSwaps = structure.schoolSwaps;
         // structure 可帶 teachers 備援
         if (structure.teachers && !out.teachers) out.teachers = structure.teachers;
       }
@@ -225,10 +228,11 @@ window.GasApi = (function () {
         settings: data.settings
       });
     }
-    if (data.schedules || data.teachers) {
+    if (data.schedules || data.teachers || data.schoolSwaps) {
       writePart(semesterId, 'structure', {
         schedules: data.schedules,
-        teachers: data.teachers
+        teachers: data.teachers,
+        schoolSwaps: data.schoolSwaps
       });
     }
     if (data.requests || data.classAwayEvents !== undefined || data.requestWindow || data.serverTime) {

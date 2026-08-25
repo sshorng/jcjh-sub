@@ -767,16 +767,18 @@ async function printSelectedForms(formType, ctx) {
           }
           .print-page {
             width: 297mm;
-            height: 208mm;
+            height: 210mm;
+            min-height: 210mm;
             page-break-after: always;
             break-after: page;
             box-sizing: border-box;
-            padding: 6mm 10mm;
+            padding: 3mm 10mm;
             display: flex;
             flex-direction: row;
             justify-content: space-between;
             align-items: stretch;
             position: relative;
+            overflow: hidden;
             background: white !important;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
@@ -788,16 +790,16 @@ async function printSelectedForms(formType, ctx) {
           .cut-line {
             position: absolute;
             left: 50%;
-            top: 6mm;
-            bottom: 6mm;
+            top: 3mm;
+            bottom: 3mm;
             border-left: 1.5px dotted #94a3b8;
             transform: translateX(-50%);
             z-index: 10;
           }
           .substitute-form {
             width: 133mm;
-            height: 196mm;
-            padding: 6mm 8mm !important;
+            height: 204mm;
+            padding: 4mm 7mm !important;
             margin: 0 !important;
             position: relative;
             box-sizing: border-box;
@@ -807,6 +809,9 @@ async function printSelectedForms(formType, ctx) {
             flex-direction: column;
             justify-content: space-between;
             page-break-after: avoid;
+            page-break-inside: avoid;
+            break-inside: avoid;
+            overflow: hidden;
           }
           .substitute-form.is-reprint::after {
             content: "補發";
@@ -827,7 +832,7 @@ async function printSelectedForms(formType, ctx) {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 2px;
+            margin-bottom: 1px;
           }
           .form-tag {
             font-size: 8pt;
@@ -838,17 +843,17 @@ async function printSelectedForms(formType, ctx) {
           .lesson-code { font-size: 8pt; }
           .header-block { margin-top: 1px; margin-bottom: 2px; text-align: center; }
           .title {
-            font-size: 14pt;
+            font-size: 13pt;
             font-weight: bold;
             border-bottom: 2px solid #000;
-            padding-bottom: 4px;
-            margin: 2px 0;
+            padding-bottom: 2px;
+            margin: 1px 0;
           }
           .info-row {
             display: flex;
             justify-content: space-between;
-            margin: 6px 0;
-            font-size: 11pt;
+            margin: 3px 0;
+            font-size: 9pt;
             font-weight: bold;
           }
           .schedule-table {
@@ -856,7 +861,7 @@ async function printSelectedForms(formType, ctx) {
             table-layout: fixed;
             border-collapse: collapse;
             border: 1.5pt solid black;
-            margin: 8px 0;
+            margin: 3px 0;
           }
           .schedule-table col.col-period { width: 12%; }
           .schedule-table col.col-day { width: 13.6%; }
@@ -864,21 +869,38 @@ async function printSelectedForms(formType, ctx) {
           .schedule-table th, .schedule-table td {
             border: 1px solid #000;
             text-align: center;
-            font-size: 9.5pt;
-            height: 25px;
-            padding: 3px 4px !important;
+            font-size: 8pt;
+            height: 20px;
+            padding: 1px 2px !important;
             vertical-align: middle;
             overflow: hidden;
             word-break: break-all;
+            line-height: 1.1;
           }
           .schedule-table th {
             background: #eee !important;
-            height: 28px;
-            font-size: 10pt;
+            height: 22px;
+            font-size: 8.5pt;
           }
-          .footer-block { font-size: 9pt; line-height: 1.35; }
-          .remark-list { margin: 2px 0 0 0; padding-left: 15px; }
-          .remark-list li { font-size: 8.5pt; }
+          .footer-block {
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow: hidden;
+            font-size: 7.2pt !important;
+            line-height: 1.15 !important;
+          }
+          .footer-block .desc,
+          .footer-block .desc * {
+            font-size: 7.2pt !important;
+            line-height: 1.15 !important;
+          }
+          .footer-block .desc ul {
+            margin: 1px 0 0 12px !important;
+            padding: 0 !important;
+          }
+          .remark-area { font-size: 7.2pt !important; line-height: 1.15 !important; }
+          .remark-list { margin: 1px 0 0 0; padding-left: 12px; }
+          .remark-list li { font-size: 7pt !important; line-height: 1.15 !important; }
         </style>
       </head>
       <body style="background: white !important;">

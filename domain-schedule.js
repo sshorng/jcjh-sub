@@ -129,6 +129,8 @@ window.DomainSchedule = (function () {
     const allSubs = ctx.allSubs || [];
     const index = ctx.scheduleIndex || null;
     const h = ctx.helpers || {};
+    const scheduleDayOfWeek = ctx.scheduleDayOfWeek != null ? ctx.scheduleDayOfWeek : dayOfWeek;
+    const schedulePeriod = ctx.schedulePeriod != null ? ctx.schedulePeriod : period;
 
 
 
@@ -190,7 +192,7 @@ window.DomainSchedule = (function () {
         }
 
         var firstEdge = path[0].record;
-        var outCands = getCandidates(index, teacherEmail, dayOfWeek, period, allSchedules);
+         var outCands = getCandidates(index, teacherEmail, scheduleDayOfWeek, schedulePeriod, allSchedules);
         var baseOut = outCands.find(function (s) {
           return String(s.teacherEmail || '').toLowerCase() === emailLower;
         }) || outCands[0] || null;
@@ -281,7 +283,7 @@ window.DomainSchedule = (function () {
 
       var incomingEdge = null;
       var originalOwner = null;
-      var possibleOwners = getSlotOwnerEmails(index, dayOfWeek, period, allSchedules);
+       var possibleOwners = getSlotOwnerEmails(index, scheduleDayOfWeek, schedulePeriod, allSchedules);
 
       for (var oi = 0; oi < possibleOwners.length; oi++) {
         var owner = possibleOwners[oi];
@@ -317,7 +319,7 @@ window.DomainSchedule = (function () {
 
       if (incomingEdge) {
         var inCands = originalOwner
-          ? getCandidates(index, originalOwner, dayOfWeek, period, allSchedules)
+           ? getCandidates(index, originalOwner, scheduleDayOfWeek, schedulePeriod, allSchedules)
           : [];
         var baseIn = inCands.find(function (s) {
           return String(s.teacherEmail || '').toLowerCase() === originalOwner;
@@ -342,8 +344,11 @@ window.DomainSchedule = (function () {
               var pd = new Date(String(peerIn.date).replace(/-/g, '/'));
               if (!isNaN(pd.getTime())) peerDay = pd.getDay() === 0 ? 7 : pd.getDay();
             } catch (ePd) {}
-            if (peerDay != null) {
-              var atPeer = getCandidates(index, bringEmail, peerDay, peerIn.period, allSchedules)[0];
+             if (peerDay != null) {
+               var peerBase = h.resolveBaseSlot
+                 ? h.resolveBaseSlot(peerIn.date, peerDay, peerIn.period)
+                 : { dayOfWeek: peerDay, period: peerIn.period };
+               var atPeer = getCandidates(index, bringEmail, peerBase.dayOfWeek, peerBase.period, allSchedules)[0];
               if (atPeer) {
                 if (!finalClassIn) finalClassIn = String(atPeer.className || '').trim();
                 if (!finalSubjIn) finalSubjIn = String(atPeer.subject || '').trim();
@@ -351,7 +356,7 @@ window.DomainSchedule = (function () {
             }
           }
           if (!finalClassIn || !finalSubjIn) {
-            var bringBase = getCandidates(index, bringEmail, dayOfWeek, period, allSchedules)[0];
+             var bringBase = getCandidates(index, bringEmail, scheduleDayOfWeek, schedulePeriod, allSchedules)[0];
             if (bringBase) {
               if (!finalClassIn) finalClassIn = String(bringBase.className || '').trim();
               if (!finalSubjIn) finalSubjIn = String(bringBase.subject || '').trim();
@@ -390,7 +395,7 @@ window.DomainSchedule = (function () {
       }
     }
 
-    var candidates = getCandidates(index, teacherEmail, dayOfWeek, period, allSchedules);
+    var candidates = getCandidates(index, teacherEmail, scheduleDayOfWeek, schedulePeriod, allSchedules);
     var base = candidates.find(function (s) {
       if (!s.attr || s.attr === '一般' || s.attr === '課輔' || s.attr === '基本' || s.attr === '抽離' || s.attr === '巡堂') return true;
       if (s.attr === '單週' && h.isSingleWeek(dateStr)) return true;
@@ -408,6 +413,8 @@ window.DomainSchedule = (function () {
       || baseSubj === '巡堂';
     var pullOut = isPullOutAttr(base.attr);
     return Object.assign({}, base, {
+      dayOfWeek: dayOfWeek,
+      period: period,
       isElastic: base.attr === '實支',
       isPatrol: patrol,
       isPullOut: pullOut,
@@ -477,6 +484,9 @@ window.DomainSchedule = (function () {
     var getWeekDayText = opts.getWeekDayText || function (d) { return d; };
     var allSchedules = opts.allSchedules || [];
     var index = opts.scheduleIndex || null;
+    var resolveBaseSlot = opts.resolveBaseSlot || function (dateStr0, day0, period0) {
+      return { dayOfWeek: day0, period: period0 };
+    };
     var emailLower = String(teacherEmail || '').toLowerCase();
     var slotKey = emailLower + '|' + dateStr + '|' + parseInt(period, 10);
     var bucket = pendingIndex ? pendingIndex[slotKey] : null;
@@ -595,7 +605,8 @@ window.DomainSchedule = (function () {
       var pExcA = findExchangeInA();
       if (pExcA) {
         var targetDay = parseInt(pExcA.targetDayOfWeek, 10);
-        var schedCands = getCandidates(index, pExcA.targetTeacherEmail, targetDay, pExcA.targetPeriod, allSchedules);
+        var targetBase = resolveBaseSlot(pExcA.targetDate, targetDay, pExcA.targetPeriod);
+        var schedCands = getCandidates(index, pExcA.targetTeacherEmail, targetBase.dayOfWeek, targetBase.period, allSchedules);
         var sched = schedCands[0] || null;
         var finalSubject = sched ? sched.subject : (pExcA.targetSubject || pExcA.subject || '自習');
         return {

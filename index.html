@@ -334,9 +334,12 @@
                   </button>
                  </div>
                </div>
-               <div v-if="paperMode" class="batch-hint-bar" style="border-color:#f59e0b;background:#fffbeb;color:#92400e;">
-                 🖨️ 目前為紙本模式：可查詢媒合人選與模擬課表，但不會送出線上申請；完成模擬後可列印紙本單。
-               </div>
+                <div v-if="paperMode && !isAdmin" class="batch-hint-bar" style="border-color:#f59e0b;background:#fffbeb;color:#92400e;">
+                  🖨️ 目前為紙本模式：可查詢媒合人選與模擬課表，但不會送出線上申請；完成模擬後可列印紙本單。
+                </div>
+                <div v-else-if="notificationsSuppressed && isAdmin" class="batch-hint-bar" style="border-color:#f59e0b;background:#fffbeb;color:#92400e;">
+                  🔧 目前為紙本作業模式：教學組仍可直接線上更新系統，但所有調代課流程均不寄送通知信。
+                </div>
                <div v-if="batchSelectMode" class="batch-hint-bar">
                 批次模式：點選<strong>同一位教師</strong>多節 → 可選「同一人全代」或「每節不同人」→ 填寫申請表。已選 {{ batchSlots.length }} 節。
               </div>
@@ -483,7 +486,7 @@
                   <div v-if="mutualDrafts.length" class="mutual-drafts-block">
                     <div class="mutual-drafts-head">
                       <strong class="text-violet-deep">暫定安排 {{ mutualDrafts.length }} 節</strong>
-                       <button v-if="!paperMode" type="button" class="btn btn-success mutual-btn-submit" :disabled="isSubmitting || loading" @click="submitAllMutualDrafts">
+                        <button v-if="!paperMode || isAdmin" type="button" class="btn btn-success mutual-btn-submit" :disabled="isSubmitting || loading" @click="submitAllMutualDrafts">
                          {{ (isSubmitting || loading) ? '送出中…' : '🚀 一次送出全部暫定' }}
                        </button>
                        <button v-else type="button" class="btn btn-primary mutual-btn-submit" :disabled="isSubmitting || loading" @click="openPaperPrintMutualDrafts">🖨️ 列印紙本單</button>
@@ -677,8 +680,9 @@
                                     v-if="period === 8 && slot.cell.attr !== '單週' && slot.cell.attr !== '雙週' && !slot.cell.isSubstituted && !slot.cell.isSubstitutionDuty && !slot.cell.isPending && !(slot.cell.isPatrol || slot.cell.attr === '巡堂')"
                                     class="cell-badge tag-blue"
                                   >課輔</span>
-                                  <span v-if="slot.cell.isPullOut || slot.cell.attr === '抽離'" class="cell-badge tag-pullout">抽離</span>
-                                   <span v-if="slot.cell.restriction === 'restricted' || hasScheduleSpecialTag(slot.cell, '綁課')" class="cell-badge tag-restricted">綁課</span>
+                                   <span v-if="slot.cell.isPullOut || slot.cell.attr === '抽離'" class="cell-badge tag-pullout">抽離</span>
+                                   <span v-if="slot.cell.schoolSwap" class="cell-badge tag-warning" :title="slot.cell.schoolSwap.name">全校對調</span>
+                                    <span v-if="slot.cell.restriction === 'restricted' || hasScheduleSpecialTag(slot.cell, '綁課')" class="cell-badge tag-restricted">綁課</span>
                                    <span v-if="hasScheduleSpecialTag(slot.cell, '預排')" class="cell-badge tag-preplanned">預排</span>
                                   <span 
                                     v-if="slot.cell.isPending"
@@ -860,9 +864,10 @@
                                 <div class="cell-class-name">
                                    {{ classSubstitutionMap[selectedClass + '|' + dateStr + '|' + period].actualTeacherName || '未指定' }}
                                 </div>
-                                <div class="cell-sub-badge">
-                                  {{ classSubstitutionMap[selectedClass + '|' + dateStr + '|' + period].type === 'exchange' ? '已調課' : '已代課' }}
-                                </div>
+                                 <div class="cell-sub-badge">
+                                   {{ classSubstitutionMap[selectedClass + '|' + dateStr + '|' + period].type === 'exchange' ? '已調課' : '已代課' }}
+                                   <span v-if="classSchedules[selectedClass] && classSchedules[selectedClass][(dayIdx+1) + '-' + period] && classSchedules[selectedClass][(dayIdx+1) + '-' + period][0] && classSchedules[selectedClass][(dayIdx+1) + '-' + period][0]._schoolSwap" class="cell-badge tag-warning">全校對調</span>
+                                 </div>
                               </div>
                             </template>
                             <template v-else>
@@ -881,7 +886,8 @@
                                     <span v-if="entry.attr === '單週' || entry.attr === '雙週'" style="font-size:0.65rem;color:var(--text-muted);margin-left:2px;">({{ entry.attr }})</span>
                                      <span v-if="entry._isCombined || isCombinedClass(entry.className) || hasScheduleSpecialTag(entry, '併班')" class="cell-badge tag-combined" title="併班">併班</span>
                                      <span v-if="entry.restriction === 'restricted' || hasScheduleSpecialTag(entry, '綁課')" class="cell-badge tag-restricted">綁課</span>
-                                     <span v-if="hasScheduleSpecialTag(entry, '預排')" class="cell-badge tag-preplanned">預排</span>
+                                      <span v-if="hasScheduleSpecialTag(entry, '預排')" class="cell-badge tag-preplanned">預排</span>
+                                      <span v-if="entry._schoolSwap" class="cell-badge tag-warning" :title="entry._schoolSwap.name">全校對調</span>
                                   </div>
                                   <div class="cell-class-name">
                                     {{ getRealTeacherName(entry) }}
@@ -1274,7 +1280,7 @@
               <div class="action-buttons">
                 <!-- 一鍵列印勾選的單據 -->
                 <button
-                  v-if="isAdmin"
+                  v-if="isAdmin && !notificationsSuppressed"
                   class="btn btn-success btn-md"
                   :disabled="!selectedRecordIds.length"
                   @click="sendSelectedBatchNotices"
@@ -1461,16 +1467,23 @@
             >
               📥 課表匯入
             </button>
-            <button 
-              class="btn btn-pill" 
-              :class="adminSubTab === 'classAway' ? 'btn-primary' : 'btn-secondary'"
-              @click="adminSubTab = 'classAway'"
+             <button
+               class="btn btn-pill"
+               :class="adminSubTab === 'classAway' ? 'btn-primary' : 'btn-secondary'"
+               @click="adminSubTab = 'classAway'"
             >
-              📭 空堂事件
-            </button>
-            <button 
-              class="btn btn-pill" 
-              :class="adminSubTab === 'settings' ? 'btn-primary' : 'btn-secondary'"
+               📭 空堂事件
+             </button>
+             <button
+               class="btn btn-pill"
+               :class="adminSubTab === 'schoolSwap' ? 'btn-primary' : 'btn-secondary'"
+               @click="adminSubTab = 'schoolSwap'"
+             >
+               🔁 全校對調
+             </button>
+              <button
+               class="btn btn-pill"
+               :class="adminSubTab === 'settings' ? 'btn-primary' : 'btn-secondary'"
               @click="adminSubTab = 'settings'"
             >
               ⚙️ 系統設定
@@ -1902,6 +1915,57 @@
             </div>
           </div>
 
+          <!-- 子分頁：全校日期節次對調 -->
+          <div v-if="adminSubTab === 'schoolSwap'">
+            <div class="card">
+              <div class="card-title">
+                <span>🔁 全校日期節次對調</span>
+                <button type="button" class="btn btn-primary btn-sm-pad" @click="openAddSchoolSwapModal">＋ 新增對調</button>
+              </div>
+              <p style="font-size:0.8rem;color:var(--text-secondary);line-height:1.55;margin:0 0 12px;">
+                只在指定日期交換兩個節次的固定週課表內容，不會改寫「教師課表」。啟用中的設定不可共用同一個實際日期／節次；停用後保留歷史紀錄。
+              </p>
+              <div class="table-responsive">
+                <table class="custom-table fs-85">
+                  <thead>
+                    <tr>
+                      <th>名稱</th>
+                      <th>端點 A</th>
+                      <th>端點 B</th>
+                      <th>狀態</th>
+                      <th>更新時間</th>
+                      <th>操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="row in schoolSwapRows" :key="row.id">
+                      <td>
+                        <strong>{{ row.name }}</strong>
+                        <div v-if="row.note" class="req-note-cell">{{ row.note }}</div>
+                      </td>
+                      <td>{{ row.dateA }}（{{ schoolSwapWeekdayText(row.dateA) }}）{{ formatPeriodText(row.periodA) }}</td>
+                      <td>{{ row.dateB }}（{{ schoolSwapWeekdayText(row.dateB) }}）{{ formatPeriodText(row.periodB) }}</td>
+                      <td><span class="status-badge" :class="row.enabled ? 'status-approved' : 'status-pending-teacher'">{{ row.enabled ? '啟用' : '停用' }}</span></td>
+                      <td>{{ row.updatedAt || row.createdAt || '尚無時間' }}</td>
+                      <td>
+                        <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                          <button type="button" class="btn btn-secondary btn-xs-tight" @click="openEditSchoolSwapModal(row)">編輯</button>
+                          <button type="button" class="btn btn-secondary btn-xs-tight" style="color:var(--color-danger);" @click="deleteSchoolSwap(row)">刪除</button>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr v-if="!schoolSwapRows.length">
+                      <td colspan="6" style="text-align:center;padding:20px;color:var(--text-secondary);">
+                        <span class="empty-state-title">尚無全校對調設定</span>
+                        <span class="empty-state-hint">新增後，指定日期的教師與班級課表會自動套用。</span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
 <!-- 子分頁 4：系統設定（空堂事件 → 學期 → 連線唯讀置底） -->
           <div v-if="adminSubTab === 'settings'">
             <div class="card mb-16" style="border-color:#f59e0b;background:#fffbeb;">
@@ -1914,7 +1978,7 @@
                 >{{ onlineSubstitutionEnabled ? '線上申請開放' : '紙本模式' }}</span>
               </div>
               <p style="font-size:0.8rem;color:var(--text-secondary);line-height:1.55;margin:0 0 10px;">
-                關閉後，教師仍可查詢適合人選、模擬雙方課表與列印紙本單，但畫面不提供線上送出；既有歷史紀錄不受影響。
+                關閉後，一般教師仍可查詢適合人選、模擬雙方課表與列印紙本單；教學組仍可線上寫入系統，但所有流程不寄通知信，既有歷史紀錄不受影響。
               </p>
               <label style="display:flex;align-items:center;gap:10px;font-size:0.9rem;font-weight:700;cursor:pointer;">
                 <input
@@ -1923,7 +1987,7 @@
                   :checked="onlineSubstitutionEnabled"
                   @change="setOnlineSubstitutionEnabled($event.target.checked)"
                 >
-                <span>{{ onlineSubstitutionEnabled ? '目前允許線上調代課申請' : '目前暫停線上申請，改跑紙本' }}</span>
+                <span>{{ onlineSubstitutionEnabled ? '目前允許線上調代課申請' : '一般教師改跑紙本，教學組可線上寫入但不寄信' }}</span>
               </label>
             </div>
 
@@ -2058,7 +2122,7 @@
               <button class="match-mode-btn flex-1" :class="{ active: matchMode === 'substitution' }" @click="changeMatchMode('substitution')">
                 找人代課
               </button>
-              <button
+             <button
                 class="match-mode-btn flex-1"
                 :class="{ active: matchMode === 'exchange' }"
                 :disabled="activeCell.classData && (activeCell.classData.isPatrol || activeCell.classData.attr === '巡堂')"
@@ -2388,12 +2452,12 @@
                 送出後<strong>跳過受邀確認</strong>，直接進入「待教學組核准」。
               </div>
             </div>
-              <div v-if="onlineSubstitutionEnabled && isAdmin && !(isProxySubmitActive && pendingRequestData.leaveTeacher && user && String(pendingRequestData.leaveTeacher).toLowerCase() !== String(getTeacherNameByEmail(user.email) || '').toLowerCase())" class="direct-approve-box">
+              <div v-if="isAdmin && !(isProxySubmitActive && pendingRequestData.leaveTeacher && user && String(pendingRequestData.leaveTeacher).toLowerCase() !== String(getTeacherNameByEmail(user.email) || '').toLowerCase())" class="direct-approve-box">
               <label class="direct-approve-row">
                 <input type="checkbox" class="direct-approve-check" v-model="directApproveMode">
                 <span class="direct-approve-text">
                   <div class="direct-approve-title">⚡ 教學組直接核准</div>
-                  <div class="direct-approve-desc">勾選後送出即生效並更新課表；未勾選則需對方同意後再送行政審核。</div>
+                  <div class="direct-approve-desc">勾選後送出即生效並更新課表；未勾選則需對方同意後再送行政審核。<span v-if="notificationsSuppressed">紙本模式下不寄送通知信。</span></div>
                 </span>
               </label>
               <label v-if="directApproveMode" class="direct-approve-sub">
@@ -2641,7 +2705,7 @@
           
           <div class="modal-footer" data-tour="compare-submit">
             <!-- 活動互代模擬：只對照課表，確認後寫入暫定（不直接送出申請） -->
-            <template v-if="paperMode">
+            <template v-if="paperMode && !isAdmin">
               <button
                 type="button"
                 class="btn btn-primary"
@@ -3060,6 +3124,65 @@
           <div class="modal-footer">
             <button class="btn btn-primary" @click="saveSemester">{{ semesterModalMode === 'add' ? '建立學期' : '儲存修改' }}</button>
             <button class="btn btn-secondary" @click="showSemesterModal = false">取消</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 全校日期節次對調 Modal -->
+      <div v-if="showSchoolSwapModal" class="modal-overlay" @click.self="showSchoolSwapModal = false">
+        <div class="modal-card" style="max-width:620px;">
+          <div class="modal-header">
+            <h3>{{ schoolSwapModalMode === 'add' ? '新增全校對調' : '編輯全校對調' }}</h3>
+            <button type="button" class="btn-close" @click="showSchoolSwapModal = false" aria-label="關閉">&times;</button>
+          </div>
+          <div class="modal-body" style="display:flex;flex-direction:column;gap:12px;">
+            <div class="form-group m-0">
+              <label class="form-label">對調名稱 *</label>
+              <input type="text" class="form-input" v-model="schoolSwapForm.name" maxlength="80">
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+              <div style="border:1px solid #bfdbfe;background:#eff6ff;border-radius:10px;padding:12px;">
+                <strong style="display:block;margin-bottom:8px;color:#1d4ed8;">端點 A</strong>
+                <div class="form-group m-0">
+                  <label class="form-label">日期</label>
+                  <input type="date" class="form-input" v-model="schoolSwapForm.dateA">
+                </div>
+                <div class="text-xs-muted-78" style="margin:5px 0 9px;">{{ schoolSwapWeekdayText(schoolSwapForm.dateA) }}</div>
+                <div class="form-group m-0">
+                  <label class="form-label">節次</label>
+                  <select class="form-select" v-model.number="schoolSwapForm.periodA">
+                    <option v-for="p in timetablePeriods" :key="'swap-a-'+p" :value="p">{{ formatPeriodText(p) }}</option>
+                  </select>
+                </div>
+              </div>
+              <div style="border:1px solid #c4b5fd;background:#f5f3ff;border-radius:10px;padding:12px;">
+                <strong style="display:block;margin-bottom:8px;color:#6d28d9;">端點 B</strong>
+                <div class="form-group m-0">
+                  <label class="form-label">日期</label>
+                  <input type="date" class="form-input" v-model="schoolSwapForm.dateB">
+                </div>
+                <div class="text-xs-muted-78" style="margin:5px 0 9px;">{{ schoolSwapWeekdayText(schoolSwapForm.dateB) }}</div>
+                <div class="form-group m-0">
+                  <label class="form-label">節次</label>
+                  <select class="form-select" v-model.number="schoolSwapForm.periodB">
+                    <option v-for="p in timetablePeriods" :key="'swap-b-'+p" :value="p">{{ formatPeriodText(p) }}</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <label style="display:flex;align-items:center;gap:8px;font-size:0.86rem;">
+              <input type="checkbox" class="chk-md" v-model="schoolSwapForm.enabled">
+              啟用這筆對調
+            </label>
+            <div class="form-group m-0">
+              <label class="form-label">備註</label>
+              <input type="text" class="form-input" v-model="schoolSwapForm.note" maxlength="300">
+            </div>
+            <p style="margin:0;font-size:0.76rem;color:var(--text-muted);line-height:1.5;">系統會再次檢查學期範圍、週一至週五、日期與星期一致，以及啟用時段是否重疊。</p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-primary" :disabled="schoolSwapSaving" @click="saveSchoolSwap">{{ schoolSwapSaving ? '儲存中…' : '儲存' }}</button>
+            <button type="button" class="btn btn-secondary" :disabled="schoolSwapSaving" @click="showSchoolSwapModal = false">取消</button>
           </div>
         </div>
       </div>
@@ -3740,6 +3863,7 @@
   <script defer src="field-map.js?v=20260824-name-key-fix1"></script>
   <script defer src="date-utils.js?v=20260824-name-key-fix1"></script>
   <script defer src="gas-api.js?v=20260824-name-key-fix1"></script>
+  <script defer src="domain-school-swap.js?v=20260824-name-key-fix1"></script>
   <script defer src="domain-schedule.js?v=20260824-name-key-fix1"></script>
   <script defer src="domain-match.js?v=20260824-name-key-fix1"></script>
   <!-- domain-activity-cover：活動互代／空堂任務時 ensureDomainActivityCover -->
