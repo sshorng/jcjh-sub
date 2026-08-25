@@ -104,7 +104,7 @@
             <span class="nav-label-full">歷史紀錄</span><span class="nav-label-short">歷史</span>
           </button>
           <button 
-            v-if="isAdmin || isStaff || classReadonlyMode"
+            v-if="user || classReadonlyMode"
             class="nav-item"
             :class="{ active: activeTab === 'class' }"
             :aria-current="activeTab === 'class' ? 'page' : undefined"
@@ -292,8 +292,8 @@
             
             <!-- 左欄：課表主畫面 -->
               <div class="card" style="grid-column: span 1;">
-              <div class="card-title">
-                <span>📅 課表主畫面</span>
+               <div class="card-title">
+                 <span>📅 課表主畫面</span>
                 <div class="action-buttons action-buttons-wrap">
                   <button
                     type="button"
@@ -332,9 +332,12 @@
                   >
                     <span>{{ isScheduleEditMode ? '💾 退出基礎課表編輯' : '✏️ 編輯基礎課表' }}</span>
                   </button>
-                </div>
-              </div>
-              <div v-if="batchSelectMode" class="batch-hint-bar">
+                 </div>
+               </div>
+               <div v-if="paperMode" class="batch-hint-bar" style="border-color:#f59e0b;background:#fffbeb;color:#92400e;">
+                 🖨️ 目前為紙本模式：可查詢媒合人選與模擬課表，但不會送出線上申請；完成模擬後可列印紙本單。
+               </div>
+               <div v-if="batchSelectMode" class="batch-hint-bar">
                 批次模式：點選<strong>同一位教師</strong>多節 → 可選「同一人全代」或「每節不同人」→ 填寫申請表。已選 {{ batchSlots.length }} 節。
               </div>
               <div v-if="isAdmin && isMutualCover" class="batch-hint-bar mutual-away-panel">
@@ -480,9 +483,10 @@
                   <div v-if="mutualDrafts.length" class="mutual-drafts-block">
                     <div class="mutual-drafts-head">
                       <strong class="text-violet-deep">暫定安排 {{ mutualDrafts.length }} 節</strong>
-                      <button type="button" class="btn btn-success mutual-btn-submit" :disabled="isSubmitting || loading" @click="submitAllMutualDrafts">
-                        {{ (isSubmitting || loading) ? '送出中…' : '🚀 一次送出全部暫定' }}
-                      </button>
+                       <button v-if="!paperMode" type="button" class="btn btn-success mutual-btn-submit" :disabled="isSubmitting || loading" @click="submitAllMutualDrafts">
+                         {{ (isSubmitting || loading) ? '送出中…' : '🚀 一次送出全部暫定' }}
+                       </button>
+                       <button v-else type="button" class="btn btn-primary mutual-btn-submit" :disabled="isSubmitting || loading" @click="openPaperPrintMutualDrafts">🖨️ 列印紙本單</button>
                       <button type="button" class="btn btn-secondary btn-xs" @click="clearMutualDrafts">清空暫定</button>
                     </div>
                     <div class="mutual-drafts-list">
@@ -801,7 +805,7 @@
         <div v-if="activeTab === 'class'">
           <div class="card">
             <div class="card-title card-title-between">
-              <span>🏫 班級課表總覽<span v-if="classReadonlyMode" class="text-xs-muted-78" style="font-weight:500;margin-left:8px;">（唯讀）</span></span>
+              <span>🏫 班級課表總覽<span v-if="classReadonlyMode || classViewerReadonly" class="text-xs-muted-78" style="font-weight:500;margin-left:8px;">（唯讀）</span></span>
               <button v-if="selectedClass && isAdmin" type="button" class="btn btn-secondary btn-sm-78" @click="copyClassReadonlyLink(selectedClass)">複製唯讀連結</button>
             </div>
             <div style="padding: 0 0 12px 0;">
@@ -823,7 +827,7 @@
                     class="btn class-pick-btn"
                     :class="selectedClass === cls ? 'class-pick-btn-active' : 'btn-secondary'"
                     style="padding:4px 12px;font-size:0.8rem;"
-                    @click="selectedClass = selectedClass === cls ? '' : cls"
+                    @click="selectedClass === cls ? (selectedClass = '') : selectClassForView(cls)"
                   >{{ cls }}</button>
                 </div>
                 <div v-else style="margin:12px 0;font-size:0.85rem;color:var(--text-secondary);">
@@ -832,7 +836,7 @@
                 <div v-if="!selectedClass" style="text-align:center;padding:20px;color:var(--text-muted);">👆 點選上方班級按鈕查看該班課表</div>
                 <div v-else class="class-timetable-layout" role="region" aria-label="班級課表內容">
                   <div class="timetable-wrapper class-timetable-main" style="overflow-x:auto;">
-                    <div class="class-timetable" :class="{ 'is-readonly': classReadonlyMode }">
+                    <div class="class-timetable" :class="{ 'is-readonly': classReadonlyMode || classViewerReadonly }">
                       <div class="grid-header">節</div>
                       <div v-for="(dateStr, idx) in selectedClassWeekDates" :key="'h'+idx" class="grid-header">
                         {{ formatDateMMDD(dateStr) }}<br><span style="font-weight:400;">{{ ['一','二','三','四','五'][idx] }}</span>
@@ -847,7 +851,7 @@
                            :class="[getPeriodClass(period), getClassCellClassForClass(selectedClass, dayIdx+1, period)]">
                           <template v-if="classSchedules[selectedClass] && classSchedules[selectedClass][(dayIdx+1) + '-' + period]">
                             <template v-if="classSubstitutionMap[selectedClass + '|' + dateStr + '|' + period]">
-                              <div class="class-entry-block" :class="{ 'is-readonly': classReadonlyMode }" @click="handleClassCellClick(selectedClass, dayIdx+1, period, 0)">
+                              <div class="class-entry-block" :class="{ 'is-readonly': classReadonlyMode || classViewerReadonly }" @click="handleClassCellClick(selectedClass, dayIdx+1, period, 0)">
                                 <div class="cell-subject">
                                   <span class="subject-color-tag" :style="getSubjectStyle(classSubstitutionMap[selectedClass + '|' + dateStr + '|' + period].subject || classSchedules[selectedClass][(dayIdx+1) + '-' + period][0].subject)">
                                     {{ classSubstitutionMap[selectedClass + '|' + dateStr + '|' + period].subject || classSchedules[selectedClass][(dayIdx+1) + '-' + period][0].subject }}
@@ -868,7 +872,7 @@
                               <template v-else>
                                 <div v-for="(entry, ei) in classSchedules[selectedClass][(dayIdx+1) + '-' + period]" :key="entry.id || ei"
                                   class="class-entry-block"
-                                  :class="{ 'is-match-source': isMatchSourceEntry(entry, dayIdx+1, period), 'is-match-hover': isMatchHoverEntry(entry, dayIdx+1, period), 'is-readonly': classReadonlyMode }"
+                                  :class="{ 'is-match-source': isMatchSourceEntry(entry, dayIdx+1, period), 'is-match-hover': isMatchHoverEntry(entry, dayIdx+1, period), 'is-readonly': classReadonlyMode || classViewerReadonly }"
                                   @click.stop="handleClassCellClick(selectedClass, dayIdx+1, period, entry)">
                                   <div class="cell-subject">
                                     <span class="subject-color-tag" :style="getSubjectStyle(entry.subject)">
@@ -1900,6 +1904,29 @@
 
 <!-- 子分頁 4：系統設定（空堂事件 → 學期 → 連線唯讀置底） -->
           <div v-if="adminSubTab === 'settings'">
+            <div class="card mb-16" style="border-color:#f59e0b;background:#fffbeb;">
+              <div class="card-title">
+                <span>🖨️ 調代課作業模式</span>
+                <span
+                  class="status-badge"
+                  :class="onlineSubstitutionEnabled ? 'status-approved' : 'status-pending-teacher'"
+                  style="font-size:0.75rem;padding:2px 8px;"
+                >{{ onlineSubstitutionEnabled ? '線上申請開放' : '紙本模式' }}</span>
+              </div>
+              <p style="font-size:0.8rem;color:var(--text-secondary);line-height:1.55;margin:0 0 10px;">
+                關閉後，教師仍可查詢適合人選、模擬雙方課表與列印紙本單，但畫面不提供線上送出；既有歷史紀錄不受影響。
+              </p>
+              <label style="display:flex;align-items:center;gap:10px;font-size:0.9rem;font-weight:700;cursor:pointer;">
+                <input
+                  type="checkbox"
+                  class="chk-md"
+                  :checked="onlineSubstitutionEnabled"
+                  @change="setOnlineSubstitutionEnabled($event.target.checked)"
+                >
+                <span>{{ onlineSubstitutionEnabled ? '目前允許線上調代課申請' : '目前暫停線上申請，改跑紙本' }}</span>
+              </label>
+            </div>
+
             <!-- 行政代申請：指定行政授權（非一鍵全開） -->
             <div class="card mb-16">
               <div class="card-title">
@@ -2361,7 +2388,7 @@
                 送出後<strong>跳過受邀確認</strong>，直接進入「待教學組核准」。
               </div>
             </div>
-              <div v-if="isAdmin && !(isProxySubmitActive && pendingRequestData.leaveTeacher && user && String(pendingRequestData.leaveTeacher).toLowerCase() !== String(getTeacherNameByEmail(user.email) || '').toLowerCase())" class="direct-approve-box">
+              <div v-if="onlineSubstitutionEnabled && isAdmin && !(isProxySubmitActive && pendingRequestData.leaveTeacher && user && String(pendingRequestData.leaveTeacher).toLowerCase() !== String(getTeacherNameByEmail(user.email) || '').toLowerCase())" class="direct-approve-box">
               <label class="direct-approve-row">
                 <input type="checkbox" class="direct-approve-check" v-model="directApproveMode">
                 <span class="direct-approve-text">
@@ -2614,7 +2641,15 @@
           
           <div class="modal-footer" data-tour="compare-submit">
             <!-- 活動互代模擬：只對照課表，確認後寫入暫定（不直接送出申請） -->
-            <template v-if="isMutualCover && pendingRequestData.mutualPreview && !pendingRequestData.isBatch">
+            <template v-if="paperMode">
+              <button
+                type="button"
+                class="btn btn-primary"
+                @click="openPaperPrintDraftFromCompare"
+              >🖨️ 列印紙本單</button>
+              <button type="button" class="btn btn-secondary" @click="showCompareModal = false">關閉</button>
+            </template>
+            <template v-else-if="isMutualCover && pendingRequestData.mutualPreview && !pendingRequestData.isBatch">
               <button
                 type="button"
                 class="btn btn-primary"
@@ -2639,6 +2674,40 @@
               </button>
               <button class="btn btn-secondary" :disabled="isSubmitting || loading" @click="showCompareModal = false">取消</button>
             </template>
+          </div>
+        </div>
+      </div>
+
+      <!-- 紙本模式列印設定：不建立線上申請單 -->
+      <div v-if="showPaperPrintModal" class="modal-overlay" @click.self="showPaperPrintModal = false">
+        <div class="modal-card" style="max-width:520px;">
+          <div class="modal-header">
+            <h3>🖨️ 列印紙本調代課單</h3>
+            <button class="btn-close" @click="showPaperPrintModal = false">&times;</button>
+          </div>
+          <div class="modal-body">
+            <p style="font-size:0.88rem;line-height:1.5;margin:0 0 12px;color:var(--text-secondary);">
+              這是紙本草稿，不會送出線上申請、不寄通知信，也不會寫入歷史紀錄。
+            </p>
+            <template v-if="isAdmin && paperSignatureTeachers.length">
+              <div style="font-weight:700;font-size:0.85rem;margin-bottom:8px;">教學組簽名欄文字</div>
+              <div v-for="name in paperSignatureTeachers" :key="'paper-sign-'+name" class="form-group" style="margin-bottom:10px;">
+                <label class="form-label">{{ name }} 老師</label>
+                <input
+                  type="text"
+                  class="form-input"
+                  :placeholder="'輸入要印在簽名欄的文字（可留白）'"
+                  v-model="paperSignatureByTeacher[name.toLowerCase()]"
+                >
+              </div>
+            </template>
+            <div v-else style="padding:10px 12px;border:1px dashed var(--border-color);border-radius:8px;color:var(--text-secondary);font-size:0.82rem;">
+              簽名欄將保持空白，請列印後由實際授課教師簽名。
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-primary" @click="printPaperDraft">🖨️ 開始列印</button>
+            <button type="button" class="btn btn-secondary" @click="showPaperPrintModal = false">取消</button>
           </div>
         </div>
       </div>

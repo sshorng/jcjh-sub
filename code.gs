@@ -1837,8 +1837,16 @@ function sanitizeTeacherRowsForReader_(rows, readerEmail, isAdmin, isStaff) {
 /** 設定只回傳前端必要欄位，禁止把 mail API／super admin 名單下發。 */
 function sanitizeSettingsForReader_(settings, readerEmail, isAdmin, isStaff, teachers) {
   var raw = settings || {};
+  var onlineRaw = raw.onlineSubstitutionEnabled;
+  var onlineEnabled = true;
+  if (onlineRaw !== undefined && onlineRaw !== null && String(onlineRaw).trim() !== "") {
+    var onlineText = String(onlineRaw).trim().toLowerCase();
+    onlineEnabled = !(onlineRaw === false || onlineText === "false" || onlineText === "0"
+      || onlineText === "no" || onlineText === "否" || onlineText === "關" || onlineText === "off");
+  }
   var out = {
-    allowedHd: raw.allowedHd || raw.ALLOWED_HD || ""
+    allowedHd: raw.allowedHd || raw.ALLOWED_HD || "",
+    onlineSubstitutionEnabled: onlineEnabled
   };
   if (isAdmin) {
     var granted = parseEmailList_(raw.proxySubmitEmails || raw.PROXY_SUBMIT_EMAILS || "");
@@ -3856,6 +3864,7 @@ function buildFullSemesterPayload_(semesterId, opts) {
     semesters: semesters,
     teachers: allTeachers,
     schedules: allSchedules,
+    classNames: buildClassNames_(allSchedules),
     substitutions: [],
     homeroomRecords: isAdmin ? getSemesterHomeroomRecords_(semesterId) : [],
     requests: requests,
@@ -3883,6 +3892,32 @@ function buildTeacherSharedPayload_(semesterId, windowDays) {
   });
 }
 
+function splitClassNames_(raw) {
+  return String(raw || "").split(/[、,，\/／|｜\s]+/).map(function (value) {
+    return String(value || "").trim();
+  }).filter(function (value) {
+    return value && !/^0+$/.test(value);
+  });
+}
+
+function classFieldIncludes_(raw, className) {
+  var target = String(className || "").trim();
+  if (!target) return false;
+  return splitClassNames_(raw).indexOf(target) !== -1 || String(raw || "").trim() === target;
+}
+
+function buildClassNames_(schedules) {
+  var seen = {};
+  (schedules || []).forEach(function (row) {
+    splitClassNames_(row && (row["班級"] !== undefined ? row["班級"] : row.className)).forEach(function (name) {
+      seen[name] = true;
+    });
+  });
+  return Object.keys(seen).sort(function (a, b) {
+    return String(a).localeCompare(String(b), "zh-Hant", { numeric: true });
+  });
+}
+
 // 公開班級課表（免登入）：最小化欄位，禁止全校名單／全表 fallback
 function buildPublicClassPayload_(semesterId, className) {
   var sid = semesterId;
@@ -3895,16 +3930,10 @@ function buildPublicClassPayload_(semesterId, className) {
   // 走分層快取（勿每次 getTableData 全表）
   var semesterSchedules = getSemesterSchedulesCached_(sid) || [];
   // 班級名清單（僅名稱，供拼錯提示；不附 Email）
-  var classNames = [];
-  var seenCls = {};
-  semesterSchedules.forEach(function (s) {
-    var c = String(s["班級"] || s["className"] || "").trim();
-    if (c && !seenCls[c]) { seenCls[c] = 1; classNames.push(c); }
-  });
-  classNames.sort();
+  var classNames = buildClassNames_(semesterSchedules);
 
   var scheduleRows = cls
-    ? semesterSchedules.filter(function (s) { return String(s["班級"] || s["className"] || "") === cls; })
+    ? semesterSchedules.filter(function (s) { return classFieldIncludes_(s["班級"] || s["className"], cls); })
     : [];
 
   var schedules = scheduleRows.map(function (s, idx) {
@@ -3931,7 +3960,7 @@ function buildPublicClassPayload_(semesterId, className) {
   var reqPackPub = getSemesterRequestsCached_(sid, true, 14);
   var approved = (reqPackPub.rows || []).filter(function (req) {
     if (String(req["狀態"] || req.status || "") !== "approved") return false;
-    if (cls && String(req["班級"] || req.className || "") !== cls) return false;
+    if (cls && !classFieldIncludes_(req["班級"] || req.className, cls)) return false;
     return true;
   }).map(function (req, idx) {
     // 公開：保留顯示用姓名與課堂欄，不附備註全文
@@ -5548,11 +5577,21 @@ function doPost(e) {
           upsertSystemSetting_("proxySubmitEnabledAt", reqData.proxySubmitEnabledAt || toLocalTimeStr(new Date()));
         }
       }
+      if (reqData && reqData.onlineSubstitutionEnabled !== undefined && reqData.onlineSubstitutionEnabled !== null) {
+        var onlineApplyOn = reqData.onlineSubstitutionEnabled === true
+          || reqData.onlineSubstitutionEnabled === "true"
+          || reqData.onlineSubstitutionEnabled === "TRUE"
+          || reqData.onlineSubstitutionEnabled === 1
+          || reqData.onlineSubstitutionEnabled === "1"
+          || reqData.onlineSubstitutionEnabled === "是"
+          || reqData.onlineSubstitutionEnabled === "開";
+        upsertSystemSetting_("onlineSubstitutionEnabled", onlineApplyOn ? "true" : "false");
+      }
       // 其餘鍵值一併寫入（allowedHd 等）
       if (reqData && typeof reqData === "object") {
         var skipKeys = {
           url: 1, proxySubmitEnabled: 1, proxySubmitEnabledBy: 1, proxySubmitEnabledAt: 1,
-          proxySubmitEmails: 1
+          proxySubmitEmails: 1, onlineSubstitutionEnabled: 1
         };
         Object.keys(reqData).forEach(function (k) {
           if (skipKeys[k]) return;

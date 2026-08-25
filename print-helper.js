@@ -57,6 +57,21 @@ function buildExchangeRouteHtml(opts) {
   `;
 }
 
+function getPaperSignatureText(group, teacherKey, fallbackName) {
+  if (!group || !group.isPaperDraft) return fallbackName || '';
+  const map = group.signatureByTeacher || {};
+  const name = String(fallbackName || '').trim();
+  const key = String(teacherKey || '').trim().toLowerCase();
+  return String(map[key] != null ? map[key] : (map[name.toLowerCase()] || '')).trim();
+}
+
+function getPaperGroupSignatureText(group, names) {
+  const list = (names || []).map(function (name) {
+    return getPaperSignatureText(group, name, name);
+  }).filter(Boolean);
+  return list.join('、');
+}
+
 function generateFormHtml(g, currentType, ctx) {
   const getTeacherNameByEmail = ctx.getTeacherNameByEmail;
   const getTeacherSubjectByEmail = ctx.getTeacherSubjectByEmail;
@@ -172,8 +187,13 @@ function generateFormHtml(g, currentType, ctx) {
       days.forEach(d => {
         const isTarget1 = (d === targetDayText1 && p === parseInt(rec1.period, 10));
         const isTarget2 = (d === targetDayText2 && p === parseInt(rec2.period, 10));
-        if (isTarget1) matchTeacherName = escapePrintHtml(getTeacherNameByEmail(rec1.actualTeacherEmail));
-        else if (isTarget2) matchTeacherName = escapePrintHtml(getTeacherNameByEmail(rec2.actualTeacherEmail));
+        if (isTarget1) {
+          const actualName = getTeacherNameByEmail(rec1.actualTeacherEmail);
+          matchTeacherName = escapePrintHtml(getPaperSignatureText(g, rec1.actualTeacherEmail, actualName));
+        } else if (isTarget2) {
+          const actualName = getTeacherNameByEmail(rec2.actualTeacherEmail);
+          matchTeacherName = escapePrintHtml(getPaperSignatureText(g, rec2.actualTeacherEmail, actualName));
+        }
       });
 
       tableBody += '<tr' + (rowStyle ? ` style="${rowStyle}"` : '') + '>';
@@ -339,7 +359,12 @@ function generateFormHtml(g, currentType, ctx) {
     });
     const hasAnyPeriod = g.periods.some(x => x.num === p);
     const sigStyle = hasAnyPeriod ? 'font-weight:600; font-size:0.75rem; text-align:center; vertical-align:middle; background:#fcffef;' : '';
-    tableBody += `<td rowspan="2" style="border-left:1.5pt solid black !important; text-align:center; vertical-align:middle; ${sigStyle} ${rowStyle}">${hasAnyPeriod ? subName : ''}</td>`;
+    const signatureNames = g.subEmailAll && g.subEmailAll.length ? g.subEmailAll : [g.subEmail];
+    const signatureText = hasAnyPeriod
+      ? getPaperGroupSignatureText(g, signatureNames.map(function (email) { return getTeacherNameByEmail(email); }))
+      : '';
+    const normalSignature = hasAnyPeriod ? signatureNames.map(function (email) { return getTeacherNameByEmail(email); }).filter(Boolean).join('、') : '';
+    tableBody += `<td rowspan="2" style="border-left:1.5pt solid black !important; text-align:center; vertical-align:middle; ${sigStyle} ${rowStyle}">${escapePrintHtml(g.isPaperDraft ? signatureText : normalSignature)}</td>`;
     tableBody += '</tr>';
 
     tableBody += '<tr>';
@@ -417,6 +442,8 @@ function buildPrintGroups(recordsToPrint, allSubs) {
           requestId: rid || r.id,
           serials: [r.serial],
           isReprint: r.printed,
+          isPaperDraft: !!r.isPaperDraft,
+          signatureByTeacher: Object.assign({}, r.signatureByTeacher || {}),
           note: r.note || '',
           reason: rReason,
           records: [r]
@@ -427,6 +454,8 @@ function buildPrintGroups(recordsToPrint, allSubs) {
           groups[key].serials.push(r.serial);
         }
         if (r.printed) groups[key].isReprint = true;
+        if (r.isPaperDraft) groups[key].isPaperDraft = true;
+        Object.assign(groups[key].signatureByTeacher, r.signatureByTeacher || {});
       }
     } else {
       // 教師聯合併鍵：代課老師（actual）
@@ -445,7 +474,9 @@ function buildPrintGroups(recordsToPrint, allSubs) {
           subFee: r.subFee || '自費代課',
           note: r.note || '',
           periods: [],
-          isReprint: r.printed
+          isReprint: r.printed,
+          isPaperDraft: !!r.isPaperDraft,
+          signatureByTeacher: Object.assign({}, r.signatureByTeacher || {})
         };
       } else {
         if (r.serial && !groups[key].serials.includes(r.serial)) groups[key].serials.push(r.serial);
@@ -453,6 +484,8 @@ function buildPrintGroups(recordsToPrint, allSubs) {
         if (!groups[key].dates.includes(r.date)) groups[key].dates.push(r.date);
         if (!groups[key].reasons.includes(rReason)) groups[key].reasons.push(rReason);
         if (r.printed) groups[key].isReprint = true;
+        if (r.isPaperDraft) groups[key].isPaperDraft = true;
+        Object.assign(groups[key].signatureByTeacher, r.signatureByTeacher || {});
       }
       groups[key].periods.push({
         date: r.date,
@@ -611,7 +644,9 @@ async function printSelectedForms(formType, ctx) {
                 subFee: p.subFee || g.subFee || '自費代課',
                 note: g.note || '',
                 periods: [],
-                isReprint: !!g.isReprint
+                isReprint: !!g.isReprint,
+                isPaperDraft: !!g.isPaperDraft,
+                signatureByTeacher: Object.assign({}, g.signatureByTeacher || {})
               };
             }
             const cg = classMap[cls];
@@ -623,6 +658,8 @@ async function printSelectedForms(formType, ctx) {
             if (p.date && !cg.dates.includes(p.date)) cg.dates.push(p.date);
             if (p.reason && !cg.reasons.includes(p.reason)) cg.reasons.push(p.reason);
             if (g.isReprint) cg.isReprint = true;
+            if (g.isPaperDraft) cg.isPaperDraft = true;
+            Object.assign(cg.signatureByTeacher, g.signatureByTeacher || {});
             cg.periods.push({
               date: p.date,
               num: p.num,
@@ -870,25 +907,29 @@ async function printSelectedForms(formType, ctx) {
       }
     });
     const markIds = Array.from(idsToMark);
-    // G：本地已印（陣列替換觸發 Vue 更新），不再整包 loadWeeklyData
-    if (typeof ctx.markLocalPrinted === 'function') {
-      ctx.markLocalPrinted(markIds);
-    } else {
-      markIds.forEach(id => {
-        const rec = ctx.substitutionRecords.value.find(r => r.id === id);
-        if (rec) rec.printed = true;
-        const reqId = String(id).replace(/_[12]$/, '');
-        if (ctx.requestsList && ctx.requestsList.value) {
-          const req = ctx.requestsList.value.find(r => r.id === reqId);
-          if (req) req.printed = true;
-        }
-      });
+    if (!ctx.skipMarkPrinted) {
+      // G：本地已印（陣列替換觸發 Vue 更新），不再整包 loadWeeklyData
+      if (typeof ctx.markLocalPrinted === 'function') {
+        ctx.markLocalPrinted(markIds);
+      } else {
+        markIds.forEach(id => {
+          const rec = ctx.substitutionRecords.value.find(r => r.id === id);
+          if (rec) rec.printed = true;
+          const reqId = String(id).replace(/_[12]$/, '');
+          if (ctx.requestsList && ctx.requestsList.value) {
+            const req = ctx.requestsList.value.find(r => r.id === reqId);
+            if (req) req.printed = true;
+          }
+        });
+      }
     }
     ctx.selectedRecordIds.value = [];
 
-    // 背景寫入 GAS，失敗不擋畫面
-    ctx.callGasApi('batchMarkPrinted', { ids: markIds })
-      .catch(err => console.error('背景標記列印出錯：', err));
+    if (!ctx.skipMarkPrinted) {
+      // 背景寫入 GAS，失敗不擋畫面
+      ctx.callGasApi('batchMarkPrinted', { ids: markIds })
+        .catch(err => console.error('背景標記列印出錯：', err));
+    }
   } catch (err) {
     ctx.showToast('列印失敗：' + (err.message || err), 'error');
     console.error('列印出錯：', err);

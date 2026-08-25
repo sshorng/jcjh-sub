@@ -902,6 +902,14 @@ window.UiMutualSubmit = (function () {
     var DAC = deps.DAC || function () { return window.DomainActivityCover; };
     var isSubmitting = deps.isSubmitting;
 
+    if (deps.paperMode && deps.paperMode.value) {
+      if (typeof deps.openPaperPrintMutualDrafts === 'function') {
+        deps.openPaperPrintMutualDrafts();
+      } else {
+        showToast('目前為紙本模式，請從模擬視窗列印紙本單', 'info');
+      }
+      return;
+    }
     if (isSubmitting && isSubmitting.value) {
       showToast('申請送出中，請稍候…', 'info');
       return;
@@ -1131,6 +1139,14 @@ window.UiBatchSubmit = (function () {
     var DAC = deps.DAC || function () { return window.DomainActivityCover; };
     var isSubmitting = deps.isSubmitting;
 
+    if (deps.paperMode && deps.paperMode.value) {
+      if (typeof deps.openPaperPrintDraft === 'function') {
+        deps.openPaperPrintDraft();
+      } else {
+        showToast('目前為紙本模式，請從模擬視窗列印紙本單', 'info');
+      }
+      return;
+    }
     if (isSubmitting && isSubmitting.value) {
       showToast('申請送出中，請稍候…', 'info');
       return;
@@ -1988,8 +2004,10 @@ window.UiBatchPanel = (function () {
         loading, loadingMessage, isSubmitting: deps.isSubmitting, currentSemester, directApproveMode, directApproveSkipNotify,
         callGasApi, optimisticUpsertRequest, sheetRequestToFront, deductMutualQuotaForRows, softRefreshInBackground,
         activityBalanceCtx, successModalTitle, successModalMessage, hasLineTemplate, lineBatchParts, lineCopyText,
-        showSuccessModal, showCompareModal, showMatchModal, batchSelectMode, clearBatchSlots, buildLineBatchInviteText, DAC
-      });
+         showSuccessModal, showCompareModal, showMatchModal, batchSelectMode, clearBatchSlots, buildLineBatchInviteText, DAC,
+         paperMode: deps.paperMode,
+         openPaperPrintDraft: deps.openPaperPrintDraft
+       });
     };
 
     return {
