@@ -82,6 +82,7 @@
             <span class="nav-label-full">課表總覽</span><span class="nav-label-short">課表</span>
           </button>
           <button
+            v-if="!paperMode || isAdmin"
             class="nav-item"
             :class="{ active: activeTab === 'pending' }"
             :aria-current="activeTab === 'pending' ? 'page' : undefined"
@@ -773,7 +774,7 @@
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-for="rec in personalChanges" :key="rec.id" class="cursor-pointer" :class="{ 'opacity-50': rec.isPast }" @click="showDetailForRecord(rec.id, rec.requestId)">
+                    <tr v-for="rec in personalChanges" :key="rec.id" :class="{ 'opacity-50': rec.isPast, 'cursor-pointer': !!rec.requestId }" @click="rec.requestId && showDetailForRecord(rec.id, rec.requestId)">
                       <td>
                          <span class="status-badge badge-status-xs" :class="rec.statusClass">
                           {{ rec.statusText }}

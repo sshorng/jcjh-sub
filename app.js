@@ -4522,9 +4522,54 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
         };
       });
 
+      // 全校對調不是申請單，依教師在對調來源節次的固定課表補進個人摘要。
+      const schoolSwapChanges = [];
+      const ownSchedules = (allSchedules.value || []).filter(s =>
+        String(s && s.teacherName || '').trim().toLowerCase() === email
+      );
+      if (window.DomainSchoolSwap && ownSchedules.length) {
+        const activeSwaps = window.DomainSchoolSwap.normalizeRows(schoolSwaps.value || [])
+          .filter(row => row.enabled);
+        activeSwaps.forEach(row => {
+          [
+            { endpoint: 'A', date: row.dateA, period: row.periodA, sourceDate: row.dateB, sourceDay: row.dayB, sourcePeriod: row.periodB },
+            { endpoint: 'B', date: row.dateB, period: row.periodB, sourceDate: row.dateA, sourceDay: row.dayA, sourcePeriod: row.periodA }
+          ].forEach(endpoint => {
+            ownSchedules
+              .filter(s => {
+                if (parseInt(s.dayOfWeek, 10) !== parseInt(endpoint.sourceDay, 10)
+                    || parseInt(s.period, 10) !== parseInt(endpoint.sourcePeriod, 10)) return false;
+                const attr = String(s.attr || '').trim();
+                if (attr === '單週' && !isSingleWeek(endpoint.date)) return false;
+                if (attr === '雙週' && isSingleWeek(endpoint.date)) return false;
+                return !!(String(s.className || '').trim() || String(s.subject || '').trim() || attr);
+              })
+              .forEach((schedule, index) => {
+                const className = String(schedule.className || '').trim();
+                const subject = String(schedule.subject || '').trim();
+                const attr = String(schedule.attr || '').trim();
+                schoolSwapChanges.push({
+                  id: `school-swap-${row.id}-${endpoint.endpoint}-${index}`,
+                  requestId: '',
+                  date: endpoint.date,
+                  period: endpoint.period,
+                  classLine: fmtClassLine(endpoint.date, endpoint.period, className || (attr === '巡堂' ? '巡堂' : ''), subject, ''),
+                  desc: `🔁 全校對調：${row.name}（原${formatDateMMDD(endpoint.sourceDate)}${formatPeriodText(endpoint.sourcePeriod)}）`,
+                  serial: row.id || 'SWAP',
+                  isPast: endpoint.date < todayStr,
+                  statusClass: 'tag-blue',
+                  statusText: '全校對調',
+                  isSchoolSwap: true
+                });
+              });
+          });
+        });
+      }
+
       // 排序：未來的升序，過去的降序
-      const future = list.filter(x => !x.isPast).sort((a,b) => a.date.localeCompare(b.date) || a.period - b.period);
-      const past = list.filter(x => x.isPast).sort((a,b) => b.date.localeCompare(a.date) || b.period - a.period);
+      const allChanges = list.concat(schoolSwapChanges);
+      const future = allChanges.filter(x => !x.isPast).sort((a,b) => a.date.localeCompare(b.date) || a.period - b.period);
+      const past = allChanges.filter(x => x.isPast).sort((a,b) => b.date.localeCompare(a.date) || b.period - a.period);
       return [...future, ...past].slice(0, 10);
     });
 
@@ -8294,6 +8339,9 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     bindFlagModal(showBatchPrintPrompt, () => { dismissBatchPrintPrompt(); }, '批次列印');
 
     // 管理員進後台時預載 ui-admin（不擋首屏）
+    watch([paperMode, isAdmin, activeTab], ([paper, admin, tab]) => {
+      if (paper && !admin && tab === 'pending') setActiveTab('timetable');
+    });
     watch([isAdmin, activeTab], ([adm, tab]) => {
       if (adm && tab === 'admin' && typeof window.ensureUiAdmin === 'function') {
         ensureUiAdminApi().catch(function () {});
