@@ -2500,8 +2500,8 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
     const detailRequest = ref(null);
     const detailSubRecord = ref(null);
 
-    // 歷史紀錄篩選與分頁（預設本月，減少一次掃全學期）
-    const historyFilterMode = ref('month');
+    // 歷史紀錄篩選與分頁（預設顯示全部，避免新送出的申請被日期篩選排除）
+    const historyFilterMode = ref('all');
     const historyTypeFilter = ref('all');
     const historyFilterDate = ref(new Date().toISOString().split('T')[0]);
     const historySearchQuery = ref('');
