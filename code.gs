@@ -1807,11 +1807,12 @@ function slimScheduleRows_(rows) {
 }
 
 /** 教師列瘦身：只留前端 mapTeacher 需要的欄 */
-function slimTeacherRows_(rows) {
+function slimTeacherRows_(rows, fallbackSemesterId) {
   return (rows || []).map(function (t) {
     if (!t) return t;
 
     return {
+      "學期代號": t["學期代號"] || t.semesterId || fallbackSemesterId || "",
       "教師Email": t["教師Email"] || t.email || "",
       "教師姓名": t["教師姓名"] || t.name || "",
       "授課科目": t["授課科目"] || t["任課科目"] || t.subject || "",
@@ -2389,11 +2390,11 @@ function getSemesterTeachersCached_(semesterId) {
   if (raw) {
     try {
       var cachedT = JSON.parse(raw);
-      if (Array.isArray(cachedT)) return slimTeacherRows_(cachedT);
+      if (Array.isArray(cachedT)) return slimTeacherRows_(cachedT, semesterId);
     } catch (e) {}
   }
   var rows = getTableData("教師名單").filter(function (t) { return String(t["學期代號"] || "").trim() === String(semesterId || "").trim(); });
-  var slim = slimTeacherRows_(rows);
+  var slim = slimTeacherRows_(rows, semesterId);
   try { putCacheChunked(key, JSON.stringify(slim), CACHE_TTL_TEACHERS_); } catch (e2) {}
   return slim;
 }
