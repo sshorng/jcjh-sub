@@ -55,6 +55,7 @@ createApp({
 
     // 統一呼叫 GAS API（抽離至 gas-api.js）
     /** 靜默刷新 Google ID Token（A）；供 gas-api 請求前／背景換票 */
+    const GSI_INIT_STATE_KEY = '__jcjh_gsi_initialized';
     let _gsiInitialized = false;
     let _tokenRefreshP = null;
     let _gsiButtonRendered = false;
@@ -121,10 +122,19 @@ createApp({
       }
     }
 
+    function isGsiInitialized() {
+      if (_gsiInitialized) return true;
+      try {
+        return window[GSI_INIT_STATE_KEY] === true;
+      } catch (e) {
+        return false;
+      }
+    }
+
     /** 清本站 GSI 狀態（renderButton 已不用；仍供 revoke／殘留清理） */
     function suppressGsiAutoLogin() {
       try {
-        if (typeof google !== 'undefined' && google.accounts && google.accounts.id) {
+        if (isGsiInitialized() && typeof google !== 'undefined' && google.accounts && google.accounts.id) {
           if (typeof google.accounts.id.cancel === 'function') google.accounts.id.cancel();
           if (typeof google.accounts.id.disableAutoSelect === 'function') {
             google.accounts.id.disableAutoSelect();
@@ -142,7 +152,11 @@ createApp({
 
     function ensureGsiInitialized() {
       if (!isGoogleGsiReady() || !googleClientId.value) return false;
-      if (_gsiInitialized) return true;
+      if (isGsiInitialized()) {
+        _gsiInitialized = true;
+        suppressGsiAutoLogin();
+        return true;
+      }
       try {
         google.accounts.id.initialize({
           client_id: googleClientId.value,
@@ -153,6 +167,7 @@ createApp({
           itp_support: true
         });
         _gsiInitialized = true;
+        try { window[GSI_INIT_STATE_KEY] = true; } catch (eState) { /* ignore */ }
         suppressGsiAutoLogin();
         return true;
       } catch (e) {
@@ -8165,7 +8180,7 @@ ${name} 老師您好！我剛剛發起了代課申請（共 ${n} 節請您代）
       clearSWR();
       // 不記憶本站上次帳號：revoke + disableAutoSelect + 清 g_state
       try {
-        if (prevEmail && isGoogleGsiReady() && typeof google.accounts.id.revoke === 'function') {
+        if (prevEmail && isGsiInitialized() && isGoogleGsiReady() && typeof google.accounts.id.revoke === 'function') {
           google.accounts.id.revoke(String(prevEmail), function () { /* ignore */ });
         }
       } catch (eRev) { /* ignore */ }
