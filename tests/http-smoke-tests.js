@@ -38,6 +38,10 @@ function request(server, method, requestPath) {
     assert.equal(root.headers['cache-control'], 'no-cache');
     assert.match(root.headers['content-security-policy'], /frame-ancestors 'none'/);
 
+    const app = await request(server, 'GET', '/app.js?v=20260824-name-key-fix1');
+    assert.equal(app.status, 200);
+    assert.match(app.body.toString('utf8'), /params\.set\('response_type', 'id_token token'\)/);
+
       const head = await request(server, 'HEAD', '/style.css?v=20260824-name-key-fix1');
     assert.equal(head.status, 200);
     assert.equal(head.body.length, 0);

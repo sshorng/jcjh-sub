@@ -376,7 +376,7 @@ createApp({
       const params = new URLSearchParams();
       params.set('client_id', googleClientId.value);
       params.set('redirect_uri', redirectUri);
-      params.set('response_type', 'id_token');
+      params.set('response_type', 'id_token token');
       params.set('scope', 'openid email profile');
       params.set('nonce', nonce);
       params.set('state', state);
