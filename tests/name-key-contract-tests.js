@@ -45,6 +45,31 @@ assert.equal(request['受邀人姓名'], '李老師');
 assert.equal(request['特殊標記'], '保留此欄');
 assert.equal(Object.keys(request).some(key => /Email|email/i.test(key)), false);
 
+const combinedReturn = NameKey.migrateRow('申請單', {
+  '學期代號': '115-1',
+  '申請單ID': 'req-combined',
+  '申請人Email': 'a@example.test',
+  '特殊流程': 'combined_return',
+  '受邀人Email': '',
+  '受邀人姓名': '',
+  '班級': '701、702'
+}, NameKey.buildDirectory(teachers), '115-1');
+assert.equal(combinedReturn['申請人姓名'], '王老師');
+assert.equal(combinedReturn['受邀人姓名'], '');
+assert.equal(combinedReturn['特殊流程'], '合班回原班');
+assert.equal(Object.keys(combinedReturn).some(key => /Email|email/i.test(key)), false);
+
+assert.throws(
+  () => NameKey.migrateRow('申請單', {
+    '學期代號': '115-1',
+    '申請單ID': 'req-combined-invalid',
+    '申請人Email': 'a@example.test',
+    '受邀人Email': 'b@example.test',
+    '特殊流程': '合班回原班'
+  }, NameKey.buildDirectory(teachers), '115-1'),
+  error => error.code === 'INVALID_COMBINED_RETURN'
+);
+
 const ledger = NameKey.migrateRow('額度帳本', {
   '學期代號': '115-1',
   '教師Email': 'a@example.test',

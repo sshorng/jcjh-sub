@@ -15,7 +15,7 @@
   var FEE_DEFAULT = 455;
   var DAY_NAMES = ['日', '一', '二', '三', '四', '五', '六'];
   var PERIOD_NAMES = {
-    '0': '午休',
+    '0': '早自習',
     '1': '一',
     '2': '二',
     '3': '三',
@@ -23,7 +23,8 @@
     '5': '五',
     '6': '六',
     '7': '七',
-    '8': '八'
+    '8': '八',
+    '45': '午休'
   };
 
   var SHEET_CONFIG = {
@@ -702,7 +703,7 @@
   function isOvertimeSubstitution(record, schedules) {
     var d = dateObj(record && record.date);
     var period = Number(record && record.period);
-    if (!d || !period) return false;
+    if (!d || !Number.isFinite(period) || !isWeeklyPeriod(period)) return false;
     var dow = d.getDay() === 0 ? 7 : d.getDay();
     return (schedules || []).some(function (schedule) {
       return teacherEmail(schedule && schedule.teacherEmail) === teacherEmail(record.originalTeacherEmail)
@@ -729,7 +730,7 @@
         && teacherEmail(record.originalTeacherEmail) === teacherEmail(email)
         && teacherEmail(record.actualTeacherEmail);
     });
-    // \u4f9d\u7db2\u9801\u6708\u5831\uff1a\u81ea\u8cbb\u5168\u90e8\u6263\u539f\u6559\u5e2b\u8d85\u9418\uff1b\u516c\u8cbb\u53ea\u5728\u539f\u5802\u78ba\u5be6\u70ba\u8d85\u9418\u9ede\u6642\u6263\u3002
+    // \u4f9d\u7db2\u9801\u6708\u5831\uff1a\u81ea\u8cbb\u5168\u90e8\u6263\u539f\u6559\u5e2b\u8d85\u9418\uff1b\u516c\u8cbb\u4f9d\u6b63\u5f0f\u8ab2\u7a0b\u539f\u5802\u5c6c\u6027\u70ba\u8d85\u9418\u9ede\u6642\u6263\uff0c\u542b\u65e9\u81ea\u7fd00\u30011\u81f37\u8207\u5348\u4f1145\u3002
     var selfRecords = eligible.filter(isSelfPaidRecord);
     var publicRecords = eligible.filter(function (record) {
       return isPublicOvertimeRecord(record) && isOvertimeSubstitution(record, schedules);

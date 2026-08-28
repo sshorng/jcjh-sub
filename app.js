@@ -735,8 +735,9 @@ createApp({
           r.targetDate || '',
           r.targetPeriod != null ? r.targetPeriod : '',
           r.requesterEmail || '',
-          r.targetTeacherEmail || '',
-          r.className || '',
+           r.targetTeacherEmail || '',
+           r.specialFlow || '',
+           r.className || '',
           r.subject || '',
           r.subFee || '',
           r.leaveTimeType || '',
@@ -747,6 +748,16 @@ createApp({
       });
       parts.sort();
       return parts.join('\x1e');
+    };
+
+    const isCombinedReturnRequest = (request) => {
+      if (window.FieldMap && typeof window.FieldMap.isCombinedReturn === 'function') {
+        return window.FieldMap.isCombinedReturn(request);
+      }
+      let raw = request && request.specialFlow;
+      if (String(raw == null ? '' : raw).trim() === '') raw = request && request['特殊流程'];
+      const value = String(raw == null ? '' : raw).trim().toLowerCase();
+      return value === 'combined_return' || value === '合班回原班';
     };
 
     const convertRequestsToSubstitutions = (requests) => {
@@ -788,6 +799,7 @@ createApp({
 
       approved.forEach(req => {
         if (req.type === 'substitution' || req.type === '代課') {
+          const combinedReturn = isCombinedReturnRequest(req);
           // 請假節可能本身已是調入課：班科以有效課為準，缺才用申請單
           let leaveDay = req.requestPeriodDay;
           if ((leaveDay == null || leaveDay === '') && req.requestDate) {
@@ -816,8 +828,9 @@ createApp({
             date: req.requestDate,
             period: req.requestPeriod,
             originalTeacherName: req.requesterName,
-            actualTeacherName: req.targetTeacherName,
-            actualTeacherName: req.actualTeacherName || req.targetTeacherName || '',
+            actualTeacherName: combinedReturn
+              ? (req.requesterName || '')
+              : (req.actualTeacherName || req.targetTeacherName || ''),
             className: leaveCls,
             subject: leaveSubj,
             requestId: req.id,
@@ -828,6 +841,7 @@ createApp({
             leaveTimeType: req.leaveTimeType || '',
             leaveTime: req.leaveTime || '',
             note: req.note,
+            specialFlow: req.specialFlow || '',
             isEmptySlotAssign: emptyAssign
           });
         } else if (req.type === 'exchange' || req.type === '對調') {
@@ -1797,9 +1811,12 @@ createApp({
           ? `${formatDateMMDD(r.date)}（${dayPart}）`
           : `${formatDateMMDD(r.date)}`;
         const isMutual = !isEx && isQuotaDeductFee(r.subFee);
+        const isCombined = isCombinedReturnRequest(r);
         // 班級摘要：互代不顯示「不結鐘點」字樣
         const line = isEx
           ? `${datePart}第${r.period}節 改上 ${subject}（${toName}）`
+          : isCombined
+            ? `${datePart}第${r.period}節 ${subject} 合班回原班（${toName}）`
           : isMutual
             ? `${datePart}第${r.period}節 ${subject} 由${toName}互代`
             : `${datePart}第${r.period}節 ${subject} 由${toName}代課`;
@@ -1808,7 +1825,7 @@ createApp({
           date: r.date,
           period: r.period,
           dayText: dayPart,
-          type: isEx ? '調課' : (isMutual ? '互代' : '代課'),
+          type: isEx ? '調課' : (isCombined ? '合班回原班' : (isMutual ? '互代' : '代課')),
           line,
           inWeek: weekSet.has(r.date)
         });
@@ -1859,6 +1876,7 @@ createApp({
     const successModalMessage = ref('');
     /** 成功畫面固定步驟：normal 三步／direct 兩步／tour 導覽 */
     const successFlowMode = ref('normal');
+    const successActionRequests = ref([]);
     const lineCopyText = ref('');
     const hasLineTemplate = ref(false);
     // 多受邀人：[{ name, text }] 方便分開複製／傳送
@@ -1951,7 +1969,14 @@ createApp({
       let subject = req.subject || '';
       let actionLine = '';
 
-      if (isExchange) {
+       if (isCombinedReturnRequest(req)) {
+         eventDate = req.requestDate;
+         eventPeriod = req.requestPeriod;
+         titleTag = '合班回原班';
+         className = req.className || '';
+         subject = req.subject || '';
+         actionLine = `合班回原班：由 ${req.requesterName || '原授課教師'} 回原班授課。`;
+       } else if (isExchange) {
         if (isLeaveSide) {
           // 申請人調入：時間＝對方節；班科＝自己的課
           eventDate = req.targetDate || req.requestDate;
@@ -2022,7 +2047,10 @@ createApp({
        const title = `【${titleTag}】${slotLabel}`;
        let details = `${actionLine}\n\n請假教師：${req.requesterName || ''}\n代課／對調教師：${req.targetTeacherName || ''}\n假別事由：${req.reason || '請假'}\n單號：${req.serial || ''}`;
        details += `\n節次：${periodText}`;
-      if (isExchange) {
+       if (isCombinedReturnRequest(req)) {
+         details += `\n流程：合班回原班（原授課教師回原班授課）`;
+       }
+       if (isExchange) {
          details += `\n對調：${req.requestDate || ''}${formatPeriodText(req.requestPeriod)} ⇄ ${req.targetDate || ''}${formatPeriodText(req.targetPeriod)}`;
       }
       details += `\n（建成國中調代課系統）`;
@@ -2232,9 +2260,10 @@ createApp({
         subject: reqSubject,
         targetClassName: targetClass,
         targetSubject: tgtSubject,
-        reason: subRecord.reason || '請假',
-        subFee: subRecord.subFee || '自費代課',
-        status: subRecord.status || 'approved',
+         reason: subRecord.reason || '請假',
+         subFee: subRecord.subFee || '自費代課',
+         specialFlow: subRecord.specialFlow || '',
+         status: subRecord.status || 'approved',
         note: subRecord.note || ''
       };
     };
@@ -2977,6 +3006,7 @@ createApp({
     const historyEditForm = ref({
       id: '',
       requestId: '',
+      specialFlow: '',
       type: 'substitution',
       requesterEmail: '',
       targetTeacherEmail: '',
@@ -4857,6 +4887,67 @@ createApp({
       }, mode, targetEmail, periodIdVal, subjectVal, classVal);
     };
 
+    const startCombinedReturn = () => {
+      const cell = activeCell.value || {};
+      const classData = cell.classData || {};
+      const className = String(classData.className || '').trim();
+      const hasCombinedTag = typeof hasScheduleSpecialTag === 'function'
+        && hasScheduleSpecialTag(classData, '併班');
+      if (!isAdmin.value) {
+        showToast('合班回原班僅限教學組建立', 'warning');
+        return false;
+      }
+      if (!cell.teacherEmail || !cell.dayOfWeek || cell.period == null || !className) {
+        showToast('請先點選一堂完整的併班課程', 'warning');
+        return false;
+      }
+      if (classData.isPatrol || classData.attr === '巡堂') {
+        showToast('巡堂節不適用合班回原班', 'warning');
+        return false;
+      }
+      if (!isCombinedClass(className) && !hasCombinedTag) {
+        showToast('此功能僅適用於併班課堂', 'warning');
+        return false;
+      }
+      const dateStr = inputRequestDate.value || (currentWeekDates.value[cell.dayOfWeek - 1] || '');
+      const timeKey = (window.DateUtils && window.DateUtils.encodeTimeKey)
+        ? window.DateUtils.encodeTimeKey(cell.dayOfWeek, cell.period)
+        : (String(cell.dayOfWeek) + '-' + String(cell.period));
+      pendingRequestData.value = {
+        mode: 'substitution',
+        specialFlow: (window.FieldMap && window.FieldMap.SPECIAL_FLOW_COMBINED_RETURN) || 'combined_return',
+        leaveTeacher: cell.teacherEmail,
+        subTeacher: '',
+        cls: className,
+        subject: classData.subject || '',
+        date: dateStr,
+        timeKey: timeKey,
+        reason: '合班回原班',
+        courseAdjustmentOnly: false,
+        leaveReasonBeforeCourseAdjustment: '',
+        subFee: parseInt(cell.period, 10) === 8 ? PERIOD8_FEE : '',
+        dateB: '',
+        timeB: '',
+        subB: '',
+        subBClass: '',
+        note: '',
+        leaveTimeType: '',
+        leaveTimeStart: '',
+        leaveTimeEnd: '',
+        leaveTime: '',
+        submitRequestId: 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+        submitSerial: 'SUB' + (1000 + Math.floor(Math.random() * 9000)),
+        mutualPreview: false
+      };
+      isMutualCover.value = false;
+      consecAlertsA.value = [];
+      consecAlertsB.value = [];
+      matchPreview.value = null;
+      showMatchModal.value = false;
+      showCompareModal.value = true;
+      return true;
+    };
+
     // 批次：該日該節是否在選定清單
     const isBatchSlotAt = (dateStr, day, period) => {
       if (!pendingRequestData.value.isBatch || !batchSlots.value.length) return false;
@@ -5100,6 +5191,7 @@ createApp({
       lineBatchParts: lineBatchParts,
       lineCopyText: lineCopyText,
       showSuccessModal: showSuccessModal,
+      successActionRequests: successActionRequests,
       buildLineBatchInviteText: buildLineBatchInviteText,
       successFlowMode: successFlowMode
     });
@@ -5123,7 +5215,7 @@ createApp({
         isMutualCover, mutualSkipNotify, isAdmin, directApproveMode, directApproveSkipNotify,
         callGasApi, showCompareModal, showMatchModal, optimisticUpsertRequest, sheetRequestToFront,
         deductMutualQuotaForRows, softRefreshInBackground, isQuotaDeductFee, buildLineInviteText,
-        successModalTitle, successModalMessage, lineCopyText, hasLineTemplate, showSuccessModal, showToast,
+         successModalTitle, successModalMessage, lineCopyText, hasLineTemplate, showSuccessModal, successActionRequests, showToast,
         successFlowMode, paperMode, paperFlow, notificationsSuppressed,
         openPaperPrintDraft: function (requests) {
           return requests && requests.length
@@ -5592,7 +5684,7 @@ createApp({
         const ws8 = XLSX.utils.json_to_sheet(p8.length ? p8 : [{ "日期": "", "說明": "本月無第8節應發或空堂列" }]);
         XLSX.utils.book_append_sheet(wb, ws8, `${reportMonth.value}第8節明細`);
       }
-      XLSX.writeFile(wb, `全校大鐘點與第8節費_${reportMonth.value}.xlsx`);
+       XLSX.writeFile(wb, `全校大鐘點早自習1-7午休與第8節費_${reportMonth.value}.xlsx`);
     };
 
     // 匯出會計版五類 Excel（套用範本；扣勞健保／實際金額留白）
@@ -6552,7 +6644,8 @@ createApp({
       const p = pendingRequestData.value || {};
       const root = meta.requestId || ('PAPER' + Date.now());
       const serialRoot = meta.serial || root;
-      const courseAdjustmentOnly = !!p.courseAdjustmentOnly;
+      const combinedReturn = isCombinedReturnRequest(p);
+      const courseAdjustmentOnly = !combinedReturn && !!p.courseAdjustmentOnly;
       const common = {
         type: p.mode || 'substitution',
         reason: p.reason || '請假',
@@ -6614,11 +6707,12 @@ createApp({
         id: root,
         serial: serialRoot,
         originalTeacherEmail: p.leaveTeacher,
-        actualTeacherEmail: p.subTeacher,
+        actualTeacherEmail: combinedReturn ? p.leaveTeacher : p.subTeacher,
         date: p.date,
         period: decodePaperTimeKey(p.timeKey).period,
         className: p.cls,
         subject: p.subject,
+        specialFlow: p.specialFlow || '',
          leaveTimeType: courseAdjustmentOnly ? '' : (p.leaveTimeType || ''),
          leaveTime: courseAdjustmentOnly ? '' : (p.leaveTime || '')
       })].filter(r => r.originalTeacherEmail && r.actualTeacherEmail && r.date && r.period != null);
@@ -6672,7 +6766,10 @@ createApp({
         const typeRaw = String(getValue(source, ['異動類型', 'type'], 'substitution')).toLowerCase();
         const isExchange = typeRaw === 'exchange' || typeRaw === '對調' || typeRaw === '調課';
         const original = resolvePaperTeacher(getValue(source, ['申請人Email', 'requesterEmail', '申請人姓名', 'requesterName']));
-        const actual = resolvePaperTeacher(getValue(source, ['受邀人Email', 'targetTeacherEmail', '受邀人姓名', 'targetTeacherName']));
+        const combinedReturn = isCombinedReturnRequest(source);
+        const actual = combinedReturn
+          ? original
+          : resolvePaperTeacher(getValue(source, ['受邀人Email', 'targetTeacherEmail', '受邀人姓名', 'targetTeacherName']));
         const date = getValue(source, ['異動日期', 'requestDate', 'date']);
         const period = getValue(source, ['異動節次', 'requestPeriod', 'period']);
         const printedRaw = getValue(source, ['是否已印', 'printed']);
@@ -6727,6 +6824,7 @@ createApp({
             period: period,
             className: getValue(source, ['班級', 'className']),
             subject: getValue(source, ['科目', 'subject']),
+            specialFlow: combinedReturn ? 'combined_return' : '',
             leaveTimeType: getValue(source, ['請假時間類型', 'leaveTimeType']),
             leaveTime: getValue(source, ['請假時間', 'leaveTime', 'timeRange'])
           }));
@@ -6830,6 +6928,25 @@ createApp({
         returnTo: draft.returnTo || '',
         skipMarkPrinted: true
       });
+    };
+
+    const openSuccessPrintPreview = () => {
+      const requests = (successActionRequests.value || []).filter(Boolean);
+      if (!requests.length) {
+        showToast('目前沒有可列印的申請單', 'warning');
+        return false;
+      }
+      showSuccessModal.value = false;
+      return openPaperPrintDraftForSubmittedRequests(requests);
+    };
+
+    const addSuccessToCalendar = () => {
+      const request = (successActionRequests.value || [])[0];
+      if (!request) {
+        showToast('目前沒有可加入行事曆的申請單', 'warning');
+        return;
+      }
+      addEventToCalendar(request);
     };
 
 
@@ -7928,6 +8045,9 @@ createApp({
     const getRequestTypeTags = (req) => {
       if (!req) return [];
       const tags = [];
+      if (isCombinedReturnRequest(req)) {
+        tags.push({ key: 'combined-return', label: '合班回原班' });
+      }
       const period = parseInt(req.requestPeriod != null ? req.requestPeriod : req.period, 10);
       // 代申請已在申請人欄下方標示，不再加 Tag
       if (req.type !== 'exchange' && isQuotaDeductFee(req.subFee)) {
@@ -8387,6 +8507,9 @@ createApp({
       const leaveSlot = formatQuickSlotCompact(
         req.requestDate, req.requestPeriodDay, req.requestPeriod, req.className, req.subject
       );
+      if (isCombinedReturnRequest(req)) {
+        return '合班回原班 · ' + leaveSlot;
+      }
       if (isEx) {
         let dayNum = req.targetDayOfWeek;
         if ((dayNum == null || dayNum === '') && req.targetDate) {
@@ -8463,8 +8586,10 @@ createApp({
       const flags = getApproveRiskFlags(req);
       const risks = flags.map(f => f.label);
 
-      let s = `【${typeLabel}】${req.serial || '—'}\n`;
-      s += `${req.requesterName || '—'} → ${req.targetTeacherName || '—'}\n`;
+       let s = `【${typeLabel}】${req.serial || '—'}\n`;
+       s += isCombinedReturnRequest(req)
+         ? `申請教師：${req.requesterName || '—'}（核准後回原班）\n`
+         : `${req.requesterName || '—'} → ${req.targetTeacherName || '—'}\n`;
       s += `請假：${formatLeaveClassSlot(req)}\n`;
       if (isEx) {
         s += `對調：${formatExchangeClassSlot(req)}\n`;
@@ -8749,6 +8874,9 @@ createApp({
       const swapName = cell.schoolSwap && cell.schoolSwap.name ? String(cell.schoolSwap.name) : '';
       const head = (cls || '有課') + (swapName ? `\n↔ 全校對調：${swapName}` : '');
       if (cell.isPending) {
+        if (cell.pendingType === 'combined_return_out') {
+          return `${head}\n⏳ 合班回原班申請中\n${cell.pendingText || '待教學組核准'}`;
+        }
         if (cell.pendingType === 'substitution_out') {
           return `${head}\n⏳ 代課申請中\n${cell.pendingText || '待對方或行政確認'}`;
         }
@@ -8762,6 +8890,9 @@ createApp({
           return `${head}\n⏳ 調入申請中\n${cell.pendingText || ''}`;
         }
         return `${head}\n${cell.pendingText || '申請處理中'}`;
+      }
+      if (cell.isCombinedReturn) {
+        return `${head}\n↩ 合班回原班\n${cell.subText || ''}`;
       }
       if (cell.isSubstituted) {
         if (cell.subType === 'exchange') {
@@ -8910,6 +9041,9 @@ createApp({
           teachersList,
         allSchedules,
         leaveReasonOptions,
+        getHistoryEditDefaultSubFee: function (reason, period) {
+          return getHistoryEditDefaultSubFee(reason, period);
+        },
         historyEditForm,
         showHistoryEditModal,
         requestsList,
@@ -9271,6 +9405,10 @@ createApp({
     const defaultSubFeeForReason = (reason) => {
       if (isPeriod8FeeLocked.value) return PERIOD8_FEE;
       if (isMutualCover.value) return ACTIVITY_PUBLIC_FEE;
+      return isPublicFeeReason(reason) ? '公費代課' : '自費代課';
+    };
+    const getHistoryEditDefaultSubFee = (reason, period) => {
+      if (parseInt(period, 10) === 8) return PERIOD8_FEE;
       return isPublicFeeReason(reason) ? '公費代課' : '自費代課';
     };
     /** 假別變更時自動帶入預設經費（第8節／活動模式不覆寫） */
@@ -9645,6 +9783,12 @@ createApp({
       showSuccessModal.value = false;
       activeTab.value = 'pending';
     };
+    const closeSuccessGoRecords = () => {
+      showSuccessModal.value = false;
+      activeTab.value = 'records';
+      showMatchModal.value = false;
+      showCompareModal.value = false;
+    };
     const closeSuccessStayTimetable = () => {
       showSuccessModal.value = false;
       activeTab.value = 'timetable';
@@ -9707,13 +9851,14 @@ createApp({
       filteredRecommendedTeachers, displayedRecommendedTeachers,
        exchangeTeacherEmail, exchangeTeacherClasses, exchangePeriodId, exchangeTargetDate, exchangeWeekOffset,
        exchangeWeekdayFilter, exchangeWeekdayOptions, setExchangeWeekdayFilter, filteredExchangeList,
-        showCompareModal, showMatchModal, pendingRequestData, askFirstLineText, askFirstLineDraft, selectedRecordIds, showDevDropdown, devTeacherQuery, filteredDevTeachers,
-           paperPrintDraft, paperSignatureByTeacher, openPaperPrintDraftFromCompare, openPaperPrintForRequest, openPaperPrintMutualDrafts, printPaperDraft, openPaperDraftPreview,
-          showPrintPreviewModal, printPreview, printPreviewImageBusy, openPrintPreview, closePrintPreview, confirmPrintPreview, copyPrintPreviewImage, downloadPrintPreviewImage,
+       showCompareModal, showMatchModal, pendingRequestData, askFirstLineText, askFirstLineDraft, selectedRecordIds, showDevDropdown, devTeacherQuery, filteredDevTeachers,
+            paperPrintDraft, paperSignatureByTeacher, openPaperPrintDraftFromCompare, openPaperPrintForRequest, openPaperPrintMutualDrafts, printPaperDraft, openPaperDraftPreview,
+           showPrintPreviewModal, printPreview, printPreviewImageBusy, openPrintPreview, closePrintPreview, confirmPrintPreview, copyPrintPreviewImage, downloadPrintPreviewImage,
       showDetailModal, consecAlertsA, consecAlertsB, detailRequest, detailSubRecord,
        showLineMessageModal, lineMessageTitle, lineMessageText, openLineMessageEditor, copyEditedLineMessage, sendEditedLineMessage,
        showSuccessModal,
-      successModalTitle, successModalMessage, successFlowMode, lineCopyText, hasLineTemplate, lineBatchParts,
+       successModalTitle, successModalMessage, successFlowMode, successActionRequests, lineCopyText, hasLineTemplate, lineBatchParts,
+       openSuccessPrintPreview, addSuccessToCalendar,
       copyLineMessage, sendLineMessage, copyLineBatchPart, sendLineBatchPart, copyLineMessageForRequest, addToGoogleCalendar, downloadIcsCalendar, addEventToCalendar, printSingleRequest, showDetailForRecord, getTargetSubject, getTargetClassAndSubject, getOriginalRequestSubject, getOriginalRequestClass, getOriginalTargetSubject, getOriginalTargetClass,
       adminSubTab,
       showImportTeachersModal, teacherExcelData, teacherExcelHeaders, teacherMappingFields, teacherImportPreview, runTeacherImportPreview, handleTeacherExcelChange, importTeachersBatch,
@@ -9752,13 +9897,13 @@ createApp({
       isMatchSourceCell, isMatchSourceEntry, isMatchHoverCell, isMatchHoverEntry,
       selectMatchPreviewSub, selectMatchPreviewExchange, clearMatchPreview, closeMatchModal, isMatchPreviewSelected,
       selectedClassDate, selectedClassWeekDates, classWeekNumber, classSubstitutionMap, classChangeSummary, changeClassWeek, goToClassThisWeek,
-      prepCompare, getCompareCellText, getCompareCellClass, executeSubmitRequest, isSubmitting,
+       prepCompare, startCombinedReturn, getCompareCellText, getCompareCellClass, executeSubmitRequest, isSubmitting,
        getStatusText, changeMatchMode, respondToRequest, respondToBatch, adminApprove, adminReject, cancelRequest, deleteSubstitutionRecord, loadMoreMatches,
        formatRequestSummary, formatLeaveClassSlot, formatExchangeClassSlot, formatQuickTodoTitle, formatHistoryLeaveSlot, formatHistoryExchangeSlot, getRequestRiskTags, getRequestTypeTags, getApproveRiskFlags, formatApproveBatchRiskSummary, isHistoryLeaveRechanged, isHistoryExchangeRechanged, isRequestExchangeRechanged, getCellPlainStatus, getRequestProgressSteps, isPaperFlowRequest, isLeaveClassRestricted, isExchangeClassRestricted, isHistoryLeaveRestricted, isHistoryExchangeRestricted,
       dashboardScope, dashboardStats,
       selectedAdminPendingIds, isAdminPendingSelected, toggleAdminPendingSelect, toggleSelectAllAdminPending, clearAdminPendingSelection,
       batchAdminApprove, batchAdminReject, lastBatchPrintIds, showBatchPrintPrompt, printLastBatchNotices, dismissBatchPrintPrompt,
-      closeSuccessGoPending, closeSuccessStayTimetable, closeSuccessCopyLine,
+       closeSuccessGoPending, closeSuccessGoRecords, closeSuccessStayTimetable, closeSuccessCopyLine,
       openScheduleEditModal, saveScheduleCell, clearScheduleCell, updateTeacherBaseHours, pickScheduleAttr,
       openAddTeacherModal, openEditTeacherModal, saveTeacher, deleteTeacher,
        handleFileChange, getMappingLabel, importSchedules, migrateNameKeySchema, toggleSelectAllRecords, loadTeacherClassesForExchange,

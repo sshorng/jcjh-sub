@@ -2649,7 +2649,7 @@ td.table-empty {
     max-width: 92mm;
     padding: .8mm 2mm;
     border: .7pt solid #000;
-    background: #fff;
+    background: #e5e7eb;
     font-size: 10pt;
     font-weight: 700;
     line-height: 1.2;
@@ -2657,6 +2657,10 @@ td.table-empty {
     white-space: normal;
     overflow-wrap: anywhere;
     color: #000;
+  }
+  .official-audience-label-retain {
+    border: none;
+    background: #e5e7eb;
   }
   .official-serial-mark {
     position: absolute;
@@ -3150,11 +3154,24 @@ td.table-empty {
   font-weight: 600;
 }
 
+.success-modal-footer {
+  flex-direction: column;
+  align-items: stretch;
+}
+.success-followup-actions,
 .success-actions {
   display: flex !important;
   flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
+}
+.success-followup-actions {
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-color);
+  justify-content: flex-start;
+}
+.success-followup-actions .btn {
+  flex: 1 1 160px;
 }
 .success-actions .btn { flex: 1 1 auto; min-width: 110px; }
 

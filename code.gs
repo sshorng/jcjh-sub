@@ -248,6 +248,59 @@ function requestVisibleToReader_(req, readerEmail, readerIsAdmin) {
   return false;
 }
 
+// ----------------- 特殊流程契約 -----------------
+var SPECIAL_FLOW_COMBINED_RETURN_ = "combined_return";
+var SPECIAL_FLOW_COMBINED_RETURN_LABEL_ = "合班回原班";
+
+function normalizeSpecialFlow_(value) {
+  var raw = String(value == null ? "" : value).trim();
+  if (!raw) return "";
+  if (raw.toLowerCase() === SPECIAL_FLOW_COMBINED_RETURN_
+      || raw === SPECIAL_FLOW_COMBINED_RETURN_LABEL_) {
+    return SPECIAL_FLOW_COMBINED_RETURN_;
+  }
+  return raw;
+}
+
+function isCombinedReturnRequest_(row) {
+  if (!row) return false;
+  return normalizeSpecialFlow_(row["特殊流程"]) === SPECIAL_FLOW_COMBINED_RETURN_
+    || normalizeSpecialFlow_(row.specialFlow) === SPECIAL_FLOW_COMBINED_RETURN_;
+}
+
+function isCombinedReturnFee_(fee) {
+  var value = String(fee == null ? "" : fee).trim();
+  return value === "公費代課" || value === "自費代課" || value === "第8節代課";
+}
+
+function validateCombinedReturnRequest_(row) {
+  if (!isCombinedReturnRequest_(row)) return;
+  if (isPaperFlowValue_(row["紙本流程"]) || isPaperFlowValue_(row.paperFlow)) {
+    throw new Error("合班回原班不可使用紙本流程！");
+  }
+  if (isPaperFlowValue_(row["直接核准"]) || isPaperFlowValue_(row.directApprove)) {
+    throw new Error("合班回原班不可直接核准！");
+  }
+  if (isPaperFlowValue_(row["僅課務調整"]) || isPaperFlowValue_(row.courseAdjustmentOnly)) {
+    throw new Error("合班回原班不可使用僅課務調整！");
+  }
+  var type = String(row["異動類型"] || row.type || "").trim().toLowerCase();
+  if (type !== "substitution" && type !== "代課") {
+    throw new Error("合班回原班只能使用代課類型！");
+  }
+  var targetName = String(row["受邀人姓名"] || row.targetTeacherName || "").trim();
+  var targetEmail = String(row["受邀人Email"] || row.targetTeacherEmail || "").trim();
+  if (targetName || targetEmail) throw new Error("合班回原班不可指定受邀教師！");
+  var fee = String(row["經費來源"] || row.subFee || "").trim();
+  if (!isCombinedReturnFee_(fee)) {
+    throw new Error("合班回原班請選擇公費代課、自費代課或第8節代課！");
+  }
+  var period = parseInt(row["異動節次"] != null ? row["異動節次"] : row.requestPeriod, 10);
+  if (period === 8 && fee !== "第8節代課") {
+    throw new Error("第8節合班回原班必須使用第8節代課！");
+  }
+}
+
 // ----------------- 姓名鍵資料契約 -----------------
 // Domain sheets store names only. Email remains confined to 教師名單／auth／mail.
 var NAME_KEY_DOMAIN_SHEETS_ = ["教師課表", "申請單", "代導紀錄", "額度帳本"];
@@ -398,8 +451,16 @@ function normalizeNameKeyDomainRow_(sheetName, row, teacherRows, fallbackSemeste
   if (sheetName === "教師課表") {
     out["教師姓名"] = resolveNameKeyPair_(nameKeyPick_(source, ["教師姓名", "teacherName"]), nameKeyPick_(source, ["教師Email", "teacherEmail"]), sid, directory, "課表教師", false);
   } else if (sheetName === "申請單") {
+    var combinedReturn = isCombinedReturnRequest_(source);
     out["申請人姓名"] = resolveNameKeyPair_(nameKeyPick_(source, ["申請人姓名", "requesterName"]), nameKeyPick_(source, ["申請人Email", "requesterEmail"]), sid, directory, "申請人", false);
-    out["受邀人姓名"] = resolveNameKeyPair_(nameKeyPick_(source, ["受邀人姓名", "targetTeacherName"]), nameKeyPick_(source, ["受邀人Email", "targetTeacherEmail"]), sid, directory, "受邀人", false);
+    if (combinedReturn && (nameKeyText_(nameKeyPick_(source, ["受邀人姓名", "targetTeacherName"]))
+        || nameKeyText_(nameKeyPick_(source, ["受邀人Email", "targetTeacherEmail"])))) {
+      throw new Error("合班回原班不可指定受邀教師");
+    }
+    out["受邀人姓名"] = combinedReturn
+      ? ""
+      : resolveNameKeyPair_(nameKeyPick_(source, ["受邀人姓名", "targetTeacherName"]), nameKeyPick_(source, ["受邀人Email", "targetTeacherEmail"]), sid, directory, "受邀人", false);
+    if (combinedReturn) out["特殊流程"] = SPECIAL_FLOW_COMBINED_RETURN_LABEL_;
     out["代申請人姓名"] = resolveNameKeyPair_(nameKeyPick_(source, ["代申請人姓名", "proxyByName"]), nameKeyPick_(source, ["代申請人Email", "proxyByEmail"]), sid, directory, "代申請人", true);
   } else if (sheetName === "代導紀錄") {
     out["原導師姓名"] = resolveNameKeyPair_(nameKeyPick_(source, ["原導師姓名", "originalTeacherName"]), nameKeyPick_(source, ["原導師Email", "originalTeacherEmail"]), sid, directory, "原導師", false);
@@ -424,16 +485,20 @@ function normalizeNameKeyRows_(sheetName, rows, teacherRows, fallbackSemesterId)
 function prepareNameKeyRequestRow_(row, semesterId, teacherRows) {
   var source = Object.assign({}, row || {});
   var directory = buildNameKeyDirectory_(teacherRows || getTableData("教師名單"));
+  var combinedReturn = isCombinedReturnRequest_(source);
   var requesterName = resolveNameKeyPair_(
     nameKeyPick_(source, ["申請人姓名", "requesterName"]),
     nameKeyPick_(source, ["申請人Email", "requesterEmail"]),
     semesterId, directory, "申請人", false
   );
-  var targetName = resolveNameKeyPair_(
-    nameKeyPick_(source, ["受邀人姓名", "targetTeacherName"]),
-    nameKeyPick_(source, ["受邀人Email", "targetTeacherEmail"]),
-    semesterId, directory, "受邀人", false
-  );
+  var targetRawName = nameKeyPick_(source, ["受邀人姓名", "targetTeacherName"]);
+  var targetRawEmail = nameKeyPick_(source, ["受邀人Email", "targetTeacherEmail"]);
+  if (combinedReturn && (nameKeyText_(targetRawName) || nameKeyText_(targetRawEmail))) {
+    throw new Error("合班回原班不可指定受邀教師");
+  }
+  var targetName = combinedReturn
+    ? ""
+    : resolveNameKeyPair_(targetRawName, targetRawEmail, semesterId, directory, "受邀人", false);
   var proxyRaw = nameKeyPick_(source, ["代申請人姓名", "proxyByName", "代申請人Email", "proxyByEmail"]);
   var proxyName = proxyRaw
     ? resolveNameKeyPair_(
@@ -445,11 +510,12 @@ function prepareNameKeyRequestRow_(row, semesterId, teacherRows) {
   var requesterEmail = nameKeyEmailForName_(semesterId, requesterName, directory);
   var targetEmail = nameKeyEmailForName_(semesterId, targetName, directory);
   var proxyEmail = proxyName ? nameKeyEmailForName_(semesterId, proxyName, directory) : "";
-  if (!requesterEmail || !targetEmail) throw new Error("教師名單缺少申請人或受邀人的登入 Email");
+  if (!requesterEmail || (!combinedReturn && !targetEmail)) throw new Error("教師名單缺少申請人或受邀人的登入 Email");
 
   source["學期代號"] = semesterId;
   source["申請人姓名"] = requesterName;
   source["受邀人姓名"] = targetName;
+  if (combinedReturn) source["特殊流程"] = SPECIAL_FLOW_COMBINED_RETURN_LABEL_;
   source["代申請人姓名"] = proxyName;
   // Internal compatibility fields are removed by normalizeNameKeyDomainRow_ before persistence.
   source["申請人Email"] = requesterEmail;
@@ -467,7 +533,7 @@ function prepareNameKeyRequestRow_(row, semesterId, teacherRows) {
 function nameKeyCanonicalHeaders_(sheetName) {
   var map = {
     "教師課表": ["學期代號", "課表ID", "教師姓名", "星期", "節次", "班級", "科目", "課堂屬性", "調課限制", "特殊標記"],
-    "申請單": ["學期代號", "申請單ID", "單號", "批次ID", "狀態", "直接核准", "紙本流程", "申請人姓名", "受邀人姓名", "代申請人姓名", "班級", "科目", "異動日期", "異動星期", "異動節次", "異動類型", "對調目標日期", "對調目標星期", "對調目標節次", "對調目標班級", "對調目標科目", "經費來源", "請假事由", "請假時間類型", "請假時間", "是否已印", "備註", "建立時間", "更新時間"],
+    "申請單": ["學期代號", "申請單ID", "單號", "批次ID", "狀態", "直接核准", "紙本流程", "申請人姓名", "受邀人姓名", "代申請人姓名", "班級", "科目", "異動日期", "異動星期", "異動節次", "異動類型", "特殊流程", "對調目標日期", "對調目標星期", "對調目標節次", "對調目標班級", "對調目標科目", "經費來源", "請假事由", "請假時間類型", "請假時間", "是否已印", "備註", "建立時間", "更新時間"],
     "代導紀錄": ["學期代號", "代導紀錄ID", "來源申請單ID", "原導師姓名", "班級", "代導日期", "請假時間類型", "請假時間", "代導教師姓名", "代導節數", "鐘點費", "狀態", "啟用", "建立時間", "更新時間", "操作者", "備註"],
     "額度帳本": ["學期代號", "流水ID", "時間", "教師姓名", "異動", "餘額後", "類型", "包ID", "事件ID", "事件名稱", "起日", "迄日", "申請單ID", "操作者", "備註", "索引鍵"]
   };
@@ -505,8 +571,10 @@ function hydrateNameKeyDomainRow_(sheetName, row) {
     row.teacherName = row["教師姓名"];
     row.teacherEmail = row["教師Email"];
   } else if (sheetName === "申請單") {
+    var combinedReturnHydrate = isCombinedReturnRequest_(row);
     row["申請人姓名"] = resolve(row["申請人姓名"] || row.requesterName, row["申請人Email"] || row.requesterEmail, "申請人", false);
-    row["受邀人姓名"] = resolve(row["受邀人姓名"] || row.targetTeacherName, row["受邀人Email"] || row.targetTeacherEmail, "受邀人", false);
+    row["受邀人姓名"] = resolve(row["受邀人姓名"] || row.targetTeacherName, row["受邀人Email"] || row.targetTeacherEmail, "受邀人", combinedReturnHydrate);
+    if (combinedReturnHydrate) row["特殊流程"] = SPECIAL_FLOW_COMBINED_RETURN_LABEL_;
     row["代申請人姓名"] = resolve(row["代申請人姓名"] || row.proxyByName, row["代申請人Email"] || row.proxyByEmail, "代申請人", true);
     row["申請人Email"] = nameKeyEmailForName_(sid, row["申請人姓名"], directory) || nameKeyNorm_(row["申請人Email"] || row.requesterEmail);
     row["受邀人Email"] = nameKeyEmailForName_(sid, row["受邀人姓名"], directory) || nameKeyNorm_(row["受邀人Email"] || row.targetTeacherEmail);
@@ -726,7 +794,7 @@ function getHeadersForSheet(sheetName) {
     // Teacher roster keeps login Email; the four domain sheets use names as relation keys.
     "教師名單": ["學期代號", "教師Email", "教師姓名", "授課科目", "職務", "鐘點支出計畫", "系統角色", "基本鐘點", "折抵額度"],
     "教師課表": ["學期代號", "課表ID", "教師姓名", "星期", "節次", "班級", "科目", "課堂屬性", "調課限制", "特殊標記"],
-    "申請單": ["學期代號", "申請單ID", "單號", "批次ID", "狀態", "直接核准", "紙本流程", "申請人姓名", "受邀人姓名", "代申請人姓名", "班級", "科目", "異動日期", "異動星期", "異動節次", "異動類型", "對調目標日期", "對調目標星期", "對調目標節次", "對調目標班級", "對調目標科目", "經費來源", "請假事由", "請假時間類型", "請假時間", "是否已印", "備註", "建立時間", "更新時間"],
+    "申請單": ["學期代號", "申請單ID", "單號", "批次ID", "狀態", "直接核准", "紙本流程", "申請人姓名", "受邀人姓名", "代申請人姓名", "班級", "科目", "異動日期", "異動星期", "異動節次", "異動類型", "特殊流程", "對調目標日期", "對調目標星期", "對調目標節次", "對調目標班級", "對調目標科目", "經費來源", "請假事由", "請假時間類型", "請假時間", "是否已印", "備註", "建立時間", "更新時間"],
     "空堂事件": ["學期代號", "事件ID", "事件名稱", "起日", "迄日", "班級清單", "鐘點規則", "可進互代", "啟用", "備註"],
     "代導紀錄": ["學期代號", "代導紀錄ID", "來源申請單ID", "原導師姓名", "班級", "代導日期", "請假時間類型", "請假時間", "代導教師姓名", "代導節數", "鐘點費", "狀態", "啟用", "建立時間", "更新時間", "操作者", "備註"],
     "全校對調": ["學期代號", "對調ID", "事件名稱", "日期A", "星期A", "節次A", "日期B", "星期B", "節次B", "啟用", "建立時間", "更新時間", "操作者", "備註"],
@@ -2314,6 +2382,7 @@ function extractHomeroomClass_(teacher, fallbackClassName) {
  */
 function syncHomeroomRecordForRequest_(requestRow, operatorEmail) {
   if (!requestRow) return null;
+  if (isCombinedReturnRequest_(requestRow)) return null;
   var sid = String(requestRow["學期代號"] || requestRow.semesterId || "").trim();
   var rid = String(requestRow["申請單ID"] || requestRow.id || "").trim();
   var leaveEmail = String(requestRow["申請人Email"] || requestRow.requesterEmail || "").toLowerCase().trim();
@@ -4980,6 +5049,7 @@ function validateRequestRow_(row, semesterId) {
   if (type !== "substitution" && type !== "代課" && type !== "exchange" && type !== "對調") {
     throw new Error("異動類型不正確！");
   }
+  validateCombinedReturnRequest_(row);
   if (type === "exchange" || type === "對調") {
     var targetDate = String(row["對調目標日期"] || row.targetDate || "").trim().slice(0, 10);
     var targetPeriod = parseInt(row["對調目標節次"] || row.targetPeriod || 0, 10);
@@ -5738,11 +5808,17 @@ function doPost(e) {
        var targetReq = findRowByKey_("申請單", "申請單ID", reqData.requestId, semesterId);
        if (!targetReq) throw new Error("找不到該申請單");
        assertRequestState_(targetReq, "adminApprove");
-      
-      targetReq["狀態"] = "approved";
+       if (isCombinedReturnRequest_(targetReq)) {
+         validateCombinedReturnRequest_(targetReq);
+         targetReq["受邀人Email"] = "";
+         targetReq["受邀人姓名"] = "";
+         targetReq["特殊流程"] = SPECIAL_FLOW_COMBINED_RETURN_LABEL_;
+       }
+
+       targetReq["狀態"] = "approved";
       if (reqData.note) targetReq["備註"] = reqData.note;
       saveRows("申請單", [targetReq], "申請單ID");
-      syncHomeroomRecordForRequest_(targetReq, userEmail);
+       if (!isCombinedReturnRequest_(targetReq)) syncHomeroomRecordForRequest_(targetReq, userEmail);
        // 紙本流程已由紙本通知，不因之後切回線上模式而補寄系統信。
        if (!isPaperFlowRow_(targetReq)) {
          queueMail_("sendAdminApproveEmail", function () { sendAdminApproveEmail_(targetReq, currentUrl); });
@@ -5770,25 +5846,39 @@ function doPost(e) {
         if (apNote) row["備註"] = apNote;
         apToSave.push(row);
         apOkIds.push(rid);
-      });
-      if (!apToSave.length) throw new Error("找不到可核准的申請單");
-      saveRows("申請單", apToSave, "申請單ID");
-      apToSave.forEach(function (r) { syncHomeroomRecordForRequest_(r, userEmail); });
+       });
+       if (!apToSave.length) throw new Error("找不到可核准的申請單");
+       apToSave.forEach(function (r) {
+         if (isCombinedReturnRequest_(r)) {
+           validateCombinedReturnRequest_(r);
+           r["受邀人Email"] = "";
+           r["受邀人姓名"] = "";
+           r["特殊流程"] = SPECIAL_FLOW_COMBINED_RETURN_LABEL_;
+         }
+       });
+       saveRows("申請單", apToSave, "申請單ID");
+       apToSave.forEach(function (r) {
+         if (!isCombinedReturnRequest_(r)) syncHomeroomRecordForRequest_(r, userEmail);
+       });
        // 通知：同受邀人合併（鎖外）；紙本流程不寄信。
        var apMailRows = apToSave.filter(function (r) { return !isPaperFlowRow_(r); });
        if (apMailRows.length) queueMail_("adminApproveBatchMail", function () {
          var apBySub = {};
          apMailRows.forEach(function (r) {
-          var em = String(r["受邀人Email"] || "").toLowerCase().trim();
+           if (isCombinedReturnRequest_(r)) return;
+           var em = String(r["受邀人Email"] || "").toLowerCase().trim();
           if (!em) return;
           if (!apBySub[em]) apBySub[em] = [];
           apBySub[em].push(r);
         });
-        Object.keys(apBySub).forEach(function (em) {
+         Object.keys(apBySub).forEach(function (em) {
           var g = apBySub[em];
           if (g.length === 1) sendAdminApproveEmail_(g[0], currentUrl);
-          else sendAdminApproveBatchEmail_(g, currentUrl);
-        });
+           else sendAdminApproveBatchEmail_(g, currentUrl);
+         });
+         apMailRows.forEach(function (r) {
+           if (isCombinedReturnRequest_(r)) sendAdminApproveEmail_(r, currentUrl);
+         });
       });
       invalidateSemesterCaches_(semesterId);
       return ContentService.createTextOutput(JSON.stringify({
@@ -5804,9 +5894,9 @@ function doPost(e) {
        if (!targetReq) throw new Error("找不到該申請單");
        assertRequestState_(targetReq, "adminReject");
        try { restoreMutualQuotaForRequests_(targetReq); } catch (qE) { logError_("restoreMutualQuota_adminReject", qE); throw qE; }
-      targetReq["狀態"] = "admin_rejected";
-      saveRows("申請單", [targetReq], "申請單ID");
-      syncHomeroomRecordForRequest_(targetReq, userEmail);
+       targetReq["狀態"] = "admin_rejected";
+       saveRows("申請單", [targetReq], "申請單ID");
+       if (!isCombinedReturnRequest_(targetReq)) syncHomeroomRecordForRequest_(targetReq, userEmail);
        if (!isPaperFlowRow_(targetReq)) {
          queueMail_("sendAdminRejectEmail", function () { sendAdminRejectEmail_(targetReq, currentUrl); });
        }
@@ -5835,7 +5925,9 @@ function doPost(e) {
        try { restoreMutualQuotaForRequests_(rjToSave); } catch (qE) { logError_("restoreMutualQuota_adminRejectBatch", qE); throw qE; }
       rjToSave.forEach(function (row) { row["狀態"] = "admin_rejected"; });
       saveRows("申請單", rjToSave, "申請單ID");
-      rjToSave.forEach(function (r) { syncHomeroomRecordForRequest_(r, userEmail); });
+       rjToSave.forEach(function (r) {
+         if (!isCombinedReturnRequest_(r)) syncHomeroomRecordForRequest_(r, userEmail);
+       });
        var rjMailRows = rjToSave.filter(function (r) { return !isPaperFlowRow_(r); });
        if (rjMailRows.length) queueMail_("adminRejectBatchMail", function () {
          rjMailRows.forEach(function (r) { sendAdminRejectEmail_(r, currentUrl); });
@@ -5886,28 +5978,32 @@ function doPost(e) {
       if (!targetReq) throw new Error("找不到該紀錄");
 
        var editDirectory = buildNameKeyDirectory_(teachers);
+       var combinedReturnEdit = isCombinedReturnRequest_(targetReq);
+       if (isCombinedReturnRequest_(reqData) && !combinedReturnEdit) {
+         throw new Error("一般紀錄不可改為合班回原班，請重新建立特殊流程申請單");
+       }
        var leaveName = resolveNameKeyPair_(
          nameKeyPick_(reqData, ["requesterName", "申請人姓名"]),
          nameKeyPick_(reqData, ["requesterEmail", "申請人Email"]),
          semesterId, editDirectory, "申請人", false
        );
-       var subName = resolveNameKeyPair_(
-         nameKeyPick_(reqData, ["targetTeacherName", "受邀人姓名"]),
-         nameKeyPick_(reqData, ["targetTeacherEmail", "受邀人Email"]),
-         semesterId, editDirectory, "受邀人", false
-       );
+       var subName = combinedReturnEdit ? "" : resolveNameKeyPair_(
+          nameKeyPick_(reqData, ["targetTeacherName", "受邀人姓名"]),
+          nameKeyPick_(reqData, ["targetTeacherEmail", "受邀人Email"]),
+          semesterId, editDirectory, "受邀人", false
+        );
        var leaveEmail = nameKeyEmailForName_(semesterId, leaveName, editDirectory);
-       var subEmail = nameKeyEmailForName_(semesterId, subName, editDirectory);
-       if (!leaveEmail || !subEmail) throw new Error("教師名單缺少請假教師或代課教師 Email");
+       var subEmail = combinedReturnEdit ? "" : nameKeyEmailForName_(semesterId, subName, editDirectory);
+       if (!leaveEmail || (!combinedReturnEdit && !subEmail)) throw new Error("教師名單缺少請假教師或代課教師 Email");
 
-      var isEx = reqData.type === "exchange" || reqData.type === "對調"
-        || targetReq["異動類型"] === "exchange" || targetReq["異動類型"] === "對調";
-      if (reqData.type === "substitution" || reqData.type === "代課") isEx = false;
-      if (reqData.type === "exchange" || reqData.type === "對調") isEx = true;
+        var isEx = !combinedReturnEdit && (reqData.type === "exchange" || reqData.type === "對調"
+          || targetReq["異動類型"] === "exchange" || targetReq["異動類型"] === "對調");
+       if (reqData.type === "substitution" || reqData.type === "代課") isEx = false;
+       if (!combinedReturnEdit && (reqData.type === "exchange" || reqData.type === "對調")) isEx = true;
 
       var reqDate = String(reqData.requestDate || reqData["異動日期"] || "").trim();
       var reqPeriod = parseInt(reqData.requestPeriod || reqData["異動節次"] || 0, 10);
-      if (!reqDate || !reqPeriod) throw new Error("請假日期與節次必填");
+       if (!reqDate || isNaN(reqPeriod)) throw new Error("請假日期與節次必填");
       var reqDow = parseInt(reqData.requestPeriodDay || reqData["異動星期"] || 0, 10);
       if (!reqDow) {
         var d0 = new Date(reqDate.replace(/-/g, "/"));
@@ -5916,17 +6012,17 @@ function doPost(e) {
 
       targetReq["申請人Email"] = leaveEmail;
       targetReq["申請人姓名"] = leaveName;
-      targetReq["受邀人Email"] = subEmail;
-      targetReq["受邀人姓名"] = subName;
+       targetReq["受邀人Email"] = combinedReturnEdit ? "" : subEmail;
+       targetReq["受邀人姓名"] = combinedReturnEdit ? "" : subName;
       targetReq["班級"] = String(reqData.className != null ? reqData.className : (reqData["班級"] || targetReq["班級"] || ""));
       targetReq["科目"] = String(reqData.subject != null ? reqData.subject : (reqData["科目"] || targetReq["科目"] || ""));
       targetReq["異動日期"] = reqDate;
       targetReq["異動星期"] = reqDow;
       targetReq["異動節次"] = reqPeriod;
       targetReq["異動類型"] = isEx ? "exchange" : "substitution";
-      targetReq["請假事由"] = reqData.reason != null ? reqData.reason : (targetReq["請假事由"] || "");
-      targetReq["請假時間類型"] = reqData.leaveTimeType != null ? reqData.leaveTimeType : (targetReq["請假時間類型"] || "");
-      targetReq["請假時間"] = reqData.leaveTime != null ? reqData.leaveTime : (targetReq["請假時間"] || "");
+       targetReq["請假事由"] = combinedReturnEdit ? "合班回原班" : (reqData.reason != null ? reqData.reason : (targetReq["請假事由"] || ""));
+       targetReq["請假時間類型"] = combinedReturnEdit ? "" : (reqData.leaveTimeType != null ? reqData.leaveTimeType : (targetReq["請假時間類型"] || ""));
+       targetReq["請假時間"] = combinedReturnEdit ? "" : (reqData.leaveTime != null ? reqData.leaveTime : (targetReq["請假時間"] || ""));
       targetReq["備註"] = reqData.note != null ? reqData.note : (targetReq["備註"] || "");
       if (reqData.printed !== undefined) {
         targetReq["是否已印"] = (reqData.printed === true || reqData.printed === "TRUE" || reqData.printed === "true") ? "TRUE" : "FALSE";
@@ -5945,16 +6041,23 @@ function doPost(e) {
         targetReq["對調目標星期"] = tgtDow;
         targetReq["對調目標節次"] = tgtPeriod;
         targetReq["經費來源"] = "無";
-      } else {
-        targetReq["對調目標日期"] = "";
-        targetReq["對調目標星期"] = "";
-        targetReq["對調目標節次"] = "";
-        if (reqData.subFee != null && reqData.subFee !== "") {
-          targetReq["經費來源"] = String(reqData.subFee);
-        }
-      }
+       } else {
+         targetReq["對調目標日期"] = "";
+         targetReq["對調目標星期"] = "";
+         targetReq["對調目標節次"] = "";
+         if (reqData.subFee != null && reqData.subFee !== "") {
+           targetReq["經費來源"] = String(reqData.subFee);
+         }
+       }
+       if (combinedReturnEdit) {
+         targetReq["異動類型"] = "substitution";
+         targetReq["特殊流程"] = SPECIAL_FLOW_COMBINED_RETURN_LABEL_;
+         targetReq["直接核准"] = "";
+         targetReq["紙本流程"] = "FALSE";
+         validateCombinedReturnRequest_(targetReq);
+       }
 
-      saveRows("申請單", [targetReq], "申請單ID");
+       saveRows("申請單", [targetReq], "申請單ID");
       syncHomeroomRecordForRequest_(targetReq, userEmail);
       invalidateSemesterCaches_(semesterId);
       
@@ -6051,16 +6154,28 @@ function doPost(e) {
     // 2. 一般教師/受邀教師 Actions (包含基本身分檢驗)
     } else if (action === "submitRequest") {
        assertNotTooFrequent_(userEmail, "submitRequest");
-       // 發起調代課申請（狀態一律由伺服器決定，忽略前端竄改）
-       if (!reqData.request || typeof reqData.request !== "object") throw new Error("缺少申請單資料！");
-       reqData.request = prepareNameKeyRequestRow_(reqData.request, semesterId, teachers);
-       var leaveEmailOne = normalizeEmail_(reqData.request["申請人Email"], "申請人 Email");
-       var targetEmailOne = normalizeEmail_(reqData.request["受邀人Email"], "受邀人 Email");
-       if (!findSemesterTeacher_(semesterId, leaveEmailOne)) throw new Error("申請人不在目前學期教師名單！");
-       if (!findSemesterTeacher_(semesterId, targetEmailOne)) throw new Error("受邀人不在目前學期教師名單！");
-       if (leaveEmailOne === targetEmailOne) throw new Error("申請人與受邀人不可為同一人！");
-       reqData.request["申請人Email"] = leaveEmailOne;
-       reqData.request["受邀人Email"] = targetEmailOne;
+        // 發起調代課申請（狀態一律由伺服器決定，忽略前端竄改）
+        if (!reqData.request || typeof reqData.request !== "object") throw new Error("缺少申請單資料！");
+        reqData.request = prepareNameKeyRequestRow_(reqData.request, semesterId, teachers);
+        var combinedReturnOne = isCombinedReturnRequest_(reqData.request);
+        if (combinedReturnOne && !isAdmin) throw new Error("合班回原班僅限教學組建立！");
+        var leaveEmailOne = normalizeEmail_(reqData.request["申請人Email"], "申請人 Email");
+        var targetEmailOne = combinedReturnOne
+          ? ""
+          : normalizeEmail_(reqData.request["受邀人Email"], "受邀人 Email");
+        if (!findSemesterTeacher_(semesterId, leaveEmailOne)) throw new Error("申請人不在目前學期教師名單！");
+        if (!combinedReturnOne && !findSemesterTeacher_(semesterId, targetEmailOne)) throw new Error("受邀人不在目前學期教師名單！");
+        if (!combinedReturnOne && leaveEmailOne === targetEmailOne) throw new Error("申請人與受邀人不可為同一人！");
+        if (combinedReturnOne) {
+          reqData.request["受邀人Email"] = "";
+          reqData.request["受邀人姓名"] = "";
+          reqData.request["經費來源"] = String(reqData.request["經費來源"] || "").trim();
+          reqData.request.specialFlow = SPECIAL_FLOW_COMBINED_RETURN_;
+          reqData.request.courseAdjustmentOnly = false;
+          reqData.request["僅課務調整"] = "";
+        }
+        reqData.request["申請人Email"] = leaveEmailOne;
+        reqData.request["受邀人Email"] = targetEmailOne;
        validateRequestRow_(reqData.request, semesterId);
        var existingOne = assertNewRequestId_(reqData.request["申請單ID"], semesterId, leaveEmailOne, targetEmailOne, reqData.request["批次ID"] || "");
        if (existingOne) {
@@ -6093,8 +6208,8 @@ function doPost(e) {
        // - 教學組 + directApprove → approved
        // - 代別人（已授權行政，或教學組未直接核准）→ pending_admin（跳過受邀確認）
        // - 自己申請 → pending_teacher
-      var isProxyOne = false;
-      if (!isSelfOne) {
+       var isProxyOne = false;
+       if (!combinedReturnOne && !isSelfOne) {
         if (isAdmin && reqData.directApprove === true) {
           isProxyOne = false;
         } else if (staffCanProxy || isAdmin) {
@@ -6102,12 +6217,22 @@ function doPost(e) {
         }
       }
       // 扣額度／活動公費／第8節代課：僅管理員（活動互代）
-      var feeOne = String(reqData.request["經費來源"] || "");
+       var feeOne = String(reqData.request["經費來源"] || "");
+       if (combinedReturnOne) {
+         validateCombinedReturnRequest_(reqData.request);
+       }
       if ((feeOne === "扣額度" || feeOne === "互代不結" || feeOne === "活動公費" || feeOne === "第8節代課") && !isAdmin) {
         throw new Error("扣額度／活動公費相關經費僅限管理員發起！");
       }
       // 寫入狀態（伺服器最終裁定）
-       if (paperFlowOne) {
+        if (combinedReturnOne) {
+          reqData.request["狀態"] = "pending_admin";
+          reqData.request["紙本流程"] = "FALSE";
+          reqData.request.paperFlow = false;
+          reqData.request.directApprove = false;
+          reqData.request["直接核准"] = "";
+          reqData.request["特殊流程"] = SPECIAL_FLOW_COMBINED_RETURN_LABEL_;
+        } else if (paperFlowOne) {
          reqData.request["狀態"] = "pending_admin";
          reqData.request["紙本流程"] = "TRUE";
          reqData.request.paperFlow = true;
@@ -6135,7 +6260,7 @@ function doPost(e) {
           reqData.request["狀態"] = "pending_teacher";
           reqData.request["紙本流程"] = "FALSE";
         }
-       reqData.request["直接核准"] = (isAdmin && reqData.directApprove === true && !isProxyOne && !paperFlowOne)
+        reqData.request["直接核准"] = (!combinedReturnOne && isAdmin && reqData.directApprove === true && !isProxyOne && !paperFlowOne)
          ? "是"
          : "";
        // 雙重保險：代別人且非直接核准，絕不寫成 pending_teacher
@@ -6173,10 +6298,13 @@ function doPost(e) {
        var rawList = reqData.requests || [];
        if (!rawList.length) throw new Error("批次申請清單為空！");
        if (rawList.length > 20) throw new Error("單次批次最多 20 節！");
-       var list = rawList.map(function (rawRow) {
-         return prepareNameKeyRequestRow_(rawRow, semesterId, teachers);
-       });
-      var batchId = String(reqData.batchId || ("bat_" + Date.now())).trim();
+        var list = rawList.map(function (rawRow) {
+          return prepareNameKeyRequestRow_(rawRow, semesterId, teachers);
+        });
+       if (list.some(function (row) { return isCombinedReturnRequest_(row); })) {
+         throw new Error("合班回原班目前只能建立單筆申請，不可使用批次申請！");
+       }
+       var batchId = String(reqData.batchId || ("bat_" + Date.now())).trim();
       if (!batchId) throw new Error("缺少批次 ID！");
       var staffCanProxyBatch = canUserProxySubmit_(userEmail, teachers);
       // 先掃一遍：是否含代申請（非本人）
@@ -6769,6 +6897,7 @@ function _wrapHtmlTemplate_(title, headerColor, contentHtml) {
 
 function _buildReqTable_(req) {
   var targetTeacher = req.targetTeacherName || req["受邀人姓名"];
+  var isCombinedReturn = isCombinedReturnRequest_(req);
   var isExchange = !!(req.targetDate || req["對調目標日期"]);
   
   var getShortDay = function(d) {
@@ -6783,7 +6912,12 @@ function _buildReqTable_(req) {
   
   var leaveTimeText = "(" + leaveDay + ") 第" + leavePeriod + "節 - " + leaveClassSubject;
   var leaveDateText = req.requestDate || req["異動日期"];
-  var rows = [
+  var rows = isCombinedReturn ? [
+    ["申請教師", req.requesterName || req["申請人姓名"]],
+    ["特殊流程", "合班回原班"],
+    ["經費鐘點", req.subFee || req["經費來源"] || "自費代課"],
+    ["課堂", leaveDateText + " " + leaveTimeText]
+  ] : [
     ["請假教師", req.requesterName || req["申請人姓名"]],
     [isExchange ? "對調教師" : "代課教師", targetTeacher || ""],
     ["請假原因", req.reason || req["請假事由"] || "公假"],
@@ -6795,7 +6929,7 @@ function _buildReqTable_(req) {
     var leaveSlot = _fmtSlotLine_(sidesTbl.leaveDate, sidesTbl.leaveDay, sidesTbl.leavePeriod, sidesTbl.leaveClass, sidesTbl.leaveSubject);
     var targetSlot = _fmtSlotLine_(sidesTbl.targetDate, sidesTbl.targetDay, sidesTbl.targetPeriod, sidesTbl.targetClass, sidesTbl.targetSubject);
     rows[3] = ["對調內容", leaveSlot + " ⇄ " + targetSlot];
-  } else {
+  } else if (!isCombinedReturn) {
     var feeText = req.subFee || req["經費來源"] || "自理";
     if (feeText === "代課費") { feeText = "公費代課"; }
     else if (feeText === "自理") { feeText = "基本鐘點/自理"; }
@@ -6810,6 +6944,7 @@ function _buildReqTable_(req) {
 }
 
 function sendSubInviteEmail_(req, currentUrl) {
+  if (isCombinedReturnRequest_(req)) return;
   var to = req.targetTeacherEmail || req["受邀人Email"];
   if (!to || to.indexOf("@") === -1) return;
   var serial = req.serial || req["單號"] || "SUB";
@@ -6838,7 +6973,8 @@ function sendSubInviteEmail_(req, currentUrl) {
 
 /** 批次邀請：一封信列齊全部節次，每節各自同意／拒絕 */
 function sendSubInviteBatchEmail_(rows, currentUrl) {
-  if (!rows || !rows.length) return;
+  rows = (rows || []).filter(function (row) { return !isCombinedReturnRequest_(row); });
+  if (!rows.length) return;
   var first = rows[0];
   var to = first.targetTeacherEmail || first["受邀人Email"];
   if (!to || to.indexOf("@") === -1) return;
@@ -6916,7 +7052,8 @@ function sendSubInviteBatchEmail_(rows, currentUrl) {
 }
 
 function sendRespondAgreeBatchEmail_(rows, currentUrl) {
-  if (!rows || !rows.length) return;
+  rows = (rows || []).filter(function (row) { return !isCombinedReturnRequest_(row); });
+  if (!rows.length) return;
   var first = rows[0];
   var to = first.requesterEmail || first["申請人Email"];
   if (!to || to.indexOf("@") === -1) return;
@@ -6950,7 +7087,8 @@ function sendRespondAgreeBatchEmail_(rows, currentUrl) {
 }
 
 function sendRespondRejectBatchEmail_(rows, currentUrl) {
-  if (!rows || !rows.length) return;
+  rows = (rows || []).filter(function (row) { return !isCombinedReturnRequest_(row); });
+  if (!rows.length) return;
   var first = rows[0];
   var to = first.requesterEmail || first["申請人Email"];
   if (!to || to.indexOf("@") === -1) return;
@@ -7150,10 +7288,13 @@ function _buildApproveSlotListHtml_(rows, opts) {
         var dateVal = req.requestDate || req["異動日期"] || "";
         var dayVal = req.requestPeriodDay || req["異動星期"] || "";
         var periodVal = req.requestPeriod || req["異動節次"] || "";
-        var cls = req.className || req["班級"] || "";
-        var subj = req.subject || req["科目"] || "";
-        var slot = _fmtSlotCompact_(dateVal, dayVal, periodVal, cls, subj);
-        if (role === "leave") {
+       var cls = req.className || req["班級"] || "";
+       var subj = req.subject || req["科目"] || "";
+       var slot = _fmtSlotCompact_(dateVal, dayVal, periodVal, cls, subj);
+       if (isCombinedReturnRequest_(req)) {
+         return '<li style="' + liStyle + '"><strong>【合班回原班】</strong>' + escapeHtml_(slot) + "　由 <strong>" + escapeHtml_(leaveN) + "</strong> 回原班授課</li>";
+       }
+       if (role === "leave") {
           return '<li style="' + liStyle + '"><strong>【不用上】</strong>' + escapeHtml_(slot) + "　由 <strong>" + escapeHtml_(subN) + "</strong> 代課</li>";
         }
         if (role === "cover") {
@@ -7203,6 +7344,30 @@ function _calendarDetailsForRole_(req, role) {
   var isExchange = _isExchangeReq_(req);
   var serial = req.serial || req["單號"] || "";
   var reason = req.reason || req["請假事由"] || "請假";
+
+  if (isCombinedReturnRequest_(req)) {
+    var combinedDate = req.requestDate || req["異動日期"] || "";
+    var combinedPeriod = req.requestPeriod || req["異動節次"] || "";
+    var combinedClass = req.className || req["班級"] || "";
+    var combinedSubject = req.subject || req["科目"] || "";
+    if (!combinedDate || combinedPeriod == null || combinedPeriod === "") return null;
+    var combinedTimeSpan = _periodTimeSpan_(combinedPeriod);
+    if (!combinedTimeSpan) return null;
+    var combinedParts = combinedTimeSpan.split("-");
+    var combinedDatePart = String(combinedDate).replace(/-/g, "");
+    var combinedSlot = (String(combinedClass || "") + " " + String(combinedSubject || "")).trim() || "課堂";
+    var combinedName = req.requesterName || req["申請人姓名"] || "原授課教師";
+    return {
+      title: "【合班回原班】" + combinedSlot,
+      startIso: combinedDatePart + "T" + combinedParts[0].replace(":", "") + "00",
+      endIso: combinedDatePart + "T" + combinedParts[1].replace(":", "") + "00",
+      details: "合班回原班：由 " + combinedName + " 回原班授課。"
+        + "\n流程：合班回原班（原授課教師回原班授課）"
+        + "\n經費鐘點：" + (req.subFee || req["經費來源"] || "自費代課")
+        + "\n單號：" + serial + "\n（建成國中調代課系統）",
+      titleTag: "合班回原班"
+    };
+  }
 
   if (!isExchange) {
     var leaveDate0 = req.requestDate || req["異動日期"] || "";
@@ -7433,6 +7598,7 @@ function sendAdminApproveBatchEmail_(rows, currentUrl) {
 }
 
 function sendRespondAgreeEmail_(req, currentUrl) {
+  if (isCombinedReturnRequest_(req)) return;
   var to = req.requesterEmail || req["申請人Email"];
   if (!to || to.indexOf("@") === -1) return;
   var serial = req.serial || req["單號"] || "SUB";
@@ -7450,6 +7616,7 @@ function sendRespondAgreeEmail_(req, currentUrl) {
 }
 
 function sendRespondRejectEmail_(req, currentUrl) {
+  if (isCombinedReturnRequest_(req)) return;
   var to = req.requesterEmail || req["申請人Email"];
   if (!to || to.indexOf("@") === -1) return;
    var requesterName = req.requesterName || req["申請人姓名"];
@@ -7475,7 +7642,18 @@ function sendAdminApproveEmail_(req, currentUrl) {
    var name2 = req.targetTeacherName || req["受邀人姓名"] || "老師";
    var serial = req.serial || req["單號"] || "SUB";
    var sysUrl = trustedSystemUrl_(currentUrl);
-  var isExchange = !!(req.targetDate || req["對調目標日期"]
+   if (isCombinedReturnRequest_(req)) {
+     if (!to1 || String(to1).indexOf("@") === -1) return;
+     var combinedName = req.requesterName || req["申請人姓名"] || "老師";
+     var combinedSubject = "【調代課系統】合班回原班申請已核准生效 (" + serial + ")";
+     var combinedContent = '<p style="color:#1e293b;font-size:15px;margin-bottom:8px;">親愛的 <b>' + escapeHtml_(combinedName) + "</b> 老師，您好：</p>"
+       + '<p style="color:#475569;margin-top:0;">您的「合班回原班」申請已由教學組核准生效，請於該節回原班授課。</p>'
+       + _buildReqTable_(req)
+       + _approveActionButtonsHtml_(req, "leave", sysUrl);
+     sendSystemEmail_(to1, combinedSubject, _wrapHtmlTemplate_("調代課線上系統 - 合班回原班核准", "#059669", combinedContent));
+     return;
+   }
+   var isExchange = !!(req.targetDate || req["對調目標日期"]
     || req.type === "exchange" || req["異動類型"] === "exchange" || req["異動類型"] === "對調");
   var subject = "【調代課系統】您的調代課申請已由教學組核准出單並生效 (" + serial + ")";
 
@@ -7526,7 +7704,17 @@ function sendAdminRejectEmail_(req, currentUrl) {
    var serial = req.serial || req["單號"] || "SUB";
    var subject = "【調代課系統】您的調代課申請已被教學組駁回 (單號: " + serial + ")";
    var sysUrl = trustedSystemUrl_(currentUrl);
-  var content = '<p style="color:#1e293b;font-size:15px;margin-bottom:8px;">兩位老師，您好：</p>'
+   if (isCombinedReturnRequest_(req)) {
+     var combinedName = req.requesterName || req["申請人姓名"] || "老師";
+     var combinedContent = '<p style="color:#1e293b;font-size:15px;margin-bottom:8px;">親愛的 <b>' + escapeHtml_(combinedName) + "</b> 老師，您好：</p>"
+       + '<p style="color:#475569;margin-top:0;">您的「合班回原班」申請已被教學組駁回，未核准生效。</p>'
+       + _buildReqTable_(req)
+       + '<p style="color:#475569;margin-top:24px;font-size:14px;">若有任何疑問，請向教學組洽詢。</p>'
+       + '<div style="margin:16px 0;"><a href="' + sysUrl + '" style="background-color:#2563eb;color:#ffffff;padding:12px 28px;text-decoration:none;border-radius:8px;font-weight:bold;display:inline-block;font-size:14px;">進入系統查看</a></div>';
+     sendSystemEmail_(to1, "【調代課系統】合班回原班申請已駁回 (單號: " + serial + ")", _wrapHtmlTemplate_("調代課線上系統 - 合班回原班駁回", "#ef4444", combinedContent));
+     return;
+   }
+   var content = '<p style="color:#1e293b;font-size:15px;margin-bottom:8px;">兩位老師，您好：</p>'
     + '<p style="color:#475569;margin-top:0;">很抱歉通知您，您申報的調代課案件已被教學組駁回，未核准出單。明細如下：</p>'
     + _buildReqTable_(req)
     + '<p style="color:#475569;margin-top:24px;font-size:14px;">若有任何疑問，請向教學組洽詢。</p>'

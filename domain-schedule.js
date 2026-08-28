@@ -33,6 +33,13 @@ window.DomainSchedule = (function () {
     return isPullOutAttr(cell.attr);
   }
 
+  function isCombinedReturnRequest(request) {
+    var raw = request && request.specialFlow;
+    if (String(raw == null ? '' : raw).trim() === '') raw = request && request['特殊流程'];
+    var value = String(raw == null ? '' : raw).trim().toLowerCase();
+    return value === 'combined_return' || value === '合班回原班';
+  }
+
   var PATROL_INCOMING_TIP =
     '對方本節為【巡堂】。排入代課／調課後，請私下協調代巡堂或互換，系統不另開巡堂代課單。';
 
@@ -135,6 +142,34 @@ window.DomainSchedule = (function () {
 
 
     if (periodSubs.length > 0) {
+      var combinedOwn = periodSubs.find(function (r) {
+        return isCombinedReturnRequest(r)
+          && String(r.date || '') === String(dateStr || '')
+          && parseInt(r.period, 10) === parseInt(period, 10)
+          && String(r.originalTeacherEmail || '').toLowerCase() === String(teacherEmail || '').toLowerCase()
+          && String(r.actualTeacherEmail || '').toLowerCase() === String(teacherEmail || '').toLowerCase();
+      });
+      if (combinedOwn) {
+        var combinedCandidates = getCandidates(index, teacherEmail, scheduleDayOfWeek, schedulePeriod, allSchedules);
+        var combinedBase = combinedCandidates[0] || null;
+        var combinedClass = String(combinedOwn.className || (combinedBase && combinedBase.className) || '').trim();
+        var combinedSubject = String(combinedOwn.subject || (combinedBase && combinedBase.subject) || '').trim();
+        return Object.assign({}, combinedBase || {}, {
+          className: combinedClass,
+          subject: combinedSubject,
+          teacherEmail: teacherEmail,
+          dayOfWeek: dayOfWeek,
+          period: period,
+          isCombinedReturn: true,
+          specialFlow: 'combined_return',
+          subType: 'substitution',
+          subText: '↩ 合班回原班',
+          subRecord: combinedOwn,
+          isSubstituted: false,
+          isSubstitutionDuty: false,
+          isClassAway: !!(h.isClassAway && h.isClassAway(combinedClass, dateStr))
+        });
+      }
       const forwardMap = {};
       periodSubs.forEach(function (r) {
         if (r.originalTeacherEmail && r.actualTeacherEmail) {
@@ -579,6 +614,14 @@ window.DomainSchedule = (function () {
     if (cell && !cell.isSubstituted) {
       var pReq = findOutReq();
       if (pReq) {
+        if (isCombinedReturnRequest(pReq)) {
+          return Object.assign({}, cell, {
+            isPending: true,
+            pendingType: 'combined_return_out',
+            pendingText: '↩ 待核 合班回原班',
+            pendingRecord: pReq
+          });
+        }
         if (pReq.type === 'exchange') {
           return Object.assign({}, cell, {
             isPending: true,
@@ -685,6 +728,7 @@ window.DomainSchedule = (function () {
     isPatrolCell: isPatrolCell,
     isPullOutAttr: isPullOutAttr,
     isPullOutCell: isPullOutCell,
+    isCombinedReturnRequest: isCombinedReturnRequest,
     PATROL_INCOMING_TIP: PATROL_INCOMING_TIP,
     PULL_OUT_EXCHANGE_TIP: PULL_OUT_EXCHANGE_TIP
   };

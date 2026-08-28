@@ -1131,9 +1131,10 @@ window.UiBatchSubmit = (function () {
     var successModalMessage = deps.successModalMessage;
     var hasLineTemplate = deps.hasLineTemplate;
     var lineBatchParts = deps.lineBatchParts;
-    var lineCopyText = deps.lineCopyText;
-    var showSuccessModal = deps.showSuccessModal;
-    var showCompareModal = deps.showCompareModal;
+     var lineCopyText = deps.lineCopyText;
+     var showSuccessModal = deps.showSuccessModal;
+     var successActionRequests = deps.successActionRequests;
+     var showCompareModal = deps.showCompareModal;
     var showMatchModal = deps.showMatchModal;
     var batchSelectMode = deps.batchSelectMode;
     var clearBatchSlots = deps.clearBatchSlots;
@@ -1360,9 +1361,11 @@ window.UiBatchSubmit = (function () {
         requests: rows
       });
 
-      rows.forEach(function (r) {
-        optimisticUpsertRequest(sheetRequestToFront(r));
-      });
+       var frontRows = rows.map(function (r) { return sheetRequestToFront(r); });
+       frontRows.forEach(function (r) {
+         optimisticUpsertRequest(r);
+       });
+       if (successActionRequests) successActionRequests.value = frontRows;
       if (rows.some(function (r) { return isQuotaDeductFee(r['經費來源'] || r.subFee); })) {
         await deductMutualQuotaForRows(rows);
       }
@@ -2043,7 +2046,7 @@ window.UiBatchPanel = (function () {
         loading, loadingMessage, isSubmitting: deps.isSubmitting, currentSemester, directApproveMode, directApproveSkipNotify,
         callGasApi, optimisticUpsertRequest, sheetRequestToFront, deductMutualQuotaForRows, softRefreshInBackground,
         activityBalanceCtx, successModalTitle, successModalMessage, hasLineTemplate, lineBatchParts, lineCopyText,
-         showSuccessModal, showCompareModal, showMatchModal, batchSelectMode, clearBatchSlots, buildLineBatchInviteText, DAC,
+          showSuccessModal, successActionRequests, showCompareModal, showMatchModal, batchSelectMode, clearBatchSlots, buildLineBatchInviteText, DAC,
           paperMode: deps.paperMode,
           paperFlow: deps.paperFlow,
           notificationsSuppressed: deps.notificationsSuppressed,

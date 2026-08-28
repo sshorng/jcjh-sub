@@ -1,6 +1,6 @@
 /**
  * 大鐘點／代課費領域邏輯（純函式）
- * 早自習／1～7／午休：超鐘／代課費一軌
+ * 早自習／1～7／午休皆視為正式課程，依超鐘／代課費結算
  * 第8節：獨立「誰上誰拿」（空堂事件日該班不發）
  */
 window.DomainBilling = (function () {
@@ -44,6 +44,13 @@ window.DomainBilling = (function () {
     return String(em || '').toLowerCase().trim();
   }
 
+  function isCombinedReturnRecord(record) {
+    var raw = record && record.specialFlow;
+    if (String(raw == null ? '' : raw).trim() === '') raw = record && record['特殊流程'];
+    var value = String(raw == null ? '' : raw).trim().toLowerCase();
+    return value === 'combined_return' || value === '合班回原班';
+  }
+
   /**
    * 是否計入「每週排課鐘點」
    * - 節次：早自習 0、1–7 或 午休 45
@@ -81,15 +88,15 @@ window.DomainBilling = (function () {
   }
 
   /**
-   * 請假那堂是否為「超鐘點」屬性（對照基礎課表：原任＋星期＋節次＋班級）
-   * 公費代課僅在原堂為超鐘點時才沖自己超鐘
+   * 請假那堂是否為「正式課程的超鐘點」屬性（對照基礎課表：原任＋星期＋節次＋班級）
+   * 早自習0、1～7與午休45皆依原課表屬性判定
    */
   function isConcurrentLeaveSlot(rec, allSchedules) {
     if (!rec) return false;
     var em = emailKey(rec.originalTeacherEmail);
     if (!em) return false;
     var p = parseInt(rec.period, 10);
-    if (!p) return false;
+    if (Number.isNaN(p)) return false;
     var dow = dayOfWeekFromDate(rec.date);
     if (!dow) return false;
     var cn = String(rec.className || '').trim();
@@ -341,7 +348,7 @@ window.DomainBilling = (function () {
         ? 0
         : (parseInt(t.baseHours, 10) || 16);
 
-      // 週鐘點：早自習0＋1–7＋午休(45)；抽離等一般授課屬性皆計
+      // 週鐘點：早自習0＋1–7＋午休(45)皆視為正式課程並計入
       var weeklyPeriods = allSchedules.filter(function (s) {
         return emailKey(s.teacherEmail) === em && isWeeklyHoursSlot(s);
       }).length;
@@ -370,7 +377,7 @@ window.DomainBilling = (function () {
         return r.subFee === '公費代課' || r.subFee === '學校移撥';
       });
       var pubLeaveCount = pubLeaveRecords.length;
-      // 公費扣超鐘：僅原堂屬性為「超鐘點」才沖自己超時
+      // 公費扣超鐘：正式課程原堂屬性為「超鐘點」才沖自己超時
       var pubConcurrentLeaveRecords = pubLeaveRecords.filter(function (r) {
         return isConcurrentLeaveSlot(r, allSchedules);
       });
@@ -400,6 +407,7 @@ window.DomainBilling = (function () {
       var schoolPublicPayout = Math.max(0, pubLeaveCount - publicOvertimeUsed);
 
       var pubSubRecords = monthlyRecords.filter(function (r) {
+        if (isCombinedReturnRecord(r)) return false;
         if (r.actualTeacherEmail !== email || r.type !== 'substitution' || !isWeeklyHoursPeriod(r.period)) return false;
         if (window.DomainActivityCover && window.DomainActivityCover.isPublicSubPayout) {
           return window.DomainActivityCover.isPublicSubPayout(r.subFee);
@@ -408,7 +416,11 @@ window.DomainBilling = (function () {
       });
       var pubSubCount = pubSubRecords.length;
       var selfPaidSubRecords = monthlyRecords.filter(function (r) {
-        return r.actualTeacherEmail === email && r.type === 'substitution' && isWeeklyHoursPeriod(r.period) && r.subFee === '自費代課';
+        return !isCombinedReturnRecord(r)
+          && r.actualTeacherEmail === email
+          && r.type === 'substitution'
+          && isWeeklyHoursPeriod(r.period)
+          && r.subFee === '自費代課';
       });
       var selfSubCount = selfPaidSubRecords.length;
       var selfSubFee = selfSubCount * FEE_REGULAR;
@@ -457,7 +469,7 @@ window.DomainBilling = (function () {
       return {
         "教師姓名": row.name,
         "學科": row.subject,
-        "每週排課(1-7+午休)": row.weeklyPeriods,
+         "每週排課(早自習+1-7+午休)": row.weeklyPeriods,
         "基本授課鐘點": row.baseHours,
         "預設超時/週": row.weeklyOvertime,
         "空堂調降(1-7)": row.reduceDeduction || 0,
@@ -526,6 +538,7 @@ window.DomainBilling = (function () {
     var monthPrefix = year + '-' + monthStr;
     var monthRecords = (substitutionRecords || []).filter(function (r) {
       if (!r || !r.date) return false;
+      if (isCombinedReturnRecord(r)) return false;
       var fee = String(r.subFee || '').trim();
       if (fee === '扣額度' || fee === '互代不結' || fee === '第8節代課') return false;
       var p = r.period != null ? Number(r.period) : NaN;

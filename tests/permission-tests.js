@@ -275,9 +275,68 @@ assert.strictEqual(persistedRows.length, 2);
 assert.ok(persistedRows.every(row => row['狀態'] === 'pending_admin' && row['紙本流程'] === 'TRUE'));
 onlineEnabled = true;
 
+resetMutationState();
+const combinedReturnRequest = invoke({
+  email: ADMIN_EMAIL,
+  action: 'submitRequest',
+  data: {
+    request: makeRequest({
+      '申請單ID': 'req-combined-admin',
+      '受邀人Email': '',
+      '受邀人姓名': '',
+      '特殊流程': 'combined_return',
+      '經費來源': '公費代課',
+      '班級': '701、702'
+    })
+  }
+});
+assert.strictEqual(combinedReturnRequest.success, true);
+assert.strictEqual(persistedRows[0]['狀態'], 'pending_admin');
+assert.strictEqual(persistedRows[0]['受邀人Email'], '');
+assert.strictEqual(persistedRows[0]['受邀人姓名'], '');
+assert.strictEqual(persistedRows[0]['特殊流程'], '合班回原班');
+
+const combinedReturnTeacher = invoke({
+  email: TEACHER_EMAIL,
+  action: 'submitRequest',
+  data: {
+    request: makeRequest({
+      '申請單ID': 'req-combined-teacher',
+      '受邀人Email': '',
+      '受邀人姓名': '',
+      '特殊流程': 'combined_return',
+      '經費來源': '自費代課'
+    })
+  }
+});
+assert.strictEqual(combinedReturnTeacher.success, false);
+assert.match(combinedReturnTeacher.error, /合班回原班僅限教學組/);
+
+const combinedReturnBatch = invoke({
+  email: ADMIN_EMAIL,
+  action: 'submitRequestBatch',
+  data: {
+    batchId: 'bat-combined-invalid',
+    requests: [makeRequest({
+      '申請單ID': 'req-combined-batch',
+      '受邀人Email': '',
+      '受邀人姓名': '',
+      '特殊流程': 'combined_return',
+      '經費來源': '公費代課'
+    })]
+  }
+});
+assert.strictEqual(combinedReturnBatch.success, false);
+assert.match(combinedReturnBatch.error, /只能建立單筆申請/);
+
 requestRow = Object.assign({}, requestRow, {
   '狀態': 'pending_admin',
-  '紙本流程': 'TRUE'
+  '紙本流程': 'FALSE',
+  '受邀人Email': '',
+  '受邀人姓名': '',
+  '特殊流程': '合班回原班',
+  '經費來源': '公費代課',
+  '異動類型': 'substitution'
 });
 resetMutationState();
 const paperApproval = invoke({
@@ -287,7 +346,7 @@ const paperApproval = invoke({
 });
 assert.strictEqual(paperApproval.success, true);
 assert.strictEqual(requestRow['狀態'], 'approved');
-assert.strictEqual(queuedMailLabels.includes('sendAdminApproveEmail'), false);
+assert.strictEqual(queuedMailLabels.includes('sendAdminApproveEmail'), true);
 
 const teacherProxy = invoke({
   email: TEACHER_EMAIL,
@@ -300,6 +359,8 @@ assert.match(teacherProxy.error, /無權代表他人/);
 requestRow = Object.assign({}, requestRow, {
   '申請人Email': OWNER_EMAIL,
   '受邀人Email': INVITEE_EMAIL,
+  '受邀人姓名': '受邀人',
+  '特殊流程': '',
   '狀態': 'pending_teacher'
 });
 const unauthorizedCancel = invoke({ email: TEACHER_EMAIL, action: 'cancelRequest', data: { requestId: requestRow['申請單ID'] } });

@@ -102,7 +102,8 @@ labeledForms.audienceLabelSets = [[
   '班級：802'
 ]];
 const labeledPacked = context.window.packPrintForms(labeledForms);
-assert.equal((labeledPacked.match(/official-audience-label/g) || []).length, 4);
+assert.equal((labeledPacked.match(/\bofficial-audience-label(?=\s|")/g) || []).length, 4);
+assert.match(labeledPacked, /official-audience-label official-audience-label-retain/);
 assert.match(labeledPacked, /教學組留存（請簽名）/);
 assert.match(labeledPacked, /請假教師：陳小華/);
 assert.match(labeledPacked, /代課\/調課教師：王小明/);
@@ -129,8 +130,10 @@ assert.equal(preview.pageCount, 2);
 assert.equal(preview.copyCount, 4);
 assert.match(preview.documentHtml, /print-preview-stack/);
 assert.match(preview.documentHtml, /教學組留存（請簽名）/);
-assert.match(context.window.getPrintPreviewCss(), /official-audience-label \{[^}]*top: -5\.8mm[^}]*left: 0[^}]*padding: \.8mm 2mm[^}]*border: \.7pt solid #000[^}]*font-size: 10pt/);
-assert.match(styleSource, /\.official-audience-label \{[^}]*top: -5\.8mm[^}]*padding: \.8mm 2mm[^}]*border: \.7pt solid #000[^}]*font-size: 10pt/);
+assert.match(context.window.getPrintPreviewCss(), /official-audience-label \{[^}]*top: -5\.8mm[^}]*left: 0[^}]*padding: \.8mm 2mm[^}]*border: \.7pt solid #000[^}]*background: #e5e7eb[^}]*font-size: 10pt/);
+assert.match(context.window.getPrintPreviewCss(), /official-audience-label-retain \{[^}]*border: none; background: #e5e7eb;/);
+assert.match(styleSource, /\.official-audience-label \{[^}]*top: -5\.8mm[^}]*padding: \.8mm 2mm[^}]*border: \.7pt solid #000[^}]*background: #e5e7eb[^}]*font-size: 10pt/);
+assert.match(styleSource, /\.official-audience-label-retain \{[^}]*border: none;[^}]*background: #e5e7eb;/);
 assert.match(context.window.getPrintPreviewCss(), /official-serial-mark \{[^}]*right: 4\.78mm;[^}]*bottom: -4\.5mm[^}]*text-align: right/);
 assert.match(styleSource, /\.official-serial-mark \{[^}]*right: 4\.78mm;[^}]*bottom: -4\.5mm[^}]*text-align: right/);
 const previewSvg = context.window.buildPrintPreviewImageSvg(preview);

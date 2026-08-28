@@ -4,6 +4,26 @@
  * 讀取時支援別名（相容舊表頭 / 新表頭）。
  */
 window.FieldMap = (function () {
+  const SPECIAL_FLOW_COMBINED_RETURN = 'combined_return';
+  const SPECIAL_FLOW_COMBINED_RETURN_LABEL = '合班回原班';
+
+  function normalizeSpecialFlow(raw) {
+    const value = String(raw == null ? '' : raw).trim();
+    if (!value) return '';
+    if (value.toLowerCase() === SPECIAL_FLOW_COMBINED_RETURN
+        || value === SPECIAL_FLOW_COMBINED_RETURN_LABEL) {
+      return SPECIAL_FLOW_COMBINED_RETURN;
+    }
+    return value;
+  }
+
+  function isCombinedReturn(rowOrValue) {
+    const raw = rowOrValue && typeof rowOrValue === 'object'
+      ? pick(rowOrValue, ['特殊流程', 'specialFlow'])
+      : rowOrValue;
+    return normalizeSpecialFlow(raw) === SPECIAL_FLOW_COMBINED_RETURN;
+  }
+
   function pick(row, keys) {
     if (!row) return undefined;
     for (let i = 0; i < keys.length; i++) {
@@ -260,6 +280,7 @@ window.FieldMap = (function () {
       subject: pick(sub, ['科目', 'subject']) || '',
       requestId: pick(sub, ['申請單ID', 'requestId']) || '',
       type: pick(sub, ['異動類型', 'type']),
+      specialFlow: normalizeSpecialFlow(pick(sub, ['特殊流程', 'specialFlow'])),
       printed: asBool(pick(sub, ['是否已印', 'printed'])),
       subFee: pick(sub, ['經費來源', 'subFee']) || '',
       reason: pick(sub, ['請假事由', 'reason']) || '',
@@ -326,6 +347,7 @@ window.FieldMap = (function () {
       requestPeriodDay: asInt(pick(r, ['異動星期', 'requestPeriodDay']), null),
       requestPeriod: asInt(pick(r, ['異動節次', 'requestPeriod']), null),
       type: pick(r, ['異動類型', 'type']),
+      specialFlow: normalizeSpecialFlow(pick(r, ['特殊流程', 'specialFlow'])),
       targetDate: pick(r, ['對調目標日期', 'targetDate']) || '',
       targetDayOfWeek: targetDay === undefined || targetDay === null || targetDay === '' ? null : asInt(targetDay, null),
       targetPeriod: targetPeriod === undefined || targetPeriod === null || targetPeriod === '' ? null : asInt(targetPeriod, null),
@@ -443,6 +465,7 @@ window.FieldMap = (function () {
       "班級": opts.className,
       "科目": opts.subject,
       "異動類型": opts.type,
+      "特殊流程": normalizeSpecialFlow(opts.specialFlow),
       "經費來源": opts.subFee || '無',
       "請假事由": opts.reason || '',
       "請假時間類型": opts.leaveTimeType || '',
@@ -532,11 +555,15 @@ window.FieldMap = (function () {
   }
 
   return {
+    SPECIAL_FLOW_COMBINED_RETURN,
+    SPECIAL_FLOW_COMBINED_RETURN_LABEL,
     pick,
     asBool,
     asInt,
     asFloat,
     normalizeRole,
+    normalizeSpecialFlow,
+    isCombinedReturn,
     normalizeRequestStatus,
        mapSemester,
        mapClassAwayEvent,

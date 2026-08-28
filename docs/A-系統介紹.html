@@ -563,12 +563,12 @@ strong { font-weight: 800; color: var(--blue-deep); }
     <table class="tbl">
       <tr><th>能力</th><th>教師</th><th>行政</th><th>教學組</th></tr>
       <tr><td>自己的課申請調代課</td><td>✔</td><td>✔</td><td>✔</td></tr>
-      <tr><td>全校課表總覽</td><td>—</td><td>✔</td><td>✔</td></tr>
-      <tr><td>行政代申請（需白名單）</td><td>—</td><td>△</td><td>—</td></tr>
-      <tr><td>待核准／直接核准</td><td>—</td><td>—</td><td>✔</td></tr>
-      <tr><td>活動互代、空堂事件</td><td>—</td><td>—</td><td>✔</td></tr>
-      <tr><td>鐘點結算、教師管理</td><td>—</td><td>—</td><td>✔</td></tr>
-      <tr><td>編輯基礎課表、課表匯入</td><td>—</td><td>—</td><td>✔</td></tr>
+       <tr><td>全校課表總覽</td><td>無</td><td>✔</td><td>✔</td></tr>
+       <tr><td>行政代申請（需白名單）</td><td>無</td><td>△</td><td>無</td></tr>
+       <tr><td>待核准／直接核准</td><td>無</td><td>無</td><td>✔</td></tr>
+       <tr><td>活動互代、空堂事件</td><td>無</td><td>無</td><td>✔</td></tr>
+       <tr><td>鐘點結算、教師管理</td><td>無</td><td>無</td><td>✔</td></tr>
+       <tr><td>編輯基礎課表、課表匯入</td><td>無</td><td>無</td><td>✔</td></tr>
     </table>
     <div class="callout gold">
       <span class="tag">特別說明</span>
@@ -787,7 +787,7 @@ strong { font-weight: 800; color: var(--blue-deep); }
     <h3><span class="chip">單價</span>目前常數</h3>
     <table class="tbl">
       <tr><th>項目</th><th>單價</th><th>說明</th></tr>
-      <tr><td>超鐘／公代／自代（1～7 節＋午休）</td><td><strong>455 元／節</strong></td><td>一般節次</td></tr>
+       <tr><td>超鐘／公代／自代（早自習＋1～7 節＋午休）</td><td><strong>455 元／節</strong></td><td>正式課程</td></tr>
       <tr><td>第 8 節代課</td><td><strong>500 元／節</strong></td><td>誰上誰拿；不吃折抵額度</td></tr>
     </table>
     <h3><span class="chip">經費</span>結算方式</h3>
@@ -804,7 +804,7 @@ strong { font-weight: 800; color: var(--blue-deep); }
     休假、病假、事假、補休、其他 → 預設<strong>自費代課</strong>。</p>
     <div class="callout gold">
       <span class="tag">月報概念</span>
-      週超時 = max(0, 排課 − 基鐘)。實得超時再扣空堂調降、自費扣、公費沖銷後 × 455。教學組於後台「鐘點結算」可匯出 Excel（大鐘點 1-7、第8節明細）。
+       週超時＝max（0，排課 − 基鐘）。早自習、1～7 節、午休皆依正式課程屬性判定；實得超時再扣空堂調降、自費扣、公費沖銷後 × 455。教學組於後台「鐘點結算」可匯出 Excel（早自習／1～7／午休大鐘點、第8節明細）。
     </div>
   </div>
   <div class="foot"><span>A｜系統介紹</span><span>建成國中線上調代課系統</span><span>07</span></div>

@@ -138,8 +138,11 @@ function getPrintAudienceLabels(group, ctx) {
 }
 
 function withPrintAudienceLabel(form, label) {
-  const source = String(form || '').replace(/<div class="official-audience-label">[\s\S]*?<\/div>\s*/g, '');
-  const labelHtml = `<div class="official-audience-label">${escapePrintHtml(label || '')}</div>`;
+  const source = String(form || '').replace(/<div class="[^"]*\bofficial-audience-label\b[^"]*">[\s\S]*?<\/div>\s*/g, '');
+  const retainClass = String(label || '').trim() === '教學組留存（請簽名）'
+    ? ' official-audience-label-retain'
+    : '';
+  const labelHtml = `<div class="official-audience-label${retainClass}">${escapePrintHtml(label || '')}</div>`;
   const opening = /(<div\b[^>]*class="[^"]*(?:substitute-form|official-substitution-form)[^"]*"[^>]*>)/i;
   if (opening.test(source)) return source.replace(opening, `$1${labelHtml}`);
   return labelHtml + source;
@@ -736,7 +739,8 @@ function getPrintPreviewCss() {
     .print-preview-stack { display: flex; flex-direction: column; align-items: center; gap: 8mm; min-width: 158mm; padding: 8mm 4mm 12mm; }
     .print-preview-item { width: 158mm; min-height: 170mm; padding: 6mm 12.7mm 7mm; background: #fff; box-shadow: 0 1px 8px rgba(15, 23, 42, .18); overflow: visible; font-size: 10pt; line-height: normal; }
      .substitute-form { width: 132.045mm; min-height: 156.5mm; height: auto; padding: 0 !important; margin: 0 !important; position: relative; box-sizing: border-box; background: #fff !important; border: none !important; overflow: visible; font-size: 10pt; line-height: normal; }
-     .official-audience-label { position: absolute; top: -5.8mm; left: 0; max-width: 92mm; padding: .8mm 2mm; border: .7pt solid #000; background: #fff; font-size: 10pt; font-weight: 700; line-height: 1.2; text-align: left; white-space: normal; overflow-wrap: anywhere; color: #000; }
+      .official-audience-label { position: absolute; top: -5.8mm; left: 0; max-width: 92mm; padding: .8mm 2mm; border: .7pt solid #000; background: #e5e7eb; font-size: 10pt; font-weight: 700; line-height: 1.2; text-align: left; white-space: normal; overflow-wrap: anywhere; color: #000; }
+      .official-audience-label-retain { border: none; background: #e5e7eb; }
       .official-serial-mark { position: absolute; right: 4.78mm; bottom: -4.5mm; max-width: 78mm; font-size: 6.5pt; line-height: 1.1; text-align: right; white-space: normal; overflow-wrap: anywhere; color: #000; }
      .official-form-table-wrap { position: relative; width: 127.265mm; }
      .official-form-table { width: 127.265mm; border-collapse: collapse; table-layout: fixed; font-family: "DFKai-SB", "標楷體", "BiauKai", "Noto Serif TC", serif; font-size: 10pt; color: #000; line-height: 1.05; }
@@ -980,7 +984,8 @@ async function printSelectedForms(formType, ctx) {
              overflow: visible;
            }
            .official-form-empty { visibility: hidden; }
-             .official-audience-label { position: absolute; top: -5.8mm; left: 0; max-width: 92mm; padding: .8mm 2mm; border: .7pt solid #000; background: #fff; font-size: 10pt; font-weight: 700; line-height: 1.2; text-align: left; white-space: normal; overflow-wrap: anywhere; color: #000; }
+             .official-audience-label { position: absolute; top: -5.8mm; left: 0; max-width: 92mm; padding: .8mm 2mm; border: .7pt solid #000; background: #e5e7eb; font-size: 10pt; font-weight: 700; line-height: 1.2; text-align: left; white-space: normal; overflow-wrap: anywhere; color: #000; }
+             .official-audience-label-retain { border: none; background: #e5e7eb; }
              .official-serial-mark { position: absolute; right: 4.78mm; bottom: -4.5mm; max-width: 78mm; font-size: 6.5pt; line-height: 1.1; text-align: right; white-space: normal; overflow-wrap: anywhere; color: #000; }
            .official-form-table-wrap { position: relative; width: 127.265mm; }
            .official-form-table {

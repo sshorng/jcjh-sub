@@ -52,11 +52,12 @@ function loadPaperDraftRecordBuilder(pendingRequestData) {
   const context = {
     pendingRequestData,
     batchSlots: ref([]),
-    getTeacherNameByEmail: value => ({
-      'month@example.com': '洪筱仙',
-      'sheng@example.com': '吳冠萱'
-    })[String(value || '').toLowerCase()] || String(value || ''),
-    decodePaperTimeKey: value => {
+     getTeacherNameByEmail: value => ({
+       'month@example.com': '洪筱仙',
+       'sheng@example.com': '吳冠萱'
+     })[String(value || '').toLowerCase()] || String(value || ''),
+     isCombinedReturnRequest: () => false,
+     decodePaperTimeKey: value => {
       const parts = String(value || '').split('-');
       return { day: parseInt(parts[0], 10), period: parseInt(parts[1], 10) };
     }
@@ -74,16 +75,23 @@ function loadSubmittedPaperRecordBuilder() {
   const end = source.indexOf('const openPaperPrintDraft =', start);
   assert.ok(start >= 0 && end > start, 'submitted paper record builder must remain discoverable');
   const context = {
-    teachersList: ref([
-      { loginEmail: 'owner@example.com', email: '申請人', teacherName: '申請人', name: '申請人' },
-      { loginEmail: 'invitee@example.com', email: '受邀人', teacherName: '受邀人', name: '受邀人' }
-    ]),
-    resolveExchangeTargetCell: () => ({ className: '704', subject: '國文' }),
+     teachersList: ref([
+       { loginEmail: 'owner@example.com', email: '申請人', teacherName: '申請人', name: '申請人' },
+       { loginEmail: 'invitee@example.com', email: '受邀人', teacherName: '受邀人', name: '受邀人' }
+     ]),
+     isCombinedReturnRequest: () => false,
+     resolveExchangeTargetCell: () => ({ className: '704', subject: '國文' }),
     findBaseScheduleSlot: () => null,
     getTeacherNameByEmail: value => ({
       'owner@example.com': '申請人',
       'invitee@example.com': '受邀人'
     })[String(value || '').toLowerCase()] || String(value || ''),
+    isCombinedReturnRequest: request => {
+      const raw = request && (request.specialFlow !== undefined
+        ? request.specialFlow : request['特殊流程']);
+      const value = String(raw == null ? '' : raw).trim().toLowerCase();
+      return value === 'combined_return' || value === '合班回原班';
+    },
     Date,
     Number,
     String,
@@ -473,10 +481,15 @@ function runApplicationFormContractTest() {
   assert.doesNotMatch(html, /🖨️ 列印紙本通知/, 'compare modal must not expose the standalone paper notice button');
   assert.doesNotMatch(html, /送出並列印紙本通知|確認送出，通知相關人員/, 'submit button must use a concise confirmation label');
   assert.match(html, /: '確認送出'\) \}\}/, 'submit button must say confirm submit');
+  assert.match(html, /data-tour="success-followup-actions"/);
+  assert.match(html, /@click="openSuccessPrintPreview"/);
+  assert.match(html, /@click="addSuccessToCalendar"/);
+  assert.match(html, /@click="closeSuccessGoRecords"/);
   const appSource = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
   assert.match(appSource, /returnTo === 'compare'\) showCompareModal\.value = true/);
   assert.match(appSource, /openPaperPrintDraft\(null, \{ returnTo: 'compare' \}\)/);
   assert.match(appSource, /returnTo: draft\.returnTo \|\| ''/);
+  assert.match(appSource, /successActionRequests/);
 }
 
 function runHistoryEditTeacherValueTest() {
@@ -497,7 +510,10 @@ function runHistoryEditTeacherValueTest() {
     getTeacherNameByEmail: teacherName,
     teachersList,
     allSchedules: ref([]),
-    leaveReasonOptions: ['事假'],
+    leaveReasonOptions: ['公假', '事假', '其他'],
+    getHistoryEditDefaultSubFee: (reason, period) => Number(period) === 8
+      ? '第8節代課'
+      : reason === '公假' ? '公費代課' : '自費代課',
     historyEditForm,
     showHistoryEditModal,
     requestsList: ref([{
@@ -508,7 +524,8 @@ function runHistoryEditTeacherValueTest() {
       targetTeacherName: '受邀人',
       requestDate: '2026-08-28',
       requestPeriod: 1,
-      reason: '事假'
+       reason: '公假',
+       subFee: '自費代課'
     }])
   });
   api.openHistoryEditModal({
@@ -523,7 +540,82 @@ function runHistoryEditTeacherValueTest() {
   });
   assert.equal(historyEditForm.value.requesterEmail, '申請人');
   assert.equal(historyEditForm.value.targetTeacherEmail, '受邀人');
+  assert.equal(historyEditForm.value.subFee, '公費代課');
   assert.equal(showHistoryEditModal.value, true);
+  historyEditForm.value.reason = '事假';
+  api.onHistoryEditReasonChange();
+  assert.equal(historyEditForm.value.subFee, '自費代課');
+  historyEditForm.value.requestPeriod = 8;
+  api.onHistoryEditPeriodChange();
+  assert.equal(historyEditForm.value.subFee, '第8節代課');
+  historyEditForm.value.type = 'exchange';
+  api.onHistoryEditTypeChange();
+  assert.equal(historyEditForm.value.subFee, '無');
+}
+
+async function runCombinedHistoryEditContractTest() {
+  const historyEditForm = ref({});
+  const showHistoryEditModal = ref(false);
+  const teachersList = ref([
+    { email: '申請人', loginEmail: 'owner@school.example', name: '申請人', teacherName: '申請人' }
+  ]);
+  let sent = null;
+  const api = load('ui-admin.js').UiAdmin.create({
+    ref,
+    callGasApi: async (action, payload) => { sent = { action, payload }; return { success: true }; },
+    showToast: () => {},
+    showConfirm: async () => true,
+    loading: ref(false),
+    loadingMessage: ref(''),
+    loadWeeklyData: async () => {},
+    currentSemester: ref('115-1'),
+    getTeacherNameByEmail: teacherName,
+    teachersList,
+    allSchedules: ref([]),
+    leaveReasonOptions: ['公假', '事假', '其他'],
+    getHistoryEditDefaultSubFee: () => '自費代課',
+    historyEditForm,
+    showHistoryEditModal,
+    requestsList: ref([{
+      id: 'combined-req-1',
+      requesterEmail: 'owner@school.example',
+      requesterName: '申請人',
+      targetTeacherEmail: '',
+      targetTeacherName: '',
+      specialFlow: 'combined_return',
+      requestDate: '2026-08-28',
+      requestPeriod: 1,
+      className: '701、702',
+      subject: '國文',
+      reason: '合班回原班',
+      subFee: '公費代課'
+    }])
+  });
+
+  api.openHistoryEditModal({
+    id: 'sub-combined-1',
+    requestId: 'combined-req-1',
+    originalTeacherName: '申請人',
+    actualTeacherName: '申請人',
+    specialFlow: 'combined_return',
+    date: '2026-08-28',
+    period: 1,
+    className: '701、702',
+    subject: '國文'
+  });
+  assert.equal(historyEditForm.value.specialFlow, 'combined_return');
+  assert.equal(historyEditForm.value.targetTeacherEmail, '');
+  assert.equal(historyEditForm.value.reason, '合班回原班');
+  historyEditForm.value.requestPeriod = 8;
+  api.onHistoryEditPeriodChange();
+  assert.equal(historyEditForm.value.subFee, '第8節代課');
+  await api.saveHistoryEdit();
+  assert.equal(sent.action, 'saveHistoryEdit');
+  assert.equal(sent.payload.targetTeacherEmail, '');
+  assert.equal(sent.payload.targetTeacherName, '');
+  assert.equal(sent.payload.specialFlow, 'combined_return');
+  assert.equal(sent.payload.requestPeriod, 8);
+  assert.equal(sent.payload.reason, '合班回原班');
 }
 
 function singleDeps() {
@@ -595,6 +687,32 @@ async function runSingleTest() {
   assert.equal(exchangeBuilt.newRequest['對調目標班級'], '704');
   assert.equal(exchangeBuilt.newRequest['對調目標科目'], '國文');
 
+  const combinedDeps = singleDeps();
+  combinedDeps.isAdmin.value = true;
+  combinedDeps.pendingRequestData.value = Object.assign({}, combinedDeps.pendingRequestData.value, {
+    specialFlow: 'combined_return',
+    subTeacher: '',
+    subFee: '公費代課',
+    courseAdjustmentOnly: false,
+    reason: '合班回原班'
+  });
+  const combinedBuilt = api.buildSubmitPayload(combinedDeps, 'req-combined', 'SUB5679');
+  assert.equal(combinedBuilt.newRequest['狀態'], 'pending_admin');
+  assert.equal(combinedBuilt.newRequest['特殊流程'], 'combined_return');
+  assert.equal(combinedBuilt.newRequest['受邀人Email'], '');
+  assert.equal(combinedBuilt.newRequest['紙本流程'], 'FALSE');
+  assert.equal(combinedBuilt.newRequest.directApprove, false);
+  assert.equal(combinedBuilt.newRequest.courseAdjustmentOnly, false);
+  Object.assign(combinedDeps, {
+    showToast: () => {},
+    showConfirm: async () => true,
+    hasSubTeacherConflict: ref(false),
+    assertQuotaDeductAllowed: () => true
+  });
+  assert.equal(await api.validateSubmitRequest(combinedDeps), true);
+  combinedDeps.pendingRequestData.value.courseAdjustmentOnly = true;
+  assert.equal(await api.validateSubmitRequest(combinedDeps), false);
+
   const sentPayloads = [];
   let attempts = 0;
   let printedRows = null;
@@ -626,8 +744,9 @@ async function runSingleTest() {
     successModalMessage: ref(''),
     lineCopyText: ref(''),
     hasLineTemplate: ref(false),
-    showSuccessModal: ref(false),
-    showToast: () => {},
+     showSuccessModal: ref(false),
+     successActionRequests: ref([]),
+     showToast: () => {},
     openPaperPrintDraft: rows => { printedRows = rows; },
     buildSubmitPayload: (requestId, serial) => api.buildSubmitPayload(deps, requestId, serial),
     getProxyActor: deps.getProxyActor,
@@ -641,8 +760,9 @@ async function runSingleTest() {
   assert.equal(sentPayloads[0].request['申請單ID'], sentPayloads[1].request['申請單ID']);
   assert.equal(sentPayloads[0].paperFlow, true);
   assert.equal(sentPayloads[1].request['狀態'], 'pending_admin');
-  assert.equal(printedRows.length, 1);
-  assert.equal(printedRows[0]['紙本流程'], 'TRUE');
+   assert.equal(printedRows.length, 1);
+   assert.equal(printedRows[0]['紙本流程'], 'TRUE');
+   assert.equal(deps.successActionRequests.value.length, 1);
 }
 
 async function runCourseAdjustmentTest() {
@@ -754,6 +874,7 @@ async function runBatchTest(courseAdjustmentOnly = false) {
     lineBatchParts: ref([]),
     lineCopyText: ref(''),
     showSuccessModal: ref(false),
+    successActionRequests: ref([]),
     showCompareModal: ref(true),
     showMatchModal: ref(false),
     batchSelectMode: ref(true),
@@ -770,6 +891,7 @@ async function runBatchTest(courseAdjustmentOnly = false) {
   assert.equal(sent[0].skipNotify, true);
   assert.ok(sent[0].requests.every(row => row['狀態'] === 'pending_admin' && row['紙本流程'] === 'TRUE'));
   assert.equal(printedRows.length, 2, 'paper records must be built before batch slots are cleared');
+  assert.equal(deps.successActionRequests.value.length, 2);
   if (courseAdjustmentOnly) {
     assert.ok(sent[0].requests.every(row => row['請假時間類型'] === '' && row['請假時間'] === ''));
   }
@@ -784,6 +906,7 @@ Promise.resolve()
   .then(() => runExchangePaperRecordMappingTest())
   .then(() => runApplicationFormContractTest())
   .then(() => runHistoryEditTeacherValueTest())
+  .then(() => runCombinedHistoryEditContractTest())
   .then(runSingleTest)
   .then(runCourseAdjustmentTest)
   .then(runBatchTest)

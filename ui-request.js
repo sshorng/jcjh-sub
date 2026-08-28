@@ -30,7 +30,7 @@ window.UiSubmitHelpers = (function () {
     return '';
   }
 
-   function shouldProxySubmitForLeave(deps, leaveNameOrEmail) {
+  function shouldProxySubmitForLeave(deps, leaveNameOrEmail) {
     if (deps.shouldProxySubmitForLeave && typeof deps.shouldProxySubmitForLeave === 'function') {
       return !!deps.shouldProxySubmitForLeave(leaveNameOrEmail);
     }
@@ -50,6 +50,16 @@ window.UiSubmitHelpers = (function () {
     return !!(me && leave && leave !== me);
   }
 
+  function isCombinedReturnRequest(request) {
+    if (window.FieldMap && typeof window.FieldMap.isCombinedReturn === 'function') {
+      return window.FieldMap.isCombinedReturn(request);
+    }
+    var raw = request && request.specialFlow;
+    if (String(raw == null ? '' : raw).trim() === '') raw = request && request['特殊流程'];
+    var value = String(raw == null ? '' : raw).trim().toLowerCase();
+    return value === 'combined_return' || value === '合班回原班';
+  }
+
   async function validateSubmitRequest(deps) {
     var pending = deps.pendingRequestData.value;
     var showToast = deps.showToast;
@@ -58,7 +68,22 @@ window.UiSubmitHelpers = (function () {
     var getTeacherNameByEmail = deps.getTeacherNameByEmail;
     var hasSubTeacherConflict = deps.hasSubTeacherConflict;
     var assertQuotaDeductAllowed = deps.assertQuotaDeductAllowed;
+    var isMutualCover = deps.isMutualCover;
     var canForceConflict = !!(isAdmin && isAdmin.value) || isProxySubmitActive(deps);
+    var combinedReturn = isCombinedReturnRequest(pending);
+
+    if (combinedReturn && !(isAdmin && isAdmin.value)) {
+      showToast('合班回原班僅限教學組建立', 'warning');
+      return false;
+    }
+    if (combinedReturn && (pending.mode !== 'substitution' || pending.subTeacher)) {
+      showToast('合班回原班不可指定受邀教師', 'warning');
+      return false;
+    }
+    if (combinedReturn && (pending.courseAdjustmentOnly || (isMutualCover && isMutualCover.value))) {
+      showToast('合班回原班不可使用課務調整或互代流程', 'warning');
+      return false;
+    }
 
     if (deps.assertCanSubmitAsLeaveTeacher) {
       var leaveOk = deps.assertCanSubmitAsLeaveTeacher(pending.leaveTeacher);
@@ -69,7 +94,7 @@ window.UiSubmitHelpers = (function () {
       showToast('請選擇請假原因/假別！', 'info');
       return false;
     }
-    if (hasSubTeacherConflict.value) {
+    if (!combinedReturn && hasSubTeacherConflict.value) {
       var subName = pending.subTeacher
         ? getTeacherNameByEmail(pending.subTeacher) : '該教師';
       if (canForceConflict) {
@@ -82,8 +107,8 @@ window.UiSubmitHelpers = (function () {
         return false;
       }
     }
-    var courseAdjustmentOnly = pending.mode === 'substitution' && !!pending.courseAdjustmentOnly;
-    if (pending.mode === 'substitution' && !courseAdjustmentOnly && (!pending.leaveTimeType || !pending.leaveTimeStart || !pending.leaveTimeEnd || pending.leaveTimeStart >= pending.leaveTimeEnd)) {
+    var courseAdjustmentOnly = !combinedReturn && pending.mode === 'substitution' && !!pending.courseAdjustmentOnly;
+    if (pending.mode === 'substitution' && !combinedReturn && !courseAdjustmentOnly && (!pending.leaveTimeType || !pending.leaveTimeStart || !pending.leaveTimeEnd || pending.leaveTimeStart >= pending.leaveTimeEnd)) {
       showToast('請填寫有效的請假時間（可選全天／上午／下午或自行修改）', 'info');
       return false;
     }
@@ -150,9 +175,11 @@ window.UiSubmitHelpers = (function () {
     var defaultSubFeeForReason = deps.defaultSubFeeForReason;
     var activeCell = deps.activeCell;
     var DAC = deps.DAC || function () { return window.DomainActivityCover; };
+    var combinedReturn = isCombinedReturnRequest(pending);
     var leaveEm0 = String(pending.leaveTeacher || '').trim().toLowerCase();
     // 優先用「請假人≠自己＋已授權行政」判斷，避免只靠右上代理對象漏判
     var proxyActive = shouldProxySubmitForLeave(deps, leaveEm0) || isProxySubmitActive(deps);
+    if (combinedReturn) proxyActive = false;
     var proxyByEmail = '';
     var proxyByName = '';
     if (proxyActive) {
@@ -174,12 +201,14 @@ window.UiSubmitHelpers = (function () {
         proxyByName = '';
       }
     }
-    var paperFlowActive = !!(paperFlow && paperFlow.value && !proxyActive);
+    var paperFlowActive = !!(paperFlow && paperFlow.value && !proxyActive && !combinedReturn);
     // 行政代申請：跳過受邀確認，直接送教學組；不可直接核准
-    var doDirectApprove = !!(isAdmin && isAdmin.value && directApproveMode && directApproveMode.value && !proxyActive && !paperFlowActive);
-    var initialStatus = paperFlowActive
+    var doDirectApprove = !!(isAdmin && isAdmin.value && directApproveMode && directApproveMode.value && !proxyActive && !paperFlowActive && !combinedReturn);
+    var initialStatus = combinedReturn
       ? 'pending_admin'
-      : (doDirectApprove ? 'approved' : (proxyActive ? 'pending_admin' : 'pending_teacher'));
+      : (paperFlowActive
+      ? 'pending_admin'
+      : (doDirectApprove ? 'approved' : (proxyActive ? 'pending_admin' : 'pending_teacher')));
     var isExchange = pending.mode === 'exchange';
     var courseAdjustmentOnly = pending.mode === 'substitution' && !!pending.courseAdjustmentOnly;
     var finalFeeType = '無';
@@ -189,7 +218,9 @@ window.UiSubmitHelpers = (function () {
         : { period: parseInt(String(pending.timeKey || '').slice(-1), 10) };
       var periodNum = parseInt(tk0.period, 10)
         || (activeCell.value ? parseInt(activeCell.value.period, 10) : 0);
-      if (periodNum === 8) {
+      if (combinedReturn) {
+        finalFeeType = periodNum === 8 ? PERIOD8_FEE : (pending.subFee || '自費代課');
+      } else if (periodNum === 8) {
         finalFeeType = PERIOD8_FEE;
       } else if (isMutualCover.value) {
         finalFeeType = DAC()
@@ -218,9 +249,9 @@ window.UiSubmitHelpers = (function () {
        "單號": serial,
        "異動類型": pending.mode,
        "申請人Email": pending.leaveTeacher,
-       "受邀人Email": pending.subTeacher,
+       "受邀人Email": combinedReturn ? '' : pending.subTeacher,
         "申請人姓名": getTeacherNameByEmail(pending.leaveTeacher),
-       "受邀人姓名": getTeacherNameByEmail(pending.subTeacher),
+        "受邀人姓名": combinedReturn ? '' : getTeacherNameByEmail(pending.subTeacher),
       "異動日期": pending.date,
       "異動節次": (function () {
         var tk = (window.DateUtils && window.DateUtils.decodeTimeKey)
@@ -242,8 +273,9 @@ window.UiSubmitHelpers = (function () {
       "經費來源": finalFeeType || '無',
       "備註": noteOut,
       "狀態": initialStatus,
-      "直接核准": doDirectApprove ? '是' : '',
-      "紙本流程": paperFlowActive ? 'TRUE' : 'FALSE',
+       "直接核准": doDirectApprove ? '是' : '',
+       "紙本流程": paperFlowActive ? 'TRUE' : 'FALSE',
+       "特殊流程": combinedReturn ? 'combined_return' : '',
       directApprove: doDirectApprove,
       isProxySubmit: !!proxyActive,
        paperFlow: paperFlowActive,
@@ -795,10 +827,11 @@ window.UiSubmitHelpers = (function () {
     var buildLineInviteText = deps.buildLineInviteText;
     var successModalTitle = deps.successModalTitle;
     var successModalMessage = deps.successModalMessage;
-    var lineCopyText = deps.lineCopyText;
-    var hasLineTemplate = deps.hasLineTemplate;
-    var showSuccessModal = deps.showSuccessModal;
-    var showToast = deps.showToast;
+     var lineCopyText = deps.lineCopyText;
+     var hasLineTemplate = deps.hasLineTemplate;
+     var showSuccessModal = deps.showSuccessModal;
+     var successActionRequests = deps.successActionRequests;
+     var showToast = deps.showToast;
     var notificationsSuppressed = deps.notificationsSuppressed;
 
     // 防連點：一進來就鎖，避免 validate／confirm 期間重複點
@@ -829,6 +862,7 @@ window.UiSubmitHelpers = (function () {
       var payload = built.payload;
       var newRequest = built.newRequest;
       var isExchange = built.isExchange;
+       var combinedReturn = isCombinedReturnRequest(newRequest);
        var paperFlowActive = !!(newRequest.paperFlow && !newRequest.isProxySubmit && !newRequest.directApprove);
       // 送出前再強制一次：已授權行政代別人 → pending_admin + proxySubmit
        if (shouldProxySubmitForLeave(deps, newRequest['申請人姓名'] || pendingRequestData.value.leaveTeacher)) {
@@ -872,7 +906,9 @@ window.UiSubmitHelpers = (function () {
 
       showCompareModal.value = false;
       showMatchModal.value = false;
-      optimisticUpsertRequest(sheetRequestToFront(newRequest));
+       var frontRequest = sheetRequestToFront(newRequest);
+       optimisticUpsertRequest(frontRequest);
+       if (successActionRequests) successActionRequests.value = [frontRequest];
       await deductMutualQuotaForRows([newRequest]);
       softRefreshInBackground({ delay: 2500 });
 
@@ -887,9 +923,9 @@ window.UiSubmitHelpers = (function () {
       var currentUrl = window.location.origin + window.location.pathname;
       var agreeLink = currentUrl + '?action=respond&id=' + requestId + '&status=agree';
       var declineLink = currentUrl + '?action=respond&id=' + requestId + '&status=decline';
-      var mutualTip = isMutualCover.value
-        ? (isQuotaDeductFee(newRequest['經費來源']) ? '（活動互代／扣額度）' : '（活動互代／活動公費）')
-        : '';
+       var mutualTip = isMutualCover.value && !combinedReturn
+         ? (isQuotaDeductFee(newRequest['經費來源']) ? '（活動互代／扣額度）' : '（活動互代／活動公費）')
+         : '';
       var notifyTip = skipNotify ? ' 尚未寄系統信，請用下方 LINE 手動通知。' : '';
        var linePayload = {
          targetName: newRequest['受邀人姓名'],
@@ -920,14 +956,16 @@ window.UiSubmitHelpers = (function () {
         lineCopyText.value = buildLineInviteText(linePayload);
         hasLineTemplate.value = true;
         if (deps.successFlowMode) deps.successFlowMode.value = 'normal';
-      } else if (newRequest['狀態'] === 'pending_admin') {
-        var proxyTip = newRequest.isProxySubmit
-          ? '（行政代申請，已跳過受邀確認）'
-          : '';
-        successModalTitle.value = '🎉 已送交教學組';
-        successModalMessage.value = '申請單（' + serial + '）' + proxyTip
-          + '已送交教學組待核准' + mutualTip
-          + '。不會寄信給受邀者；教學組核准後才會通知。';
+       } else if (newRequest['狀態'] === 'pending_admin') {
+         var proxyTip = newRequest.isProxySubmit
+           ? '（行政代申請，已跳過受邀確認）'
+           : '';
+         successModalTitle.value = '🎉 已送交教學組';
+         successModalMessage.value = combinedReturn
+           ? ('申請單（' + serial + '）已送交教學組待核准。核准後由原授課教師回原班授課，不寄送受邀通知。')
+           : ('申請單（' + serial + '）' + proxyTip
+             + '已送交教學組待核准' + mutualTip
+             + '。不會寄信給受邀者；教學組核准後才會通知。');
         lineCopyText.value = '';
         hasLineTemplate.value = false;
         if (deps.successFlowMode) deps.successFlowMode.value = 'proxy';

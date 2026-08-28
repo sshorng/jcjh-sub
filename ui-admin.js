@@ -19,6 +19,7 @@ window.UiAdmin = (function () {
     var teachersList = deps.teachersList;
     var allSchedules = deps.allSchedules;
     var leaveReasonOptions = deps.leaveReasonOptions;
+    var getHistoryEditDefaultSubFee = deps.getHistoryEditDefaultSubFee;
     var historyEditForm = deps.historyEditForm;
     var showHistoryEditModal = deps.showHistoryEditModal;
     var requestsList = deps.requestsList;
@@ -1307,6 +1308,57 @@ window.UiAdmin = (function () {
       return String(hit.email || hit.teacherName || hit.name || hit.loginEmail || raw).trim();
     }
 
+    function isHistoryExchange(form) {
+      return !!(form && (form.type === 'exchange' || form.type === '對調'));
+    }
+
+    function isCombinedReturnHistory(value) {
+      if (window.FieldMap && typeof window.FieldMap.isCombinedReturn === 'function') {
+        return window.FieldMap.isCombinedReturn(value);
+      }
+      var raw = value && value.specialFlow;
+      if (String(raw == null ? '' : raw).trim() === '') raw = value && value['特殊流程'];
+      var normalized = String(raw == null ? '' : raw).trim().toLowerCase();
+      return normalized === 'combined_return' || normalized === '合班回原班';
+    }
+
+    function syncHistoryEditFee(force) {
+      var form = historyEditForm && historyEditForm.value;
+      if (!form) return;
+      if (isHistoryExchange(form)) {
+        form.subFee = '無';
+        return;
+      }
+      if (isCombinedReturnHistory(form)) {
+        if (parseInt(form.requestPeriod, 10) === 8) {
+          form.subFee = '第8節代課';
+        } else if (form.subFee !== '公費代課' && form.subFee !== '自費代課') {
+          form.subFee = '自費代課';
+        }
+        return;
+      }
+      if (typeof getHistoryEditDefaultSubFee !== 'function') return;
+      var autoFeeValues = ['', '無', '自費代課', '公費代課', '第8節代課'];
+      var currentFee = String(form.subFee || '').trim();
+      if (force || autoFeeValues.indexOf(currentFee) >= 0) {
+        form.subFee = getHistoryEditDefaultSubFee(form.reason, form.requestPeriod);
+      }
+    }
+
+    function onHistoryEditReasonChange() {
+      syncHistoryEditFee(true);
+    }
+
+    function onHistoryEditTypeChange() {
+      syncHistoryEditFee(true);
+    }
+
+    function onHistoryEditPeriodChange() {
+      var form = historyEditForm && historyEditForm.value;
+      var period = form ? parseInt(form.requestPeriod, 10) : 0;
+      syncHistoryEditFee(period === 8);
+    }
+
     function openHistoryEditModal(rec) {
       var rid = rec.requestId || String(rec.id || '').replace(/_[12]$/, '') || '';
       var matched = null;
@@ -1324,15 +1376,18 @@ window.UiAdmin = (function () {
         else reason = '其他';
       }
       var isEx = (src.type || rec.type) === 'exchange' || (src.type || rec.type) === '對調';
+      var combinedReturn = isCombinedReturnHistory(src) || isCombinedReturnHistory(rec);
+      if (combinedReturn) isEx = false;
       var reqDate = src.requestDate || rec.requestDate || rec.date || '';
       var tgtRaw = src.targetDate || rec.targetDate || '';
       var unknownDate = String.fromCharCode(0x2014);
       var tgtDate = (tgtRaw && tgtRaw !== '---' && tgtRaw !== unknownDate) ? tgtRaw : '';
 
-       var leaveRaw = src.requesterEmail || src.requesterName || rec.originalTeacherEmail || rec.requesterEmail || rec.originalTeacherName || '';
-       var subRaw = src.targetTeacherEmail || src.targetTeacherName || rec.actualTeacherEmail || rec.targetTeacherEmail || rec.actualTeacherName || '';
-       var leaveEmail = resolveHistoryTeacherValue(leaveRaw);
-       var subEmail = resolveHistoryTeacherValue(subRaw);
+      var leaveRaw = src.requesterEmail || src.requesterName || rec.originalTeacherEmail || rec.requesterEmail || rec.originalTeacherName || '';
+      var subRaw = combinedReturn ? '' : (src.targetTeacherEmail || src.targetTeacherName || rec.actualTeacherEmail || rec.targetTeacherEmail || rec.actualTeacherName || '');
+      var existingSubFee = src.subFee || src['經費來源'] || rec.subFee || rec['經費來源'] || '';
+      var leaveEmail = resolveHistoryTeacherValue(leaveRaw);
+      var subEmail = combinedReturn ? '' : resolveHistoryTeacherValue(subRaw);
       var readHistoryPeriod = function () {
         for (var pi = 0; pi < arguments.length; pi++) {
           if (arguments[pi] == null || arguments[pi] === '') continue;
@@ -1345,6 +1400,7 @@ window.UiAdmin = (function () {
       historyEditForm.value = {
         id: rid,
         requestId: rid,
+        specialFlow: combinedReturn ? 'combined_return' : '',
         serial: src.serial || rec.serial || '',
         type: isEx ? 'exchange' : 'substitution',
         requesterEmail: leaveEmail,
@@ -1357,13 +1413,14 @@ window.UiAdmin = (function () {
         targetDate: tgtDate,
         targetDayOfWeek: src.targetDayOfWeek || dayOfWeekFromDateStr(tgtDate),
          targetPeriod: readHistoryPeriod(src.targetPeriod, rec.targetPeriod),
-        reason: reason,
-        leaveTimeType: src.leaveTimeType || rec.leaveTimeType || '',
-        leaveTime: src.leaveTime || rec.leaveTime || '',
-        subFee: isEx ? '無' : (src.subFee || rec.subFee || '自費代課'),
+        reason: combinedReturn ? '合班回原班' : reason,
+        leaveTimeType: combinedReturn ? '' : (src.leaveTimeType || rec.leaveTimeType || ''),
+        leaveTime: combinedReturn ? '' : (src.leaveTime || rec.leaveTime || ''),
+        subFee: isEx ? '無' : (existingSubFee || '自費代課'),
         note: src.note || rec.note || '',
         printed: !!(src.printed != null ? src.printed : rec.printed)
       };
+      if (!isEx) syncHistoryEditFee(false);
       showHistoryEditModal.value = true;
     }
 
@@ -1379,25 +1436,27 @@ window.UiAdmin = (function () {
     async function saveHistoryEdit() {
       var form = historyEditForm.value;
       var rid = form.requestId || form.id || '';
+      var combinedReturn = isCombinedReturnHistory(form);
       if (!rid) {
         showToast('無法識別此紀錄', 'warning');
         return;
       }
-      if (!form.requesterEmail || !form.targetTeacherEmail) {
-        showToast('請選擇請假教師與代課／對調教師', 'warning');
+      if (!form.requesterEmail || (!combinedReturn && !form.targetTeacherEmail)) {
+        showToast(combinedReturn ? '請選擇申請教師' : '請選擇請假教師與代課／對調教師', 'warning');
         return;
       }
-      if (!form.requestDate || !form.requestPeriod) {
+      if (!form.requestDate || form.requestPeriod == null || form.requestPeriod === '') {
         showToast('請填寫請假日期與節次', 'warning');
         return;
       }
-      var isEx = form.type === 'exchange' || form.type === '對調';
+      var isEx = !combinedReturn && (form.type === 'exchange' || form.type === '對調');
+      if (!isEx) syncHistoryEditFee(false);
       if (isEx && (!form.targetDate || !form.targetPeriod)) {
         showToast('調課請填寫對調日期與節次', 'warning');
         return;
       }
       var leaveName = getTeacherNameByEmail(form.requesterEmail) || '';
-      var subName = getTeacherNameByEmail(form.targetTeacherEmail) || '';
+      var subName = combinedReturn ? '' : (getTeacherNameByEmail(form.targetTeacherEmail) || '');
       loading.value = true;
       loadingMessage.value = '儲存歷史紀錄中...';
       try {
@@ -1406,20 +1465,21 @@ window.UiAdmin = (function () {
           type: isEx ? 'exchange' : 'substitution',
           requesterEmail: form.requesterEmail,
           requesterName: leaveName,
-          targetTeacherEmail: form.targetTeacherEmail,
-          targetTeacherName: subName,
+          targetTeacherEmail: combinedReturn ? '' : form.targetTeacherEmail,
+          targetTeacherName: combinedReturn ? '' : subName,
           className: form.className || '',
           subject: form.subject || '',
           requestDate: form.requestDate,
           requestPeriodDay: form.requestPeriodDay || dayOfWeekFromDateStr(form.requestDate),
-          requestPeriod: parseInt(form.requestPeriod, 10) || 1,
+          requestPeriod: parseInt(form.requestPeriod, 10),
           targetDate: isEx ? (form.targetDate || '') : '',
           targetDayOfWeek: isEx ? (form.targetDayOfWeek || dayOfWeekFromDateStr(form.targetDate)) : '',
           targetPeriod: isEx ? (parseInt(form.targetPeriod, 10) || 1) : '',
-          reason: form.reason || '',
-          leaveTimeType: isEx ? '' : (form.leaveTimeType || ''),
-          leaveTime: isEx ? '' : (form.leaveTime || ''),
+          reason: combinedReturn ? '合班回原班' : (form.reason || ''),
+          leaveTimeType: isEx || combinedReturn ? '' : (form.leaveTimeType || ''),
+          leaveTime: isEx || combinedReturn ? '' : (form.leaveTime || ''),
           subFee: isEx ? '無' : (form.subFee || '自費代課'),
+          specialFlow: combinedReturn ? 'combined_return' : '',
           note: form.note || '',
           printed: !!form.printed
         };
@@ -1472,6 +1532,9 @@ window.UiAdmin = (function () {
       getMappingLabel: getMappingLabel,
       openHistoryEditModal: openHistoryEditModal,
       saveHistoryEdit: saveHistoryEdit,
+      onHistoryEditReasonChange: onHistoryEditReasonChange,
+      onHistoryEditTypeChange: onHistoryEditTypeChange,
+      onHistoryEditPeriodChange: onHistoryEditPeriodChange,
       onHistoryEditDateChange: onHistoryEditDateChange
     };
   }

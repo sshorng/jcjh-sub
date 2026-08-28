@@ -5,6 +5,8 @@
   'use strict';
 
   var EMAIL_RE = /email|電子郵件|e-mail/i;
+  var SPECIAL_FLOW_COMBINED_RETURN = 'combined_return';
+  var SPECIAL_FLOW_COMBINED_RETURN_LABEL = '合班回原班';
   var SPECS = {
     '教師課表': {
       nameFields: ['教師姓名'],
@@ -14,7 +16,7 @@
     '申請單': {
       nameFields: ['申請人姓名', '受邀人姓名', '代申請人姓名'],
       legacyFields: ['申請人Email', '受邀人Email', '代申請人Email', 'requesterEmail', 'targetTeacherEmail', 'proxyByEmail'],
-      headers: ['學期代號', '申請單ID', '單號', '批次ID', '狀態', '申請人姓名', '受邀人姓名', '代申請人姓名', '班級', '科目', '異動日期', '異動星期', '異動節次', '異動類型', '對調目標日期', '對調目標星期', '對調目標節次', '經費來源', '請假事由', '請假時間類型', '請假時間', '是否已印', '備註', '建立時間', '更新時間']
+      headers: ['學期代號', '申請單ID', '單號', '批次ID', '狀態', '申請人姓名', '受邀人姓名', '代申請人姓名', '班級', '科目', '異動日期', '異動星期', '異動節次', '異動類型', '特殊流程', '對調目標日期', '對調目標星期', '對調目標節次', '經費來源', '請假事由', '請假時間類型', '請假時間', '是否已印', '備註', '建立時間', '更新時間']
     },
     '代導紀錄': {
       nameFields: ['原導師姓名', '代導教師姓名', '操作者'],
@@ -47,6 +49,23 @@
 
   function fieldOrEmpty(row, names) {
     return field(row, names);
+  }
+
+  function normalizeSpecialFlow(raw) {
+    var value = text(raw);
+    if (!value) return '';
+    if (value.toLowerCase() === SPECIAL_FLOW_COMBINED_RETURN
+        || value === SPECIAL_FLOW_COMBINED_RETURN_LABEL) {
+      return SPECIAL_FLOW_COMBINED_RETURN;
+    }
+    return value;
+  }
+
+  function isCombinedReturn(rowOrValue) {
+    var raw = rowOrValue && typeof rowOrValue === 'object'
+      ? field(rowOrValue, ['特殊流程', 'specialFlow'])
+      : rowOrValue;
+    return normalizeSpecialFlow(raw) === SPECIAL_FLOW_COMBINED_RETURN;
   }
 
   function error(code, message, details) {
@@ -172,7 +191,14 @@
       output['教師姓名'] = resolvePair(fieldOrEmpty(row, ['教師姓名', 'teacherName']), fieldOrEmpty(row, spec.legacyFields), directory, sid, '課表教師');
     } else if (sheetName === '申請單') {
       output['申請人姓名'] = resolvePair(fieldOrEmpty(row, ['申請人姓名', 'requesterName']), fieldOrEmpty(row, ['申請人Email', 'requesterEmail']), directory, sid, '申請人');
-      output['受邀人姓名'] = resolvePair(fieldOrEmpty(row, ['受邀人姓名', 'targetTeacherName']), fieldOrEmpty(row, ['受邀人Email', 'targetTeacherEmail']), directory, sid, '受邀人');
+      var combinedReturn = isCombinedReturn(row);
+      if (combinedReturn && hasValue(row, ['受邀人姓名', 'targetTeacherName', '受邀人Email', 'targetTeacherEmail'])) {
+        throw error('INVALID_COMBINED_RETURN', '合班回原班不可指定受邀教師');
+      }
+      output['受邀人姓名'] = combinedReturn
+        ? ''
+        : resolvePair(fieldOrEmpty(row, ['受邀人姓名', 'targetTeacherName']), fieldOrEmpty(row, ['受邀人Email', 'targetTeacherEmail']), directory, sid, '受邀人');
+      output['特殊流程'] = combinedReturn ? SPECIAL_FLOW_COMBINED_RETURN_LABEL : field(row, ['特殊流程', 'specialFlow']);
       if (hasValue(row, ['代申請人姓名', 'proxyByName', '代申請人Email', 'proxyByEmail'])) {
         output['代申請人姓名'] = resolvePair(fieldOrEmpty(row, ['代申請人姓名', 'proxyByName']), fieldOrEmpty(row, ['代申請人Email', 'proxyByEmail']), directory, sid, '代申請人');
       } else {
@@ -237,6 +263,8 @@
   }
 
   return {
+    SPECIAL_FLOW_COMBINED_RETURN: SPECIAL_FLOW_COMBINED_RETURN,
+    SPECIAL_FLOW_COMBINED_RETURN_LABEL: SPECIAL_FLOW_COMBINED_RETURN_LABEL,
     SPECS: SPECS,
     canonicalHeaders: canonicalHeaders,
     migrateHeaders: migrateHeaders,
@@ -246,6 +274,8 @@
     migrateRows: migrateRows,
     renameRows: renameRows,
     normalizeText: text,
-    normalizeKey: key
+    normalizeKey: key,
+    normalizeSpecialFlow: normalizeSpecialFlow,
+    isCombinedReturn: isCombinedReturn
   };
 });
