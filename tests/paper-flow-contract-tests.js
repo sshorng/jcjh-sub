@@ -52,6 +52,10 @@ function loadPaperDraftRecordBuilder(pendingRequestData) {
   const context = {
     pendingRequestData,
     batchSlots: ref([]),
+    getTeacherNameByEmail: value => ({
+      'month@example.com': '洪筱仙',
+      'sheng@example.com': '吳冠萱'
+    })[String(value || '').toLowerCase()] || String(value || ''),
     decodePaperTimeKey: value => {
       const parts = String(value || '').split('-');
       return { day: parseInt(parts[0], 10), period: parseInt(parts[1], 10) };
@@ -76,6 +80,10 @@ function loadSubmittedPaperRecordBuilder() {
     ]),
     resolveExchangeTargetCell: () => ({ className: '704', subject: '國文' }),
     findBaseScheduleSlot: () => null,
+    getTeacherNameByEmail: value => ({
+      'owner@example.com': '申請人',
+      'invitee@example.com': '受邀人'
+    })[String(value || '').toLowerCase()] || String(value || ''),
     Date,
     Number,
     String,
@@ -129,15 +137,19 @@ function runExchangePaperRecordMappingTest() {
   const targetDateRecord = records.find(record => record.id.endsWith('_1'));
   const sourceDateRecord = records.find(record => record.id.endsWith('_2'));
   assert.equal(targetDateRecord.date, '2026-09-03');
-  assert.equal(targetDateRecord.className, '703');
-  assert.equal(targetDateRecord.subject, '數學');
-  assert.equal(targetDateRecord.originalTeacherEmail, 'sheng@example.com');
-  assert.equal(targetDateRecord.actualTeacherEmail, 'month@example.com');
-  assert.equal(sourceDateRecord.date, '2026-09-01');
-  assert.equal(sourceDateRecord.className, '704');
-  assert.equal(sourceDateRecord.subject, '國文');
-  assert.equal(sourceDateRecord.originalTeacherEmail, 'month@example.com');
-  assert.equal(sourceDateRecord.actualTeacherEmail, 'sheng@example.com');
+  assert.equal(targetDateRecord.className, '704');
+  assert.equal(targetDateRecord.subject, '國文');
+   assert.equal(targetDateRecord.originalTeacherEmail, 'sheng@example.com');
+   assert.equal(targetDateRecord.actualTeacherEmail, 'month@example.com');
+   assert.equal(targetDateRecord.originalTeacherName, '吳冠萱');
+   assert.equal(targetDateRecord.actualTeacherName, '洪筱仙');
+   assert.equal(sourceDateRecord.date, '2026-09-01');
+  assert.equal(sourceDateRecord.className, '703');
+  assert.equal(sourceDateRecord.subject, '數學');
+   assert.equal(sourceDateRecord.originalTeacherEmail, 'month@example.com');
+   assert.equal(sourceDateRecord.actualTeacherEmail, 'sheng@example.com');
+   assert.equal(sourceDateRecord.originalTeacherName, '洪筱仙');
+   assert.equal(sourceDateRecord.actualTeacherName, '吳冠萱');
 }
 
 function runSubmittedExchangePaperRecordMappingTest() {
@@ -155,10 +167,12 @@ function runSubmittedExchangePaperRecordMappingTest() {
   }]);
   const targetDateRecord = records.find(record => record.id.endsWith('_1'));
   const sourceDateRecord = records.find(record => record.id.endsWith('_2'));
-  assert.equal(targetDateRecord.className, '703');
-  assert.equal(targetDateRecord.subject, '數學');
-  assert.equal(sourceDateRecord.className, '704');
-  assert.equal(sourceDateRecord.subject, '國文');
+   assert.equal(targetDateRecord.className, '704');
+   assert.equal(targetDateRecord.subject, '國文');
+   assert.equal(targetDateRecord.actualTeacherName, '申請人');
+   assert.equal(sourceDateRecord.className, '703');
+   assert.equal(sourceDateRecord.subject, '數學');
+   assert.equal(sourceDateRecord.actualTeacherName, '受邀人');
 }
 
 function runApprovedExchangeRecordMappingTest() {
@@ -182,10 +196,10 @@ function runApprovedExchangeRecordMappingTest() {
   }]);
   const targetDateRecord = records.find(record => record.id.endsWith('_1'));
   const sourceDateRecord = records.find(record => record.id.endsWith('_2'));
-  assert.equal(targetDateRecord.className, '703');
-  assert.equal(targetDateRecord.subject, '數學');
-  assert.equal(sourceDateRecord.className, '704');
-  assert.equal(sourceDateRecord.subject, '國文');
+  assert.equal(targetDateRecord.className, '704');
+  assert.equal(targetDateRecord.subject, '國文');
+  assert.equal(sourceDateRecord.className, '703');
+  assert.equal(sourceDateRecord.subject, '數學');
 }
 
 function runNoSyntheticStudySubjectTest() {
@@ -454,6 +468,15 @@ function runApplicationFormContractTest() {
   assert.match(html, /id="course-adjustment-only"/);
   assert.match(html, /@change="toggleCourseAdjustmentOnly"/);
   assert.match(html, /pendingRequestData\.mode === 'substitution' && !pendingRequestData\.courseAdjustmentOnly/);
+  assert.ok((html.match(/預覽調代課單/g) || []).length >= 3, 'compare modal must expose preview in every footer branch');
+  assert.ok((html.match(/@click="openPaperPrintDraftFromCompare"/g) || []).length >= 3, 'preview buttons must use the shared preview flow');
+  assert.doesNotMatch(html, /🖨️ 列印紙本通知/, 'compare modal must not expose the standalone paper notice button');
+  assert.doesNotMatch(html, /送出並列印紙本通知|確認送出，通知相關人員/, 'submit button must use a concise confirmation label');
+  assert.match(html, /: '確認送出'\) \}\}/, 'submit button must say confirm submit');
+  const appSource = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
+  assert.match(appSource, /returnTo === 'compare'\) showCompareModal\.value = true/);
+  assert.match(appSource, /openPaperPrintDraft\(null, \{ returnTo: 'compare' \}\)/);
+  assert.match(appSource, /returnTo: draft\.returnTo \|\| ''/);
 }
 
 function runHistoryEditTeacherValueTest() {

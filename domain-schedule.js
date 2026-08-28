@@ -479,26 +479,26 @@ window.DomainSchedule = (function () {
     var target = String(request && request.targetTeacherEmail || '').toLowerCase();
     if (email === requester) {
       return {
-        className: String(request && request.className || '').trim(),
-        subject: String(request && request.subject || '').trim()
+        className: String(request && request.targetClassName || '').trim(),
+        subject: String(request && request.targetSubject || '').trim()
       };
     }
     if (email !== target) return { className: '', subject: '' };
 
-    var className = String(request && request.targetClassName || '').trim();
-    var subject = String(request && request.targetSubject || '').trim();
-    if ((!className || !subject) && request && request.targetDate && request.targetPeriod != null) {
-      var day = parseInt(request.targetDayOfWeek, 10);
+    var className = String(request && request.className || '').trim();
+    var subject = String(request && request.subject || '').trim();
+    if ((!className || !subject) && request && request.requestDate && request.requestPeriod != null) {
+      var day = parseInt(request.requestPeriodDay, 10);
       if (!(day >= 1 && day <= 7)) {
-        var date = new Date(String(request.targetDate).replace(/-/g, '/'));
+        var date = new Date(String(request.requestDate).replace(/-/g, '/'));
         if (!isNaN(date.getTime())) day = date.getDay() === 0 ? 7 : date.getDay();
       }
       var baseSlot = typeof resolveBaseSlot === 'function'
-        ? resolveBaseSlot(request.targetDate, day, request.targetPeriod, request.targetTeacherEmail)
-        : { dayOfWeek: day, period: request.targetPeriod };
+        ? resolveBaseSlot(request.requestDate, day, request.requestPeriod, request.requesterEmail)
+        : { dayOfWeek: day, period: request.requestPeriod };
       var candidates = getCandidates(
         index,
-        request.targetTeacherEmail,
+        request.requesterEmail,
         baseSlot.dayOfWeek,
         baseSlot.period,
         allSchedules

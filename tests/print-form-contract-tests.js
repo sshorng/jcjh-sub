@@ -96,17 +96,25 @@ assert.equal((packed.match(/copy me/g) || []).length, 4, 'each original form mus
 assert.equal((packed.match(/class="print-page"/g) || []).length, 2, 'each original form must print as two A4 pages');
 const labeledForms = ['<div class="official-substitution-form">labeled form</div>'];
 labeledForms.audienceLabelSets = [[
-  '代課/對調教師：王小明',
-  '班級：802',
+  '教學組留存（請簽名）',
   '請假教師：陳小華',
-  '教學組留存'
+  '代課/調課教師：王小明',
+  '班級：802'
 ]];
 const labeledPacked = context.window.packPrintForms(labeledForms);
 assert.equal((labeledPacked.match(/official-audience-label/g) || []).length, 4);
-assert.match(labeledPacked, /代課\/對調教師：王小明/);
-assert.match(labeledPacked, /班級：802/);
+assert.match(labeledPacked, /教學組留存（請簽名）/);
 assert.match(labeledPacked, /請假教師：陳小華/);
-assert.match(labeledPacked, /教學組留存/);
+assert.match(labeledPacked, /代課\/調課教師：王小明/);
+assert.match(labeledPacked, /班級：802/);
+const defaultPacked = context.window.packPrintForms(['<div class="official-substitution-form">default labels</div>']);
+const defaultLabelOrder = [
+  '教學組留存（請簽名）',
+  '請假教師：',
+  '代課/調課教師：',
+  '班級：'
+].map(label => defaultPacked.indexOf(label));
+assert.ok(defaultLabelOrder.every((position, index) => position >= 0 && (index === 0 || position > defaultLabelOrder[index - 1])));
 assert.match(printHelperSource, /\.print-page \+ \.print-page/);
 assert.doesNotMatch(printHelperSource, /\.print-page \{[\s\S]*?page-break-after:\s*always/);
 assert.doesNotMatch(styleSource, /\.print-page \{[\s\S]*?page-break-after:\s*always/);
@@ -120,9 +128,11 @@ assert.equal(preview.formCount, 1, 'preview should render one merged form in a s
 assert.equal(preview.pageCount, 2);
 assert.equal(preview.copyCount, 4);
 assert.match(preview.documentHtml, /print-preview-stack/);
-assert.match(preview.documentHtml, /代課\/對調教師：王小明/);
-assert.match(context.window.getPrintPreviewCss(), /official-audience-label \{[^}]*top: -4\.5mm[^}]*left: 0/);
-assert.match(context.window.getPrintPreviewCss(), /official-serial-mark \{[^}]*right: 0;[^}]*bottom: -4\.5mm[^}]*text-align: right/);
+assert.match(preview.documentHtml, /教學組留存（請簽名）/);
+assert.match(context.window.getPrintPreviewCss(), /official-audience-label \{[^}]*top: -5\.8mm[^}]*left: 0[^}]*padding: \.8mm 2mm[^}]*border: \.7pt solid #000[^}]*font-size: 10pt/);
+assert.match(styleSource, /\.official-audience-label \{[^}]*top: -5\.8mm[^}]*padding: \.8mm 2mm[^}]*border: \.7pt solid #000[^}]*font-size: 10pt/);
+assert.match(context.window.getPrintPreviewCss(), /official-serial-mark \{[^}]*right: 4\.78mm;[^}]*bottom: -4\.5mm[^}]*text-align: right/);
+assert.match(styleSource, /\.official-serial-mark \{[^}]*right: 4\.78mm;[^}]*bottom: -4\.5mm[^}]*text-align: right/);
 const previewSvg = context.window.buildPrintPreviewImageSvg(preview);
 assert.match(previewSvg, /foreignObject/);
 assert.match(previewSvg, /<br \/>/, 'preview image SVG should use XHTML-compatible line breaks');
@@ -139,6 +149,8 @@ assert.doesNotMatch(adjustmentLeaveOutput, /原因：身心調適假/);
 
 const exchange = {
   isExchange: true,
+  requesterEmail: 'owner@school.example',
+  requesterName: '陳小華',
   serials: ['EX-1'],
   records: [
     { id: 'EX-1_2', type: 'exchange', originalTeacherEmail: 'owner@school.example', actualTeacherEmail: 'invitee@school.example', date: '2026-09-04', period: 1, className: '802', subject: '生活科技', reason: '課務調整' },
@@ -146,6 +158,12 @@ const exchange = {
   ]
 };
 const exchangeOutput = context.window.generateFormHtml(exchange, 'NoticeClass', fixtureContext);
+assert.equal(context.window.getPrintAudienceLabels(exchange, fixtureContext).join('\n'), [
+  '教學組留存（請簽名）',
+  '請假教師：陳小華',
+  '代課/調課教師：王小明',
+  '班級：802、803'
+].join('\n'));
 assert.match(exchangeOutput, /■調課/);
 assert.match(exchangeOutput, /■僅課務申請\(非請假\)/);
 assert.match(exchangeOutput, /生活科技/);
@@ -164,8 +182,8 @@ const exchangePreviewSvg = context.window.buildPrintPreviewImageSvg(exchangePrev
 assert.match(exchangePreviewSvg, /xmlns="http:\/\/www\.w3\.org\/2000\/svg"/, 'nested exchange SVG must declare its namespace');
 const exchangeAdminOutput = context.window.generateFormHtml(exchange, 'NoticeClass', Object.assign({}, fixtureContext, { isAdmin: true }));
 const exchangeSubjectRows = [...exchangeAdminOutput.matchAll(/<tr class="official-subject-row">([\s\S]*?)<\/tr>/g)].map(match => match[1]);
-assert.match(exchangeSubjectRows[0], /王小明/);
-assert.match(exchangeSubjectRows[1], /陳小華/);
+assert.match(exchangeSubjectRows[0], /陳小華/);
+assert.match(exchangeSubjectRows[1], /王小明/);
 
 const groups = context.window.buildPrintGroups([
   substitution.records[0],

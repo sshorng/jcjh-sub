@@ -101,11 +101,39 @@ function getPrintAudienceLabels(group, ctx) {
     }));
   };
   const classes = uniquePrintValues((rows || []).map(row => row.cls || row.className));
+  if (group && group.isExchange) {
+    const requesterKey = String(group.requesterEmail || '').trim().toLowerCase();
+    const requesterRecord = (rows || []).find(row => /_2$/.test(String(row && row.id || ''))) || rows[0] || {};
+    const targetRecord = (rows || []).find(row => /_1$/.test(String(row && row.id || '')))
+      || (rows || []).find(row => {
+        const key = getPrintTeacherKey(row, 'original').toLowerCase();
+        return requesterKey && key && key !== requesterKey;
+      })
+      || rows[0]
+      || {};
+    const requesterName = cleanPrintTeacherName(
+      group.requesterName
+      || requesterRecord.originalTeacherName
+      || getName(getPrintTeacherKey(requesterRecord, 'original'))
+      || getPrintTeacherKey(requesterRecord, 'original')
+    );
+    const targetName = cleanPrintTeacherName(
+      targetRecord.originalTeacherName
+      || getName(getPrintTeacherKey(targetRecord, 'original'))
+      || getPrintTeacherKey(targetRecord, 'original')
+    );
+    return [
+      '教學組留存（請簽名）',
+      '請假教師：' + requesterName,
+      '代課/調課教師：' + targetName,
+      '班級：' + classes.join('、')
+    ];
+  }
   return [
-    '代課/對調教師：' + names('actual').join('、'),
-    '班級：' + classes.join('、'),
+    '教學組留存（請簽名）',
     '請假教師：' + names('original').join('、'),
-    '教學組留存'
+    '代課/調課教師：' + names('actual').join('、'),
+    '班級：' + classes.join('、')
   ];
 }
 
@@ -248,10 +276,15 @@ function renderPrintCheckbox(label, checked) {
 
 function getPrintSignatureText(group, rows, ctx, getName) {
   const entries = [];
+  const signatureSide = group && group.isExchange ? 'original' : 'actual';
   (rows || []).forEach(row => {
-    // 調課後格內顯示的是實際移入的教師自己的課，簽名也取實際授課教師。
-    const key = String(row.actualTeacherEmail || row.actualTeacherName || '').trim();
-    const name = cleanPrintTeacherName(row.actualTeacherName || getName(key));
+    // 調課課程留在原課堂位置，右側姓名也標示該原課堂教師。
+    const key = signatureSide === 'original'
+      ? String(row.originalTeacherEmail || row.originalTeacherName || '').trim()
+      : String(row.actualTeacherEmail || row.actualTeacherName || '').trim();
+    const name = cleanPrintTeacherName(signatureSide === 'original'
+      ? (row.originalTeacherName || getName(key))
+      : (row.actualTeacherName || getName(key)));
     const identity = key.toLowerCase() || name.toLowerCase();
     if (!name || entries.some(entry => entry.identity === identity)) return;
     entries.push({ key, name, identity });
@@ -636,7 +669,7 @@ function splitPrintGroupByWeek(group) {
 function packPrintForms(forms) {
   const list = Array.isArray(forms) ? forms : [];
   const labelSets = Array.isArray(list.audienceLabelSets) ? list.audienceLabelSets : [];
-  const defaultLabels = ['代課/對調教師：', '班級：', '請假教師：', '教學組留存'];
+  const defaultLabels = ['教學組留存（請簽名）', '請假教師：', '代課/調課教師：', '班級：'];
   return list.map(function (form, index) {
     const labels = Array.isArray(labelSets[index]) && labelSets[index].length >= 4
       ? labelSets[index]
@@ -703,8 +736,8 @@ function getPrintPreviewCss() {
     .print-preview-stack { display: flex; flex-direction: column; align-items: center; gap: 8mm; min-width: 158mm; padding: 8mm 4mm 12mm; }
     .print-preview-item { width: 158mm; min-height: 170mm; padding: 6mm 12.7mm 7mm; background: #fff; box-shadow: 0 1px 8px rgba(15, 23, 42, .18); overflow: visible; font-size: 10pt; line-height: normal; }
      .substitute-form { width: 132.045mm; min-height: 156.5mm; height: auto; padding: 0 !important; margin: 0 !important; position: relative; box-sizing: border-box; background: #fff !important; border: none !important; overflow: visible; font-size: 10pt; line-height: normal; }
-     .official-audience-label { position: absolute; top: -4.5mm; left: 0; max-width: 78mm; font-size: 7pt; line-height: 1.1; text-align: left; white-space: normal; overflow-wrap: anywhere; color: #000; }
-     .official-serial-mark { position: absolute; right: 0; bottom: -4.5mm; max-width: 78mm; font-size: 6.5pt; line-height: 1.1; text-align: right; white-space: normal; overflow-wrap: anywhere; color: #000; }
+     .official-audience-label { position: absolute; top: -5.8mm; left: 0; max-width: 92mm; padding: .8mm 2mm; border: .7pt solid #000; background: #fff; font-size: 10pt; font-weight: 700; line-height: 1.2; text-align: left; white-space: normal; overflow-wrap: anywhere; color: #000; }
+      .official-serial-mark { position: absolute; right: 4.78mm; bottom: -4.5mm; max-width: 78mm; font-size: 6.5pt; line-height: 1.1; text-align: right; white-space: normal; overflow-wrap: anywhere; color: #000; }
      .official-form-table-wrap { position: relative; width: 127.265mm; }
      .official-form-table { width: 127.265mm; border-collapse: collapse; table-layout: fixed; font-family: "DFKai-SB", "標楷體", "BiauKai", "Noto Serif TC", serif; font-size: 10pt; color: #000; line-height: 1.05; }
     .official-form-table td, .official-form-table th { border: .5pt solid #000; box-sizing: border-box; padding: 0 1.9mm; vertical-align: middle; overflow: hidden; }
@@ -947,8 +980,8 @@ async function printSelectedForms(formType, ctx) {
              overflow: visible;
            }
            .official-form-empty { visibility: hidden; }
-            .official-audience-label { position: absolute; top: -4.5mm; left: 0; max-width: 78mm; font-size: 7pt; line-height: 1.1; text-align: left; white-space: normal; overflow-wrap: anywhere; color: #000; }
-            .official-serial-mark { position: absolute; right: 0; bottom: -4.5mm; max-width: 78mm; font-size: 6.5pt; line-height: 1.1; text-align: right; white-space: normal; overflow-wrap: anywhere; color: #000; }
+             .official-audience-label { position: absolute; top: -5.8mm; left: 0; max-width: 92mm; padding: .8mm 2mm; border: .7pt solid #000; background: #fff; font-size: 10pt; font-weight: 700; line-height: 1.2; text-align: left; white-space: normal; overflow-wrap: anywhere; color: #000; }
+             .official-serial-mark { position: absolute; right: 4.78mm; bottom: -4.5mm; max-width: 78mm; font-size: 6.5pt; line-height: 1.1; text-align: right; white-space: normal; overflow-wrap: anywhere; color: #000; }
            .official-form-table-wrap { position: relative; width: 127.265mm; }
            .official-form-table {
             width: 127.265mm;
@@ -1065,6 +1098,7 @@ async function printSelectedForms(formType, ctx) {
 window.generateFormHtml = generateFormHtml;
 window.printSelectedForms = printSelectedForms;
 window.buildExchangeRouteHtml = buildExchangeRouteHtml;
+window.getPrintAudienceLabels = getPrintAudienceLabels;
 window.buildPrintGroups = buildPrintGroups;
 window.splitPrintGroupByWeek = splitPrintGroupByWeek;
 window.packPrintForms = packPrintForms;

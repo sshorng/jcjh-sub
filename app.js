@@ -858,7 +858,7 @@ createApp({
           const targetEff = resolveAt(
             req.targetTeacherEmail, req.targetDate, req.targetPeriod, dayNum
           );
-          // 調課＝兩位教師各自把自己的原課移到對方時段；每位教師的調入格顯示自己的班科。
+          // 調課表格依原日期節次顯示原課班科，再以對調教師與線段標示交換關係。
           // 僅「代課義務」再調課：優先使用有效的義務班科。
           const leaveSubDuty = !!(leaveEff && leaveEff.fromSub && (
             leaveEff.dutyType === 'substitution' || leaveEff.dutyType === '代課'
@@ -885,15 +885,15 @@ createApp({
               || ownSubject(req.targetTeacherEmail, req.targetDate, req.targetPeriod, dayNum)
               || '');
 
-          // _1：目標日：申請人調入，顯示申請人自己的原課班科。
+          // _1：目標日放受邀人的原課班科，對調線連到原異動日。
           pushSub({
             id: req.id + '_1',
              date: req.targetDate,
              period: req.targetPeriod,
              originalTeacherName: req.targetTeacherName,
              actualTeacherName: req.requesterName,
-            className: leaveCls,
-            subject: leaveSubj,
+            className: targetCls,
+            subject: targetSubj,
             requestId: req.id,
             type: 'exchange',
             printed: req.printed,
@@ -904,15 +904,15 @@ createApp({
             note: req.note
           });
 
-          // _2：原課日：受邀人調入，顯示受邀人自己的原課班科。
+          // _2：原異動日放申請人的原課班科。
           pushSub({
             id: req.id + '_2',
              date: req.requestDate,
              period: req.requestPeriod,
              originalTeacherName: req.requesterName,
              actualTeacherName: req.targetTeacherName,
-            className: targetCls,
-            subject: targetSubj,
+            className: leaveCls,
+            subject: leaveSubj,
             requestId: req.id,
             type: 'exchange',
             printed: req.printed,
@@ -6427,6 +6427,7 @@ createApp({
       printPreviewImageBusy.value = false;
       if (!returnToSource) return;
       if (returnTo === 'detail') showDetailModal.value = true;
+      if (returnTo === 'compare') showCompareModal.value = true;
     };
 
     const confirmPrintPreview = async () => {
@@ -6584,24 +6585,28 @@ createApp({
         const timeB = decodePaperTimeKey(p.timeB);
         return [
           Object.assign({}, common, {
-            id: root + '_1',
-            serial: serialRoot,
-            originalTeacherEmail: p.subTeacher,
-            actualTeacherEmail: p.leaveTeacher,
-            date: p.dateB,
-            period: timeB.period,
-            className: p.cls || p.subBClass,
-            subject: p.subject || p.subB
+             id: root + '_1',
+             serial: serialRoot,
+             originalTeacherEmail: p.subTeacher,
+             actualTeacherEmail: p.leaveTeacher,
+             originalTeacherName: getTeacherNameByEmail(p.subTeacher),
+             actualTeacherName: getTeacherNameByEmail(p.leaveTeacher),
+             date: p.dateB,
+             period: timeB.period,
+             className: p.subBClass || p.cls,
+             subject: p.subB || p.subject
           }),
           Object.assign({}, common, {
-            id: root + '_2',
-            serial: serialRoot,
-            originalTeacherEmail: p.leaveTeacher,
-            actualTeacherEmail: p.subTeacher,
-            date: p.date,
-            period: timeA.period,
-            className: p.subBClass || p.cls,
-            subject: p.subB || p.subject
+             id: root + '_2',
+             serial: serialRoot,
+             originalTeacherEmail: p.leaveTeacher,
+             actualTeacherEmail: p.subTeacher,
+             originalTeacherName: getTeacherNameByEmail(p.leaveTeacher),
+             actualTeacherName: getTeacherNameByEmail(p.subTeacher),
+             date: p.date,
+             period: timeA.period,
+             className: p.cls || p.subBClass,
+             subject: p.subject || p.subB
           })
         ].filter(r => r.originalTeacherEmail && r.actualTeacherEmail && r.date && r.period != null);
       }
@@ -6691,22 +6696,26 @@ createApp({
           records.push(Object.assign({}, base, {
             id: requestId + '_1',
             type: 'exchange',
-            originalTeacherEmail: actual,
-            actualTeacherEmail: original,
-            date: targetDate,
+             originalTeacherEmail: actual,
+             actualTeacherEmail: original,
+             originalTeacherName: getTeacherNameByEmail(actual),
+             actualTeacherName: getTeacherNameByEmail(original),
+             date: targetDate,
             period: targetPeriod,
-            className: getValue(source, ['班級', 'className']),
-            subject: getValue(source, ['科目', 'subject'])
+             className: targetClass,
+             subject: targetSubject
           }));
           records.push(Object.assign({}, base, {
             id: requestId + '_2',
             type: 'exchange',
-            originalTeacherEmail: original,
-            actualTeacherEmail: actual,
-            date: date,
+             originalTeacherEmail: original,
+             actualTeacherEmail: actual,
+             originalTeacherName: getTeacherNameByEmail(original),
+             actualTeacherName: getTeacherNameByEmail(actual),
+             date: date,
             period: period,
-            className: targetClass,
-            subject: targetSubject
+             className: getValue(source, ['班級', 'className']),
+             subject: getValue(source, ['科目', 'subject'])
           }));
         } else {
           records.push(Object.assign({}, base, {
@@ -6726,18 +6735,20 @@ createApp({
       return records.filter(r => r.originalTeacherEmail && r.actualTeacherEmail && r.date && r.period != null);
     };
 
-    const openPaperPrintDraft = (records) => {
+    const openPaperPrintDraft = (records, options = {}) => {
       const list = records || buildPaperDraftRecords();
       if (!list.length) {
         showToast('請先完成媒合模擬並選擇代課／調課教師', 'warning');
         return false;
       }
-      const signatureMap = {};
-      list.forEach(r => {
-        const name = String(getTeacherNameByEmail(r.actualTeacherEmail) || r.actualTeacherEmail || '').trim();
-        if (name) signatureMap[name.toLowerCase()] = isAdmin.value ? name : '';
-      });
-      paperPrintDraft.value = { records: list };
+       const signatureMap = {};
+       list.forEach(r => {
+         [r.actualTeacherEmail, r.originalTeacherEmail].forEach(email => {
+           const name = String(getTeacherNameByEmail(email) || email || '').trim();
+           if (name) signatureMap[name.toLowerCase()] = isAdmin.value ? name : '';
+         });
+       });
+      paperPrintDraft.value = { records: list, returnTo: options.returnTo || '' };
       paperSignatureByTeacher.value = signatureMap;
       return openPaperDraftPreview();
     };
@@ -6755,7 +6766,7 @@ createApp({
       return openPaperPrintDraftForSubmittedRequests(rows.length ? rows : [request]);
     };
 
-    const openPaperPrintDraftFromCompare = () => openPaperPrintDraft();
+    const openPaperPrintDraftFromCompare = () => openPaperPrintDraft(null, { returnTo: 'compare' });
 
     const openPaperPrintMutualDrafts = () => {
       const root = 'PAPER-MUTUAL-' + Date.now();
@@ -6816,6 +6827,7 @@ createApp({
         records,
         allSubs: (substitutionRecords.value || []).concat(records),
         source: 'paperDraft',
+        returnTo: draft.returnTo || '',
         skipMarkPrinted: true
       });
     };

@@ -2644,11 +2644,15 @@ td.table-empty {
   }
   .official-audience-label {
     position: absolute;
-    top: -4.5mm;
+    top: -5.8mm;
     left: 0;
-    max-width: 78mm;
-    font-size: 7pt;
-    line-height: 1.1;
+    max-width: 92mm;
+    padding: .8mm 2mm;
+    border: .7pt solid #000;
+    background: #fff;
+    font-size: 10pt;
+    font-weight: 700;
+    line-height: 1.2;
     text-align: left;
     white-space: normal;
     overflow-wrap: anywhere;
@@ -2656,7 +2660,7 @@ td.table-empty {
   }
   .official-serial-mark {
     position: absolute;
-    right: 0;
+    right: 4.78mm;
     bottom: -4.5mm;
     max-width: 78mm;
     font-size: 6.5pt;
