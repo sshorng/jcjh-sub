@@ -30,6 +30,10 @@ let mutationCalls = 0;
 let persistedRows = [];
 let queuedMailLabels = [];
 let onlineEnabled = true;
+const scheduleRows = [
+  { '學期代號': semesterId, '教師姓名': '申請人', '星期': 1, '節次': 1, '班級': '701', '特殊標記': '併班' },
+  { '學期代號': semesterId, '教師姓名': '受邀人', '星期': 1, '節次': 1, '班級': '702', '特殊標記': '併班' }
+];
 let requestRow = {
   '學期代號': semesterId,
   '申請單ID': 'req-permission-1',
@@ -119,7 +123,7 @@ findRowByKey_ = function (sheet, key, id, sid) {
 buildSettingsMap_ = function () { return { onlineSubstitutionEnabled: onlineEnabled ? 'true' : 'false' }; };
 sanitizeTeacherRowsForReader_ = function (rows) { return rows; };
 sanitizeSettingsForReader_ = function (settings) { return settings; };
-getTableData = function () { return []; };
+getTableData = function (sheet) { return sheet === '教師課表' ? scheduleRows : []; };
 getCacheChunked = function () { return null; };
 putCacheChunked = function () {};
 assertPublicClassRateLimit_ = function () {};
@@ -282,8 +286,8 @@ const combinedReturnRequest = invoke({
   data: {
     request: makeRequest({
       '申請單ID': 'req-combined-admin',
-      '受邀人Email': '',
-      '受邀人姓名': '',
+      '受邀人Email': INVITEE_EMAIL,
+      '受邀人姓名': '受邀人',
       '特殊流程': 'combined_return',
       '經費來源': '公費代課',
       '班級': '701、702'
@@ -292,8 +296,8 @@ const combinedReturnRequest = invoke({
 });
 assert.strictEqual(combinedReturnRequest.success, true);
 assert.strictEqual(persistedRows[0]['狀態'], 'pending_admin');
-assert.strictEqual(persistedRows[0]['受邀人Email'], '');
-assert.strictEqual(persistedRows[0]['受邀人姓名'], '');
+assert.strictEqual(persistedRows[0]['受邀人Email'], INVITEE_EMAIL);
+assert.strictEqual(persistedRows[0]['受邀人姓名'], '受邀人');
 assert.strictEqual(persistedRows[0]['特殊流程'], '合班回原班');
 
 const combinedReturnTeacher = invoke({
@@ -302,8 +306,8 @@ const combinedReturnTeacher = invoke({
   data: {
     request: makeRequest({
       '申請單ID': 'req-combined-teacher',
-      '受邀人Email': '',
-      '受邀人姓名': '',
+       '受邀人Email': INVITEE_EMAIL,
+       '受邀人姓名': '受邀人',
       '特殊流程': 'combined_return',
       '經費來源': '自費代課'
     })
@@ -319,8 +323,8 @@ const combinedReturnBatch = invoke({
     batchId: 'bat-combined-invalid',
     requests: [makeRequest({
       '申請單ID': 'req-combined-batch',
-      '受邀人Email': '',
-      '受邀人姓名': '',
+   '受邀人Email': INVITEE_EMAIL,
+   '受邀人姓名': '受邀人',
       '特殊流程': 'combined_return',
       '經費來源': '公費代課'
     })]
@@ -332,11 +336,17 @@ assert.match(combinedReturnBatch.error, /只能建立單筆申請/);
 requestRow = Object.assign({}, requestRow, {
   '狀態': 'pending_admin',
   '紙本流程': 'FALSE',
-  '受邀人Email': '',
-  '受邀人姓名': '',
+  '受邀人Email': INVITEE_EMAIL,
+  '受邀人姓名': '受邀人',
   '特殊流程': '合班回原班',
   '經費來源': '公費代課',
-  '異動類型': 'substitution'
+  '異動類型': 'substitution',
+  '申請人姓名': '申請人',
+  '班級': '701、702',
+  '科目': '國文',
+  '異動日期': '2026-08-17',
+  '異動星期': 1,
+  '異動節次': 1
 });
 resetMutationState();
 const paperApproval = invoke({

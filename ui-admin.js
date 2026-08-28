@@ -132,10 +132,10 @@ window.UiAdmin = (function () {
     }
 
     function normalizeAttrImport(raw, period, subject) {
-      var attr = String(raw || '').trim() || '一般';
-      if (attr === '基本') attr = '一般';
-      if (period === 0 || period === 45) return '抽離';
-      if (!raw && period === 8) attr = '課輔';
+       var attr = String(raw || '').trim() || '一般';
+       if (attr === '基本') attr = '一般';
+       // 早自習與午休也是正式課程，保留匯入檔的課堂屬性。
+       if (!raw && period === 8) attr = '課輔';
       if (!raw && period === 8 && /^[單雙]/.test(String(subject || ''))) {
         var m = String(subject).match(/^([單雙])/);
         if (m) attr = m[1] + '週';
@@ -1384,10 +1384,13 @@ window.UiAdmin = (function () {
       var tgtDate = (tgtRaw && tgtRaw !== '---' && tgtRaw !== unknownDate) ? tgtRaw : '';
 
       var leaveRaw = src.requesterEmail || src.requesterName || rec.originalTeacherEmail || rec.requesterEmail || rec.originalTeacherName || '';
-      var subRaw = combinedReturn ? '' : (src.targetTeacherEmail || src.targetTeacherName || rec.actualTeacherEmail || rec.targetTeacherEmail || rec.actualTeacherName || '');
+       var subRaw = src.targetTeacherEmail || src.targetTeacherName || rec.actualTeacherEmail || rec.targetTeacherEmail || rec.actualTeacherName || '';
+       if (combinedReturn && subRaw && String(subRaw).trim().toLowerCase() === String(leaveRaw).trim().toLowerCase()) subRaw = '';
       var existingSubFee = src.subFee || src['經費來源'] || rec.subFee || rec['經費來源'] || '';
-      var leaveEmail = resolveHistoryTeacherValue(leaveRaw);
-      var subEmail = combinedReturn ? '' : resolveHistoryTeacherValue(subRaw);
+       var leaveEmail = resolveHistoryTeacherValue(leaveRaw);
+       var subEmail = resolveHistoryTeacherValue(subRaw);
+       if (combinedReturn && subEmail && leaveEmail
+           && String(subEmail).trim().toLowerCase() === String(leaveEmail).trim().toLowerCase()) subEmail = '';
       var readHistoryPeriod = function () {
         for (var pi = 0; pi < arguments.length; pi++) {
           if (arguments[pi] == null || arguments[pi] === '') continue;
@@ -1441,8 +1444,8 @@ window.UiAdmin = (function () {
         showToast('無法識別此紀錄', 'warning');
         return;
       }
-      if (!form.requesterEmail || (!combinedReturn && !form.targetTeacherEmail)) {
-        showToast(combinedReturn ? '請選擇申請教師' : '請選擇請假教師與代課／對調教師', 'warning');
+       if (!form.requesterEmail || !form.targetTeacherEmail) {
+         showToast(combinedReturn ? '請選擇請假教師與同節併班代課教師' : '請選擇請假教師與代課／對調教師', 'warning');
         return;
       }
       if (!form.requestDate || form.requestPeriod == null || form.requestPeriod === '') {
@@ -1456,7 +1459,7 @@ window.UiAdmin = (function () {
         return;
       }
       var leaveName = getTeacherNameByEmail(form.requesterEmail) || '';
-      var subName = combinedReturn ? '' : (getTeacherNameByEmail(form.targetTeacherEmail) || '');
+       var subName = getTeacherNameByEmail(form.targetTeacherEmail) || '';
       loading.value = true;
       loadingMessage.value = '儲存歷史紀錄中...';
       try {
@@ -1465,8 +1468,8 @@ window.UiAdmin = (function () {
           type: isEx ? 'exchange' : 'substitution',
           requesterEmail: form.requesterEmail,
           requesterName: leaveName,
-          targetTeacherEmail: combinedReturn ? '' : form.targetTeacherEmail,
-          targetTeacherName: combinedReturn ? '' : subName,
+           targetTeacherEmail: form.targetTeacherEmail,
+           targetTeacherName: subName,
           className: form.className || '',
           subject: form.subject || '',
           requestDate: form.requestDate,

@@ -508,6 +508,13 @@
     return String(record && (record.reason || record['請假事由']) || '').trim();
   }
 
+  function isCombinedReturnRecord(record) {
+    var raw = record && record.specialFlow;
+    if (String(raw == null ? '' : raw).trim() === '') raw = record && record['特殊流程'];
+    var value = String(raw == null ? '' : raw).trim().toLowerCase();
+    return value === 'combined_return' || value === '合班回原班';
+  }
+
   function cleanAccountingText(value) {
     return String(value == null ? '' : value)
       .replace(/\[直接核准\]|【直接核准】|［直接核准］/g, '')
@@ -570,7 +577,11 @@
   }
 
   function isOvertimeSchedule(schedule) {
-    return String(schedule && schedule.attr || '').trim() === '\u8d85\u9418\u9ede';
+    var attr = String(schedule && (schedule.attr || schedule['\u8ab2\u5802\u5c6c\u6027']) || '').trim();
+    if (attr.indexOf('\u8d85\u9418\u9ede') >= 0) return true;
+    var tags = String(schedule && (schedule.specialTags || schedule['\u7279\u6b8a\u6a19\u8a18']) || '')
+      .split(/[、,，;；/／|｜\s]+/).map(function (value) { return value.trim(); });
+    return tags.indexOf('\u8d85\u9418\u9ede') >= 0;
   }
   function dayNameForWeekday(day) {
     var n = Number(day);
@@ -714,16 +725,7 @@
     });
   }
 
-  function weekKeyForRecord(record) {
-    var d = dateObj(record && record.date);
-    if (!d) return '';
-    var dow = d.getDay() === 0 ? 7 : d.getDay();
-    var monday = new Date(d);
-    monday.setDate(d.getDate() - (dow - 1));
-    return isoDate(monday);
-  }
-
-  function chargedSubstitutionRecords(records, schedules, email, period, weeklyOvertime) {
+  function chargedSubstitutionRecords(records, schedules, email, period) {
     var eligible = (records || []).filter(function (record) {
       return isUsableSubstitution(record)
         && dateInPeriod(record.date, period)
@@ -735,26 +737,12 @@
     var publicRecords = eligible.filter(function (record) {
       return isPublicOvertimeRecord(record) && isOvertimeSubstitution(record, schedules);
     });
-    var selected = selfRecords.slice();
-    var selfByWeek = {};
-    selfRecords.forEach(function (record) {
-      var week = weekKeyForRecord(record);
-      selfByWeek[week] = (selfByWeek[week] || 0) + 1;
-    });
-    var publicByWeek = {};
-    publicRecords.slice().sort(function (a, b) {
+    // 自費全部扣；公費原堂為超鐘點也逐筆扣，不以每週超時數量封頂。
+    var selected = selfRecords.concat(publicRecords.slice().sort(function (a, b) {
       return String(a.date || '').localeCompare(String(b.date || ''))
         || Number(a.period || 0) - Number(b.period || 0)
         || substitutionKey(a).localeCompare(substitutionKey(b));
-    }).forEach(function (record) {
-      var week = weekKeyForRecord(record);
-      if (!publicByWeek[week]) publicByWeek[week] = [];
-      publicByWeek[week].push(record);
-    });
-    Object.keys(publicByWeek).sort().forEach(function (week) {
-      var remaining = Math.max(0, (Number(weeklyOvertime) || 0) - (selfByWeek[week] || 0));
-      publicByWeek[week].slice(0, remaining).forEach(function (record) { selected.push(record); });
-    });
+    }));
     var seen = {};
     return selected.filter(function (record) {
       var key = substitutionKey(record);
@@ -763,8 +751,8 @@
       return true;
     });
   }
-  function publicOvertimeUsed(email, records, schedules, period, weeklyOvertime) {
-    return chargedSubstitutionRecords(records, schedules, email, period, weeklyOvertime)
+  function publicOvertimeUsed(email, records, schedules, period) {
+    return chargedSubstitutionRecords(records, schedules, email, period)
       .filter(isPublicOvertimeRecord).length;
   }
   function buildChargedRecordMap(opts, period) {
@@ -772,7 +760,8 @@
     var records = opts.substitutionRecords || [];
     reportSourceRows(opts).forEach(function (source) {
       if (!normalizeExpensePlan(source.expensePlan)) return;
-      chargedSubstitutionRecords(records, opts.allSchedules, source.email, period, source.weeklyOvertime)
+      chargedSubstitutionRecords(records, opts.allSchedules, source.email, period)
+        .filter(function (record) { return !isCombinedReturnRecord(record); })
         .forEach(function (record) {
           var key = substitutionKey(record);
           var email = teacherEmail(source.email);
@@ -835,9 +824,9 @@
       var title = teacherTitle(t) || (adjunct ? '兼課教師' : '教師');
       var leave = leaveRecordsFor(source.email, records, period);
       var selfCount = leave.filter(isSelfPaidRecord).length;
-      var publicUsed = publicOvertimeUsed(source.email, records, opts.allSchedules, period, source.weeklyOvertime);
+      var publicUsed = publicOvertimeUsed(source.email, records, opts.allSchedules, period);
       var chargedItemsForSource = sourcePlan && chargedMap && chargedMap.byOriginal[teacherEmail(source.email)] || [];
-      var chargedRecordsForSource = chargedSubstitutionRecords(records, opts.allSchedules || [], source.email, period, source.weeklyOvertime);
+      var chargedRecordsForSource = chargedSubstitutionRecords(records, opts.allSchedules || [], source.email, period);
       var reduce = Number(source.reduceDeduction) || 0;
       if (period.start.slice(0, 7) !== String(opts.reportMonth || '') || period.end.slice(0, 7) !== String(opts.reportMonth || '')) {
         reduce = 0;
@@ -888,7 +877,9 @@
     (opts.teachers || []).forEach(function (t) { addTeacherToMap(teacherMap, t); });
     var groups = {};
     (opts.substitutionRecords || []).filter(function (r) {
-      return isUsableSubstitution(r) && dateInPeriod(r.date, period) && isPublicPayoutRecord(r) && r.actualTeacherEmail && !(chargedMap && chargedMap.byKey[substitutionKey(r)]);
+      return isUsableSubstitution(r) && !isCombinedReturnRecord(r)
+        && dateInPeriod(r.date, period) && isPublicPayoutRecord(r) && r.actualTeacherEmail
+        && !(chargedMap && chargedMap.byKey[substitutionKey(r)]);
     }).forEach(function (r) {
       var email = teacherEmail(r.actualTeacherEmail);
       if (!groups[email]) groups[email] = { email: email, records: [], hours: 0, rate: feeRate(r, FEE_DEFAULT) };
@@ -916,7 +907,9 @@
     var teacherMap = {};
     (opts.teachers || []).forEach(function (t) { addTeacherToMap(teacherMap, t); });
     return (opts.substitutionRecords || []).filter(function (r) {
-      return isUsableSubstitution(r) && dateInPeriod(r.date, period) && isSelfPaidRecord(r) && r.actualTeacherEmail && !(chargedMap && chargedMap.byKey[substitutionKey(r)]);
+      return isUsableSubstitution(r) && !isCombinedReturnRecord(r)
+        && dateInPeriod(r.date, period) && isSelfPaidRecord(r) && r.actualTeacherEmail
+        && !(chargedMap && chargedMap.byKey[substitutionKey(r)]);
     }).sort(function (a, b) {
       return String(a.date || '').localeCompare(String(b.date || '')) || Number(a.period || 0) - Number(b.period || 0);
     }).map(function (r) {

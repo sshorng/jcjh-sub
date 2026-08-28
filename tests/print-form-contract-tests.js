@@ -7,6 +7,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const root = path.resolve(__dirname, '..');
+const indexSource = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 const context = {
   window: { DateUtils: { getTimetablePeriods: () => [1, 2, 3] } },
   console: { log: () => {}, warn: () => {}, error: () => {} },
@@ -134,6 +135,7 @@ assert.match(context.window.getPrintPreviewCss(), /official-audience-label \{[^}
 assert.match(context.window.getPrintPreviewCss(), /official-audience-label-retain \{[^}]*border: none; background: #e5e7eb;/);
 assert.match(styleSource, /\.official-audience-label \{[^}]*top: -5\.8mm[^}]*padding: \.8mm 2mm[^}]*border: \.7pt solid #000[^}]*background: #e5e7eb[^}]*font-size: 10pt/);
 assert.match(styleSource, /\.official-audience-label-retain \{[^}]*border: none;[^}]*background: #e5e7eb;/);
+assert.match(indexSource, /title="列印此筆通知單"[^>]*@click="printSingleRequest\(\{ id: rec\.requestId \|\| rec\.id \}, 'Notice'\)"/);
 assert.match(context.window.getPrintPreviewCss(), /official-serial-mark \{[^}]*right: 4\.78mm;[^}]*bottom: -4\.5mm[^}]*text-align: right/);
 assert.match(styleSource, /\.official-serial-mark \{[^}]*right: 4\.78mm;[^}]*bottom: -4\.5mm[^}]*text-align: right/);
 const previewSvg = context.window.buildPrintPreviewImageSvg(preview);

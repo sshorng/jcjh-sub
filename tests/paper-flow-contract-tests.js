@@ -228,6 +228,28 @@ function runApprovedExchangeRecordMappingTest() {
   assert.equal(sourceDateRecord.subject, '國文');
 }
 
+function runApprovedCombinedReturnMappingTest() {
+  const convert = loadApprovedExchangeConverter();
+  const records = convert([{
+    id: 'approved-combined-1',
+    status: 'approved',
+    type: 'substitution',
+    requesterEmail: 'owner@example.com',
+    requesterName: '申請人',
+    targetTeacherEmail: 'invitee@example.com',
+    targetTeacherName: '受邀人',
+    requestDate: '2026-09-01',
+    requestPeriod: 1,
+    className: '701、702',
+    subject: '國文',
+    specialFlow: 'combined_return'
+  }]);
+  assert.equal(records.length, 1);
+  assert.equal(records[0].originalTeacherName, '申請人');
+  assert.equal(records[0].actualTeacherName, '受邀人');
+  assert.equal(records[0].actualTeacherEmail, '受邀人');
+}
+
 function runPublicClassExchangeMappingTest() {
   const map = loadPublicClassRequestMapper();
   const records = map([{
@@ -265,6 +287,7 @@ function runNoSyntheticStudySubjectTest() {
 
 runSubmittedExchangePaperRecordMappingTest();
 runApprovedExchangeRecordMappingTest();
+runApprovedCombinedReturnMappingTest();
 runPublicClassExchangeMappingTest();
 runNoSyntheticStudySubjectTest();
 
@@ -599,7 +622,8 @@ async function runCombinedHistoryEditContractTest() {
   const historyEditForm = ref({});
   const showHistoryEditModal = ref(false);
   const teachersList = ref([
-    { email: '申請人', loginEmail: 'owner@school.example', name: '申請人', teacherName: '申請人' }
+    { email: '申請人', loginEmail: 'owner@school.example', name: '申請人', teacherName: '申請人' },
+    { email: '受邀人', loginEmail: 'invitee@school.example', name: '受邀人', teacherName: '受邀人' }
   ]);
   let sent = null;
   const api = load('ui-admin.js').UiAdmin.create({
@@ -622,8 +646,8 @@ async function runCombinedHistoryEditContractTest() {
       id: 'combined-req-1',
       requesterEmail: 'owner@school.example',
       requesterName: '申請人',
-      targetTeacherEmail: '',
-      targetTeacherName: '',
+       targetTeacherEmail: '受邀人',
+       targetTeacherName: '受邀人',
       specialFlow: 'combined_return',
       requestDate: '2026-08-28',
       requestPeriod: 1,
@@ -638,7 +662,7 @@ async function runCombinedHistoryEditContractTest() {
     id: 'sub-combined-1',
     requestId: 'combined-req-1',
     originalTeacherName: '申請人',
-    actualTeacherName: '申請人',
+     actualTeacherName: '受邀人',
     specialFlow: 'combined_return',
     date: '2026-08-28',
     period: 1,
@@ -646,15 +670,15 @@ async function runCombinedHistoryEditContractTest() {
     subject: '國文'
   });
   assert.equal(historyEditForm.value.specialFlow, 'combined_return');
-  assert.equal(historyEditForm.value.targetTeacherEmail, '');
+   assert.equal(historyEditForm.value.targetTeacherEmail, '受邀人');
   assert.equal(historyEditForm.value.reason, '合班回原班');
   historyEditForm.value.requestPeriod = 8;
   api.onHistoryEditPeriodChange();
   assert.equal(historyEditForm.value.subFee, '第8節代課');
   await api.saveHistoryEdit();
   assert.equal(sent.action, 'saveHistoryEdit');
-  assert.equal(sent.payload.targetTeacherEmail, '');
-  assert.equal(sent.payload.targetTeacherName, '');
+   assert.equal(sent.payload.targetTeacherEmail, '受邀人');
+   assert.equal(sent.payload.targetTeacherName, '受邀人');
   assert.equal(sent.payload.specialFlow, 'combined_return');
   assert.equal(sent.payload.requestPeriod, 8);
   assert.equal(sent.payload.reason, '合班回原班');
@@ -699,6 +723,38 @@ function singleDeps() {
   };
 }
 
+function runConsecutiveWarningTest() {
+  const api = load('ui-request.js').UiSubmitHelpers;
+  const date = '2026-08-17';
+  let existingPeriods = [1, 2];
+  const getScheduleForDate = (email, dateStr, period) => {
+    if (email !== '受邀人' || dateStr !== date) return null;
+    return existingPeriods.includes(Number(period))
+      ? { teacherName: email }
+      : null;
+  };
+
+  const reachesThree = api.getConsecutiveStatus(
+    getScheduleForDate, '受邀人', date, 3, null
+  );
+  assert.equal(reachesThree.beforeMaxConsec, 2);
+  assert.equal(reachesThree.maxConsec, 3);
+  assert.equal(reachesThree.shouldWarn, true, '變成連三須警示');
+
+  existingPeriods = [1, 2, 3];
+  const extendsExistingRun = api.getConsecutiveStatus(
+    getScheduleForDate, '受邀人', date, 4, null
+  );
+  assert.equal(extendsExistingRun.maxConsec, 4);
+  assert.equal(extendsExistingRun.shouldWarn, false, '已連三不因變成連四重複警示');
+
+  const addsOutsideRun = api.getConsecutiveStatus(
+    getScheduleForDate, '受邀人', date, 6, null
+  );
+  assert.equal(addsOutsideRun.maxConsec, 3);
+  assert.equal(addsOutsideRun.shouldWarn, false, '非連堂新增不應重複警示');
+}
+
 async function runSingleTest() {
   const api = load('ui-request.js').UiSubmitHelpers;
   const deps = singleDeps();
@@ -733,7 +789,7 @@ async function runSingleTest() {
   combinedDeps.isAdmin.value = true;
   combinedDeps.pendingRequestData.value = Object.assign({}, combinedDeps.pendingRequestData.value, {
     specialFlow: 'combined_return',
-    subTeacher: '',
+    subTeacher: 'invitee@school.example',
     subFee: '公費代課',
     courseAdjustmentOnly: false,
     reason: '合班回原班'
@@ -741,7 +797,7 @@ async function runSingleTest() {
   const combinedBuilt = api.buildSubmitPayload(combinedDeps, 'req-combined', 'SUB5679');
   assert.equal(combinedBuilt.newRequest['狀態'], 'pending_admin');
   assert.equal(combinedBuilt.newRequest['特殊流程'], 'combined_return');
-  assert.equal(combinedBuilt.newRequest['受邀人Email'], '');
+  assert.equal(combinedBuilt.newRequest['受邀人Email'], 'invitee@school.example');
   assert.equal(combinedBuilt.newRequest['紙本流程'], 'FALSE');
   assert.equal(combinedBuilt.newRequest.directApprove, false);
   assert.equal(combinedBuilt.newRequest.courseAdjustmentOnly, false);
@@ -940,6 +996,51 @@ async function runBatchTest(courseAdjustmentOnly = false) {
   assert.equal(batchSlots.value.length, 0);
 }
 
+function runRechangeLabelTest() {
+  const source = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
+  const start = source.indexOf('const findPriorDutyAtSlot =');
+  const end = source.indexOf('const formatHistoryLeaveSlot =', start);
+  assert.ok(start >= 0 && end > start, 'rechange detector block must remain discoverable');
+  const context = {
+    substitutionRecords: ref([{
+      requestId: 'exchange-1',
+      date: '2026-09-02',
+      period: 5,
+      originalTeacherEmail: '受邀人',
+      actualTeacherEmail: '申請人',
+      className: '904'
+    }]),
+    String,
+    Number,
+    Array,
+    Math,
+    parseInt,
+    isNaN
+  };
+  vm.createContext(context);
+  const detector = vm.runInContext(`(() => {
+    ${source.slice(start, end)}
+    return isRequestExchangeRechanged;
+  })()`, context);
+  const request = {
+    id: 'exchange-1',
+    type: 'exchange',
+    targetTeacherEmail: '受邀人',
+    targetDate: '2026-09-02',
+    targetPeriod: 5
+  };
+  assert.equal(detector(request), false, 'current exchange edges must not be marked rechanged');
+  context.substitutionRecords.value.push({
+    requestId: 'exchange-0',
+    date: '2026-09-02',
+    period: 5,
+    originalTeacherEmail: '受邀人',
+    actualTeacherEmail: '其他教師',
+    className: '701'
+  });
+  assert.equal(detector(request), true, 'a different prior exchange must be marked rechanged');
+}
+
 Promise.resolve()
   .then(() => runLineTemplateTest())
   .then(() => runProgressTest())
@@ -949,8 +1050,10 @@ Promise.resolve()
   .then(() => runApplicationFormContractTest())
   .then(() => runHistoryEditTeacherValueTest())
   .then(() => runCombinedHistoryEditContractTest())
+  .then(runConsecutiveWarningTest)
   .then(runSingleTest)
   .then(runCourseAdjustmentTest)
+  .then(runRechangeLabelTest)
   .then(runBatchTest)
   .then(() => runBatchTest(true))
   .then(() => console.log('paper flow contract tests PASS'))

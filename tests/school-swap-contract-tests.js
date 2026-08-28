@@ -32,6 +32,30 @@ vm.createContext(context);
   vm.runInContext(fs.readFileSync(path.join(root, file), 'utf8'), context, { filename: file });
 });
 
+const appSource = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
+const classSwapHelperStart = appSource.indexOf('const buildClassSchoolSwapChanges =');
+const classSwapHelperEnd = appSource.indexOf('const classChangeSummary =', classSwapHelperStart);
+assert.ok(classSwapHelperStart >= 0 && classSwapHelperEnd > classSwapHelperStart, 'class school swap summary helper must remain discoverable');
+const classSwapContext = {
+  window: {
+    DomainSchoolSwap: context.window.DomainSchoolSwap,
+    DateUtils: {
+      parseCombinedClasses(raw) {
+        return String(raw || '').split(/[、,，/／|｜\s]+/).filter(Boolean);
+      }
+    }
+  },
+  String,
+  Array,
+  Set,
+  parseInt
+};
+vm.createContext(classSwapContext);
+const buildClassSchoolSwapChanges = vm.runInContext(`(() => {
+  ${appSource.slice(classSwapHelperStart, classSwapHelperEnd)}
+  return buildClassSchoolSwapChanges;
+})()`, classSwapContext);
+
 function ref(value) {
   return { value };
 }
@@ -140,5 +164,30 @@ const courseAtSource = context.window.DomainSchedule.applyPendingOverlay({
   resolveBaseSlot: (date, day, period) => ({ dayOfWeek: day, period: period })
 });
 assert.equal(courseAtSource.subject, '數學');
+
+const classSwapChanges = buildClassSchoolSwapChanges(
+  '701',
+  [
+    { id: 'class-a', className: '701', dayOfWeek: 1, period: 2, subject: '國文', attr: '一般' },
+    { id: 'class-b', className: '701', dayOfWeek: 2, period: 3, subject: '數學', attr: '一般' }
+  ],
+  schoolSwaps.value,
+  ['2026-08-17', '2026-08-18'],
+  () => true
+);
+assert.equal(classSwapChanges.length, 2, 'class summary must include both school swap endpoints');
+assert.equal(classSwapChanges[0].date, '2026-08-17');
+assert.equal(classSwapChanges[0].subject, '數學');
+assert.equal(classSwapChanges[0].sourceDate, '2026-08-18');
+assert.equal(classSwapChanges[1].date, '2026-08-18');
+assert.equal(classSwapChanges[1].subject, '國文');
+assert.equal(classSwapChanges[1].sourceDate, '2026-08-17');
+assert.equal(buildClassSchoolSwapChanges(
+  '701',
+  [{ className: '701', dayOfWeek: 2, period: 3, subject: '數學', attr: '一般' }],
+  [{ id: 'disabled', dateA: '2026-08-17', dayA: 1, periodA: 2, dateB: '2026-08-18', dayB: 2, periodB: 3, enabled: false }],
+  ['2026-08-17', '2026-08-18'],
+  () => true
+).length, 0, 'disabled school swaps must stay out of class summary');
 
 console.log('school swap contract tests PASS');

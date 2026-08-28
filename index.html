@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>建成國中線上調代課系統</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📅</text></svg>">
-  <link rel="stylesheet" href="style.css?v=20260828-combined-return1">
+  <link rel="stylesheet" href="style.css?v=20260828-combined-return2">
   <!-- 手機版獨立樣式：不影響桌機 -->
-  <link rel="stylesheet" href="mobile.css" media="(max-width: 768px)">
+  <link rel="stylesheet" href="mobile.css?v=20260828-combined-return2" media="(max-width: 768px)">
   
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 
@@ -907,11 +907,11 @@
                     </div>
                   </div>
                   <aside class="class-change-summary">
-                    <div class="class-change-summary-title">{{ selectedClass }} 代調課摘要</div>
-                    <div v-if="classChangeSummary.length === 0" class="class-change-empty"><span class="empty-state-title">本班目前無異動</span><span class="empty-state-hint">有核准的調代課時會顯示在此</span></div>
+                    <div class="class-change-summary-title">{{ selectedClass }} 班級異動摘要</div>
+                    <div v-if="classChangeSummary.length === 0" class="class-change-empty"><span class="empty-state-title">本班目前無異動</span><span class="empty-state-hint">有核准的調代課或全校調課時會顯示在此</span></div>
                     <div v-else class="class-change-list">
                       <div v-for="item in classChangeSummary" :key="item.id" class="class-change-item" :class="{ 'is-week': item.inWeek }">
-                        <span class="class-change-type" :class="item.type === '調課' ? 'type-exchange' : 'type-sub'">{{ item.type }}</span>
+                        <span class="class-change-type" :class="item.type === '調課' ? 'type-exchange' : (item.type === '全校對調' ? 'type-school-swap' : 'type-sub')">{{ item.type }}</span>
                         <span class="class-change-line">{{ item.line }}</span>
                       </div>
                     </div>
@@ -1420,11 +1420,12 @@
                         </span>
                       </div>
                     </td>
-                    <td v-if="isAdmin" @click.stop>
-                      <div class="hist-actions">
-                        <button type="button" class="btn btn-secondary" @click="openHistoryEditModal(rec)">編輯</button>
-                        <button type="button" class="btn btn-secondary" style="color: var(--color-danger); border-color: rgba(220, 38, 38, 0.18);" @click="deleteSubstitutionRecord(rec.id, rec.requestId)">撤銷</button>
-                      </div>
+                      <td v-if="isAdmin" @click.stop>
+                        <div class="hist-actions">
+                          <button type="button" class="btn btn-secondary" title="列印此筆通知單" @click="printSingleRequest({ id: rec.requestId || rec.id }, 'Notice')">🖨️ 列印</button>
+                          <button type="button" class="btn btn-secondary" @click="openHistoryEditModal(rec)">編輯</button>
+                          <button type="button" class="btn btn-secondary" style="color: var(--color-danger); border-color: rgba(220, 38, 38, 0.18);" @click="deleteSubstitutionRecord(rec.id, rec.requestId)">撤銷</button>
+                        </div>
                     </td>
                   </tr>
                   <tr v-if="dateFilteredHistoryRecords.length === 0">
@@ -2153,7 +2154,7 @@
                style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:-4px 0 12px;padding:10px 12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;"
              >
                <div style="font-size:0.78rem;color:#9a3412;line-height:1.45;">
-                 <strong>合班課堂</strong>：核准後由原授課教師回原班，不指定受邀代課教師。
+                  <strong>合班課堂</strong>：任課教師請假，由同節原本有課的其他併班任課教師代課。
                </div>
                <button type="button" class="btn btn-primary btn-sm" @click="startCombinedReturn">↩ 合班回原班</button>
              </div>
@@ -2496,6 +2497,17 @@
               </label>
             </div>
 
+            <div v-if="pendingRequestData.specialFlow === 'combined_return'" style="margin-bottom:12px;padding:12px 14px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;">
+              <label class="form-label" style="margin-bottom:6px;color:#9a3412;">代課教師（同節併班任課教師）</label>
+              <select class="form-select" v-model="pendingRequestData.subTeacher">
+                <option value="" disabled>請選擇同節併班代課教師...</option>
+                <option v-for="candidate in (pendingRequestData.combinedReturnCandidates || [])" :key="'cr-candidate-' + candidate.email" :value="candidate.email">
+                  {{ candidate.name }}（{{ candidate.className || '併班課' }}{{ candidate.subject ? '／' + candidate.subject : '' }}）
+                </option>
+              </select>
+              <div style="margin-top:6px;font-size:0.75rem;color:#7c2d12;">請假教師：{{ getTeacherNameByEmail(pendingRequestData.leaveTeacher) }}；核准後由所選教師代課。</div>
+            </div>
+
             <!-- 課表模擬對比（手機可收合） -->
             <details class="compare-grids-details" open>
               <summary class="compare-grids-summary">📅 雙方課表對照（點可收合）</summary>
@@ -2534,7 +2546,7 @@
               <!-- 右：代課/調課教師當週課表 (B) -->
                <div>
                  <div v-if="pendingRequestData.specialFlow === 'combined_return'" class="mini-grid-title">
-                   ↩ <strong>合班回原班</strong>（不指定受邀代課教師）
+                    ↩ <strong>{{ getTeacherNameByEmail(resolveCompareBEmail()) || '尚未指定' }}</strong> 老師當週課表（合班代課）
                  </div>
                  <div v-else class="mini-grid-title">
                    👤 <strong>{{ getTeacherNameByEmail(resolveCompareBEmail()) || '（尚未指定）' }}</strong> 老師當週課表（代課／受邀人）
@@ -2551,8 +2563,8 @@
                     @click="setBatchCompareViewEmail(g.subEmail)"
                   >{{ g.subName }}（{{ g.slots.length }}節）</button>
                 </div>
-                 <div v-if="pendingRequestData.specialFlow === 'combined_return'" style="padding:24px 12px;text-align:center;color:#9a3412;font-size:0.85rem;background:#fff7ed;border:1px dashed #fdba74;border-radius:8px;">
-                   核准後由申請教師回原班授課，無需媒合或指定受邀教師。
+                  <div v-if="pendingRequestData.specialFlow === 'combined_return' && !resolveCompareBEmail()" style="padding:24px 12px;text-align:center;color:#9a3412;font-size:0.85rem;background:#fff7ed;border:1px dashed #fdba74;border-radius:8px;">
+                    請先指定同節原本有課的其他併班任課教師。
                  </div>
                  <div v-else-if="!resolveCompareBEmail()" style="padding:24px 12px;text-align:center;color:var(--text-muted);font-size:0.85rem;background:#f8fafc;border:1px dashed var(--border-color);border-radius:8px;">
                    尚無受邀人可顯示課表
@@ -2623,60 +2635,60 @@
                    <option v-if="parseInt(pendingRequestData.timeKey && String(pendingRequestData.timeKey).split('-').pop(), 10) === 8" value="第8節代課">第8節代課</option>
                  </select>
                </div>
-               <div data-tour="compare-form" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-                
-                 <!-- 原因／假別與僅課務調整 -->
-                 <div class="form-group" data-tour="compare-reason">
-                   <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
-                     <label class="form-label" style="margin:0;">原因 / 假別</label>
-                      <label v-if="pendingRequestData.mode === 'substitution' && pendingRequestData.specialFlow !== 'combined_return'" style="display:flex;align-items:center;gap:5px;font-size:0.78rem;color:var(--text-secondary);cursor:pointer;">
-                       <input
-                         id="course-adjustment-only"
-                         type="checkbox"
-                         class="chk-box-16"
-                         v-model="pendingRequestData.courseAdjustmentOnly"
-                         @change="toggleCourseAdjustmentOnly"
-                       >
-                       <span>僅申請課務調整（無請假）</span>
-                     </label>
+                <div data-tour="compare-form" class="compare-form-grid">
+                  <div class="compare-form-main">
+                    <!-- 原因／假別與僅課務調整 -->
+                    <div class="form-group" data-tour="compare-reason">
+                      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+                        <label class="form-label" style="margin:0;">原因 / 假別</label>
+                         <label v-if="pendingRequestData.mode === 'substitution' && pendingRequestData.specialFlow !== 'combined_return'" style="display:flex;align-items:center;gap:5px;font-size:0.78rem;color:var(--text-secondary);cursor:pointer;">
+                          <input
+                            id="course-adjustment-only"
+                            type="checkbox"
+                            class="chk-box-16"
+                            v-model="pendingRequestData.courseAdjustmentOnly"
+                            @change="toggleCourseAdjustmentOnly"
+                          >
+                          <span>僅申請課務調整（無請假）</span>
+                        </label>
+                      </div>
+                       <select class="form-select" v-model="pendingRequestData.reason" :disabled="pendingRequestData.courseAdjustmentOnly || pendingRequestData.specialFlow === 'combined_return'" @change="onLeaveReasonChange">
+                         <option value="" disabled>請選擇假別...</option>
+                         <option v-if="pendingRequestData.specialFlow === 'combined_return'" value="合班回原班">合班回原班</option>
+                         <option v-if="pendingRequestData.courseAdjustmentOnly" value="課務調整">課務調整（無請假）</option>
+                         <option v-for="r in leaveReasonOptions" :key="r" :value="r">{{ r }}</option>
+                       </select>
+                    </div>
+
+                     <div v-if="pendingRequestData.mode === 'substitution' && !pendingRequestData.courseAdjustmentOnly && pendingRequestData.specialFlow !== 'combined_return'" class="form-group compare-form-leave-time">
+                     <label class="form-label">請假時間（代課清冊）</label>
+                     <div style="display:flex;flex-wrap:wrap;gap:7px;align-items:center;">
+                       <button type="button" class="btn btn-secondary pad-6-10-78"  @click="setLeaveTimePreset('全天')">全天（{{ getLeaveTimePresetRange(pendingRequestData.leaveTeacher, '全天') }}）</button>
+                       <button type="button" class="btn btn-secondary pad-6-10-78"  @click="setLeaveTimePreset('上午')">上午（{{ getLeaveTimePresetRange(pendingRequestData.leaveTeacher, '上午') }}）</button>
+                       <button type="button" class="btn btn-secondary pad-6-10-78"  @click="setLeaveTimePreset('下午')">下午（{{ getLeaveTimePresetRange(pendingRequestData.leaveTeacher, '下午') }}）</button>
+                     </div>
+                     <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px;">
+                       <input type="time" class="form-input" style="width:125px;" v-model="pendingRequestData.leaveTimeStart" @change="updatePendingLeaveTime">
+                       <span>至</span>
+                       <input type="time" class="form-input" style="width:125px;" v-model="pendingRequestData.leaveTimeEnd" @change="updatePendingLeaveTime">
+                            <span class="text-xs-sec-78" >目前：{{ pendingRequestData.leaveTimeType || '未填' }}（{{ pendingRequestData.leaveTime || '未填' }}）</span>
+                     </div>
+                     <small style="display:block;margin-top:5px;color:var(--text-muted);">行政人員預設全天 08:00~17:00；非行政預設全天 08:00~16:00，時間可自行修改。</small>
                    </div>
-                    <select class="form-select" v-model="pendingRequestData.reason" :disabled="pendingRequestData.courseAdjustmentOnly || pendingRequestData.specialFlow === 'combined_return'" @change="onLeaveReasonChange">
-                      <option value="" disabled>請選擇假別...</option>
-                      <option v-if="pendingRequestData.specialFlow === 'combined_return'" value="合班回原班">合班回原班</option>
-                      <option v-if="pendingRequestData.courseAdjustmentOnly" value="課務調整">課務調整（無請假）</option>
-                      <option v-for="r in leaveReasonOptions" :key="r" :value="r">{{ r }}</option>
-                   </select>
-                 </div>
 
-                  <div v-if="pendingRequestData.mode === 'substitution' && !pendingRequestData.courseAdjustmentOnly && pendingRequestData.specialFlow !== 'combined_return'" class="form-group" style="grid-column:1 / -1;">
-                  <label class="form-label">請假時間（代課清冊）</label>
-                  <div style="display:flex;flex-wrap:wrap;gap:7px;align-items:center;">
-                    <button type="button" class="btn btn-secondary pad-6-10-78"  @click="setLeaveTimePreset('全天')">全天（{{ getLeaveTimePresetRange(pendingRequestData.leaveTeacher, '全天') }}）</button>
-                    <button type="button" class="btn btn-secondary pad-6-10-78"  @click="setLeaveTimePreset('上午')">上午（{{ getLeaveTimePresetRange(pendingRequestData.leaveTeacher, '上午') }}）</button>
-                    <button type="button" class="btn btn-secondary pad-6-10-78"  @click="setLeaveTimePreset('下午')">下午（{{ getLeaveTimePresetRange(pendingRequestData.leaveTeacher, '下午') }}）</button>
+                    <!-- 對調模式才顯示 B 欄日期；代課經費依規則自動對應，申請頁不再選擇。 -->
+                    <div class="form-group" v-if="pendingRequestData.mode === 'exchange'">
+                      <label class="form-label">對調目標日期 (B)</label>
+                      <input type="text" class="form-input" style="background: #f1f5f9; font-weight: 600;" readonly :value="pendingRequestData.dateB">
+                    </div>
                   </div>
-                  <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px;">
-                    <input type="time" class="form-input" style="width:125px;" v-model="pendingRequestData.leaveTimeStart" @change="updatePendingLeaveTime">
-                    <span>至</span>
-                    <input type="time" class="form-input" style="width:125px;" v-model="pendingRequestData.leaveTimeEnd" @change="updatePendingLeaveTime">
-                         <span class="text-xs-sec-78" >目前：{{ pendingRequestData.leaveTimeType || '未填' }}（{{ pendingRequestData.leaveTime || '未填' }}）</span>
+
+                  <!-- 備註輸入 -->
+                  <div class="form-group compare-form-note">
+                    <label class="form-label">原因</label>
+                    <input type="text" class="form-input" placeholder="可輸入行政原因..." v-model="pendingRequestData.note">
                   </div>
-                  <small style="display:block;margin-top:5px;color:var(--text-muted);">行政人員預設全天 08:00~17:00；非行政預設全天 08:00~16:00，時間可自行修改。</small>
                 </div>
-
-                 <!-- 對調模式才顯示 B 欄日期；代課經費依規則自動對應，申請頁不再選擇。 -->
-                 <div class="form-group" v-if="pendingRequestData.mode === 'exchange'">
-                   <label class="form-label">對調目標日期 (B)</label>
-                   <input type="text" class="form-input" style="background: #f1f5f9; font-weight: 600;" readonly :value="pendingRequestData.dateB">
-                 </div>
-
-              </div>
-
-              <!-- 備註輸入 -->
-              <div class="form-group" style="margin-top: 12px;">
-                 <label class="form-label">原因</label>
-                 <input type="text" class="form-input" placeholder="可輸入行政原因..." v-model="pendingRequestData.note">
-              </div>
 
               <!-- 舊的管理員簽核模式已移至最上方顯眼處 -->
             </div>
@@ -3360,10 +3372,13 @@
                    <option v-for="t in teachersList" :key="'he-sub-'+t.email" :value="t.email">{{ t.name }}（{{ t.subject || '無' }}）</option>
                 </select>
               </div>
-              <div v-else class="form-group m-0">
-                <label class="form-label">受邀教師</label>
-                <div class="form-input" style="background:#f8fafc;color:#64748b;">無受邀教師，核准後由申請教師回原班</div>
-              </div>
+               <div v-else class="form-group m-0">
+                 <label class="form-label">代課教師</label>
+                 <select class="form-select" v-model="historyEditForm.targetTeacherEmail">
+                   <option value="" disabled>請選擇同節併班代課教師...</option>
+                   <option v-for="t in teachersList" :key="'he-combined-sub-'+t.email" :value="t.email">{{ t.name }}（{{ t.subject || '無' }}）</option>
+                 </select>
+               </div>
             </div>
             <div class="grid-2-10">
               <div class="form-group m-0">
@@ -3945,23 +3960,23 @@
   <!-- App Main JS Logic -->
 
   <!-- 模組：defer 依文件順序執行，不擋 HTML 解析；billing/print/export 另延後 -->
-  <script defer src="name-key-contract.js?v=20260828-combined-return1"></script>
-  <script defer src="field-map.js?v=20260828-combined-return1"></script>
-  <script defer src="date-utils.js?v=20260828-combined-return1"></script>
-  <script defer src="gas-api.js?v=20260828-combined-return1"></script>
-  <script defer src="domain-school-swap.js?v=20260828-combined-return1"></script>
-  <script defer src="domain-schedule.js?v=20260828-combined-return1"></script>
-  <script defer src="domain-match.js?v=20260828-combined-return1"></script>
+  <script defer src="name-key-contract.js?v=20260828-combined-return2"></script>
+  <script defer src="field-map.js?v=20260828-combined-return2"></script>
+  <script defer src="date-utils.js?v=20260828-combined-return2"></script>
+  <script defer src="gas-api.js?v=20260828-combined-return2"></script>
+  <script defer src="domain-school-swap.js?v=20260828-combined-return2"></script>
+  <script defer src="domain-schedule.js?v=20260828-combined-return2"></script>
+  <script defer src="domain-match.js?v=20260828-combined-return2"></script>
   <!-- domain-activity-cover：活動互代／空堂任務時 ensureDomainActivityCover -->
-  <script defer src="domain-class-away.js?v=20260828-combined-return1"></script>
-  <script defer src="fee-utils.js?v=20260828-combined-return1"></script>
-  <script defer src="ui-activity.js?v=20260828-combined-return1"></script>
-  <script defer src="ui-request.js?v=20260828-combined-return1"></script>
-  <script defer src="ui-timetable.js?v=20260828-combined-return1"></script>
-  <script defer src="ui-approval.js?v=20260828-combined-return1"></script>
+  <script defer src="domain-class-away.js?v=20260828-combined-return2"></script>
+  <script defer src="fee-utils.js?v=20260828-combined-return2"></script>
+  <script defer src="ui-activity.js?v=20260828-combined-return2"></script>
+  <script defer src="ui-request.js?v=20260828-combined-return2"></script>
+  <script defer src="ui-timetable.js?v=20260828-combined-return2"></script>
+  <script defer src="ui-approval.js?v=20260828-combined-return2"></script>
   <!-- ui-admin：僅管理員／後台操作時 ensureUiAdmin -->
-  <script defer src="app-shell-utils.js?v=20260828-combined-return1"></script>
-  <script defer src="app.js?v=20260828-combined-return1"></script>
+  <script defer src="app-shell-utils.js?v=20260828-combined-return2"></script>
+  <script defer src="app.js?v=20260828-combined-return2"></script>
   <script>
     (function () {
       function loadScript(src) {
@@ -3983,47 +3998,47 @@
       var _uiAdminP = null;
       window.ensureDomainBilling = function () {
         if (window.DomainBilling) return Promise.resolve();
-          if (!_billingP) _billingP = loadScript('domain-billing.js?v=20260828-combined-return1');
+          if (!_billingP) _billingP = loadScript('domain-billing.js?v=20260828-combined-return2');
         return _billingP;
       };
       window.ensureExportAccounting = function () {
         if (window.ExportAccounting) return Promise.resolve();
-          if (!_accountingP) _accountingP = loadScript('export-accounting.js?v=20260828-combined-return1');
+          if (!_accountingP) _accountingP = loadScript('export-accounting.js?v=20260828-combined-return2');
         return _accountingP;
       };
       /** 活動互代／額度／空堂任務邏輯（首屏不載） */
       window.ensureDomainActivityCover = function () {
         if (window.DomainActivityCover) return Promise.resolve();
-          if (!_domainActivityP) _domainActivityP = loadScript('domain-activity-cover.js?v=20260828-combined-return1');
+          if (!_domainActivityP) _domainActivityP = loadScript('domain-activity-cover.js?v=20260828-combined-return2');
         return _domainActivityP;
       };
       /** 後台匯入／教師／課表編輯（教師首屏不載） */
       window.ensureUiAdmin = function () {
         if (window.UiAdmin) return Promise.resolve();
-          if (!_uiAdminP) _uiAdminP = loadScript('ui-admin.js?v=20260828-combined-return1');
+          if (!_uiAdminP) _uiAdminP = loadScript('ui-admin.js?v=20260828-combined-return2');
         return _uiAdminP;
       };
       window.ensurePrintHelper = function () {
         if (typeof window.generateFormHtml === 'function') return Promise.resolve();
-          if (!_printP) _printP = loadScript('print-helper.js?v=20260828-combined-return1');
+          if (!_printP) _printP = loadScript('print-helper.js?v=20260828-combined-return2');
         return _printP;
       };
       window.ensureExportSchoolTimetable = function () {
         if (window.ExportSchoolTimetable) return Promise.resolve();
-          if (!_exportP) _exportP = loadScript('export-school-timetable.js?v=20260828-combined-return1');
+          if (!_exportP) _exportP = loadScript('export-school-timetable.js?v=20260828-combined-return2');
         return _exportP;
       };
       var _activityCoverP = null;
       window.ensureExportActivityCover = function () {
         if (window.ExportActivityCover) return Promise.resolve();
-          if (!_activityCoverP) _activityCoverP = loadScript('export-activity-cover.js?v=20260828-combined-return1');
+          if (!_activityCoverP) _activityCoverP = loadScript('export-activity-cover.js?v=20260828-combined-return2');
         return _activityCoverP;
       };
       var _invigP = null;
       var _excelJsP = null;
       window.ensureExportInvigilation = function () {
         if (window.ExportInvigilation) return Promise.resolve();
-          if (!_invigP) _invigP = loadScript('export-invigilation.js?v=20260828-combined-return1');
+          if (!_invigP) _invigP = loadScript('export-invigilation.js?v=20260828-combined-return2');
         return _invigP;
       };
       window.ensureExcelJS = function () {

@@ -192,12 +192,10 @@
     } else if (sheetName === '申請單') {
       output['申請人姓名'] = resolvePair(fieldOrEmpty(row, ['申請人姓名', 'requesterName']), fieldOrEmpty(row, ['申請人Email', 'requesterEmail']), directory, sid, '申請人');
       var combinedReturn = isCombinedReturn(row);
-      if (combinedReturn && hasValue(row, ['受邀人姓名', 'targetTeacherName', '受邀人Email', 'targetTeacherEmail'])) {
-        throw error('INVALID_COMBINED_RETURN', '合班回原班不可指定受邀教師');
+      if (combinedReturn && !hasValue(row, ['受邀人姓名', 'targetTeacherName', '受邀人Email', 'targetTeacherEmail'])) {
+        throw error('INVALID_COMBINED_RETURN', '合班回原班請指定同節併班代課教師');
       }
-      output['受邀人姓名'] = combinedReturn
-        ? ''
-        : resolvePair(fieldOrEmpty(row, ['受邀人姓名', 'targetTeacherName']), fieldOrEmpty(row, ['受邀人Email', 'targetTeacherEmail']), directory, sid, '受邀人');
+      output['受邀人姓名'] = resolvePair(fieldOrEmpty(row, ['受邀人姓名', 'targetTeacherName']), fieldOrEmpty(row, ['受邀人Email', 'targetTeacherEmail']), directory, sid, '受邀人');
       output['特殊流程'] = combinedReturn ? SPECIAL_FLOW_COMBINED_RETURN_LABEL : field(row, ['特殊流程', 'specialFlow']);
       if (hasValue(row, ['代申請人姓名', 'proxyByName', '代申請人Email', 'proxyByEmail'])) {
         output['代申請人姓名'] = resolvePair(fieldOrEmpty(row, ['代申請人姓名', 'proxyByName']), fieldOrEmpty(row, ['代申請人Email', 'proxyByEmail']), directory, sid, '代申請人');

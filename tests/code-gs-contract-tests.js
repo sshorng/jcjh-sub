@@ -16,15 +16,16 @@ const flowEnd = source.indexOf('// ----------------- 姓名鍵資料契約 -----
 assert.ok(flowStart >= 0 && flowEnd > flowStart, 'special flow contract must remain discoverable');
 const flowContext = {
   isPaperFlowValue_: value => value === true || value === 1
-    || ['true', '1', '是', '紙本'].includes(String(value == null ? '' : value).trim().toLowerCase())
+    || ['true', '1', '是', '紙本'].includes(String(value == null ? '' : value).trim().toLowerCase()),
+  nameKeyNorm_: value => String(value == null ? '' : value).trim().toLowerCase()
 };
 vm.createContext(flowContext);
 vm.runInContext(source.slice(flowStart, flowEnd), flowContext, { filename: 'code.gs.special-flow' });
 const validCombined = {
   '特殊流程': 'combined_return',
   '異動類型': 'substitution',
-  '受邀人姓名': '',
-  '受邀人Email': '',
+  '受邀人姓名': '受邀人',
+  '受邀人Email': 'invitee@school.example',
   '異動節次': 1,
   '經費來源': '公費代課'
 };
@@ -37,8 +38,9 @@ assert.throws(() => flowContext.validateCombinedReturnRequest_(Object.assign({},
   '異動節次': 8
 })), /第8節合班回原班必須使用第8節代課/);
 assert.throws(() => flowContext.validateCombinedReturnRequest_(Object.assign({}, validCombined, {
-  '受邀人姓名': '受邀人'
-})), /不可指定受邀教師/);
+  '受邀人姓名': '',
+  '受邀人Email': ''
+})), /請指定同節併班代課教師/);
 
 const start = source.indexOf('function _resolveExchangeSides_');
 const end = source.indexOf('function _googleCalendarUrl_', start);

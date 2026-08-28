@@ -6,6 +6,16 @@
    ========================================================= */
 
 @media (max-width: 768px) {
+  /* 月報表格由頁面垂直捲動；兩層表頭避開可換行的導覽列。 */
+  .billing-report {
+    --billing-sticky-top: 96px;
+  }
+  .billing-table .billing-th-group th {
+    top: var(--billing-sticky-top, 96px);
+  }
+  .billing-table .billing-th-cols th {
+    top: calc(var(--billing-sticky-top, 96px) + 32px);
+  }
   /* 待辦／歷史表：可橫滑，但欄位緊湊、少空白 */
   .table-responsive {
     margin-top: 6px;
@@ -549,6 +559,14 @@
 
   .input-group, .form-group {
     width: 100% !important;
+  }
+
+  .compare-form-grid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  .compare-form-note {
+    margin-top: 0;
   }
 
   /* 表單控件可撐滿；一般按鈕維持內容寬度 */

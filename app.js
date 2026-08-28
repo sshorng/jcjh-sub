@@ -799,7 +799,6 @@ createApp({
 
       approved.forEach(req => {
         if (req.type === 'substitution' || req.type === '代課') {
-          const combinedReturn = isCombinedReturnRequest(req);
           // 請假節可能本身已是調入課：班科以有效課為準，缺才用申請單
           let leaveDay = req.requestPeriodDay;
           if ((leaveDay == null || leaveDay === '') && req.requestDate) {
@@ -828,9 +827,7 @@ createApp({
             date: req.requestDate,
             period: req.requestPeriod,
             originalTeacherName: req.requesterName,
-            actualTeacherName: combinedReturn
-              ? (req.requesterName || '')
-              : (req.actualTeacherName || req.targetTeacherName || ''),
+            actualTeacherName: req.actualTeacherName || req.targetTeacherName || '',
             className: leaveCls,
             subject: leaveSubj,
             requestId: req.id,
@@ -1775,7 +1772,52 @@ createApp({
       return map;
     });
 
-    // 該班代調課異動摘要：每節一列；調課雙向各一列
+    const buildClassSchoolSwapChanges = (className, scheduleRows, swapRows, weekDates, isSingleWeekFn) => {
+      const cls = String(className || '').trim();
+      if (!cls || !window.DomainSchoolSwap) return [];
+      const weekSet = new Set(weekDates || []);
+      const parseClasses = (raw) => (window.DateUtils && window.DateUtils.parseCombinedClasses)
+        ? window.DateUtils.parseCombinedClasses(raw)
+        : String(raw || '').split(/[、,，/／|｜\s]+/).map(s => s.trim()).filter(Boolean);
+      const schedules = (scheduleRows || []).filter(schedule => {
+        if (!schedule || !schedule.className || schedule.attr === '抽離' || schedule.isPullOut) return false;
+        return parseClasses(schedule.className).includes(cls);
+      });
+      const changes = [];
+      window.DomainSchoolSwap.normalizeRows(swapRows || [])
+        .filter(row => row.enabled)
+        .forEach(row => {
+          const rowKey = row.id || `${row.dateA}-${row.periodA}-${row.dateB}-${row.periodB}`;
+          [
+            { endpoint: 'A', date: row.dateA, day: row.dayA, period: row.periodA, sourceDate: row.dateB, sourceDay: row.dayB, sourcePeriod: row.periodB },
+            { endpoint: 'B', date: row.dateB, day: row.dayB, period: row.periodB, sourceDate: row.dateA, sourceDay: row.dayA, sourcePeriod: row.periodA }
+          ].forEach(endpoint => {
+            schedules.forEach((schedule, index) => {
+              if (parseInt(schedule.dayOfWeek, 10) !== parseInt(endpoint.sourceDay, 10)
+                  || parseInt(schedule.period, 10) !== parseInt(endpoint.sourcePeriod, 10)) return;
+              const attr = String(schedule.attr || '').trim();
+              if (typeof isSingleWeekFn === 'function') {
+                if (attr === '單週' && !isSingleWeekFn(endpoint.date)) return;
+                if (attr === '雙週' && isSingleWeekFn(endpoint.date)) return;
+              }
+              changes.push({
+                id: `school-swap-${rowKey}-${endpoint.endpoint}-${schedule.id || index}`,
+                date: endpoint.date,
+                period: endpoint.period,
+                dayNum: endpoint.day,
+                sourceDate: endpoint.sourceDate,
+                sourcePeriod: endpoint.sourcePeriod,
+                subject: String(schedule.subject || '').trim() || '課程',
+                swapName: row.name,
+                inWeek: weekSet.has(endpoint.date)
+              });
+            });
+          });
+        });
+      return changes;
+    };
+
+    // 該班異動摘要：每節一列；調課雙向各一列
     // 格式：月/日（星期）第○節 改上 ○○課（○○師）
     const classChangeSummary = computed(() => {
       const cls = selectedClass.value;
@@ -1816,7 +1858,7 @@ createApp({
         const line = isEx
           ? `${datePart}第${r.period}節 改上 ${subject}（${toName}）`
           : isCombined
-            ? `${datePart}第${r.period}節 ${subject} 合班回原班（${toName}）`
+            ? `${datePart}第${r.period}節 ${subject} 合班回原班，由${toName}代課`
           : isMutual
             ? `${datePart}第${r.period}節 ${subject} 由${toName}互代`
             : `${datePart}第${r.period}節 ${subject} 由${toName}代課`;
@@ -1828,6 +1870,32 @@ createApp({
           type: isEx ? '調課' : (isCombined ? '合班回原班' : (isMutual ? '互代' : '代課')),
           line,
           inWeek: weekSet.has(r.date)
+        });
+      });
+      const classSchoolSwapRows = classUsesPublicData.value
+        ? classViewSchoolSwaps.value
+        : schoolSwaps.value;
+      buildClassSchoolSwapChanges(
+        cls,
+        classScheduleRows.value,
+        classSchoolSwapRows,
+        selectedClassWeekDates.value,
+        isSingleWeek
+      ).forEach(change => {
+        const dayPart = change.dayNum ? (window.DateUtils.getWeekDayText(change.dayNum) || '') : '';
+        const datePart = dayPart
+          ? `${formatDateMMDD(change.date)}（${dayPart}）`
+          : `${formatDateMMDD(change.date)}`;
+        const sourcePart = `${formatDateMMDD(change.sourceDate)}${formatPeriodText(change.sourcePeriod)}`;
+        rows.push({
+          id: change.id,
+          date: change.date,
+          period: change.period,
+          dayText: dayPart,
+          type: '全校對調',
+          line: `${datePart}${formatPeriodText(change.period)} ${change.subject}（原${sourcePart}）`,
+          inWeek: change.inWeek,
+          isSchoolSwap: true
         });
       });
       rows.sort((a, b) => {
@@ -1969,13 +2037,21 @@ createApp({
       let subject = req.subject || '';
       let actionLine = '';
 
-       if (isCombinedReturnRequest(req)) {
-         eventDate = req.requestDate;
-         eventPeriod = req.requestPeriod;
-         titleTag = '合班回原班';
-         className = req.className || '';
-         subject = req.subject || '';
-         actionLine = `合班回原班：由 ${req.requesterName || '原授課教師'} 回原班授課。`;
+        if (isCombinedReturnRequest(req)) {
+          eventDate = req.requestDate;
+          eventPeriod = req.requestPeriod;
+          className = req.className || '';
+          subject = req.subject || '';
+          if (isLeaveSide) {
+            titleTag = '不用上';
+            actionLine = `本節不用上。\n由 ${req.targetTeacherName || '其他併班任課教師'} 代課。`;
+          } else if (isCoverSide) {
+            titleTag = '代課';
+            actionLine = `本節請代課。\n請假教師：${req.requesterName || ''}。`;
+          } else {
+            titleTag = '合班回原班';
+            actionLine = `請假：${req.requesterName || ''}　代課：${req.targetTeacherName || ''}`;
+          }
        } else if (isExchange) {
         if (isLeaveSide) {
           // 申請人調入：時間＝對方節；班科＝自己的課
@@ -2047,9 +2123,9 @@ createApp({
        const title = `【${titleTag}】${slotLabel}`;
        let details = `${actionLine}\n\n請假教師：${req.requesterName || ''}\n代課／對調教師：${req.targetTeacherName || ''}\n假別事由：${req.reason || '請假'}\n單號：${req.serial || ''}`;
        details += `\n節次：${periodText}`;
-       if (isCombinedReturnRequest(req)) {
-         details += `\n流程：合班回原班（原授課教師回原班授課）`;
-       }
+        if (isCombinedReturnRequest(req)) {
+          details += `\n流程：合班回原班（請假教師由其他併班任課教師代課）`;
+        }
        if (isExchange) {
          details += `\n對調：${req.requestDate || ''}${formatPeriodText(req.requestPeriod)} ⇄ ${req.targetDate || ''}${formatPeriodText(req.targetPeriod)}`;
       }
@@ -2549,6 +2625,7 @@ createApp({
       leaveTimeType: '', leaveTimeStart: '', leaveTimeEnd: '', leaveTime: '',
       submitRequestId: '', submitSerial: '', submitBatchId: ''
     });
+    const combinedReturnCandidates = ref([]);
     // 送出前「先問對方」LINE 範本：依當前申請資料即時更新（批次暫不提供）
     const askFirstLineText = computed(() => {
       const p = pendingRequestData.value || {};
@@ -4909,6 +4986,12 @@ createApp({
         showToast('此功能僅適用於併班課堂', 'warning');
         return false;
       }
+      const candidates = findCombinedReturnCandidates(cell);
+      if (!candidates.length) {
+        showToast('找不到同節次的其他併班任課教師，請先確認課表資料', 'warning');
+        return false;
+      }
+      combinedReturnCandidates.value = candidates;
       const dateStr = inputRequestDate.value || (currentWeekDates.value[cell.dayOfWeek - 1] || '');
       const timeKey = (window.DateUtils && window.DateUtils.encodeTimeKey)
         ? window.DateUtils.encodeTimeKey(cell.dayOfWeek, cell.period)
@@ -4917,7 +5000,8 @@ createApp({
         mode: 'substitution',
         specialFlow: (window.FieldMap && window.FieldMap.SPECIAL_FLOW_COMBINED_RETURN) || 'combined_return',
         leaveTeacher: cell.teacherEmail,
-        subTeacher: '',
+        subTeacher: candidates.length === 1 ? candidates[0].email : '',
+        combinedReturnCandidates: candidates,
         cls: className,
         subject: classData.subject || '',
         date: dateStr,
@@ -6707,7 +6791,7 @@ createApp({
         id: root,
         serial: serialRoot,
         originalTeacherEmail: p.leaveTeacher,
-        actualTeacherEmail: combinedReturn ? p.leaveTeacher : p.subTeacher,
+         actualTeacherEmail: p.subTeacher,
         date: p.date,
         period: decodePaperTimeKey(p.timeKey).period,
         className: p.cls,
@@ -6767,9 +6851,7 @@ createApp({
         const isExchange = typeRaw === 'exchange' || typeRaw === '對調' || typeRaw === '調課';
         const original = resolvePaperTeacher(getValue(source, ['申請人Email', 'requesterEmail', '申請人姓名', 'requesterName']));
         const combinedReturn = isCombinedReturnRequest(source);
-        const actual = combinedReturn
-          ? original
-          : resolvePaperTeacher(getValue(source, ['受邀人Email', 'targetTeacherEmail', '受邀人姓名', 'targetTeacherName']));
+        const actual = resolvePaperTeacher(getValue(source, ['受邀人Email', 'targetTeacherEmail', '受邀人姓名', 'targetTeacherName']));
         const date = getValue(source, ['異動日期', 'requestDate', 'date']);
         const period = getValue(source, ['異動節次', 'requestPeriod', 'period']);
         const printedRaw = getValue(source, ['是否已印', 'printed']);
@@ -8068,8 +8150,8 @@ createApp({
       const m = dateStr && dateStr !== '—' && dateStr.length >= 10 ? dateStr.slice(5, 10).replace('-', '/') : (dateStr || '—');
       return `${m}(${day || '—'})第${period}節` + (clsSubj ? ` · ${clsSubj}` : '');
     };
-    /** 同節先前義務（此人為 actual 的代課／調入），excludeId 排除本筆 */
-    const findPriorDutyAtSlot = (email, dateStr, period, excludeId) => {
+    /** 同節先前義務（此人為 actual 的代課／調入），可排除本筆及本申請單 */
+    const findPriorDutyAtSlot = (email, dateStr, period, excludeId, excludeRequestId) => {
       const em = String(email || '').toLowerCase();
       const p = parseInt(period, 10);
       const dk = String(dateStr || '');
@@ -8078,6 +8160,7 @@ createApp({
       for (let i = all.length - 1; i >= 0; i--) {
         const s = all[i];
         if (!s || (excludeId && s.id === excludeId)) continue;
+        if (excludeRequestId && String(s.requestId || '') === String(excludeRequestId)) continue;
         if (String(s.date) !== dk || parseInt(s.period, 10) !== p) continue;
         if (s.actualTeacherEmail && String(s.actualTeacherEmail).toLowerCase() === em
             && (s.className || s.subject)) {
@@ -8192,7 +8275,7 @@ createApp({
       const dateStr = String(rec.date || rec.requestDate || '');
       const period = rec.period != null ? rec.period : rec.requestPeriod;
       const em = rec.originalTeacherEmail || rec.requesterEmail;
-      return !!findPriorDutyAtSlot(em, dateStr, period, rec.id);
+      return !!findPriorDutyAtSlot(em, dateStr, period, rec.id, rec.requestId);
     };
 
     /** 對調節是否為「再異動」（對方該節已是義務／異動格） */
@@ -8213,7 +8296,7 @@ createApp({
           peerExclude = peer.id;
         }
       }
-      if (findPriorDutyAtSlot(peerOrig, peerDate, peerPeriod, peerExclude)) return true;
+      if (findPriorDutyAtSlot(peerOrig, peerDate, peerPeriod, peerExclude, rec.requestId)) return true;
       if (!peerDate || peerPeriod == null) return false;
       const all = substitutionRecords.value || [];
       const p = parseInt(peerPeriod, 10);
@@ -8221,6 +8304,7 @@ createApp({
       const be = String(peerOrig || '').toLowerCase();
       return all.some(s => {
         if (!s || (peerExclude && s.id === peerExclude)) return false;
+        if (rec.requestId && String(s.requestId || '') === String(rec.requestId)) return false;
         if (String(s.date) !== dk || parseInt(s.period, 10) !== p) return false;
         const o = String(s.originalTeacherEmail || '').toLowerCase();
         const a = String(s.actualTeacherEmail || '').toLowerCase();
@@ -8232,13 +8316,14 @@ createApp({
     const isRequestExchangeRechanged = (req) => {
       if (!req || (req.type !== 'exchange' && req.type !== '對調')) return false;
       if (!req.targetTeacherEmail || !req.targetDate) return false;
-      if (findPriorDutyAtSlot(req.targetTeacherEmail, req.targetDate, req.targetPeriod, null)) return true;
+      if (findPriorDutyAtSlot(req.targetTeacherEmail, req.targetDate, req.targetPeriod, null, req.id)) return true;
       const all = substitutionRecords.value || [];
       const p = parseInt(req.targetPeriod, 10);
       const dk = String(req.targetDate);
       const be = String(req.targetTeacherEmail).toLowerCase();
       return all.some(s => {
         if (!s) return false;
+        if (req.id && String(s.requestId || '') === String(req.id)) return false;
         if (String(s.date) !== dk || parseInt(s.period, 10) !== p) return false;
         const o = String(s.originalTeacherEmail || '').toLowerCase();
         const a = String(s.actualTeacherEmail || '').toLowerCase();
@@ -8390,7 +8475,7 @@ createApp({
       if (!req || !req.requesterEmail || !req.requestPeriod) return false;
       // 申請中：以請假人該節有效義務／基礎限制
       const prior = findPriorDutyAtSlot(
-        req.requesterEmail, req.requestDate, req.requestPeriod, null
+        req.requesterEmail, req.requestDate, req.requestPeriod, null, req.id
       );
       let dayNum = req.requestPeriodDay;
       if ((dayNum == null || dayNum === '') && req.requestDate) {
@@ -8414,7 +8499,7 @@ createApp({
         if (!Number.isNaN(d.getTime())) dayNum = d.getDay() === 0 ? 7 : d.getDay();
       }
       const prior = findPriorDutyAtSlot(
-        req.targetTeacherEmail, req.targetDate, req.targetPeriod, null
+        req.targetTeacherEmail, req.targetDate, req.targetPeriod, null, req.id
       );
       if (prior) {
         return cellIsRestricted(
@@ -8887,6 +8972,9 @@ createApp({
         }
         if (cell.pendingType === 'substitution_in') {
           return `${head}\n⏳ 待代課\n${cell.pendingText || '請至待辦簽核'}`;
+        }
+        if (cell.pendingType === 'combined_return_in') {
+          return `${head}\n⏳ 合班代課申請中\n${cell.pendingText || '待教學組核准'}`;
         }
         if (cell.pendingType === 'exchange_out') {
           return `${head}\n⏳ 調出申請中\n${cell.pendingText || ''}`;
@@ -9856,7 +9944,7 @@ createApp({
       filteredRecommendedTeachers, displayedRecommendedTeachers,
        exchangeTeacherEmail, exchangeTeacherClasses, exchangePeriodId, exchangeTargetDate, exchangeWeekOffset,
        exchangeWeekdayFilter, exchangeWeekdayOptions, setExchangeWeekdayFilter, filteredExchangeList,
-       showCompareModal, showMatchModal, pendingRequestData, askFirstLineText, askFirstLineDraft, selectedRecordIds, showDevDropdown, devTeacherQuery, filteredDevTeachers,
+       showCompareModal, showMatchModal, pendingRequestData, combinedReturnCandidates, askFirstLineText, askFirstLineDraft, selectedRecordIds, showDevDropdown, devTeacherQuery, filteredDevTeachers,
             paperPrintDraft, paperSignatureByTeacher, openPaperPrintDraftFromCompare, openPaperPrintForRequest, openPaperPrintMutualDrafts, printPaperDraft, openPaperDraftPreview,
            showPrintPreviewModal, printPreview, printPreviewImageBusy, openPrintPreview, closePrintPreview, confirmPrintPreview, copyPrintPreviewImage, downloadPrintPreviewImage,
       showDetailModal, consecAlertsA, consecAlertsB, detailRequest, detailSubRecord,

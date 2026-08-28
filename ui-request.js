@@ -76,8 +76,21 @@ window.UiSubmitHelpers = (function () {
       showToast('合班回原班僅限教學組建立', 'warning');
       return false;
     }
-    if (combinedReturn && (pending.mode !== 'substitution' || pending.subTeacher)) {
-      showToast('合班回原班不可指定受邀教師', 'warning');
+    if (combinedReturn && (pending.mode !== 'substitution' || !String(pending.subTeacher || '').trim())) {
+      showToast('合班回原班請選擇同節併班代課教師', 'warning');
+      return false;
+    }
+    if (combinedReturn && String(pending.leaveTeacher || '').trim().toLowerCase() === String(pending.subTeacher || '').trim().toLowerCase()) {
+      showToast('合班回原班的請假教師與代課教師不可相同', 'warning');
+      return false;
+    }
+    if (combinedReturn && Array.isArray(pending.combinedReturnCandidates)
+        && pending.combinedReturnCandidates.length
+        && !pending.combinedReturnCandidates.some(function (candidate) {
+          return String(candidate && candidate.email || '').trim().toLowerCase()
+            === String(pending.subTeacher || '').trim().toLowerCase();
+        })) {
+      showToast('合班回原班只能選擇同節併班任課教師', 'warning');
       return false;
     }
     if (combinedReturn && (pending.courseAdjustmentOnly || (isMutualCover && isMutualCover.value))) {
@@ -249,9 +262,9 @@ window.UiSubmitHelpers = (function () {
        "單號": serial,
        "異動類型": pending.mode,
        "申請人Email": pending.leaveTeacher,
-       "受邀人Email": combinedReturn ? '' : pending.subTeacher,
-        "申請人姓名": getTeacherNameByEmail(pending.leaveTeacher),
-        "受邀人姓名": combinedReturn ? '' : getTeacherNameByEmail(pending.subTeacher),
+        "受邀人Email": pending.subTeacher,
+         "申請人姓名": getTeacherNameByEmail(pending.leaveTeacher),
+         "受邀人姓名": getTeacherNameByEmail(pending.subTeacher),
       "異動日期": pending.date,
       "異動節次": (function () {
         var tk = (window.DateUtils && window.DateUtils.decodeTimeKey)
@@ -314,11 +327,12 @@ window.UiSubmitHelpers = (function () {
   }
 
   /**
-   * 連堂檢測：回傳異動前／後最長連堂；僅「因本次異動才達 3 節以上」才警示
+   * 連堂檢測：回傳異動前／後最長連堂；僅「因本次異動使連堂達 3 節」才警示
    */
   function getConsecutiveStatus(getScheduleForDate, teacherEmail, dateStr, addPeriod, removePeriod) {
     var day = new Date(String(dateStr).replace(/-/g, '/')).getDay();
     var dayOfWeek = day === 0 ? 7 : day;
+    var teacherKey = String(teacherEmail || '').trim().toLowerCase();
 
     function buildMaxConsec(addP, removeP) {
       var activePeriods = [];
@@ -331,16 +345,16 @@ window.UiSubmitHelpers = (function () {
         } else {
           var cell = getScheduleForDate(teacherEmail, dateStr, p, dayOfWeek);
           if (cell) {
-            var originalIsHim = cell.teacherEmail
-              && cell.teacherEmail.toLowerCase() === String(teacherEmail).toLowerCase();
+            // 姓名鍵課表的 teacherEmail 是非列舉別名，複製格子後改看 teacherName。
+            var cellTeacherKey = String(cell.teacherEmail || cell.teacherName || '').trim().toLowerCase();
+            var originalIsHim = !!cellTeacherKey && cellTeacherKey === teacherKey;
             var substitutedOut = cell.isSubstituted
               || (cell.isPending && (cell.pendingType === 'substitution_out' || cell.pendingType === 'exchange_out'));
-            var substitutedIn = (cell.actualTeacherEmail
-              && cell.actualTeacherEmail.toLowerCase() === String(teacherEmail).toLowerCase())
+            var actualTeacherKey = String(cell.actualTeacherEmail || cell.actualTeacherName || '').trim().toLowerCase();
+            var substitutedIn = (actualTeacherKey && actualTeacherKey === teacherKey)
               || (cell.isPending
                 && (cell.pendingType === 'substitution_in' || cell.pendingType === 'exchange_in')
-                && cell.teacherEmail
-                && cell.teacherEmail.toLowerCase() === String(teacherEmail).toLowerCase());
+                && cellTeacherKey === teacherKey);
             if ((originalIsHim && !substitutedOut) || substitutedIn) {
               hasClass = true;
             }
@@ -962,7 +976,7 @@ window.UiSubmitHelpers = (function () {
            : '';
          successModalTitle.value = '🎉 已送交教學組';
          successModalMessage.value = combinedReturn
-           ? ('申請單（' + serial + '）已送交教學組待核准。核准後由原授課教師回原班授課，不寄送受邀通知。')
+           ? ('申請單（' + serial + '）已送交教學組待核准。核准後由其他併班任課教師代課，並通知代課教師。')
            : ('申請單（' + serial + '）' + proxyTip
              + '已送交教學組待核准' + mutualTip
              + '。不會寄信給受邀者；教學組核准後才會通知。');

@@ -649,9 +649,24 @@ window.DomainSchedule = (function () {
       }
     }
 
-    // 2. 代課／調入（空堂或已調出）；空堂排班：原＝實＝本人
+    // 2. 代課／調入（空堂或已調出）；合班代課即使代課教師原本有課也要覆蓋顯示
+    var pSub = findSubIn();
+    if (pSub && isCombinedReturnRequest(pSub)) {
+      return Object.assign({}, cell || {}, {
+        className: pSub.className || (cell && cell.className) || '',
+        subject: pSub.subject || (cell && cell.subject) || '',
+        teacherEmail: teacherEmail,
+        isPending: true,
+        isSubstituted: true,
+        isSubstitutionDuty: true,
+        isCombinedReturn: true,
+        pendingType: 'combined_return_in',
+        pendingText: '↩ 待代 ' + (pSub.requesterName || '請假教師'),
+        pendingRecord: pSub,
+        subRecord: pSub
+      });
+    }
     if (!cell || cell.isSubstituted) {
-      var pSub = findSubIn();
       if (pSub) {
         var sameSelf = pSub.requesterEmail && pSub.targetTeacherEmail
           && String(pSub.requesterEmail).toLowerCase() === String(pSub.targetTeacherEmail).toLowerCase()

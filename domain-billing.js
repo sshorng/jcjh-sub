@@ -44,11 +44,148 @@ window.DomainBilling = (function () {
     return String(em || '').toLowerCase().trim();
   }
 
+  function normalizeDateKey(value) {
+    if (value === undefined || value === null || value === '') return '';
+    if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value.getTime())) {
+      return toLocalDateStr(value);
+    }
+    var raw = String(value).trim().split(/[T ]/)[0].replace(/\//g, '-');
+    var match = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if (!match) return '';
+    var date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+    if (date.getFullYear() !== Number(match[1])
+        || date.getMonth() !== Number(match[2]) - 1
+        || date.getDate() !== Number(match[3])) return '';
+    return toLocalDateStr(date);
+  }
+
+  function cleanKey(value) {
+    return String(value == null ? '' : value).trim().toLowerCase();
+  }
+
+  function keyList(values) {
+    var seen = {};
+    return (values || []).map(cleanKey).filter(function (value) {
+      if (!value || seen[value]) return false;
+      seen[value] = true;
+      return true;
+    });
+  }
+
+  function hasCommonKey(left, right) {
+    var rightSet = {};
+    (right || []).forEach(function (value) { rightSet[value] = true; });
+    return (left || []).some(function (value) { return !!rightSet[value]; });
+  }
+
+  function teacherKeys(value) {
+    if (value && typeof value === 'object') {
+      return keyList([
+        value.email, value.loginEmail, value.teacherEmail, value['教師Email'],
+        value.name, value.teacherName, value['教師姓名']
+      ]);
+    }
+    return keyList([value]);
+  }
+
+  function originalTeacherKeys(record) {
+    return keyList([
+      record && record.originalTeacherEmail,
+      record && record.originalTeacherName,
+      record && record['原授課教師Email'],
+      record && record['原任課教師Email'],
+      record && record['原授課教師姓名'],
+      record && record['原任課教師姓名'],
+      record && record['申請人Email'],
+      record && record.requesterEmail,
+      record && record['申請人姓名'],
+      record && record.requesterName
+    ]);
+  }
+
+  function actualTeacherKeys(record) {
+    return keyList([
+      record && record.actualTeacherEmail,
+      record && record.actualTeacherName,
+      record && record['實際授課教師Email'],
+      record && record['代課教師Email'],
+      record && record['實際授課教師姓名'],
+      record && record['代課教師姓名'],
+      record && record['受邀人Email'],
+      record && record.targetTeacherEmail,
+      record && record['受邀人姓名'],
+      record && record.targetTeacherName
+    ]);
+  }
+
+  function scheduleTeacherKeys(schedule) {
+    return teacherKeys(schedule && {
+      email: schedule.teacherEmail || schedule['教師Email'],
+      teacherName: schedule.teacherName || schedule['教師姓名']
+    });
+  }
+
+  function recordDate(record) {
+    return normalizeDateKey(record && (record.date || record['異動日期'] || record.requestDate));
+  }
+
+  function recordPeriod(record) {
+    if (!record) return NaN;
+    var value = record.period !== undefined && record.period !== null && record.period !== ''
+      ? record.period
+      : (record['節次'] !== undefined && record['節次'] !== null && record['節次'] !== ''
+        ? record['節次'] : record.requestPeriod);
+    return parseInt(value, 10);
+  }
+
+  function recordType(record) {
+    return String(record && (record.type || record['異動類型']) || '').trim().toLowerCase();
+  }
+
+  function isSubstitutionRecord(record) {
+    var type = recordType(record);
+    return type === '' || type === 'substitution' || type === '代課';
+  }
+
+  function recordFee(record) {
+    return String(record && (record.subFee || record['經費來源']) || '').trim();
+  }
+
+  function isSelfPaidFee(record) {
+    var fee = recordFee(record);
+    return fee === '自費代課' || fee === '自費';
+  }
+
+  function isPublicLeaveFee(record) {
+    var fee = recordFee(record);
+    return fee === '公費代課' || fee === '學校移撥' || fee === '公費' || fee === '代課費';
+  }
+
+  function isOvertimeScheduleSlot(schedule) {
+    var attr = String(schedule && (schedule.attr || schedule['課堂屬性']) || '').trim();
+    if (attr.indexOf('超鐘點') >= 0) return true;
+    var tags = String(schedule && (schedule.specialTags || schedule['特殊標記']) || '')
+      .split(/[、,，;；/／|｜\s]+/).map(function (value) { return value.trim(); });
+    return tags.indexOf('超鐘點') >= 0;
+  }
+
   function isCombinedReturnRecord(record) {
     var raw = record && record.specialFlow;
     if (String(raw == null ? '' : raw).trim() === '') raw = record && record['特殊流程'];
     var value = String(raw == null ? '' : raw).trim().toLowerCase();
     return value === 'combined_return' || value === '合班回原班';
+  }
+
+  function isActiveSubstitutionRecord(record) {
+    if (!record || record.enabled === false) return false;
+    var raw = record.status;
+    if (String(raw == null ? '' : raw).trim() === '') raw = record['狀態'];
+    var status = String(raw == null ? '' : raw).trim().toLowerCase();
+    if (!status) return true;
+    var good = ['approved', 'active', 'effective', 'approved_active', '核准生效', '已核准', '核准', '已生效', '生效', '有效', '啟用'];
+    var bad = ['pending', 'pending_teacher', 'pending_admin', 'rejected', 'admin_rejected', 'cancelled', 'withdrawn', '待受邀人簽核', '待行政審核', '受邀人已拒絕', '行政已退回', '已取消', '已撤銷', '已撤回'];
+    if (bad.indexOf(status) >= 0) return false;
+    return good.indexOf(status) >= 0;
   }
 
   /**
@@ -59,12 +196,12 @@ window.DomainBilling = (function () {
    */
   function isWeeklyHoursSlot(s) {
     if (!s) return false;
-    var p = parseInt(s.period, 10);
+    var p = recordPeriod(s);
     var isSpecial = p === 0 || p === 45;
     var isLunch = p === 45 || (window.DateUtils && window.DateUtils.isLunchPeriod
       && window.DateUtils.isLunchPeriod(s.period));
     if (!(isSpecial || isLunch || (p >= 1 && p <= 7))) return false;
-    var a = String(s.attr || '').trim();
+    var a = String(s.attr || s['課堂屬性'] || '').trim();
     if (!a || a === '一般' || a === '基本' || a === '超鐘點' || a === '抽離') return true;
     // 舊匯入可能寫「實支」仍計（與有課同）
     if (a === '實支') return true;
@@ -81,7 +218,8 @@ window.DomainBilling = (function () {
 
   /** 日期 → 課表星期（1=一…7=日） */
   function dayOfWeekFromDate(dateStr) {
-    var d = new Date(String(dateStr || '').replace(/-/g, '/'));
+    var normalized = normalizeDateKey(dateStr);
+    var d = new Date(String(normalized || '').replace(/-/g, '/'));
     if (Number.isNaN(d.getTime())) return 0;
     var wd = d.getDay(); // 0日…6六
     return wd === 0 ? 7 : wd;
@@ -93,26 +231,24 @@ window.DomainBilling = (function () {
    */
   function isConcurrentLeaveSlot(rec, allSchedules) {
     if (!rec) return false;
-    var em = emailKey(rec.originalTeacherEmail);
-    if (!em) return false;
-    var p = parseInt(rec.period, 10);
+    var originalKeys = originalTeacherKeys(rec);
+    if (!originalKeys.length) return false;
+    var p = recordPeriod(rec);
     if (Number.isNaN(p)) return false;
-    var dow = dayOfWeekFromDate(rec.date);
+    var dow = dayOfWeekFromDate(recordDate(rec));
     if (!dow) return false;
-    var cn = String(rec.className || '').trim();
+    var cn = String(rec.className || rec['班級'] || '').trim();
     var list = allSchedules || [];
     var i;
-    var hitAny = false;
     for (i = 0; i < list.length; i++) {
       var s = list[i];
       if (!s) continue;
-      if (emailKey(s.teacherEmail) !== em) continue;
-      if (parseInt(s.dayOfWeek, 10) !== dow) continue;
-      if (parseInt(s.period, 10) !== p) continue;
-      var scn = String(s.className || '').trim();
+      if (!hasCommonKey(originalKeys, scheduleTeacherKeys(s))) continue;
+      if (parseInt(s.dayOfWeek != null ? s.dayOfWeek : s['星期'], 10) !== dow) continue;
+      if (parseInt(s.period != null ? s.period : s['節次'], 10) !== p) continue;
+      var scn = String(s.className || s['班級'] || '').trim();
       if (cn && scn && scn !== cn && scn.indexOf(cn) < 0 && cn.indexOf(scn) < 0) continue;
-      hitAny = true;
-      if (String(s.attr || '').trim() === '超鐘點') return true;
+      if (isOvertimeScheduleSlot(s)) return true;
     }
     // 找不到課表列：不當超鐘點（不沖超鐘）
     return false;
@@ -175,15 +311,18 @@ window.DomainBilling = (function () {
     // 當日第8 異動：key = date|class → record（優先代課／調入）
     var subByDateClass = {};
     (substitutionRecords || []).forEach(function (r) {
-      if (!r || !r.date) return;
-      if (r.date < startDay || r.date > endDay) return;
-      if (parseInt(r.period, 10) !== 8) return;
-      if (r.type && r.type !== 'substitution' && r.type !== '代課' && r.type !== 'exchange' && r.type !== '對調') {
+      var rDate = recordDate(r);
+      if (!r || !rDate) return;
+      if (!isActiveSubstitutionRecord(r)) return;
+      if (rDate < startDay || rDate > endDay) return;
+      if (recordPeriod(r) !== 8) return;
+      var rType = recordType(r);
+      if (rType && rType !== 'substitution' && rType !== '代課' && rType !== 'exchange' && rType !== '對調') {
         return;
       }
       var cls = String(r.className || '').trim();
       if (!cls) return;
-      var key = r.date + '|' + cls;
+      var key = rDate + '|' + cls;
       // 後寫覆蓋前寫；通常一班一節一筆
       subByDateClass[key] = r;
     });
@@ -327,7 +466,9 @@ window.DomainBilling = (function () {
     var startDay = reportMonth + '-01';
     var endDay = reportMonth + '-31';
     var monthlyRecords = (opts.substitutionRecords || []).filter(function (r) {
-      return r.date >= startDay && r.date <= endDay;
+      if (!isActiveSubstitutionRecord(r)) return false;
+      var date = recordDate(r);
+      return date && date >= startDay && date <= endDay;
     });
 
     // 第8節獨立結算
@@ -342,15 +483,16 @@ window.DomainBilling = (function () {
     });
 
     return teachers.map(function (t) {
-      var email = t.email;
+      var email = t.email || t.teacherName || t.name || t.loginEmail || '';
       var em = emailKey(email);
+      var teacherIdentity = teacherKeys(t);
       var baseHours = (t.baseHours === 0 || t.baseHours === '0')
         ? 0
         : (parseInt(t.baseHours, 10) || 16);
 
       // 週鐘點：早自習0＋1–7＋午休(45)皆視為正式課程並計入
       var weeklyPeriods = allSchedules.filter(function (s) {
-        return emailKey(s.teacherEmail) === em && isWeeklyHoursSlot(s);
+        return hasCommonKey(teacherIdentity, scheduleTeacherKeys(s)) && isWeeklyHoursSlot(s);
       }).length;
       var reduceDeduction = 0;
       if (window.DomainClassAway && classAwayEvents.length) {
@@ -367,14 +509,16 @@ window.DomainBilling = (function () {
 
       // 早自習0＋1～7＋午休 請假／代課（不含第8）
       var leaveRecords = monthlyRecords.filter(function (r) {
-        return r.originalTeacherEmail === email && r.type === 'substitution' && isWeeklyHoursPeriod(r.period);
+        return hasCommonKey(originalTeacherKeys(r), teacherIdentity)
+          && isSubstitutionRecord(r)
+          && isWeeklyHoursPeriod(recordPeriod(r));
       });
       var selfPaidDeduction = leaveRecords.filter(function (r) {
-        return r.subFee === '自費代課';
+        return isSelfPaidFee(r);
       }).length;
       // 全部公費請假（學校仍付代課費）
       var pubLeaveRecords = leaveRecords.filter(function (r) {
-        return r.subFee === '公費代課' || r.subFee === '學校移撥';
+        return isPublicLeaveFee(r);
       });
       var pubLeaveCount = pubLeaveRecords.length;
       // 公費扣超鐘：正式課程原堂屬性為「超鐘點」才沖自己超時
@@ -382,33 +526,16 @@ window.DomainBilling = (function () {
         return isConcurrentLeaveSlot(r, allSchedules);
       });
 
-      var selfPaidByWeek = {};
-      leaveRecords.filter(function (r) { return r.subFee === '自費代課'; }).forEach(function (r) {
-        var wk = getWeekKey(r.date);
-        selfPaidByWeek[wk] = (selfPaidByWeek[wk] || 0) + 1;
-      });
-      var pubByWeek = {};
-      pubConcurrentLeaveRecords.forEach(function (r) {
-        var wk = getWeekKey(r.date);
-        pubByWeek[wk] = (pubByWeek[wk] || 0) + 1;
-      });
-
-      var allWeeks = {};
-      Object.keys(selfPaidByWeek).forEach(function (k) { allWeeks[k] = 1; });
-      Object.keys(pubByWeek).forEach(function (k) { allWeeks[k] = 1; });
-      var publicOvertimeUsed = 0;
-      Object.keys(allWeeks).forEach(function (wk) {
-        var selfInWeek = selfPaidByWeek[wk] || 0;
-        var pubInWeek = pubByWeek[wk] || 0;
-        var remaining = Math.max(0, weeklyOvertime - selfInWeek);
-        publicOvertimeUsed += Math.min(remaining, pubInWeek);
-      });
+      // 公費只要原堂是超鐘點，就逐筆沖減；不可再用每週超時數量封頂。
+      // 自費與公費是兩種獨立扣除來源，先後順序不應互相吃掉扣除額。
+      var publicOvertimeUsed = pubConcurrentLeaveRecords.length;
       // 學校公付節數：全部公費請假 − 已沖超鐘（超鐘點公費）的部分
       var schoolPublicPayout = Math.max(0, pubLeaveCount - publicOvertimeUsed);
 
       var pubSubRecords = monthlyRecords.filter(function (r) {
         if (isCombinedReturnRecord(r)) return false;
-        if (r.actualTeacherEmail !== email || r.type !== 'substitution' || !isWeeklyHoursPeriod(r.period)) return false;
+        if (!hasCommonKey(actualTeacherKeys(r), teacherIdentity)
+            || !isSubstitutionRecord(r) || !isWeeklyHoursPeriod(recordPeriod(r))) return false;
         if (window.DomainActivityCover && window.DomainActivityCover.isPublicSubPayout) {
           return window.DomainActivityCover.isPublicSubPayout(r.subFee);
         }
@@ -417,16 +544,16 @@ window.DomainBilling = (function () {
       var pubSubCount = pubSubRecords.length;
       var selfPaidSubRecords = monthlyRecords.filter(function (r) {
         return !isCombinedReturnRecord(r)
-          && r.actualTeacherEmail === email
-          && r.type === 'substitution'
-          && isWeeklyHoursPeriod(r.period)
-          && r.subFee === '自費代課';
+          && hasCommonKey(actualTeacherKeys(r), teacherIdentity)
+          && isSubstitutionRecord(r)
+          && isWeeklyHoursPeriod(recordPeriod(r))
+          && isSelfPaidFee(r);
       });
       var selfSubCount = selfPaidSubRecords.length;
       var selfSubFee = selfSubCount * FEE_REGULAR;
       var selfSubDetail = selfSubCount > 0
         ? selfPaidSubRecords.map(function (r) {
-          return getTeacherNameByEmail(r.originalTeacherEmail) + '(' + r.date.slice(-5) + ')';
+          return getTeacherNameByEmail(r.originalTeacherEmail || r.originalTeacherName) + '(' + recordDate(r).slice(-5) + ')';
         }).join(', ')
         : '無';
 
@@ -538,6 +665,7 @@ window.DomainBilling = (function () {
     var monthPrefix = year + '-' + monthStr;
     var monthRecords = (substitutionRecords || []).filter(function (r) {
       if (!r || !r.date) return false;
+      if (!isActiveSubstitutionRecord(r)) return false;
       if (isCombinedReturnRecord(r)) return false;
       var fee = String(r.subFee || '').trim();
       if (fee === '扣額度' || fee === '互代不結' || fee === '第8節代課') return false;

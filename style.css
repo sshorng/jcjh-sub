@@ -1600,6 +1600,24 @@ body {
   border-color: var(--border-focus);
 }
 
+.compare-form-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.8fr);
+  gap: 16px;
+  align-items: start;
+}
+.compare-form-main,
+.compare-form-note {
+  min-width: 0;
+}
+.compare-form-main .form-group,
+.compare-form-note {
+  margin-bottom: 16px;
+}
+.compare-form-note {
+  margin-bottom: 0;
+}
+
 /* 班級課表：多堂並陳 */
 .class-timetable .class-entry-block:hover {
   background: rgba(37, 99, 235, 0.04);
@@ -1754,6 +1772,10 @@ body {
 .class-change-type.type-exchange {
   background: #dbeafe;
   color: #1d4ed8;
+}
+.class-change-type.type-school-swap {
+  background: #fef3c7;
+  color: #92400e;
 }
 .class-change-line {
   font-size: 0.76rem;
@@ -2179,12 +2201,32 @@ body {
 }
 .billing-table-wrap {
   margin-top: 4px;
+  /* 讓頁面負責垂直捲動，避免表格與頁面同時出現垂直捲軸。 */
+  max-height: none;
+  overflow: visible;
+  overscroll-behavior: auto;
 }
 .billing-table {
   font-size: 0.8rem;
   min-width: 980px;
   border-collapse: separate;
   border-spacing: 0;
+}
+/* 月報兩層表頭隨頁面捲動固定，並避開上方導覽列。 */
+.billing-table .billing-th-group th,
+.billing-table .billing-th-cols th {
+  position: sticky;
+  box-sizing: border-box;
+}
+.billing-table .billing-th-group th {
+  top: var(--billing-sticky-top, 56px);
+  height: 32px;
+  z-index: 4;
+}
+.billing-table .billing-th-cols th {
+  top: calc(var(--billing-sticky-top, 56px) + 32px);
+  height: 32px;
+  z-index: 3;
 }
 .billing-table .billing-th-group th {
   text-align: center;
@@ -2266,7 +2308,7 @@ body {
   box-shadow: 2px 0 4px rgba(15, 23, 42, 0.04);
 }
 .billing-table thead .billing-sticky-name {
-  z-index: 2;
+  z-index: 5;
   background: #f1f5f9 !important;
 }
 .billing-table tbody tr:hover td {
@@ -2313,6 +2355,13 @@ body {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
+}
+
+/* 桌機月報表不建立水平捲動祖先，讓表頭能相對整個頁面懸浮。 */
+@media (min-width: 769px) {
+  .report-table-container.billing-table-wrap {
+    overflow: visible;
+  }
 }
 
 .custom-table {

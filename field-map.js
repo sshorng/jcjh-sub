@@ -73,6 +73,17 @@ window.FieldMap = (function () {
     return String(v).trim();
   }
 
+  function asDateStr(v) {
+    if (v === undefined || v === null || v === '') return '';
+    if (Object.prototype.toString.call(v) === '[object Date]' && !isNaN(v.getTime())) {
+      return v.getFullYear() + '-' + String(v.getMonth() + 1).padStart(2, '0') + '-' + String(v.getDate()).padStart(2, '0');
+    }
+    const raw = String(v).trim().split(/[T ]/)[0].replace(/\//g, '-');
+    const match = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if (!match) return raw.slice(0, 10);
+    return match[1] + '-' + String(match[2]).padStart(2, '0') + '-' + String(match[3]).padStart(2, '0');
+  }
+
   /** 折抵額度可為 0.5 倍數 */
   function asFloat(v, fallback) {
     if (v === undefined || v === null || v === '') return fallback;
@@ -242,6 +253,13 @@ window.FieldMap = (function () {
     }
     let subj = String(pick(s, ['科目', 'subject']) || '').trim();
     let attr = String(pick(s, ['課堂屬性', 'attr']) || '').trim();
+    const specialTags = normalizeSpecialTags(pick(s, ['特殊標記', 'specialTags', 'specialTagsText']) || '');
+    const specialTagList = specialTags.split('、').filter(Boolean);
+    if (attr.indexOf('超鐘點') >= 0) attr = '超鐘點';
+    if ((!attr || attr === '一般' || attr === '基本') && specialTagList.indexOf('抽離') >= 0) attr = '抽離';
+    else if ((!attr || attr === '一般' || attr === '基本') && specialTagList.indexOf('超鐘點') >= 0) attr = '超鐘點';
+    else if ((!attr || attr === '一般' || attr === '基本') && specialTagList.indexOf('實支') >= 0) attr = '實支';
+    else if ((!attr || attr === '一般' || attr === '基本') && specialTagList.indexOf('預排') >= 0) attr = '預排';
     // 基礎課表常見：科目或班級寫「巡堂」、屬性空白 → 正規成 attr=巡堂
     const isPatrol = attr.indexOf('巡堂') >= 0 || cn.indexOf('巡堂') >= 0 || subj.indexOf('巡堂') >= 0;
     if (isPatrol) {
@@ -259,11 +277,10 @@ window.FieldMap = (function () {
       attr: attr,
       restriction: (function () {
         const raw = pick(s, ['調課限制', 'restriction']) || '';
-        const tags = normalizeSpecialTags(pick(s, ['特殊標記', 'specialTags', 'specialTagsText']) || '');
-        return isRestrictedScheduleValue(raw) || tags.split('、').indexOf('綁課') >= 0 ? 'restricted' : raw;
+        return isRestrictedScheduleValue(raw) || specialTagList.indexOf('綁課') >= 0 ? 'restricted' : raw;
       })(),
-      specialTags: normalizeSpecialTags(pick(s, ['特殊標記', 'specialTags', 'specialTagsText']) || ''),
-      isPreplanned: attr === '預排' || normalizeSpecialTags(pick(s, ['特殊標記', 'specialTags', 'specialTagsText']) || '').split('、').indexOf('預排') >= 0
+      specialTags: specialTags,
+      isPreplanned: attr === '預排' || specialTagList.indexOf('預排') >= 0
     };
     alias(mapped, 'teacherEmail', function () { return mapped.teacherName; });
     return mapped;
@@ -272,7 +289,7 @@ window.FieldMap = (function () {
   function mapSubstitution(sub) {
     const mapped = {
       id: pick(sub, ['紀錄ID', 'id']),
-      date: pick(sub, ['異動日期', 'date']),
+      date: asDateStr(pick(sub, ['異動日期', 'date'])),
       period: asInt(pick(sub, ['節次', 'period']), 0),
       originalTeacherName: pick(sub, ['原授課教師姓名', '原任課教師姓名', '原導師姓名', 'originalTeacherName']) || '',
       actualTeacherName: pick(sub, ['\u5be6\u969b\u6388\u8ab2\u6559\u5e2b\u59d3\u540d', '\u4ee3\u8ab2\u6559\u5e2b\u59d3\u540d', 'actualTeacherName']) || '',
@@ -343,12 +360,12 @@ window.FieldMap = (function () {
       actualTeacherName: pick(r, ['實際授課教師姓名', 'actualTeacherName']) || '',
       className: String(pick(r, ['班級', 'className']) || ''),
       subject: pick(r, ['科目', 'subject']) || '',
-      requestDate: pick(r, ['異動日期', 'requestDate']),
+      requestDate: asDateStr(pick(r, ['異動日期', 'requestDate'])),
       requestPeriodDay: asInt(pick(r, ['異動星期', 'requestPeriodDay']), null),
       requestPeriod: asInt(pick(r, ['異動節次', 'requestPeriod']), null),
       type: pick(r, ['異動類型', 'type']),
       specialFlow: normalizeSpecialFlow(pick(r, ['特殊流程', 'specialFlow'])),
-      targetDate: pick(r, ['對調目標日期', 'targetDate']) || '',
+      targetDate: asDateStr(pick(r, ['對調目標日期', 'targetDate'])),
       targetDayOfWeek: targetDay === undefined || targetDay === null || targetDay === '' ? null : asInt(targetDay, null),
       targetPeriod: targetPeriod === undefined || targetPeriod === null || targetPeriod === '' ? null : asInt(targetPeriod, null),
       targetClassName: String(pick(r, ['對調目標班級', 'targetClassName']) || ''),

@@ -516,7 +516,7 @@
          var publicEarly = billingCase(0, '超鐘點', '公費代課');
          var publicLunch = billingCase(45, '超鐘點', '公費代課');
          var publicEarlyRegular = billingCase(0, '基本', '公費代課');
-         var publicLunchRegular = billingCase(45, '基本', '公費代課');
+          var publicLunchRegular = billingCase(45, '基本', '公費代課');
           var selfEarly = billingCase(0, '基本', '自費代課');
          assert('公費1～7超鐘點要扣', publicOvertime.publicOvertimeUsed === 1 && publicOvertime.schoolPublicPayout === 0);
          assert('公費1～7正式課不超鐘不扣', publicRegular.publicOvertimeUsed === 0 && publicRegular.schoolPublicPayout === 1);
@@ -524,7 +524,27 @@
          assert('公費午休超鐘點要扣', publicLunch.publicOvertimeUsed === 1 && publicLunch.schoolPublicPayout === 0);
          assert('公費早自習正式課不超鐘不扣', publicEarlyRegular.publicOvertimeUsed === 0 && publicEarlyRegular.schoolPublicPayout === 1);
          assert('公費午休正式課不超鐘不扣', publicLunchRegular.publicOvertimeUsed === 0 && publicLunchRegular.schoolPublicPayout === 1);
-          assert('自費早自習仍要扣', selfEarly.selfPaidDeduction === 1);
+           assert('自費早自習仍要扣', selfEarly.selfPaidDeduction === 1);
+
+           var mixedBilling = window.DomainBilling.buildMonthlyReportRows({
+             teachers: [{ email: 'mixed@x', name: 'Mixed', baseHours: 1 }],
+             allSchedules: [
+               { teacherEmail: 'mixed@x', dayOfWeek: 1, period: 1, className: '701', attr: '超鐘點' },
+               { teacherEmail: 'mixed@x', dayOfWeek: 1, period: 2, className: '702', attr: '超鐘點' },
+               { teacherEmail: 'mixed@x', dayOfWeek: 1, period: 3, className: '703', attr: '基本' }
+             ],
+             substitutionRecords: [
+               { date: '2026-07-13', period: 1, className: '701', type: 'substitution', originalTeacherEmail: 'mixed@x', actualTeacherEmail: 'cover@x', subFee: '公費代課' },
+               { date: '2026-07-13', period: 2, className: '702', type: 'substitution', originalTeacherEmail: 'mixed@x', actualTeacherEmail: 'cover@x', subFee: '公費代課' },
+               { date: '2026-07-13', period: 3, className: '703', type: 'substitution', originalTeacherEmail: 'mixed@x', actualTeacherEmail: 'cover@x', subFee: '自費代課' }
+             ],
+             reportMonth: '2026-07',
+             reportWeeksCount: 1
+           })[0];
+           assert('公費超鐘點逐筆扣，不受自費或每週超時上限影響', mixedBilling
+             && mixedBilling.selfPaidDeduction === 1
+             && mixedBilling.publicOvertimeUsed === 2
+             && mixedBilling.actualOvertime === -1);
 
           function combinedBillingCase(period, attr, fee) {
             return window.DomainBilling.buildMonthlyReportRows({
@@ -532,7 +552,7 @@
               allSchedules: [{ teacherEmail: 'combined@x', dayOfWeek: 1, period: period, className: '701、702', attr: attr }],
               substitutionRecords: [{
                 date: '2026-07-13', period: period, className: '701、702', type: 'substitution',
-                originalTeacherEmail: 'combined@x', actualTeacherEmail: 'combined@x', subFee: fee,
+                 originalTeacherEmail: 'combined@x', actualTeacherEmail: 'cover@x', subFee: fee,
                 specialFlow: 'combined_return'
               }],
               reportMonth: '2026-07',
@@ -580,9 +600,22 @@
            getTeacherNameByEmail: function (e) { return e; },
            isSingleWeek: function () { return true; }
          });
-         assert('第8公費誰上誰拿', p8MixedFees.byEmail['c@x'] && p8MixedFees.byEmail['c@x'].fee === 500);
-         assert('第8自費誰上誰拿', p8MixedFees.byEmail['d@x'] && p8MixedFees.byEmail['d@x'].fee === 500);
-       }
+          assert('第8公費誰上誰拿', p8MixedFees.byEmail['c@x'] && p8MixedFees.byEmail['c@x'].fee === 500);
+          assert('第8自費誰上誰拿', p8MixedFees.byEmail['d@x'] && p8MixedFees.byEmail['d@x'].fee === 500);
+
+          var p8Pending = window.DomainBilling.buildPeriod8Payout({
+            reportMonth: '2026-07',
+            allSchedules: [
+              { teacherEmail: 'a@x', dayOfWeek: 1, period: 8, className: '701', subject: '課輔', attr: '課輔' }
+            ],
+            substitutionRecords: [
+              { date: '2026-07-13', period: 8, className: '701', originalTeacherEmail: 'a@x', actualTeacherEmail: 'c@x', type: 'substitution', subFee: '自費代課', status: 'pending_teacher' }
+            ],
+            getTeacherNameByEmail: function (e) { return e; },
+            isSingleWeek: function () { return true; }
+          });
+          assert('第8待核不轉給代課者', !p8Pending.byEmail['c@x']);
+        }
 
       if (window.FeeUtils) {
         assert('FeeUtils 顯示互代不結→扣額度', window.FeeUtils.displayFeeLabel('互代不結') === '扣額度');
@@ -612,29 +645,47 @@
           getWeekDayText: function () { return '一'; }
         });
         assert('pending 索引疊加代出', ov && ov.isPending && ov.pendingType === 'substitution_out');
-        var combinedIdx = window.DomainSchedule.buildPendingIndex([{
-          type: 'substitution', requesterEmail: 'a@x', targetTeacherEmail: '',
-          requestDate: '2026-07-13', requestPeriod: 2, requesterName: '甲',
-          className: '701、702', subject: '國文', specialFlow: 'combined_return'
-        }]);
+         var combinedIdx = window.DomainSchedule.buildPendingIndex([{
+           type: 'substitution', requesterEmail: 'a@x', targetTeacherEmail: 'b@x', targetTeacherName: '乙',
+           requestDate: '2026-07-13', requestPeriod: 2, requesterName: '甲',
+           className: '701、702', subject: '國文', specialFlow: 'combined_return'
+         }]);
         var combinedPending = window.DomainSchedule.applyPendingOverlay({
           cell: { className: '701、702', subject: '國文' },
           teacherEmail: 'a@x', dateStr: '2026-07-13', period: 2,
           pendingRequests: [], pendingIndex: combinedIdx,
           getWeekDayText: function () { return '一'; }
-        });
-        assert('pending 合班回原班索引', combinedPending && combinedPending.pendingType === 'combined_return_out');
-        var combinedApproved = window.DomainSchedule.resolveApprovedSchedule({
-          teacherEmail: 'a@x', dateStr: '2026-07-13', period: 2, dayOfWeek: 1,
-          allSchedules: [{ teacherEmail: 'a@x', dayOfWeek: 1, period: 2, className: '701、702', subject: '國文', attr: '基本' }],
-          periodSubs: [{
-            originalTeacherEmail: 'a@x', actualTeacherEmail: 'a@x', date: '2026-07-13', period: 2,
-            type: 'substitution', className: '701、702', subject: '國文', specialFlow: 'combined_return'
-          }],
-          allSubs: [],
-          helpers: { getTeacherNameByEmail: function (e) { return e; }, isClassAway: function () { return false; }, isSingleWeek: function () { return true; } }
-        });
-        assert('核准合班回原班不顯示被代', combinedApproved && combinedApproved.isCombinedReturn === true && combinedApproved.isSubstituted === false);
+         });
+         assert('pending 合班回原班索引', combinedPending && combinedPending.pendingType === 'combined_return_out');
+         var combinedPendingIn = window.DomainSchedule.applyPendingOverlay({
+           cell: { className: '702', subject: '英文' },
+           teacherEmail: 'b@x', dateStr: '2026-07-13', period: 2,
+           pendingRequests: [], pendingIndex: combinedIdx,
+           getWeekDayText: function () { return '一'; }
+         });
+         assert('pending 合班回原班代課方即使原本有課也疊加', combinedPendingIn
+           && combinedPendingIn.pendingType === 'combined_return_in'
+           && combinedPendingIn.className === '701、702');
+         var combinedApproved = window.DomainSchedule.resolveApprovedSchedule({
+           teacherEmail: 'b@x', dateStr: '2026-07-13', period: 2, dayOfWeek: 1,
+           allSchedules: [
+             { teacherEmail: 'a@x', dayOfWeek: 1, period: 2, className: '701、702', subject: '國文', attr: '基本' },
+             { teacherEmail: 'b@x', dayOfWeek: 1, period: 2, className: '702', subject: '英文', attr: '基本' }
+           ],
+           periodSubs: [{
+             originalTeacherEmail: 'a@x', actualTeacherEmail: 'b@x', date: '2026-07-13', period: 2,
+             type: 'substitution', className: '701、702', subject: '國文', specialFlow: 'combined_return'
+           }],
+           allSubs: [{
+             originalTeacherEmail: 'a@x', actualTeacherEmail: 'b@x', date: '2026-07-13', period: 2,
+             type: 'substitution', className: '701、702', subject: '國文', specialFlow: 'combined_return'
+           }],
+           helpers: { getTeacherNameByEmail: function (e) { return e; }, isClassAway: function () { return false; }, isSingleWeek: function () { return true; } }
+         });
+         assert('核准合班回原班由其他併班教師代課', combinedApproved
+           && combinedApproved.isSubstitutionDuty === true
+           && combinedApproved.className === '701、702'
+           && combinedApproved.subRecord.actualTeacherEmail === 'b@x');
       }
 
       // ── 空堂排班 ──
