@@ -1193,6 +1193,21 @@ body {
   font-size: 0.85rem;
 }
 
+.exchange-weekday-filter {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.exchange-weekday-filter .filter-chip.btn-primary,
+.exchange-weekday-filter .filter-chip.btn-primary:hover {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+}
+
 .match-list-container {
   max-height: 480px;
   overflow-y: auto;
@@ -1373,6 +1388,91 @@ body {
   justify-content: flex-end;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.print-preview-overlay {
+  padding: 12px;
+}
+
+.print-preview-modal-card {
+  width: min(1120px, calc(100vw - 24px));
+  max-width: 1120px;
+  max-height: calc(100vh - 24px);
+}
+
+.print-preview-meta {
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+  line-height: 1.4;
+  font-weight: 400;
+}
+
+.print-preview-modal-body {
+  min-height: 0;
+  max-height: none;
+  padding: 12px;
+  overflow: hidden;
+  background: #cbd5e1;
+}
+
+.print-preview-frame {
+  display: block;
+  width: 100%;
+  height: 72vh;
+  min-height: 360px;
+  max-height: 760px;
+  border: 1px solid #94a3b8;
+  border-radius: 8px;
+  background: #e2e8f0;
+}
+
+.print-preview-modal-footer {
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.print-preview-image-actions,
+.print-preview-confirm-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 640px) {
+  .print-preview-overlay {
+    padding: 6px;
+  }
+
+  .print-preview-modal-card {
+    width: calc(100vw - 12px);
+    max-height: calc(100vh - 12px);
+  }
+
+  .print-preview-modal-body {
+    padding: 6px;
+  }
+
+  .print-preview-frame {
+    height: 62vh;
+    min-height: 300px;
+  }
+
+  .print-preview-modal-footer {
+    justify-content: stretch;
+  }
+
+  .print-preview-image-actions,
+  .print-preview-confirm-actions {
+    width: 100%;
+  }
+
+  .print-preview-image-actions .btn,
+  .print-preview-confirm-actions .btn {
+    flex: 1;
+  }
 }
 
 /* 縮小版對比 Grid */
@@ -2475,8 +2575,7 @@ td.table-empty {
 }
 
 
-/* A5 列印樣式與補發水印 (Print Engine) */
-/* A4 landscape 左右雙聯 A5 列印樣式與補發水印 (Print Engine) */
+/* 原版代（調、補）課請示單：A4 landscape 左右雙聯 */
 @media print {
   @page {
     size: A4 landscape;
@@ -2489,18 +2588,20 @@ td.table-empty {
     padding: 0;
     height: 100%;
     overflow: hidden;
+    font-family: "DFKai-SB", "標楷體", "BiauKai", "Noto Serif TC", serif;
   }
   .print-page {
     width: 297mm;
-    height: 208mm; /* 稍微縮小高度以防微小物理邊界溢出 */
+    height: 210mm;
     page-break-after: always;
     break-after: page;
     box-sizing: border-box;
-    padding: 8mm;
+    padding: 12.7mm;
     display: flex;
     flex-direction: row;
-    justify-content: space-between;
-    align-items: stretch;
+    justify-content: flex-start;
+    align-items: flex-start;
+    gap: 7.496mm;
     position: relative;
     background: white !important;
     -webkit-print-color-adjust: exact;
@@ -2511,109 +2612,197 @@ td.table-empty {
     break-after: avoid !important;
   }
   .cut-line {
-    position: absolute;
-    left: 50%;
-    top: 8mm;
-    bottom: 8mm;
-    border-left: 1.5px dotted #94a3b8;
-    transform: translateX(-50%);
-    z-index: 10;
+    display: none;
   }
   .substitute-form {
-    width: 135mm;
-    height: 194mm;
-    padding: 4mm 6mm !important;
+    width: 132.045mm;
+    flex: 0 0 132.045mm;
+    min-height: 156.5mm;
+    height: auto;
+    padding: 0 !important;
     margin: 0 !important;
     position: relative;
     box-sizing: border-box;
     background: white !important;
     border: none !important;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
     page-break-after: avoid;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    overflow: visible;
   }
-  /* 補發浮水印 */
+  .official-form-empty {
+    visibility: hidden;
+  }
+  .official-serial-mark {
+    position: absolute;
+    top: -4.5mm;
+    left: 0;
+    max-width: 55mm;
+    font-size: 6.5pt;
+    line-height: 1.1;
+    text-align: left;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    color: #000;
+  }
+  .official-form-table {
+    width: 127.265mm;
+    border-collapse: collapse;
+    table-layout: fixed;
+    font-family: "DFKai-SB", "標楷體", "BiauKai", "Noto Serif TC", serif;
+    font-size: 10pt;
+    color: #000;
+    line-height: 1.05;
+  }
+  .official-form-table td,
+  .official-form-table th {
+    border: 0.5pt solid #000;
+    box-sizing: border-box;
+    padding: 0 1.9mm;
+    vertical-align: middle;
+    overflow: hidden;
+  }
+  .official-title-row {
+    height: 7.34mm;
+    font-size: 11pt;
+    font-weight: 700;
+    text-align: center;
+  }
+  .official-info-row {
+    height: 11.57mm;
+  }
+  .official-info-row td {
+    text-align: center;
+  }
+  .official-info-row .official-label {
+    font-weight: 400;
+    white-space: normal;
+    line-height: 1.05;
+  }
+  .official-info-row .official-value {
+    font-size: 9.5pt;
+  }
+  .official-job-value {
+    text-align: center !important;
+  }
+  .official-name-value {
+    text-align: left !important;
+  }
+  .official-proxy-value {
+    text-align: right !important;
+  }
+  .official-processing-cell {
+    padding: 0 0.8mm !important;
+    font-size: 8.5pt;
+    line-height: 1;
+  }
+  .official-leave-row,
+  .official-course-row {
+    height: 4.15mm;
+  }
+  .official-leave-row td,
+  .official-course-row td {
+    font-size: 8.3pt;
+  }
+  .official-label {
+    text-align: center;
+  }
+  .official-check-option {
+    text-align: left;
+    white-space: normal;
+  }
+  .official-date-cell {
+    text-align: left !important;
+    white-space: nowrap;
+    font-size: 7.4pt !important;
+    line-height: 1.05;
+    padding-left: 1.2mm !important;
+  }
+  .official-reason-cell {
+    text-align: left;
+    white-space: normal;
+    font-size: 7.3pt !important;
+    line-height: 1.05;
+    padding-left: 1.2mm !important;
+    padding-right: 0.8mm !important;
+    word-break: break-all;
+  }
+  .official-checkbox {
+    white-space: normal;
+  }
+  .official-checkbox.is-checked {
+    font-weight: 700;
+  }
+  .official-section-row {
+    height: 8.11mm;
+    font-weight: 400;
+    text-align: center;
+  }
+  .official-signature-header {
+    text-align: center;
+    font-size: 9pt;
+  }
+  .official-signature-cell {
+    text-align: center;
+    font-size: 10pt;
+    line-height: 1.25;
+  }
+  .official-signature-name {
+    font-size: 9pt;
+  }
+  .official-schedule-header {
+    height: 8.11mm;
+    text-align: center;
+  }
+  .official-day-header {
+    font-weight: 400;
+  }
+  .official-day-date {
+    font-size: 8.5pt;
+  }
+  .official-row-label {
+    text-align: center;
+    font-weight: 400;
+    white-space: nowrap;
+  }
+  .official-subject-row {
+    height: 8.11mm;
+  }
+  .official-class-row {
+    height: 4.99mm;
+  }
+  .official-slot-value {
+    text-align: center;
+    font-size: 9pt;
+    white-space: nowrap;
+  }
+  .official-class-value {
+    font-size: 8.5pt;
+  }
+  .official-instruction-row {
+    min-height: 8.11mm;
+    height: auto;
+  }
+  .official-instruction-row td {
+    text-align: justify;
+    font-size: 8.5pt;
+    line-height: 1.15;
+    padding-top: 0.6mm;
+    padding-bottom: 0.6mm;
+  }
   .substitute-form.is-reprint::after {
     content: "補發";
     position: absolute;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%) rotate(-30deg);
-    font-size: 50pt;
+    font-size: 38pt;
     color: rgba(0, 0, 0, 0.04);
     font-weight: 900;
-    border: 6px solid rgba(0, 0, 0, 0.04);
-    padding: 5px 20px;
-    border-radius: 12px;
+    border: 3px solid rgba(0, 0, 0, 0.04);
+    padding: 3px 12px;
     z-index: 1000;
     pointer-events: none;
-  }
-  .header-block {
-    margin-top: 5px;
-    margin-bottom: 4px;
-    text-align: center;
-  }
-  .title {
-    font-size: 13pt;
-    font-weight: bold;
-    border-bottom: 2px solid #000;
-    padding-bottom: 3px;
-    margin: 3px 0;
-  }
-  .lesson-code {
-    position: absolute;
-    top: 4mm;
-    right: 6mm;
-    font-size: 7.5pt;
-  }
-  .info-row {
-    display: flex;
-    justify-content: space-between;
-    margin: 4px 0;
-    font-size: 10pt;
-    font-weight: bold;
-  }
-  .schedule-table {
-    width: 100%;
-    table-layout: fixed;
-    border-collapse: collapse;
-    border: 1.5pt solid black;
-    margin-bottom: 4px;
-  }
-  .schedule-table th, .schedule-table td {
-    border: 1px solid #000;
-    text-align: center;
-    font-size: 8pt;
-    height: 18px;
-    padding: 2px 3px !important;
-    vertical-align: middle;
-    overflow: hidden;
-    word-break: break-all;
-  }
-  .schedule-table th {
-    background: #eee !important;
-    height: 20px;
-    font-size: 8.5pt;
-  }
-  .footer-block {
-    font-size: 8.5pt;
-    line-height: 1.25;
-  }
-  .remark-list {
-    margin: 0;
-    padding-left: 15px;
-  }
-  .remark-list li {
-    font-size: 8pt;
-  }
-  .form-tag {
-    position: absolute;
-    top: 3mm;
-    left: 3mm;
-    font-size: 8pt;
-    border: 1px solid #000;
-    padding: 1px 3px;
   }
 }
 

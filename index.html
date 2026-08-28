@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>建成國中線上調代課系統</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📅</text></svg>">
-  <link rel="stylesheet" href="style.css?v=20260824-name-key-fix1">
+  <link rel="stylesheet" href="style.css?v=20260828-print-preview1">
   <!-- 手機版獨立樣式：不影響桌機 -->
   <link rel="stylesheet" href="mobile.css" media="(max-width: 768px)">
   
@@ -82,7 +82,6 @@
             <span class="nav-label-full">課表總覽</span><span class="nav-label-short">課表</span>
           </button>
           <button
-            v-if="!paperMode || isAdmin"
             class="nav-item"
             :class="{ active: activeTab === 'pending' }"
             :aria-current="activeTab === 'pending' ? 'page' : undefined"
@@ -281,7 +280,8 @@
                     <div class="quick-todo-title">{{ formatQuickTodoTitle(req, 'sent') }}</div>
                   </div>
                   <div class="quick-todo-actions" @click.stop>
-                    <button v-if="req.status === 'pending_teacher'" type="button" class="btn btn-success btn-xs-line" @click.stop="copyLineMessageForRequest(req)">LINE</button>
+                    <button type="button" class="btn btn-secondary btn-xs-tight" @click.stop="openPaperPrintForRequest(req)">🖨️</button>
+                    <button v-if="req.status === 'pending_teacher' || isPaperFlowRequest(req)" type="button" class="btn btn-success btn-xs-line" @click.stop="copyLineMessageForRequest(req)">LINE</button>
                     <button type="button" class="btn btn-secondary btn-xs-tight-danger" @click.stop="cancelRequest(req.id)">撤回</button>
                   </div>
                 </div>
@@ -335,8 +335,8 @@
                   </button>
                  </div>
                </div>
-                <div v-if="paperMode && !isAdmin" class="batch-hint-bar" style="border-color:#f59e0b;background:#fffbeb;color:#92400e;">
-                  🖨️ 目前為紙本模式：可查詢媒合人選與模擬課表，但不會送出線上申請；完成模擬後可列印紙本單。
+                 <div v-if="paperMode && !isAdmin && !isProxySubmitActive" class="batch-hint-bar" style="border-color:#f59e0b;background:#fffbeb;color:#92400e;">
+                   🖨️ 目前為紙本審核模式：送出後會建立待教學組核准的申請，並開啟紙本通知供調代課教師簽名。
                 </div>
                 <div v-else-if="notificationsSuppressed && isAdmin" class="batch-hint-bar" style="border-color:#f59e0b;background:#fffbeb;color:#92400e;">
                   🔧 目前為紙本作業模式：教學組仍可直接線上更新系統，但所有調代課流程均不寄送通知信。
@@ -751,7 +751,8 @@
                       <div style="font-size:0.68rem;color:var(--text-muted);margin-top:2px;">{{ getRequestProgressSteps(req).summary }}</div>
                     </div>
                     <div class="quick-todo-actions" @click.stop>
-                      <button v-if="req.status === 'pending_teacher'" type="button" class="btn btn-success btn-xs-line" @click.stop="copyLineMessageForRequest(req)">LINE</button>
+                      <button type="button" class="btn btn-secondary btn-xs-tight" @click.stop="openPaperPrintForRequest(req)">🖨️</button>
+                      <button v-if="req.status === 'pending_teacher' || isPaperFlowRequest(req)" type="button" class="btn btn-success btn-xs-line" @click.stop="copyLineMessageForRequest(req)">LINE</button>
                       <button type="button" class="btn btn-secondary btn-xs-tight-danger" @click.stop="cancelRequest(req.id)">撤回</button>
                     </div>
                   </div>
@@ -992,9 +993,9 @@
                     <td>{{ req.createdAt ? req.createdAt.slice(0, 10) : '---' }}</td>
                     <td>
                       <div class="flex-wrap-gap">
-                        <span class="status-badge tag-blue" v-if="req.type === 'exchange'">調課</span>
-                        <span class="status-badge tag-red" v-else>代課</span>
-                        <span v-for="tag in getRequestTypeTags(req)" :key="tag.key" class="risk-tag" :class="'risk-'+tag.key">{{ tag.label }}</span>
+                         <span class="status-badge tag-blue" v-if="req.type === 'exchange'">調課</span>
+                         <span class="status-badge tag-red" v-else>代課</span>
+                         <span v-for="tag in getRequestTypeTags(req)" :key="tag.key" class="risk-tag" :class="'risk-'+tag.key">{{ tag.label }}</span>
                         <span
                           v-for="rf in getApproveRiskFlags(req).filter(f => f.level === 'warn' || f.level === 'danger')"
                           :key="'arf-'+rf.key"
@@ -1030,8 +1031,9 @@
                     </td>
                     <td @click.stop>
                       <div class="action-buttons action-buttons-row">
-                        <button class="btn btn-success btn-md-nowrap" @click="adminApprove(req.id)">核准並出單</button>
-                        <button class="btn btn-danger btn-md-nowrap" @click="adminReject(req.id)">退回</button>
+                        <button class="btn btn-secondary btn-md-nowrap" title="列印通知" aria-label="列印通知" @click="openPaperPrintForRequest(req)">🖨️</button>
+                        <button class="btn btn-success btn-md-nowrap" title="核准並出單" aria-label="核准並出單" @click="adminApprove(req.id)">✓</button>
+                        <button class="btn btn-danger btn-md-nowrap" title="退回申請" aria-label="退回申請" @click="adminReject(req.id)">❌</button>
                       </div>
                     </td>
                   </tr>
@@ -1140,6 +1142,7 @@
                     </td>
                     <td @click.stop>
                       <div class="action-buttons action-buttons-col">
+                        <button class="btn btn-secondary btn-md-nowrap" @click="openPaperPrintForRequest(req)">🖨️ 列印</button>
                         <button v-if="req.batchId" class="btn btn-success" style="padding: 5px 8px; font-size: 0.72rem; white-space: nowrap;" @click="respondToBatch(req.batchId, 'agree')">全部同意</button>
                         <div class="flex-gap-6">
                           <button class="btn btn-success btn-md-nowrap" @click="respondToRequest(req.id, 'agree')">同意</button>
@@ -1195,9 +1198,9 @@
                     <td>{{ req.createdAt ? req.createdAt.slice(0, 10) : '---' }}</td>
                     <td>
                       <div class="flex-wrap-gap">
-                        <span class="status-badge tag-blue" v-if="req.type === 'exchange'">調課</span>
-                        <span class="status-badge tag-red" v-else>代課</span>
-                        <span v-if="req.batchId" class="status-badge tag-gray fs-65" title="同批次">批次</span>
+                         <span class="status-badge tag-blue" v-if="req.type === 'exchange'">調課</span>
+                         <span class="status-badge tag-red" v-else>代課</span>
+                         <span v-if="req.batchId" class="status-badge tag-gray fs-65" title="同批次">批次</span>
                         <span v-for="tag in getRequestTypeTags(req)" :key="tag.key" class="risk-tag badge-micro" :class="'risk-'+tag.key">{{ tag.label }}</span>
                       </div>
                     </td>
@@ -1238,9 +1241,14 @@
                           type="button"
                           class="btn btn-secondary btn-req-action"
                           @click="detailRequest = req; detailSubRecord = null; showDetailModal = true"
-                        >詳情</button>
-                        <button 
-                          v-if="req.status === 'pending_teacher'"
+                         >詳情</button>
+                        <button
+                          type="button"
+                          class="btn btn-secondary btn-req-action"
+                          @click="openPaperPrintForRequest(req)"
+                        >🖨️ 列印</button>
+                        <button
+                          v-if="req.status === 'pending_teacher' || isPaperFlowRequest(req)"
                           type="button"
                           class="btn btn-success btn-req-action"
                           style="background: #22c55e; border-color: #16a34a;"
@@ -1287,9 +1295,7 @@
                   @click="sendSelectedBatchNotices"
                   title="依代課老師合併寄出（後發通知，適合活動互代先排後寄）"
                 >📧 批次發通知信</button>
-                <button class="btn btn-primary btn-md" @click="printSelectedForms('NoticeTeacher')" title="依代課老師合併">🖨️ 列印教師聯</button>
-                <button class="btn btn-primary btn-md" @click="printSelectedForms('NoticeClass')" title="依班級合併">🖨️ 列印班級聯</button>
-                <button v-if="isAdmin" class="btn btn-secondary btn-md" @click="printSelectedForms('Admin')">🖨️ 列印留存聯</button>
+                <button class="btn btn-primary btn-md" @click="openPrintPreview('Notice')" title="先預覽單欄合併結果，再依原版格式列印">🖨️ 預覽／列印代（調、補）課單</button>
               </div>
             </div>
 
@@ -1654,7 +1660,7 @@
                 <table class="custom-table billing-table">
                   <thead>
                     <tr class="billing-th-group">
-                      <th colspan="2" class="billing-th-id">教師</th>
+                      <th colspan="3" class="billing-th-id">教師</th>
                       <th colspan="8" class="billing-th-17">1～7＋午休 超鐘</th>
                       <th colspan="4" class="billing-th-sub">1～7＋午休 我去代課</th>
                       <th colspan="2" class="billing-th-p8">第 8 節</th>
@@ -1979,7 +1985,7 @@
                 >{{ onlineSubstitutionEnabled ? '線上申請開放' : '紙本模式' }}</span>
               </div>
               <p style="font-size:0.8rem;color:var(--text-secondary);line-height:1.55;margin:0 0 10px;">
-                關閉後，一般教師仍可查詢適合人選、模擬雙方課表與列印紙本單；教學組仍可線上寫入系統，但所有流程不寄通知信，既有歷史紀錄不受影響。
+                關閉後，一般教師仍可查詢適合人選、模擬雙方課表；送出後會建立待教學組核准的申請並列印紙本通知。教學組仍可線上核准，但所有流程不寄通知信，既有歷史紀錄不受影響。
               </p>
               <label style="display:flex;align-items:center;gap:10px;font-size:0.9rem;font-weight:700;cursor:pointer;">
                 <input
@@ -1988,7 +1994,7 @@
                   :checked="onlineSubstitutionEnabled"
                   @change="setOnlineSubstitutionEnabled($event.target.checked)"
                 >
-                <span>{{ onlineSubstitutionEnabled ? '目前允許線上調代課申請' : '一般教師改跑紙本，教學組可線上寫入但不寄信' }}</span>
+                <span>{{ onlineSubstitutionEnabled ? '目前允許線上調代課申請' : '一般教師送出紙本流程，教學組線上核准且不寄信' }}</span>
               </label>
             </div>
 
@@ -2241,6 +2247,20 @@
                      <option :value="2">下下週（往後兩週）</option>
                   </select>
                 </div>
+                <div v-if="matchMode === 'exchange'" class="exchange-weekday-filter" role="group" aria-label="調課星期篩選">
+                  <span class="history-filter-label">篩選星期：</span>
+                  <div class="filter-chip-group">
+                    <button
+                      v-for="option in exchangeWeekdayOptions"
+                      :key="'exchange-day-' + option.value"
+                      type="button"
+                      class="btn btn-secondary filter-chip"
+                      :class="{ 'btn-primary': exchangeWeekdayFilter === option.value }"
+                      :aria-pressed="exchangeWeekdayFilter === option.value"
+                      @click="setExchangeWeekdayFilter(option.value)"
+                    >{{ option.label }}</button>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -2405,14 +2425,14 @@
                           <button class="btn btn-primary btn-sm-compact" @click.stop="prepCompare('exchange', r.teacherEmail, r.periodKey, r.subject, r.className)">模擬</button>
                         </td>
                       </tr>
-                      <tr v-if="recommendedExchangeList.length === 0">
-                        <td colspan="3" class="empty-center-pad">該班級無可對調節次</td>
+                      <tr v-if="filteredExchangeList.length === 0">
+                        <td colspan="3" class="empty-center-pad">{{ recommendedExchangeList.length === 0 ? '該班級無可對調節次' : '所選星期沒有可對調節次' }}</td>
                       </tr>
                     </tbody>
                   </table>
-                  <div v-if="recommendedExchangeList.length > displayedExchangeList.length" class="center-pad-10">
+                  <div v-if="filteredExchangeList.length > displayedExchangeList.length" class="center-pad-10">
                     <button class="btn btn-secondary btn-sm-20" @click="loadMoreMatches">
-                      載入更多（{{ displayedExchangeList.length }} / {{ recommendedExchangeList.length }}）
+                      載入更多（{{ displayedExchangeList.length }} / {{ filteredExchangeList.length }}）
                     </button>
                   </div>
                 </template>
@@ -2569,28 +2589,41 @@
               </div>
               <div class="text-xs-muted-75-mt">
                 <template v-if="pendingRequestData.isPerSlot">
-                  共 {{ pendingRequestData.subTeacherCount || '多' }} 位代課老師　·　假別與經費一次套用　·　每節獨立簽核
+                   共 {{ pendingRequestData.subTeacherCount || '多' }} 位代課老師　·　假別一次套用　·　每節獨立簽核
                 </template>
                 <template v-else>
-                  代課：{{ getTeacherNameByEmail(pendingRequestData.subTeacher) }}　·　假別與經費一次套用全部節次　·　每節仍獨立簽核
+                   代課：{{ getTeacherNameByEmail(pendingRequestData.subTeacher) }}　·　假別一次套用全部節次　·　每節仍獨立簽核
                 </template>
               </div>
             </div>
 
-            <!-- 請假事由、鐘點費及審核選項 -->
+             <!-- 原因與審核選項 -->
             <div class="card" style="background: #f8fafc; padding: 16px; margin: 0; border: 1px solid var(--border-color);">
               <div data-tour="compare-form" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
                 
-                <!-- 原因假別 -->
-                <div class="form-group" data-tour="compare-reason">
-                  <label class="form-label">原因 / 假別</label>
-                  <select class="form-select" v-model="pendingRequestData.reason" @change="onLeaveReasonChange">
-                    <option value="" disabled>請選擇假別...</option>
-                    <option v-for="r in leaveReasonOptions" :key="r" :value="r">{{ r }}</option>
-                  </select>
-                </div>
+                 <!-- 原因／假別與僅課務調整 -->
+                 <div class="form-group" data-tour="compare-reason">
+                   <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+                     <label class="form-label" style="margin:0;">原因 / 假別</label>
+                     <label v-if="pendingRequestData.mode === 'substitution'" style="display:flex;align-items:center;gap:5px;font-size:0.78rem;color:var(--text-secondary);cursor:pointer;">
+                       <input
+                         id="course-adjustment-only"
+                         type="checkbox"
+                         class="chk-box-16"
+                         v-model="pendingRequestData.courseAdjustmentOnly"
+                         @change="toggleCourseAdjustmentOnly"
+                       >
+                       <span>僅申請課務調整（無請假）</span>
+                     </label>
+                   </div>
+                   <select class="form-select" v-model="pendingRequestData.reason" :disabled="pendingRequestData.courseAdjustmentOnly" @change="onLeaveReasonChange">
+                     <option value="" disabled>請選擇假別...</option>
+                     <option v-if="pendingRequestData.courseAdjustmentOnly" value="課務調整">課務調整（無請假）</option>
+                     <option v-for="r in leaveReasonOptions" :key="r" :value="r">{{ r }}</option>
+                   </select>
+                 </div>
 
-                <div v-if="pendingRequestData.mode === 'substitution'" class="form-group" style="grid-column:1 / -1;">
+                 <div v-if="pendingRequestData.mode === 'substitution' && !pendingRequestData.courseAdjustmentOnly" class="form-group" style="grid-column:1 / -1;">
                   <label class="form-label">請假時間（代課清冊）</label>
                   <div style="display:flex;flex-wrap:wrap;gap:7px;align-items:center;">
                     <button type="button" class="btn btn-secondary pad-6-10-78"  @click="setLeaveTimePreset('全天')">全天（{{ getLeaveTimePresetRange(pendingRequestData.leaveTeacher, '全天') }}）</button>
@@ -2606,75 +2639,18 @@
                   <small style="display:block;margin-top:5px;color:var(--text-muted);">行政人員預設全天 08:00~17:00；非行政預設全天 08:00~16:00，時間可自行修改。</small>
                 </div>
 
-                <!-- 鐘點費 (僅代課模式；第8節鎖定計畫經費) -->
-                <div class="form-group" data-tour="compare-fee" v-if="pendingRequestData.mode === 'substitution'">
-                  <label class="form-label text-success">代課鐘點費結算方式</label>
-                  <select
-                    class="form-select"
-                    v-model="pendingRequestData.subFee"
-                    :disabled="isPeriod8FeeLocked"
-                  >
-                    <option value="" disabled>請選擇...</option>
-                    <!-- 第8節：只顯示鎖定項 -->
-                    <option v-if="isPeriod8FeeLocked" :value="PERIOD8_FEE">第8節代課（計畫經費）</option>
-                    <template v-if="!isPeriod8FeeLocked">
-                      <option v-if="!isMutualCover" value="自費代課">自費代課</option>
-                      <option v-if="!isMutualCover" value="公費代課">公費代課</option>
-                      <option v-if="isAdmin" value="扣額度">扣額度（不結鐘點＋扣折抵額度）</option>
-                      <option v-if="isMutualCover" value="活動公費">活動公費（可領代課費）</option>
-                      <option v-if="isAdmin || isMutualCover || pendingRequestData.subFee === '第8節代課'" value="第8節代課">第8節代課（計畫經費）</option>
-                      <option v-if="!isAdmin && !isMutualCover && (pendingRequestData.subFee === '扣額度' || pendingRequestData.subFee === '互代不結')" value="扣額度">扣額度</option>
-                      <option v-if="!isMutualCover && pendingRequestData.subFee === '活動公費'" value="活動公費">活動公費</option>
-                    </template>
-                  </select>
-                  <span v-if="isMutualCover && !isPeriod8FeeLocked" style="font-size:0.72rem; color:#5b21b6; display:block; margin-top:4px;">
-                     ＊1～7 節：額度&gt;0→扣額度；不足自動改活動公費。第8節固定「第8節代課」。
-                  </span>
-                  <div
-                    v-if="quotaDeductPreview && quotaDeductPreview.length"
-                    style="margin-top:8px;padding:8px 10px;background:#f5f3ff;border:1px solid #c4b5fd;border-radius:8px;font-size:0.78rem;color:#5b21b6;line-height:1.55;"
-                  >
-                    <div style="font-weight:700;margin-bottom:4px;">折抵額度預覽（扣額度）</div>
-                    <div v-for="q in quotaDeductPreview" :key="q.email">
-                      {{ q.name }}：目前 <strong>{{ q.before }}</strong>
-                      → 扣 <strong>{{ q.deduct }}</strong>
-                      → 剩 <strong :style="{color: q.short ? '#b91c1c' : '#5b21b6'}">{{ q.short ? '不足' : q.after }}</strong>
-                      <span v-if="q.short" class="text-danger-deep">{{ isMutualCover ? '（將改活動公費）' : '（不可送出）' }}</span>
-                    </div>
-                    <div v-if="quotaDeductInsufficient" style="margin-top:8px;padding-top:8px;border-top:1px dashed #c4b5fd;color:#b91c1c;">
-                      <template v-if="isMutualCover">
-                        額度不足：送出時會<strong>自動改為活動公費</strong>。
-                        <button
-                          type="button"
-                          class="btn btn-secondary"
-                          style="margin-left:8px;padding:2px 10px;font-size:0.72rem;"
-                          @click="switchQuotaDeductToSelfPay"
-                        >改為活動公費</button>
-                      </template>
-                      <template v-else>
-                        額度不足，不可用「扣額度」。請改自費排代，或另選有額度的老師。
-                        <button
-                          type="button"
-                          class="btn btn-secondary"
-                          style="margin-left:8px;padding:2px 10px;font-size:0.72rem;"
-                          @click="switchQuotaDeductToSelfPay"
-                        >改為自費代課</button>
-                      </template>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="form-group" v-else>
-                  <label class="form-label">對調目標日期 (B)</label>
-                  <input type="text" class="form-input" style="background: #f1f5f9; font-weight: 600;" readonly :value="pendingRequestData.dateB">
-                </div>
+                 <!-- 對調模式才顯示 B 欄日期；代課經費依規則自動對應，申請頁不再選擇。 -->
+                 <div class="form-group" v-if="pendingRequestData.mode === 'exchange'">
+                   <label class="form-label">對調目標日期 (B)</label>
+                   <input type="text" class="form-input" style="background: #f1f5f9; font-weight: 600;" readonly :value="pendingRequestData.dateB">
+                 </div>
 
               </div>
 
               <!-- 備註輸入 -->
               <div class="form-group" style="margin-top: 12px;">
-                <label class="form-label">行政備註</label>
-                <input type="text" class="form-input" placeholder="可輸入額外備註事項..." v-model="pendingRequestData.note">
+                 <label class="form-label">原因</label>
+                 <input type="text" class="form-input" placeholder="可輸入行政原因..." v-model="pendingRequestData.note">
               </div>
 
               <!-- 舊的管理員簽核模式已移至最上方顯眼處 -->
@@ -2685,16 +2661,15 @@
               <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
                 <span style="font-weight:600;color:#15803d;font-size:0.85rem;">💬 送出前先問對方（LINE 範本）</span>
                 <div class="flex-gap-6-shrink">
-                  <button type="button" class="btn btn-secondary" style="padding:4px 10px;font-size:0.75rem;line-height:1.2;" @click="copyLineMessage(askFirstLineText)">📋 複製</button>
-                  <button type="button" class="btn btn-success" style="padding:4px 10px;font-size:0.75rem;line-height:1.2;background:#06c755;border-color:#05b04b;" @click="sendLineMessage(askFirstLineText)">💬 LINE 傳送</button>
+                  <button type="button" class="btn btn-secondary" style="padding:4px 10px;font-size:0.75rem;line-height:1.2;" @click="copyLineMessage(askFirstLineDraft)">📋 複製</button>
+                  <button type="button" class="btn btn-success" style="padding:4px 10px;font-size:0.75rem;line-height:1.2;background:#06c755;border-color:#05b04b;" @click="sendLineMessage(askFirstLineDraft)">💬 LINE 傳送</button>
                 </div>
               </div>
               <textarea
-                readonly
                 class="form-input"
                 rows="7"
                 style="width:100%;font-family:monospace;font-size:0.78rem;background:#f8fafc;border:1px solid #d1fae5;border-radius:6px;padding:8px;resize:none;line-height:1.4;"
-                :value="askFirstLineText"
+                v-model="askFirstLineDraft"
                 @focus="$event.target.select()"
               ></textarea>
               <span style="font-size:0.72rem;color:#166534;display:block;margin-top:6px;line-height:1.4;">
@@ -2706,7 +2681,7 @@
           
           <div class="modal-footer" data-tour="compare-submit">
             <!-- 活動互代模擬：只對照課表，確認後寫入暫定（不直接送出申請） -->
-            <template v-if="paperMode && !isAdmin">
+            <template v-if="paperMode && !isAdmin && isMutualCover">
               <button
                 type="button"
                 class="btn btn-primary"
@@ -2725,11 +2700,11 @@
               <button type="button" class="btn btn-secondary" :disabled="isSubmitting || loading" @click="showCompareModal = false">關閉</button>
             </template>
             <template v-else>
-              <button
-                v-if="isAdmin"
-                type="button"
-                class="btn btn-primary"
-                @click="openPaperPrintDraftFromCompare"
+                  <button
+                    v-if="isAdmin && !directApproveMode"
+                    type="button"
+                    class="btn btn-primary"
+                    @click="openPaperPrintDraftFromCompare"
               >🖨️ 列印紙本通知</button>
               <button
                 class="btn btn-success"
@@ -2739,9 +2714,11 @@
               >
                 {{ (isSubmitting || loading)
                   ? '送出中…'
-                  : (pendingRequestData.isBatch
-                    ? ('確認批次送出（' + (pendingRequestData.batchCount || batchSlots.length) + ' 節）')
-                    : '確認送出，通知相關人員') }}
+                     : (paperFlow
+                       ? '送出並列印紙本通知'
+                       : (pendingRequestData.isBatch
+                     ? ('確認批次送出（' + (pendingRequestData.batchCount || batchSlots.length) + ' 節）')
+                     : '確認送出，通知相關人員')) }}
               </button>
               <button class="btn btn-secondary" :disabled="isSubmitting || loading" @click="showCompareModal = false">取消</button>
             </template>
@@ -2749,7 +2726,7 @@
         </div>
       </div>
 
-      <!-- 紙本模式列印設定：不建立線上申請單 -->
+      <!-- 紙本通知列印設定：可由草稿列印，或由已送出的紙本申請重新列印 -->
       <div v-if="showPaperPrintModal" class="modal-overlay" @click.self="showPaperPrintModal = false">
         <div class="modal-card" style="max-width:520px;">
           <div class="modal-header">
@@ -2758,27 +2735,91 @@
           </div>
           <div class="modal-body">
             <p style="font-size:0.88rem;line-height:1.5;margin:0 0 12px;color:var(--text-secondary);">
-              這是紙本草稿，不會送出線上申請、不寄通知信，也不會寫入歷史紀錄。
+              <template v-if="paperPrintDraft && paperPrintDraft.submitted">
+                申請已送出並列入待教學組核准；請列印後交由實際授課教師簽名，再送教學組線上核准。
+              </template>
+              <template v-else>
+                這是紙本草稿，不會送出線上申請、不寄通知信，也不會寫入歷史紀錄。
+              </template>
             </p>
             <template v-if="isAdmin && paperSignatureTeachers.length">
-              <div style="font-weight:700;font-size:0.85rem;margin-bottom:8px;">教學組簽名欄文字</div>
-              <div v-for="name in paperSignatureTeachers" :key="'paper-sign-'+name" class="form-group" style="margin-bottom:10px;">
-                <label class="form-label">{{ name }} 老師</label>
-                <input
-                  type="text"
-                  class="form-input"
-                  :placeholder="'輸入要印在簽名欄的文字（可留白）'"
-                  v-model="paperSignatureByTeacher[name.toLowerCase()]"
-                >
+              <div style="font-weight:700;font-size:0.85rem;margin-bottom:8px;">教學組列印：簽名欄自動帶入姓名</div>
+              <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                <span
+                  v-for="name in paperSignatureTeachers"
+                  :key="'paper-sign-'+name"
+                  class="status-badge tag-blue"
+                >{{ name }} 老師</span>
               </div>
             </template>
             <div v-else style="padding:10px 12px;border:1px dashed var(--border-color);border-radius:8px;color:var(--text-secondary);font-size:0.82rem;">
-              簽名欄將保持空白，請列印後由實際授課教師簽名。
+              非教學組列印：簽名欄保持空白，請列印後由實際授課教師簽名。
             </div>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-primary" @click="printPaperDraft">🖨️ 開始列印</button>
+            <button type="button" class="btn btn-primary" @click="openPaperDraftPreview">👁️ 預覽後列印</button>
             <button type="button" class="btn btn-secondary" @click="showPaperPrintModal = false">取消</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 單欄列印預覽：確認後才開啟正式左右雙聯列印視窗 -->
+      <div v-if="showPrintPreviewModal" class="modal-overlay print-preview-overlay" @click.self="closePrintPreview(true)">
+        <div class="modal-card print-preview-modal-card">
+          <div class="modal-header">
+            <div>
+              <h3>👁️ 調代課單列印預覽</h3>
+              <div v-if="printPreview" class="print-preview-meta">
+                共 {{ printPreview.recordCount }} 筆，合併後 {{ printPreview.formCount }} 張單欄表單；正式列印仍為 A4 橫式左右雙聯。
+              </div>
+            </div>
+            <button class="btn-close" @click="closePrintPreview(true)">&times;</button>
+          </div>
+          <div class="modal-body print-preview-modal-body">
+            <iframe
+              v-if="printPreview"
+              class="print-preview-frame"
+              :srcdoc="printPreview.documentHtml"
+              title="調代課單單欄列印預覽"
+              sandbox
+            ></iframe>
+          </div>
+          <div class="modal-footer print-preview-modal-footer">
+            <div class="print-preview-image-actions">
+              <button type="button" class="btn btn-secondary" :disabled="printPreviewImageBusy" @click="copyPrintPreviewImage">
+                {{ printPreviewImageBusy ? '處理中…' : '複製圖片' }}
+              </button>
+              <button type="button" class="btn btn-secondary" :disabled="printPreviewImageBusy" @click="downloadPrintPreviewImage">下載圖片</button>
+            </div>
+            <div class="print-preview-confirm-actions">
+              <button type="button" class="btn btn-secondary" @click="closePrintPreview(true)">返回</button>
+              <button type="button" class="btn btn-primary" @click="confirmPrintPreview">🖨️ 確認列印</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- LINE 訊息編輯器：列表／詳情開啟後可先修改再複製或傳送 -->
+      <div v-if="showLineMessageModal" class="modal-overlay" data-tour="line-message-modal" @click.self="showLineMessageModal = false">
+        <div class="modal-card" style="max-width:620px;">
+          <div class="modal-header">
+            <h3>💬 {{ lineMessageTitle }}</h3>
+            <button class="btn-close" @click="showLineMessageModal = false">&times;</button>
+          </div>
+          <div class="modal-body">
+            <p style="font-size:0.85rem;line-height:1.5;color:var(--text-secondary);margin:0 0 10px;">可先修改訊息內容，再複製或開啟 LINE。</p>
+            <textarea
+              v-model="lineMessageText"
+              class="form-input"
+              rows="12"
+              autofocus
+              style="width:100%;font-family:monospace;font-size:0.82rem;background:#fff;border:1px solid #d1fae5;border-radius:6px;padding:8px;resize:vertical;line-height:1.5;"
+            ></textarea>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="copyEditedLineMessage">📋 複製</button>
+            <button type="button" class="btn btn-success" style="background:#06c755;border-color:#05b04b;" @click="sendEditedLineMessage">💬 傳送</button>
+            <button type="button" class="btn btn-secondary" @click="showLineMessageModal = false">關閉</button>
           </div>
         </div>
       </div>
@@ -2851,11 +2892,10 @@
                     </div>
                   </div>
                   <textarea
-                    readonly
-                    class="form-input"
+                     class="form-input"
                     rows="6"
                     style="width:100%;font-family:monospace;font-size:0.78rem;background:#f8fafc;border:1px solid #d1fae5;border-radius:6px;padding:8px;resize:none;line-height:1.4;"
-                    :value="part.text"
+                     v-model="part.text"
                     @focus="$event.target.select()"
                   ></textarea>
                 </div>
@@ -2880,11 +2920,10 @@
                   </div>
                 </div>
                 <textarea
-                  readonly
-                  class="form-input"
+                   class="form-input"
                   rows="10"
                   style="width: 100%; font-family: monospace; font-size: 0.8rem; background: #fff; border: 1px solid #d1fae5; border-radius: 6px; padding: 8px; resize: none; line-height: 1.4;"
-                  :value="lineCopyText"
+                   v-model="lineCopyText"
                   @focus="$event.target.select()"
                 ></textarea>
                 <span style="font-size: 0.72rem; color: #166534; display: block; margin-top: 6px; line-height: 1.4;">
@@ -2916,7 +2955,7 @@
             <p style="font-size:0.9rem;line-height:1.5;margin:0 0 8px;">
               已成功出單，共 <strong>{{ lastBatchPrintIds.length }}</strong> 筆異動紀錄可列印通知單。
             </p>
-            <p style="font-size:0.8rem;color:var(--text-secondary);margin:0;">是否立即列印本批通知單（教師聯＋班級聯）？</p>
+            <p style="font-size:0.8rem;color:var(--text-secondary);margin:0;">是否立即列印本批代（調、補）課單？</p>
           </div>
           <div class="modal-footer success-actions">
             <button class="btn btn-primary" @click="printLastBatchNotices">🖨️ 一鍵列印本批</button>
@@ -3481,19 +3520,31 @@
                   title="依您的角色標記「不用上」或「代課／調入」"
                   @click="addEventToCalendar(detailRequest)"
                 >
-                  📅 行事曆
+                   📅 日曆
                 </button>
                 <button
                   class="btn btn-primary"
                   style="padding: 6px 10px; font-size: 0.8rem; margin: 0; display: inline-flex; align-items: center; gap: 4px;"
-                  title="同一張列印頁：左教師聯、右班級聯"
+                  title="依學校原版格式列印代（調、補）課單"
                   @click="printSingleRequest(detailRequest, 'Notice')"
                 >
-                  🖨️ 印通知
+                   🖨️ 列印
                 </button>
               </template>
-              <!-- 進行中申請單 (Pending) 的快速簽核操作按鈕組 -->
+                <!-- 進行中申請單 (Pending) 的快速簽核操作按鈕組 -->
               <template v-if="detailRequest && (detailRequest.status === 'pending_teacher' || detailRequest.status === 'pending_admin')">
+                <button
+                  type="button"
+                  class="btn btn-primary btn-inline-flex"
+                  @click="openPaperPrintForRequest(detailRequest)"
+                >🖨️ 列印</button>
+                <button
+                  v-if="isAdmin || (user && detailRequest.requesterName && detailRequest.requesterName.toLowerCase() === getTeacherNameByEmail(user.email).toLowerCase())"
+                  type="button"
+                  class="btn btn-success btn-inline-flex"
+                  title="開啟可編輯的 LINE 訊息"
+                  @click="copyLineMessageForRequest(detailRequest)"
+                >💬 傳訊</button>
                 <!-- 受邀教師線上回簽同意/拒絕 -->
                  <template v-if="detailRequest.status === 'pending_teacher' && user && detailRequest.targetTeacherName && detailRequest.targetTeacherName.toLowerCase() === getTeacherNameByEmail(user.email).toLowerCase()">
                   <button
@@ -3502,19 +3553,19 @@
                     style="padding: 6px 12px; font-size: 0.8rem; margin: 0; display: inline-flex; align-items: center; background:#047857;"
                     @click="respondToBatch(detailRequest.batchId, 'agree'); showDetailModal = false;"
                   >
-                    ✔️ 全部同意（同批次）
+                     ✔️ 全同
                   </button>
                   <button 
                     class="btn btn-success btn-inline-flex"
                     @click="respondToRequest(detailRequest.id, 'agree'); showDetailModal = false;"
                   >
-                    ✔️ {{ detailRequest.batchId ? '僅同意此節' : '同意邀請' }}
+                     ✔️ 同意
                   </button>
                   <button 
                     class="btn btn-danger btn-danger-inline"
                     @click="respondToRequest(detailRequest.id, 'decline'); showDetailModal = false;"
                   >
-                    ❌ {{ detailRequest.batchId ? '僅拒絕此節' : '拒絕邀請' }}
+                     ❌ 拒絕
                   </button>
                   <button
                     v-if="detailRequest.batchId"
@@ -3522,7 +3573,7 @@
                     style="padding: 6px 12px; font-size: 0.8rem; margin: 0; color: var(--color-danger);"
                     @click="respondToBatch(detailRequest.batchId, 'decline'); showDetailModal = false;"
                   >
-                    全部拒絕
+                     全拒
                   </button>
                 </template>
                 
@@ -3533,23 +3584,23 @@
                     style="padding: 6px 12px; font-size: 0.8rem; margin: 0; background: #f59e0b; color: white; display: inline-flex; align-items: center;"
                     @click="cancelRequest(detailRequest.id); showDetailModal = false;"
                   >
-                    ↩️ 撤回申請
+                     ↩️ 撤回
                   </button>
                 </template>
                 
-                <!-- 行政管理員核准/駁回（待審核准一律寄通知信） -->
+                <!-- 行政管理員核准／駁回；紙本流程不寄通知信 -->
                 <template v-if="detailRequest.status === 'pending_admin' && isAdmin">
                   <button 
                     class="btn btn-success btn-inline-flex"
                     @click="adminApprove(detailRequest.id); showDetailModal = false;"
                   >
-                     ⚡ 准予出單（核准）
+                      ⚡ 核准
                   </button>
                   <button 
                     class="btn btn-danger btn-danger-inline"
                     @click="adminReject(detailRequest.id); showDetailModal = false;"
                   >
-                    🚫 駁回申請
+                    🚫 駁回
                   </button>
                 </template>
                 
@@ -3559,7 +3610,7 @@
                     class="btn btn-danger btn-danger-inline"
                     @click="cancelRequest(detailRequest.id); showDetailModal = false;"
                   >
-                    🗑️ 直接撤銷該單
+                      🗑️ 撤銷
                   </button>
                 </template>
               </template>
@@ -3571,7 +3622,7 @@
                 style="padding: 6px 12px; font-size: 0.8rem; margin: 0; background: var(--color-danger); color: white;"
                 @click="deleteSubstitutionRecord(detailSubRecord.id, detailRequest.id); showDetailModal = false;"
               >
-                🗑️ 撤銷此筆異動
+                 🗑️ 撤銷
               </button>
               
               <!-- 二次轉移/再次調代課 -->
@@ -3581,7 +3632,7 @@
                 style="padding: 6px 12px; font-size: 0.8rem; margin: 0;"
                 @click="startSecondSub"
               >
-                🔄 再次調代課
+                 🔄 再辦
               </button>
 
               <!-- 調開／被代後：原課老師該節已空，可另排空堂任務 -->
@@ -3592,7 +3643,7 @@
                 type="button"
                 @click="openEmptySlotFromDetail"
               >
-                📌 空堂排班
+                 📌 排班
               </button>
             </div>
           </div>
@@ -3860,29 +3911,29 @@
 
   </div>
 
-  <!-- A5 列印隱藏容器 (Print Engine 用) -->
+  <!-- 原版代（調、補）課單列印隱藏容器 -->
   <div id="print-area" style="display: none;"></div>
 
   <!-- App Main JS Logic -->
 
   <!-- 模組：defer 依文件順序執行，不擋 HTML 解析；billing/print/export 另延後 -->
-  <script defer src="name-key-contract.js?v=20260824-name-key-fix1"></script>
-  <script defer src="field-map.js?v=20260824-name-key-fix1"></script>
-  <script defer src="date-utils.js?v=20260824-name-key-fix1"></script>
-  <script defer src="gas-api.js?v=20260824-name-key-fix1"></script>
-  <script defer src="domain-school-swap.js?v=20260824-name-key-fix1"></script>
-  <script defer src="domain-schedule.js?v=20260824-name-key-fix1"></script>
-  <script defer src="domain-match.js?v=20260824-name-key-fix1"></script>
+  <script defer src="name-key-contract.js?v=20260828-print-preview1"></script>
+  <script defer src="field-map.js?v=20260828-print-preview1"></script>
+  <script defer src="date-utils.js?v=20260828-print-preview1"></script>
+  <script defer src="gas-api.js?v=20260828-print-preview1"></script>
+  <script defer src="domain-school-swap.js?v=20260828-print-preview1"></script>
+  <script defer src="domain-schedule.js?v=20260828-print-preview1"></script>
+  <script defer src="domain-match.js?v=20260828-print-preview1"></script>
   <!-- domain-activity-cover：活動互代／空堂任務時 ensureDomainActivityCover -->
-  <script defer src="domain-class-away.js?v=20260824-name-key-fix1"></script>
-  <script defer src="fee-utils.js?v=20260824-name-key-fix1"></script>
-  <script defer src="ui-activity.js?v=20260824-name-key-fix1"></script>
-  <script defer src="ui-request.js?v=20260824-name-key-fix1"></script>
-  <script defer src="ui-timetable.js?v=20260824-name-key-fix1"></script>
-  <script defer src="ui-approval.js?v=20260824-name-key-fix1"></script>
+  <script defer src="domain-class-away.js?v=20260828-print-preview1"></script>
+  <script defer src="fee-utils.js?v=20260828-print-preview1"></script>
+  <script defer src="ui-activity.js?v=20260828-print-preview1"></script>
+  <script defer src="ui-request.js?v=20260828-print-preview1"></script>
+  <script defer src="ui-timetable.js?v=20260828-print-preview1"></script>
+  <script defer src="ui-approval.js?v=20260828-print-preview1"></script>
   <!-- ui-admin：僅管理員／後台操作時 ensureUiAdmin -->
-  <script defer src="app-shell-utils.js?v=20260824-name-key-fix1"></script>
-  <script defer src="app.js?v=20260824-name-key-fix1"></script>
+  <script defer src="app-shell-utils.js?v=20260828-print-preview1"></script>
+  <script defer src="app.js?v=20260828-print-preview1"></script>
   <script>
     (function () {
       function loadScript(src) {
@@ -3904,47 +3955,47 @@
       var _uiAdminP = null;
       window.ensureDomainBilling = function () {
         if (window.DomainBilling) return Promise.resolve();
-          if (!_billingP) _billingP = loadScript('domain-billing.js?v=20260824-name-key-fix1');
+          if (!_billingP) _billingP = loadScript('domain-billing.js?v=20260828-print-preview1');
         return _billingP;
       };
       window.ensureExportAccounting = function () {
         if (window.ExportAccounting) return Promise.resolve();
-          if (!_accountingP) _accountingP = loadScript('export-accounting.js?v=20260824-name-key-fix1');
+          if (!_accountingP) _accountingP = loadScript('export-accounting.js?v=20260828-print-preview1');
         return _accountingP;
       };
       /** 活動互代／額度／空堂任務邏輯（首屏不載） */
       window.ensureDomainActivityCover = function () {
         if (window.DomainActivityCover) return Promise.resolve();
-          if (!_domainActivityP) _domainActivityP = loadScript('domain-activity-cover.js?v=20260824-name-key-fix1');
+          if (!_domainActivityP) _domainActivityP = loadScript('domain-activity-cover.js?v=20260828-print-preview1');
         return _domainActivityP;
       };
       /** 後台匯入／教師／課表編輯（教師首屏不載） */
       window.ensureUiAdmin = function () {
         if (window.UiAdmin) return Promise.resolve();
-          if (!_uiAdminP) _uiAdminP = loadScript('ui-admin.js?v=20260824-name-key-fix1');
+          if (!_uiAdminP) _uiAdminP = loadScript('ui-admin.js?v=20260828-print-preview1');
         return _uiAdminP;
       };
       window.ensurePrintHelper = function () {
         if (typeof window.generateFormHtml === 'function') return Promise.resolve();
-          if (!_printP) _printP = loadScript('print-helper.js?v=20260824-name-key-fix1');
+          if (!_printP) _printP = loadScript('print-helper.js?v=20260828-print-preview1');
         return _printP;
       };
       window.ensureExportSchoolTimetable = function () {
         if (window.ExportSchoolTimetable) return Promise.resolve();
-          if (!_exportP) _exportP = loadScript('export-school-timetable.js?v=20260824-name-key-fix1');
+          if (!_exportP) _exportP = loadScript('export-school-timetable.js?v=20260828-print-preview1');
         return _exportP;
       };
       var _activityCoverP = null;
       window.ensureExportActivityCover = function () {
         if (window.ExportActivityCover) return Promise.resolve();
-          if (!_activityCoverP) _activityCoverP = loadScript('export-activity-cover.js?v=20260824-name-key-fix1');
+          if (!_activityCoverP) _activityCoverP = loadScript('export-activity-cover.js?v=20260828-print-preview1');
         return _activityCoverP;
       };
       var _invigP = null;
       var _excelJsP = null;
       window.ensureExportInvigilation = function () {
         if (window.ExportInvigilation) return Promise.resolve();
-          if (!_invigP) _invigP = loadScript('export-invigilation.js?v=20260824-name-key-fix1');
+          if (!_invigP) _invigP = loadScript('export-invigilation.js?v=20260828-print-preview1');
         return _invigP;
       };
       window.ensureExcelJS = function () {

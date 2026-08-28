@@ -88,7 +88,7 @@ window.OnboardingTour = (function () {
     {
       id: 'history',
       title: '歷史紀錄',
-      body: '已核准生效的調代課在此查詢。\n可篩日期、勾選後列印教師聯／班級聯；列表顯示請假／對調班科與節次。',
+      body: '已核准生效的調代課在此查詢。\n可篩日期、勾選後依學校原版格式列印代（調、補）課單；列表顯示請假／對調班科與節次。',
       selector: '[data-tour="history-panel"]',
       placement: 'top',
       scroll: 'start',

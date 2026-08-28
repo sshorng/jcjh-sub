@@ -425,7 +425,7 @@ function prepareNameKeyRequestRow_(row, semesterId, teacherRows) {
 function nameKeyCanonicalHeaders_(sheetName) {
   var map = {
     "教師課表": ["學期代號", "課表ID", "教師姓名", "星期", "節次", "班級", "科目", "課堂屬性", "調課限制", "特殊標記"],
-    "申請單": ["學期代號", "申請單ID", "單號", "批次ID", "狀態", "申請人姓名", "受邀人姓名", "代申請人姓名", "班級", "科目", "異動日期", "異動星期", "異動節次", "異動類型", "對調目標日期", "對調目標星期", "對調目標節次", "經費來源", "請假事由", "請假時間類型", "請假時間", "是否已印", "備註", "建立時間", "更新時間"],
+    "申請單": ["學期代號", "申請單ID", "單號", "批次ID", "狀態", "直接核准", "紙本流程", "申請人姓名", "受邀人姓名", "代申請人姓名", "班級", "科目", "異動日期", "異動星期", "異動節次", "異動類型", "對調目標日期", "對調目標星期", "對調目標節次", "經費來源", "請假事由", "請假時間類型", "請假時間", "是否已印", "備註", "建立時間", "更新時間"],
     "代導紀錄": ["學期代號", "代導紀錄ID", "來源申請單ID", "原導師姓名", "班級", "代導日期", "請假時間類型", "請假時間", "代導教師姓名", "代導節數", "鐘點費", "狀態", "啟用", "建立時間", "更新時間", "操作者", "備註"],
     "額度帳本": ["學期代號", "流水ID", "時間", "教師姓名", "異動", "餘額後", "類型", "包ID", "事件ID", "事件名稱", "起日", "迄日", "申請單ID", "操作者", "備註", "索引鍵"]
   };
@@ -684,7 +684,7 @@ function getHeadersForSheet(sheetName) {
     // Teacher roster keeps login Email; the four domain sheets use names as relation keys.
     "教師名單": ["學期代號", "教師Email", "教師姓名", "授課科目", "職務", "鐘點支出計畫", "系統角色", "基本鐘點", "折抵額度"],
     "教師課表": ["學期代號", "課表ID", "教師姓名", "星期", "節次", "班級", "科目", "課堂屬性", "調課限制", "特殊標記"],
-    "申請單": ["學期代號", "申請單ID", "單號", "批次ID", "狀態", "申請人姓名", "受邀人姓名", "代申請人姓名", "班級", "科目", "異動日期", "異動星期", "異動節次", "異動類型", "對調目標日期", "對調目標星期", "對調目標節次", "經費來源", "請假事由", "請假時間類型", "請假時間", "是否已印", "備註", "建立時間", "更新時間"],
+    "申請單": ["學期代號", "申請單ID", "單號", "批次ID", "狀態", "直接核准", "紙本流程", "申請人姓名", "受邀人姓名", "代申請人姓名", "班級", "科目", "異動日期", "異動星期", "異動節次", "異動類型", "對調目標日期", "對調目標星期", "對調目標節次", "經費來源", "請假事由", "請假時間類型", "請假時間", "是否已印", "備註", "建立時間", "更新時間"],
     "空堂事件": ["學期代號", "事件ID", "事件名稱", "起日", "迄日", "班級清單", "鐘點規則", "可進互代", "啟用", "備註"],
     "代導紀錄": ["學期代號", "代導紀錄ID", "來源申請單ID", "原導師姓名", "班級", "代導日期", "請假時間類型", "請假時間", "代導教師姓名", "代導節數", "鐘點費", "狀態", "啟用", "建立時間", "更新時間", "操作者", "備註"],
     "全校對調": ["學期代號", "對調ID", "事件名稱", "日期A", "星期A", "節次A", "日期B", "星期B", "節次B", "啟用", "建立時間", "更新時間", "操作者", "備註"],
@@ -4882,6 +4882,16 @@ function assertNewRequestId_(requestId, semesterId, requesterEmail, targetEmail,
   return null;
 }
 
+function isPaperFlowValue_(value) {
+  if (value === true || value === 1) return true;
+  var text = String(value == null ? "" : value).trim().toLowerCase();
+  return text === "true" || text === "1" || text === "是" || text === "紙本";
+}
+
+function isPaperFlowRow_(row) {
+  return !!(row && isPaperFlowValue_(row["紙本流程"] !== undefined ? row["紙本流程"] : row.paperFlow));
+}
+
 function validateRequestRow_(row, semesterId) {
   var dateStr = String(row && (row["異動日期"] || row.requestDate || "") || "").trim().slice(0, 10);
   var period = parseInt(row && (row["異動節次"] || row.requestPeriod || 0), 10);
@@ -5658,8 +5668,10 @@ function doPost(e) {
       if (reqData.note) targetReq["備註"] = reqData.note;
       saveRows("申請單", [targetReq], "申請單ID");
       syncHomeroomRecordForRequest_(targetReq, userEmail);
-      // 待審核准一律寄通知信（鎖外）
-      queueMail_("sendAdminApproveEmail", function () { sendAdminApproveEmail_(targetReq, currentUrl); });
+       // 紙本流程已由紙本通知，不因之後切回線上模式而補寄系統信。
+       if (!isPaperFlowRow_(targetReq)) {
+         queueMail_("sendAdminApproveEmail", function () { sendAdminApproveEmail_(targetReq, currentUrl); });
+       }
       invalidateSemesterCaches_(semesterId);
 
     } else if (action === "adminApproveBatch") {
@@ -5687,10 +5699,11 @@ function doPost(e) {
       if (!apToSave.length) throw new Error("找不到可核准的申請單");
       saveRows("申請單", apToSave, "申請單ID");
       apToSave.forEach(function (r) { syncHomeroomRecordForRequest_(r, userEmail); });
-      // 通知：同受邀人合併（鎖外）
-      queueMail_("adminApproveBatchMail", function () {
-        var apBySub = {};
-        apToSave.forEach(function (r) {
+       // 通知：同受邀人合併（鎖外）；紙本流程不寄信。
+       var apMailRows = apToSave.filter(function (r) { return !isPaperFlowRow_(r); });
+       if (apMailRows.length) queueMail_("adminApproveBatchMail", function () {
+         var apBySub = {};
+         apMailRows.forEach(function (r) {
           var em = String(r["受邀人Email"] || "").toLowerCase().trim();
           if (!em) return;
           if (!apBySub[em]) apBySub[em] = [];
@@ -5719,7 +5732,9 @@ function doPost(e) {
       targetReq["狀態"] = "admin_rejected";
       saveRows("申請單", [targetReq], "申請單ID");
       syncHomeroomRecordForRequest_(targetReq, userEmail);
-      queueMail_("sendAdminRejectEmail", function () { sendAdminRejectEmail_(targetReq, currentUrl); });
+       if (!isPaperFlowRow_(targetReq)) {
+         queueMail_("sendAdminRejectEmail", function () { sendAdminRejectEmail_(targetReq, currentUrl); });
+       }
       invalidateSemesterCaches_(semesterId);
 
     } else if (action === "adminRejectBatch") {
@@ -5746,9 +5761,10 @@ function doPost(e) {
       rjToSave.forEach(function (row) { row["狀態"] = "admin_rejected"; });
       saveRows("申請單", rjToSave, "申請單ID");
       rjToSave.forEach(function (r) { syncHomeroomRecordForRequest_(r, userEmail); });
-      queueMail_("adminRejectBatchMail", function () {
-        rjToSave.forEach(function (r) { sendAdminRejectEmail_(r, currentUrl); });
-      });
+       var rjMailRows = rjToSave.filter(function (r) { return !isPaperFlowRow_(r); });
+       if (rjMailRows.length) queueMail_("adminRejectBatchMail", function () {
+         rjMailRows.forEach(function (r) { sendAdminRejectEmail_(r, currentUrl); });
+       });
       invalidateSemesterCaches_(semesterId);
       return ContentService.createTextOutput(JSON.stringify({
         success: true,
@@ -5980,7 +5996,17 @@ function doPost(e) {
            status: translateStatusToEn(existingOne["狀態"])
          })).setMimeType(ContentService.MimeType.JSON);
        }
-       var isSelfOne = leaveEmailOne === userEmail;
+        var isSelfOne = leaveEmailOne === userEmail;
+       var paperFlowRequestedOne = isPaperFlowValue_(reqData.paperFlow)
+         || isPaperFlowValue_(reqData.request.paperFlow)
+         || isPaperFlowValue_(reqData.request["紙本流程"]);
+       if (paperFlowRequestedOne && isOnlineSubstitutionEnabled_()) {
+         throw new Error("目前為線上模式，不能使用紙本流程！");
+       }
+       // 紙本模式的本人申請直接送教學組核准；教學組勾直接核准則保留線上直核。
+       var paperFlowOne = !isOnlineSubstitutionEnabled_()
+         && isSelfOne
+         && !(isAdmin && reqData.directApprove === true);
       // 已授權行政（role=staff 且在白名單）
       var staffCanProxy = canUserProxySubmit_(userEmail, teachers);
       // 代別人：admin 永遠可；行政須已授權；一般教師不可
@@ -5988,10 +6014,10 @@ function doPost(e) {
         if (isStaff) throw new Error("您尚未被教學組授權代申請，無法代他人送出！");
         throw new Error("您無權代表他人發起申請單！");
       }
-      // 狀態：
-      // - 教學組 + directApprove → approved
-      // - 代別人（已授權行政，或教學組未直接核准）→ pending_admin（跳過受邀確認）
-      // - 自己申請 → pending_teacher
+       // 狀態：
+       // - 教學組 + directApprove → approved
+       // - 代別人（已授權行政，或教學組未直接核准）→ pending_admin（跳過受邀確認）
+       // - 自己申請 → pending_teacher
       var isProxyOne = false;
       if (!isSelfOne) {
         if (isAdmin && reqData.directApprove === true) {
@@ -6006,10 +6032,17 @@ function doPost(e) {
         throw new Error("扣額度／活動公費相關經費僅限管理員發起！");
       }
       // 寫入狀態（伺服器最終裁定）
-      if (isAdmin && reqData.directApprove === true && !isProxyOne) {
-        reqData.request["狀態"] = "approved";
-      } else if (isProxyOne) {
-        reqData.request["狀態"] = "pending_admin";
+       if (paperFlowOne) {
+         reqData.request["狀態"] = "pending_admin";
+         reqData.request["紙本流程"] = "TRUE";
+         reqData.request.paperFlow = true;
+         reqData.request.directApprove = false;
+       } else if (isAdmin && reqData.directApprove === true && !isProxyOne) {
+         reqData.request["狀態"] = "approved";
+         reqData.request["紙本流程"] = "FALSE";
+       } else if (isProxyOne) {
+         reqData.request["狀態"] = "pending_admin";
+         reqData.request["紙本流程"] = "FALSE";
         reqData.request["代申請人Email"] = userEmail;
         if (!reqData.request["代申請人姓名"]) {
           reqData.request["代申請人姓名"] = currentTeacher
@@ -6023,10 +6056,14 @@ function doPost(e) {
           var tagOne = "[行政代申請：" + actorNmOne + " 代 " + leaveNmOne + "]";
           reqData.request["備註"] = noteOne ? (tagOne + " " + noteOne) : tagOne;
         }
-      } else {
-        reqData.request["狀態"] = "pending_teacher";
-      }
-      // 雙重保險：代別人且非直接核准，絕不寫成 pending_teacher
+       } else {
+          reqData.request["狀態"] = "pending_teacher";
+          reqData.request["紙本流程"] = "FALSE";
+        }
+       reqData.request["直接核准"] = (isAdmin && reqData.directApprove === true && !isProxyOne && !paperFlowOne)
+         ? "是"
+         : "";
+       // 雙重保險：代別人且非直接核准，絕不寫成 pending_teacher
       if (!isSelfOne && String(reqData.request["狀態"] || "") === "pending_teacher") {
         if (isAdmin || staffCanProxy) {
           reqData.request["狀態"] = "pending_admin";
@@ -6043,8 +6080,8 @@ function doPost(e) {
       // skipNotify=true：只寫單不寄信
       // 行政代申請／pending_admin：絕不寄受邀邀請信（受邀者不需同意；教學組核准時再寄）
       var statusOne = String(reqData.request["狀態"] || "");
-      var skipNotifyOne = reqData.skipNotify === true || reqData.skipNotify === "true"
-         || isProxyOne || statusOne === "pending_admin" || !isOnlineSubstitutionEnabled_();
+       var skipNotifyOne = reqData.skipNotify === true || reqData.skipNotify === "true"
+         || isProxyOne || statusOne === "pending_admin" || paperFlowOne || !isOnlineSubstitutionEnabled_();
       if (!skipNotifyOne) {
         if (statusOne === "approved") {
           queueMail_("sendAdminApproveEmail", function () { sendAdminApproveEmail_(reqData.request, currentUrl); });
@@ -6075,13 +6112,23 @@ function doPost(e) {
           break;
         }
       }
-      if (anyOther && !isAdmin && !staffCanProxyBatch) {
-        throw new Error("批次中含非本人申請，已拒絕！（僅「已授權的行政」可代申請）");
-      }
-      // 代別人：已授權行政，或教學組未勾直接核准 → pending_admin
-      var directOk = isAdmin && reqData.directApprove === true;
-      var isProxyBatch = !!(anyOther && !directOk && (staffCanProxyBatch || isAdmin));
-      var finalStatus = directOk ? "approved" : (isProxyBatch ? "pending_admin" : "pending_teacher");
+       if (anyOther && !isAdmin && !staffCanProxyBatch) {
+         throw new Error("批次中含非本人申請，已拒絕！（僅「已授權的行政」可代申請）");
+       }
+       var paperFlowRequestedBatch = isPaperFlowValue_(reqData.paperFlow)
+         || list.some(function (row) {
+           return isPaperFlowValue_(row && (row.paperFlow !== undefined ? row.paperFlow : row["紙本流程"]));
+         });
+       if (paperFlowRequestedBatch && isOnlineSubstitutionEnabled_()) {
+         throw new Error("目前為線上模式，不能使用紙本流程！");
+       }
+       var paperFlowBatch = !isOnlineSubstitutionEnabled_()
+         && !anyOther
+         && !(isAdmin && reqData.directApprove === true);
+       // 代別人：已授權行政，或教學組未勾直接核准 → pending_admin
+       var directOk = isAdmin && reqData.directApprove === true && !paperFlowBatch;
+       var isProxyBatch = !!(anyOther && !directOk && (staffCanProxyBatch || isAdmin));
+       var finalStatus = paperFlowBatch ? "pending_admin" : (directOk ? "approved" : (isProxyBatch ? "pending_admin" : "pending_teacher"));
       var actorNameBatch = currentTeacher
         ? String(currentTeacher["教師姓名"] || currentTeacher.name || userEmail)
         : userEmail;
@@ -6105,9 +6152,12 @@ function doPost(e) {
         if ((feeRow === "扣額度" || feeRow === "互代不結" || feeRow === "活動公費" || feeRow === "第8節代課") && !isAdmin) {
           throw new Error("扣額度／活動公費相關經費僅限管理員發起！");
         }
-        row["學期代號"] = semesterId;
-        row["批次ID"] = batchId;
-        row["狀態"] = finalStatus;
+         row["學期代號"] = semesterId;
+         row["批次ID"] = batchId;
+         row["狀態"] = finalStatus;
+          row["直接核准"] = directOk ? "是" : "";
+          row["紙本流程"] = paperFlowBatch ? "TRUE" : "FALSE";
+         row.paperFlow = paperFlowBatch;
         if (isProxyBatch && leaveEmB !== userEmail) {
           row["代申請人Email"] = userEmail;
           row["代申請人姓名"] = actorNameBatch;
@@ -6144,8 +6194,8 @@ function doPost(e) {
         rows.forEach(function (r) { syncHomeroomRecordForRequest_(r, userEmail); });
       }
       // skipNotify=true：只寫單不寄信；代申請／pending_admin 不寄邀請信
-      var skipNotifyBatch = reqData.skipNotify === true || reqData.skipNotify === "true"
-         || isProxyBatch || finalStatus === "pending_admin" || !isOnlineSubstitutionEnabled_();
+       var skipNotifyBatch = reqData.skipNotify === true || reqData.skipNotify === "true"
+         || isProxyBatch || finalStatus === "pending_admin" || paperFlowBatch || !isOnlineSubstitutionEnabled_();
       if (!skipNotifyBatch) {
         queueMail_("submitRequestBatchMail", function () {
           var byInvitee = {};
@@ -6211,12 +6261,14 @@ function doPost(e) {
         noticeNormIds.push(rid);
       });
        var noticeById = findRowsByKeys_("申請單", "申請單ID", noticeNormIds, semesterId);
-      var noticeRows = noticeNormIds.map(function (rid) { return noticeById[rid]; }).filter(Boolean);
-      if (!noticeRows.length) throw new Error("找不到對應申請單！");
+       var noticeRows = noticeNormIds.map(function (rid) { return noticeById[rid]; }).filter(Boolean);
+       if (!noticeRows.length) throw new Error("找不到對應申請單！");
+       var paperNoticeCount = noticeRows.filter(isPaperFlowRow_).length;
+       var mailableNoticeRows = noticeRows.filter(function (r) { return !isPaperFlowRow_(r); });
 
-      var approvedRows = [];
-      var pendingRows = [];
-      noticeRows.forEach(function (r) {
+       var approvedRows = [];
+       var pendingRows = [];
+       mailableNoticeRows.forEach(function (r) {
         var st = String(r["狀態"] || "");
         if (st === "approved" || st === "已核准") approvedRows.push(r);
         else pendingRows.push(r);
@@ -6289,8 +6341,9 @@ function doPost(e) {
       });
 
       return ContentService.createTextOutput(JSON.stringify({
-        success: true,
-        found: noticeRows.length,
+         success: true,
+         found: noticeRows.length,
+         paperSkipped: paperNoticeCount,
         approved: approvedRows.length,
         pending: pendingRows.length,
         mailCount: mailCount || Object.keys(estRecipients).length,
@@ -7175,7 +7228,7 @@ function _approveActionButtonsHtml_(req, role, sysUrl) {
      ? ('<a href="' + calUrl + '" style="background-color:#0f766e;color:#ffffff;padding:12px 20px;text-decoration:none;border-radius:8px;font-weight:bold;display:inline-block;font-size:14px;margin:0 8px 8px 0;">' + escapeHtml_(calLabel) + "</a>")
     : "";
   var sysBtn = '<a href="' + sysUrl + '" style="background-color:#2563eb;color:#ffffff;padding:12px 20px;text-decoration:none;border-radius:8px;font-weight:bold;display:inline-block;font-size:14px;margin:0 8px 8px 0;">進入系統查看課表</a>';
-  var printHint = '<p style="color:#64748b;font-size:13px;margin:12px 0 0;line-height:1.55;">通知單請登入系統 →「歷史紀錄」或案件詳情 →「印通知」列印教師聯／班級聯。</p>';
+  var printHint = '<p style="color:#64748b;font-size:13px;margin:12px 0 0;line-height:1.55;">通知單請登入系統 →「歷史紀錄」或案件詳情 →「印通知」依學校原版格式列印代（調、補）課單。</p>';
   return '<div style="margin:20px 0 8px;">' + calBtn + sysBtn + "</div>" + printHint;
 }
 

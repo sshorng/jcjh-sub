@@ -82,12 +82,9 @@ window.UiSubmitHelpers = (function () {
         return false;
       }
     }
-    if (pending.mode === 'substitution' && (!pending.leaveTimeType || !pending.leaveTimeStart || !pending.leaveTimeEnd || pending.leaveTimeStart >= pending.leaveTimeEnd)) {
+    var courseAdjustmentOnly = pending.mode === 'substitution' && !!pending.courseAdjustmentOnly;
+    if (pending.mode === 'substitution' && !courseAdjustmentOnly && (!pending.leaveTimeType || !pending.leaveTimeStart || !pending.leaveTimeEnd || pending.leaveTimeStart >= pending.leaveTimeEnd)) {
       showToast('請填寫有效的請假時間（可選全天／上午／下午或自行修改）', 'info');
-      return false;
-    }
-    if (pending.mode === 'substitution' && !pending.subFee) {
-      showToast('請選擇代課鐘點費結算方式！', 'info');
       return false;
     }
     if (!assertQuotaDeductAllowed()) return false;
@@ -143,10 +140,11 @@ window.UiSubmitHelpers = (function () {
   function buildSubmitPayload(deps, requestId, serial) {
     var pending = deps.pendingRequestData.value;
     var currentSemester = deps.currentSemester;
-    var getTeacherNameByEmail = deps.getTeacherNameByEmail;
-    var isAdmin = deps.isAdmin;
-    var directApproveMode = deps.directApproveMode;
-    var isMutualCover = deps.isMutualCover;
+     var getTeacherNameByEmail = deps.getTeacherNameByEmail;
+     var isAdmin = deps.isAdmin;
+     var directApproveMode = deps.directApproveMode;
+     var paperFlow = deps.paperFlow;
+     var isMutualCover = deps.isMutualCover;
     var PERIOD8_FEE = deps.PERIOD8_FEE;
     var ACTIVITY_PUBLIC_FEE = deps.ACTIVITY_PUBLIC_FEE;
     var defaultSubFeeForReason = deps.defaultSubFeeForReason;
@@ -176,13 +174,14 @@ window.UiSubmitHelpers = (function () {
         proxyByName = '';
       }
     }
+    var paperFlowActive = !!(paperFlow && paperFlow.value && !proxyActive);
     // 行政代申請：跳過受邀確認，直接送教學組；不可直接核准
-    var doDirectApprove = !!(isAdmin && isAdmin.value && directApproveMode && directApproveMode.value && !proxyActive);
-    var initialStatus = doDirectApprove
-      ? 'approved'
-      : (proxyActive ? 'pending_admin' : 'pending_teacher');
-
+    var doDirectApprove = !!(isAdmin && isAdmin.value && directApproveMode && directApproveMode.value && !proxyActive && !paperFlowActive);
+    var initialStatus = paperFlowActive
+      ? 'pending_admin'
+      : (doDirectApprove ? 'approved' : (proxyActive ? 'pending_admin' : 'pending_teacher'));
     var isExchange = pending.mode === 'exchange';
+    var courseAdjustmentOnly = pending.mode === 'substitution' && !!pending.courseAdjustmentOnly;
     var finalFeeType = '無';
     if (!isExchange) {
       var tk0 = (window.DateUtils && window.DateUtils.decodeTimeKey)
@@ -205,20 +204,22 @@ window.UiSubmitHelpers = (function () {
 
     var baseNote = String(pending.note || '').trim();
     var noteOut = baseNote;
-    if (doDirectApprove) {
-      noteOut = baseNote ? ('[直接核准] ' + baseNote) : '[直接核准]';
-    } else if (proxyActive) {
+    if (proxyActive) {
       var leaveNm = getTeacherNameByEmail(pending.leaveTeacher) || pending.leaveTeacher;
       var tag = '[行政代申請：' + (proxyByName || proxyByEmail) + ' 代 ' + leaveNm + ']';
       noteOut = baseNote ? (tag + ' ' + baseNote) : tag;
     }
 
+    var leaveTimeType = courseAdjustmentOnly ? '' : (pending.leaveTimeType || '');
+    var leaveTime = courseAdjustmentOnly ? '' : (pending.leaveTime || ((pending.leaveTimeStart && pending.leaveTimeEnd) ? (pending.leaveTimeStart + '~' + pending.leaveTimeEnd) : ''));
     var newRequest = {
-      "學期代號": currentSemester.value,
-      "申請單ID": requestId,
-      "單號": serial,
-      "異動類型": pending.mode,
-       "申請人姓名": getTeacherNameByEmail(pending.leaveTeacher),
+       "學期代號": currentSemester.value,
+       "申請單ID": requestId,
+       "單號": serial,
+       "異動類型": pending.mode,
+       "申請人Email": pending.leaveTeacher,
+       "受邀人Email": pending.subTeacher,
+        "申請人姓名": getTeacherNameByEmail(pending.leaveTeacher),
        "受邀人姓名": getTeacherNameByEmail(pending.subTeacher),
       "異動日期": pending.date,
       "異動節次": (function () {
@@ -236,15 +237,20 @@ window.UiSubmitHelpers = (function () {
       "班級": pending.cls,
       "科目": pending.subject,
       "請假事由": pending.reason,
-      "請假時間類型": pending.leaveTimeType || '',
-      "請假時間": pending.leaveTime || ((pending.leaveTimeStart && pending.leaveTimeEnd) ? (pending.leaveTimeStart + '~' + pending.leaveTimeEnd) : ''),
+       "請假時間類型": leaveTimeType,
+       "請假時間": leaveTime,
       "經費來源": finalFeeType || '無',
       "備註": noteOut,
       "狀態": initialStatus,
+      "直接核准": doDirectApprove ? '是' : '',
+      "紙本流程": paperFlowActive ? 'TRUE' : 'FALSE',
       directApprove: doDirectApprove,
       isProxySubmit: !!proxyActive,
-       proxyByName: proxyByName || ''
-     };
+       paperFlow: paperFlowActive,
+       courseAdjustmentOnly: courseAdjustmentOnly,
+       "僅課務調整": courseAdjustmentOnly ? '是' : '',
+        proxyByName: proxyByName || ''
+      };
     if (proxyActive && proxyByEmail) {
        newRequest["代申請人姓名"] = proxyByName || getTeacherNameByEmail(proxyByEmail) || '';
     }
@@ -264,7 +270,8 @@ window.UiSubmitHelpers = (function () {
     var payload = {
       request: newRequest,
       directApprove: doDirectApprove,
-      proxySubmit: !!proxyActive
+      proxySubmit: !!proxyActive,
+      paperFlow: paperFlowActive
     };
     return { payload: payload, newRequest: newRequest, isExchange: isExchange, finalFeeType: finalFeeType };
   }
@@ -566,19 +573,23 @@ window.UiSubmitHelpers = (function () {
       subject: activeCell.value.classData ? activeCell.value.classData.subject : '',
       date: curDate,
       timeKey: timeKey,
-      reason: isMutualCover.value ? '公假' : '',
-      subFee: subFeeVal,
+       reason: isMutualCover.value ? '公假' : '',
+       courseAdjustmentOnly: false,
+       leaveReasonBeforeCourseAdjustment: '',
+       subFee: subFeeVal,
       dateB: dateBVal,
       timeB: timeBVal,
       subB: subBVal,
       subBClass: classBVal,
       note: '',
-      leaveTimeType: mode === 'substitution' ? leaveTimeDefaults.type : '',
-      leaveTimeStart: mode === 'substitution' ? leaveTimeDefaults.start : '',
-      leaveTimeEnd: mode === 'substitution' ? leaveTimeDefaults.end : '',
-      leaveTime: mode === 'substitution' ? leaveTimeDefaults.range : '',
-      mutualPreview: !!isMutualCover.value
-    };
+       leaveTimeType: mode === 'substitution' ? leaveTimeDefaults.type : '',
+       leaveTimeStart: mode === 'substitution' ? leaveTimeDefaults.start : '',
+       leaveTimeEnd: mode === 'substitution' ? leaveTimeDefaults.end : '',
+       leaveTime: mode === 'substitution' ? leaveTimeDefaults.range : '',
+       submitRequestId: 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+       submitSerial: (mode === 'exchange' ? 'SWP' : 'SUB') + (1000 + Math.floor(Math.random() * 9000)),
+       mutualPreview: !!isMutualCover.value
+     };
 
     showMatchModal.value = false;
     showCompareModal.value = true;
@@ -765,10 +776,10 @@ window.UiSubmitHelpers = (function () {
     var pendingRequestData = deps.pendingRequestData;
     var isMutualCover = deps.isMutualCover;
     var mutualSkipNotify = deps.mutualSkipNotify;
-    var isAdmin = deps.isAdmin;
-    var directApproveMode = deps.directApproveMode;
-    var directApproveSkipNotify = deps.directApproveSkipNotify;
-    var callGasApi = deps.callGasApi;
+     var isAdmin = deps.isAdmin;
+     var directApproveMode = deps.directApproveMode;
+     var directApproveSkipNotify = deps.directApproveSkipNotify;
+     var callGasApi = deps.callGasApi;
     var showCompareModal = deps.showCompareModal;
     var showMatchModal = deps.showMatchModal;
     var optimisticUpsertRequest = deps.optimisticUpsertRequest;
@@ -798,13 +809,22 @@ window.UiSubmitHelpers = (function () {
       if (!(await validate())) return;
 
       loadingMessage.value = '正在上傳申請單至雲端試算表...';
-      var requestId = 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-      var prefix = pendingRequestData.value.mode === 'exchange' ? 'SWP' : 'SUB';
-      var serial = prefix + (1000 + Math.floor(Math.random() * 9000));
+       var requestId = String(pendingRequestData.value.submitRequestId || '').trim();
+       if (!requestId) {
+         requestId = 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+         pendingRequestData.value.submitRequestId = requestId;
+       }
+       var prefix = pendingRequestData.value.mode === 'exchange' ? 'SWP' : 'SUB';
+       var serial = String(pendingRequestData.value.submitSerial || '').trim();
+       if (!serial) {
+         serial = prefix + (1000 + Math.floor(Math.random() * 9000));
+         pendingRequestData.value.submitSerial = serial;
+       }
       var built = buildPayload(requestId, serial);
       var payload = built.payload;
       var newRequest = built.newRequest;
       var isExchange = built.isExchange;
+       var paperFlowActive = !!(newRequest.paperFlow && !newRequest.isProxySubmit && !newRequest.directApprove);
       // 送出前再強制一次：已授權行政代別人 → pending_admin + proxySubmit
        if (shouldProxySubmitForLeave(deps, newRequest['申請人姓名'] || pendingRequestData.value.leaveTeacher)) {
         newRequest['狀態'] = 'pending_admin';
@@ -825,9 +845,14 @@ window.UiSubmitHelpers = (function () {
           var tag2 = '[行政代申請：' + (newRequest['代申請人姓名'] || actorEm2) + ' 代 ' + leaveNm2 + ']';
           newRequest['備註'] = note2 ? (tag2 + ' ' + note2) : tag2;
         }
-        payload.request = newRequest;
-      }
-      // 行政代申請：不寄受邀邀請信（受邀者不需同意；教學組核准時再寄通知）
+         payload.request = newRequest;
+       }
+       // 代理判斷可能在組裝後才補上，紙本旗標需以最終申請內容為準。
+       paperFlowActive = !!(newRequest.paperFlow && !newRequest.isProxySubmit && !newRequest.directApprove);
+       newRequest["紙本流程"] = paperFlowActive ? 'TRUE' : 'FALSE';
+       newRequest.paperFlow = paperFlowActive;
+       payload.paperFlow = paperFlowActive;
+       // 行政代申請：不寄受邀邀請信（受邀者不需同意；教學組核准時再寄通知）
       var isProxyPayload = !!(payload.proxySubmit || newRequest.isProxySubmit
         || newRequest['狀態'] === 'pending_admin');
       var skipNotify = !!(
@@ -835,6 +860,7 @@ window.UiSubmitHelpers = (function () {
         || (isAdmin.value && directApproveMode.value && directApproveSkipNotify.value)
         || (notificationsSuppressed && notificationsSuppressed.value && isAdmin.value)
         || isProxyPayload
+        || paperFlowActive
       );
       payload.skipNotify = skipNotify;
       await callGasApi('submitRequest', payload);
@@ -845,6 +871,14 @@ window.UiSubmitHelpers = (function () {
       await deductMutualQuotaForRows([newRequest]);
       softRefreshInBackground({ delay: 2500 });
 
+      if (paperFlowActive) {
+        if (deps.openPaperPrintDraft) {
+          deps.openPaperPrintDraft([newRequest]);
+        }
+        showToast('申請已送出，請列印紙本通知並交由調代課教師簽名，再送教學組線上核准。', 'success', 6000);
+        return;
+      }
+
       var currentUrl = window.location.origin + window.location.pathname;
       var agreeLink = currentUrl + '?action=respond&id=' + requestId + '&status=agree';
       var declineLink = currentUrl + '?action=respond&id=' + requestId + '&status=decline';
@@ -852,9 +886,10 @@ window.UiSubmitHelpers = (function () {
         ? (isQuotaDeductFee(newRequest['經費來源']) ? '（活動互代／扣額度）' : '（活動互代／活動公費）')
         : '';
       var notifyTip = skipNotify ? ' 尚未寄系統信，請用下方 LINE 手動通知。' : '';
-      var linePayload = {
-        targetName: newRequest['受邀人姓名'],
-        dateA: newRequest['異動日期'],
+       var linePayload = {
+         targetName: newRequest['受邀人姓名'],
+         requesterName: newRequest.isProxySubmit ? newRequest['申請人姓名'] : '',
+         dateA: newRequest['異動日期'],
         dayA: newRequest['異動星期'],
         periodA: newRequest['異動節次'],
         classA: newRequest['班級'],
@@ -865,10 +900,11 @@ window.UiSubmitHelpers = (function () {
         periodB: newRequest['對調目標節次'],
         classB: pendingRequestData.value.subBClass || '',
         subjectB: pendingRequestData.value.subB || '',
-        agreeLink: agreeLink,
-        declineLink: declineLink,
-        systemUrl: currentUrl
-      };
+         agreeLink: agreeLink,
+         declineLink: declineLink,
+         systemUrl: currentUrl,
+         notificationOnly: newRequest['狀態'] === 'approved'
+       };
 
       if (newRequest['狀態'] === 'pending_teacher') {
         successModalTitle.value = '🎉 申請已送出';

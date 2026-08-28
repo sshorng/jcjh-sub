@@ -25,6 +25,7 @@ window.UiApproval = (function () {
     var formatApproveBatchRiskSummary = deps.formatApproveBatchRiskSummary || function () { return ''; };
     var getApproveRiskFlags = deps.getApproveRiskFlags || function () { return []; };
     var printSelectedForms = deps.printSelectedForms;
+    var openPrintPreview = deps.openPrintPreview || printSelectedForms;
     var applyClassViewFromUrl = deps.applyClassViewFromUrl || function () { return false; };
     var resolvePendingClassView = deps.resolvePendingClassView || function () {};
 
@@ -468,7 +469,7 @@ window.UiApproval = (function () {
       selectedRecordIds.value = lastBatchPrintIds.value.slice();
       showBatchPrintPrompt.value = false;
       activeTab.value = 'records';
-      await printSelectedForms('Notice');
+      await openPrintPreview('Notice');
     }
 
     function dismissBatchPrintPrompt() {

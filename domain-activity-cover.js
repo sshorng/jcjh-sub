@@ -963,7 +963,7 @@ window.DomainActivityCover = (function () {
     var nm = String(opts.teacherName || '').trim();
     if (!nm) throw new Error('空堂排班缺少教師姓名');
     var noteBase = String(opts.note || '').trim();
-    var noteOut = noteBase ? ('[直接核准] [空堂排班] ' + noteBase) : '[直接核准] [空堂排班]';
+    var noteOut = noteBase ? ('[空堂排班] ' + noteBase) : '[空堂排班]';
     var newRequest = {
       "學期代號": opts.semesterId || '',
       "申請單ID": opts.requestId,
@@ -980,6 +980,7 @@ window.DomainActivityCover = (function () {
       "經費來源": QUOTA_DEDUCT_FEE,
       "備註": noteOut,
       "狀態": 'approved',
+      "直接核准": '是',
       directApprove: true,
       isProxySubmit: false,
       isEmptySlotAssign: true

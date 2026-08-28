@@ -28,6 +28,8 @@ let proxyAllowed = false;
 let lockAcquires = 0;
 let mutationCalls = 0;
 let persistedRows = [];
+let queuedMailLabels = [];
+let onlineEnabled = true;
 let requestRow = {
   '學期代號': semesterId,
   '申請單ID': 'req-permission-1',
@@ -92,7 +94,7 @@ resolveIsStaff_ = function (email) { return String(email).toLowerCase() === STAF
 canUserProxySubmit_ = function (email) { return proxyAllowed && String(email).toLowerCase() === STAFF_EMAIL; };
 beginDeferredMails_ = function () {};
 flushDeferredMails_ = function () {};
-queueMail_ = function () {};
+queueMail_ = function (label) { queuedMailLabels.push(label); };
 assertNotTooFrequent_ = function () {};
 saveRows = function () { mutationCalls += 1; };
 invalidateScheduleCaches_ = function () {};
@@ -114,7 +116,7 @@ findRowByKey_ = function (sheet, key, id, sid) {
   if (sheet !== '申請單' || key !== '申請單ID' || String(sid) !== semesterId) return null;
   return String(id) === String(requestRow['申請單ID']) ? requestRow : null;
 };
-buildSettingsMap_ = function () { return {}; };
+buildSettingsMap_ = function () { return { onlineSubstitutionEnabled: onlineEnabled ? 'true' : 'false' }; };
 sanitizeTeacherRowsForReader_ = function (rows) { return rows; };
 sanitizeSettingsForReader_ = function (settings) { return settings; };
 getTableData = function () { return []; };
@@ -143,6 +145,7 @@ function resetMutationState() {
   lockAcquires = 0;
   mutationCalls = 0;
   persistedRows = [];
+  queuedMailLabels = [];
 }
 
 function makeRequest(overrides = {}) {
@@ -235,6 +238,56 @@ const teacherSelfRequest = invoke({
 });
 assert.strictEqual(teacherSelfRequest.success, true);
 assert.strictEqual(persistedRows[0]['狀態'], 'pending_teacher');
+
+onlineEnabled = false;
+resetMutationState();
+const teacherPaperRequest = invoke({
+  email: TEACHER_EMAIL,
+  action: 'submitRequest',
+  data: {
+    paperFlow: true,
+    request: makeRequest({
+      '申請單ID': 'req-paper-single',
+      '申請人Email': TEACHER_EMAIL,
+      '申請人姓名': '教師'
+    })
+  }
+});
+assert.strictEqual(teacherPaperRequest.success, true);
+assert.strictEqual(persistedRows[0]['狀態'], 'pending_admin');
+assert.strictEqual(persistedRows[0]['紙本流程'], 'TRUE');
+
+resetMutationState();
+const teacherPaperBatch = invoke({
+  email: TEACHER_EMAIL,
+  action: 'submitRequestBatch',
+  data: {
+    batchId: 'bat-paper-test',
+    paperFlow: true,
+    requests: [
+      makeRequest({ '申請單ID': 'req-paper-batch-0', '申請人Email': TEACHER_EMAIL, '申請人姓名': '教師', '異動節次': 1 }),
+      makeRequest({ '申請單ID': 'req-paper-batch-1', '申請人Email': TEACHER_EMAIL, '申請人姓名': '教師', '異動節次': 2 })
+    ]
+  }
+});
+assert.strictEqual(teacherPaperBatch.success, true);
+assert.strictEqual(persistedRows.length, 2);
+assert.ok(persistedRows.every(row => row['狀態'] === 'pending_admin' && row['紙本流程'] === 'TRUE'));
+onlineEnabled = true;
+
+requestRow = Object.assign({}, requestRow, {
+  '狀態': 'pending_admin',
+  '紙本流程': 'TRUE'
+});
+resetMutationState();
+const paperApproval = invoke({
+  email: ADMIN_EMAIL,
+  action: 'adminApprove',
+  data: { requestId: requestRow['申請單ID'] }
+});
+assert.strictEqual(paperApproval.success, true);
+assert.strictEqual(requestRow['狀態'], 'approved');
+assert.strictEqual(queuedMailLabels.includes('sendAdminApproveEmail'), false);
 
 const teacherProxy = invoke({
   email: TEACHER_EMAIL,

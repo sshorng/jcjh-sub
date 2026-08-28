@@ -1,6 +1,6 @@
 /**
  * 學校調代課線上系統 - 列印輔助模組 (print-helper.js)
- * 還原：建成國中調代課通知單（週課表雙聯 A5 橫向 A4）
+ * 還原：建成國中代（調、補）課請示單暨班級通知單（A4 橫式雙聯）
  */
 
 /** 對調路線圖（畫面與列印共用結構） */
@@ -72,337 +72,285 @@ function getPaperGroupSignatureText(group, names) {
   return list.join('、');
 }
 
-function generateFormHtml(g, currentType, ctx) {
-  const getTeacherNameByEmail = ctx.getTeacherNameByEmail;
-  const getTeacherSubjectByEmail = ctx.getTeacherSubjectByEmail;
-  const getWeekDayText = ctx.getWeekDayText;
-  const getPeriodChinese = (p) => {
-    const n = parseInt(p, 10);
-    if (n === 0) return '早自習';
-    if (n === 45) return '午休';
-    return ['', '第一節', '第二節', '第三節', '第四節', '第五節', '第六節', '第七節', '第八節'][n] || String(p);
-  };
-  const printPeriodList = (window.DateUtils && window.DateUtils.getTimetablePeriods)
-    ? window.DateUtils.getTimetablePeriods()
-    : [0, 1, 2, 3, 4, 45, 5, 6, 7, 8];
-  const reprintClass = g.isReprint ? 'is-reprint' : '';
-
-  const getOriginalSubject = (rec) => {
-    if (!rec) return '';
-    // 紀錄本身的 subject 即該節有效課（含調入後寫入）；缺才回退基礎課表
-    if (rec.subject) return rec.subject;
-    if (!rec.date || !ctx.allSchedules || !ctx.allSchedules.value) return '';
-    const day = new Date(String(rec.date).replace(/-/g, '/')).getDay();
-    const dayNum = day === 0 ? 7 : day;
-    const em = String(rec.originalTeacherEmail || '').toLowerCase();
-    const p = parseInt(rec.period, 10);
-    const sched = ctx.allSchedules.value.find(s =>
-      s.teacherEmail && String(s.teacherEmail).toLowerCase() === em &&
-      parseInt(s.dayOfWeek, 10) === dayNum &&
-      parseInt(s.period, 10) === p
-    );
-    return sched ? (sched.subject || '') : '';
-  };
-
-  if (g.isExchange) {
-    const rec1 = g.records[0];
-    const rec2 = g.records[1] || rec1;
-    const teacherAName = escapePrintHtml(getTeacherNameByEmail(rec1.originalTeacherEmail));
-    const teacherBName = escapePrintHtml(getTeacherNameByEmail(rec2.originalTeacherEmail));
-    const serialText = escapePrintHtml([...new Set(g.serials)].join(', '));
-
-    let titleLabel = '';
-    let descHtml = '';
-    let remarkHtml = '';
-
-    if (currentType === 'Teacher') {
-      // 教師聯：只標受邀／對方教師（對調顯示 B 師）
-    titleLabel = `教師聯 (給 ${teacherBName} 老師)`;
-      descHtml = `
-        <div style="line-height: 1.3; font-size: 0.75rem; color: #1e293b;">
-          <strong>${teacherAName}</strong> 老師與 <strong>${teacherBName}</strong> 老師，因 <strong>${escapePrintHtml(g.reason || '其他')}</strong> 進行課堂對調：
-          <ul style="margin: 2px 0; padding-left: 14px;">
-            <li>${escapePrintHtml(rec1.date)} 第 ${escapePrintHtml(rec1.period)} 節【${escapePrintHtml(rec1.className)}】 改由 <strong>${teacherBName}</strong> 老師上課（${escapePrintHtml(rec1.subject)}）。</li>
-            <li>${escapePrintHtml(rec2.date)} 第 ${escapePrintHtml(rec2.period)} 節【${escapePrintHtml(rec2.className)}】 改由 <strong>${teacherAName}</strong> 老師上課（${escapePrintHtml(rec2.subject)}）。</li>
-          </ul>
-        </div>
-      `;
-      remarkHtml = `
-        <li>請兩位教師確實向對方交代班級上課進度與常規要求。</li>
-        <li>實際上課教師請確實於該班教室日誌上簽章。</li>
-      `;
-    } else if (currentType === 'Class') {
-      titleLabel = '班級聯 (貼於教室日誌)';
-      descHtml = `
-        <div style="line-height: 1.3; font-size: 0.75rem; color: #1e293b;">
-          <strong>${teacherAName}</strong> 老師與 <strong>${teacherBName}</strong> 老師，因 <strong>${escapePrintHtml(g.reason || '其他')}</strong> 進行課堂對調：
-          <ul style="margin: 2px 0; padding-left: 14px;">
-            <li>${escapePrintHtml(rec1.date)} 第 ${escapePrintHtml(rec1.period)} 節【${escapePrintHtml(rec1.className)}】 改由 <strong>${teacherBName}</strong> 老師上課（${escapePrintHtml(rec1.subject)}）。</li>
-            <li>${escapePrintHtml(rec2.date)} 第 ${escapePrintHtml(rec2.period)} 節【${escapePrintHtml(rec2.className)}】 改由 <strong>${teacherAName}</strong> 老師上課（${escapePrintHtml(rec2.subject)}）。</li>
-          </ul>
-        </div>
-      `;
-      remarkHtml = `
-        <li>請學藝股長將此通知單貼於教室日誌旁備查。</li>
-        <li>實際上課老師請確實於教室日誌上簽章。</li>
-      `;
-    } else {
-      titleLabel = '教學組留存聯';
-      descHtml = `
-        <div style="line-height: 1.3; font-size: 0.75rem; color: #1e293b;">
-          <strong>${teacherAName}</strong> 老師與 <strong>${teacherBName}</strong> 老師，因 <strong>${escapePrintHtml(g.reason || '其他')}</strong> 進行課堂對調：
-          <ul style="margin: 2px 0; padding-left: 14px;">
-            <li>${escapePrintHtml(rec1.date)} 第 ${escapePrintHtml(rec1.period)} 節【${escapePrintHtml(rec1.className)}】 改由 <strong>${teacherBName}</strong> 老師上課（${escapePrintHtml(rec1.subject)}）。</li>
-            <li>${escapePrintHtml(rec2.date)} 第 ${escapePrintHtml(rec2.period)} 節【${escapePrintHtml(rec2.className)}】 改由 <strong>${teacherAName}</strong> 老師上課（${escapePrintHtml(rec2.subject)}）。</li>
-          </ul>
-          <span style="font-size: 0.7rem; color: #64748b;">* 行政備註：${escapePrintHtml(g.note || '無')}</span>
-        </div>
-      `;
-      remarkHtml = `
-        <li>本聯由教學組留存歸檔核備。</li>
-      `;
-    }
-
-    const days = ['一', '二', '三', '四', '五'];
-    const targetDayText1 = getWeekDayText(new Date(rec1.date.replace(/-/g, '/')).getDay());
-    const targetDayText2 = getWeekDayText(new Date(rec2.date.replace(/-/g, '/')).getDay());
-
-    // 欄寬固定：節次 12% ＋ 五天各 13.6% ＋ 簽名 20% ＝ 100%
-    let tableHeader = '<tr><th style="width:12%;">星期<br>節次</th>';
-    days.forEach(d => {
-      const isTarget1 = d === targetDayText1;
-      const isTarget2 = d === targetDayText2 && targetDayText1 !== targetDayText2;
-      let headerDate = '';
-      if (isTarget1) headerDate = rec1.date.slice(5);
-      if (isTarget2) headerDate = rec2.date.slice(5);
-      tableHeader += `<th style="width:13.6%;${isTarget1 || isTarget2 ? 'background:#cbd5e1 !important;' : ''}">${escapePrintHtml(headerDate)}<br>${escapePrintHtml(d)}</th>`;
-    });
-    tableHeader += '<th style="width:20%; border-left: 1.5pt solid black !important;">調（代）課教師<br>簽名</th></tr>';
-
-    let tableBody = '';
-    for (let pi = 0; pi < printPeriodList.length; pi++) {
-      const p = printPeriodList[pi];
-      const rowStyle = p === 4 ? 'border-bottom: 2.5pt solid black !important;' : (p === 45 ? 'background:#f0fdfa !important;' : '');
-      let matchTeacherName = '';
-      days.forEach(d => {
-        const isTarget1 = (d === targetDayText1 && p === parseInt(rec1.period, 10));
-        const isTarget2 = (d === targetDayText2 && p === parseInt(rec2.period, 10));
-        if (isTarget1) {
-          const actualName = getTeacherNameByEmail(rec1.actualTeacherEmail);
-          matchTeacherName = escapePrintHtml(getPaperSignatureText(g, rec1.actualTeacherEmail, actualName));
-        } else if (isTarget2) {
-          const actualName = getTeacherNameByEmail(rec2.actualTeacherEmail);
-          matchTeacherName = escapePrintHtml(getPaperSignatureText(g, rec2.actualTeacherEmail, actualName));
-        }
-      });
-
-      tableBody += '<tr' + (rowStyle ? ` style="${rowStyle}"` : '') + '>';
-      tableBody += `<td style="background:#e2e8f0; font-weight:bold; text-align:center;">${escapePrintHtml(getPeriodChinese(p))}</td>`;
-      days.forEach(d => {
-        const isTarget1 = (d === targetDayText1 && p === parseInt(rec1.period, 10));
-        const isTarget2 = (d === targetDayText2 && p === parseInt(rec2.period, 10));
-        let cellContent = '';
-        let cellStyle = '';
-        if (isTarget1) {
-          cellContent = escapePrintHtml(rec1.subject);
-          cellStyle = 'background:#a1a1aa !important; font-weight:bold; text-align:center; font-size:0.75rem; color:#fff;';
-        } else if (isTarget2) {
-          cellContent = escapePrintHtml(rec2.subject);
-          cellStyle = 'background:#a1a1aa !important; font-weight:bold; text-align:center; font-size:0.75rem; color:#fff;';
-        }
-        tableBody += `<td style="${cellStyle}">${cellContent}</td>`;
-      });
-      const sigStyle = matchTeacherName ? 'font-weight:600; font-size:0.75rem; text-align:center; vertical-align:middle; background:#f1f5f9;' : '';
-      tableBody += `<td rowspan="2" style="border-left:1.5pt solid black !important; text-align:center; vertical-align:middle; ${sigStyle} ${rowStyle}">${matchTeacherName || ''}</td>`;
-      tableBody += '</tr>';
-
-      tableBody += '<tr>';
-      tableBody += `<td style="background:#e2e8f0; font-weight:bold; text-align:center; border-bottom: 1.5pt solid black !important;">班級</td>`;
-      days.forEach(d => {
-        const isTarget1 = (d === targetDayText1 && p === parseInt(rec1.period));
-        const isTarget2 = (d === targetDayText2 && p === parseInt(rec2.period));
-        let cellContent = '';
-        let cellStyle = '';
-        if (isTarget1) {
-          cellContent = escapePrintHtml(rec1.className);
-          cellStyle = 'background:#a1a1aa !important; font-weight:bold; text-align:center; font-size:0.75rem; color:#fff;';
-        } else if (isTarget2) {
-          cellContent = escapePrintHtml(rec2.className);
-          cellStyle = 'background:#a1a1aa !important; font-weight:bold; text-align:center; font-size:0.75rem; color:#fff;';
-        }
-        tableBody += `<td style="${cellStyle} border-bottom: 1.5pt solid black !important;">${cellContent}</td>`;
-      });
-      tableBody += '</tr>';
-    }
-
-    return `
-      <div class="substitute-form ${reprintClass}">
-        <div class="form-top-row">
-          <span class="form-tag">${titleLabel}</span>
-          <span class="lesson-code">單號：${serialText}</span>
-        </div>
-        <div class="header-block">
-          <h1 class="title">建成國中調代課通知單</h1>
-        </div>
-        <div class="info-row">
-        <span>班級：${escapePrintHtml([...new Set([rec1.className, rec2.className])].join(', '))}</span>
-          <span>教師：${teacherAName} ⇄ ${teacherBName}</span>
-        </div>
-        <table class="schedule-table"><thead>${tableHeader}</thead><tbody>${tableBody}</tbody></table>
-        <div class="footer-block">
-          <div class="desc" style="margin-bottom:4px;">${descHtml}</div>
-          <div class="remark-area">
-            <span style="font-weight:bold;">※ 備註說明：</span>
-            <ol class="remark-list">${remarkHtml.split('\n').filter(x => x.trim()).map(x => `<li>${escapePrintHtml(x.replace(/<\/?li>/g, ''))}</li>`).join('')}</ol>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  // --- 普通代課通知單 ---
-  const serialText = escapePrintHtml((g.serials || []).join(', '));
-  const leaveNames = (g.leaveEmails || [g.leaveEmail]).map(e => escapePrintHtml(getTeacherNameByEmail(e))).join('、');
-  const subName = escapePrintHtml(getTeacherNameByEmail(g.subEmail));
-  const reasonsStr = escapePrintHtml((g.reasons || [g.reason]).join('、'));
-
-  let remarkHtml = '';
-  let descHtml = '';
-  let titleLabel = '';
-
-  // 班級聯可能跨多位代課老師：逐節顯示代課人
-  // 教師聯／班級聯：不顯示假別、費用（僅教學組留存聯保留）
-  const periodListHtml = (g.periods || []).map(p => {
-    const subT = p.subEmail ? escapePrintHtml(getTeacherNameByEmail(p.subEmail)) : subName;
-    const leaveT = escapePrintHtml(getTeacherNameByEmail(p.leaveEmail));
-    const showFeeReason = currentType === 'Admin';
-    if (currentType === 'Class' && p.subEmail) {
-      return showFeeReason
-        ? `<li>${escapePrintHtml((p.date || '').toString().slice(5))} 第 ${escapePrintHtml(p.num)} 節【${escapePrintHtml(p.cls)}】(${escapePrintHtml(p.sub)}) – ${leaveT}→<strong>${subT}</strong>（${escapePrintHtml(p.reason)}，${escapePrintHtml(p.subFee)}）</li>`
-        : `<li>${escapePrintHtml((p.date || '').toString().slice(5))} 第 ${escapePrintHtml(p.num)} 節【${escapePrintHtml(p.cls)}】(${escapePrintHtml(p.sub)}) – ${leaveT}→<strong>${subT}</strong></li>`;
-    }
-    return showFeeReason
-      ? `<li>第 ${escapePrintHtml(p.num)} 節【${escapePrintHtml(p.cls)}】(${escapePrintHtml(p.sub)}) – ${leaveT}（${escapePrintHtml(p.reason)}，${escapePrintHtml(p.subFee)}）</li>`
-      : `<li>第 ${escapePrintHtml(p.num)} 節【${escapePrintHtml(p.cls)}】(${escapePrintHtml(p.sub)}) – ${leaveT}</li>`;
-  }).join('');
-
-  const isQuotaDeductFee = (f) => {
-    const s = String(f || '');
-    return s === '扣額度' || s === '互代不結';
-  };
-  const isMutualCover = isQuotaDeductFee(g.subFee)
-    || (g.periods || []).some(p => isQuotaDeductFee(p.subFee));
-  const multiSubNames = [...new Set((g.periods || []).map(p => p.subEmail).filter(Boolean).map(e => escapePrintHtml(getTeacherNameByEmail(e))))];
-  const subNamesStr = multiSubNames.length > 1 ? multiSubNames.join('、') : subName;
-
-  if (currentType === 'Teacher') {
-    // 教師聯：只給「對方／代課教師」；不顯示假別、費用
-    titleLabel = `教師聯 (給 ${subName} 老師)`;
-    // 事由不一定是請假（公假／活動／課務異動等）
-    const reasonBrief = (reasonsStr && reasonsStr !== '—' && reasonsStr !== '請假')
-      ? `因 <strong>${reasonsStr}</strong>，`
-      : '';
-    descHtml = `<div style="line-height: 1.3; font-size: 0.75rem; color: #1e293b;"><strong>${leaveNames}</strong> 老師${reasonBrief}由 <strong>${subName}</strong> 老師代課。共計 <strong>${g.periods.length}</strong> 節：<ul style="margin:2px 0 0 14px;padding:0;">${periodListHtml}</ul></div>`;
-    remarkHtml = `
-      <li>若屬請假，請原任課教師上校務系統完成請假程序。</li>
-      <li>實際上課老師請確實於教室日誌上簽名。</li>
-      <li>請原任課教師向代課教師轉達各班上課進度。</li>
-    `;
-  } else if (currentType === 'Class') {
-    // 班級聯：不顯示假別、費用、摘要句（僅節次清單）
-    titleLabel = '班級聯 (貼於教室日誌)';
-    descHtml = `<div style="line-height: 1.3; font-size: 0.75rem; color: #1e293b;"><ul style="margin:2px 0 0 14px;padding:0;">${periodListHtml}</ul></div>`;
-    remarkHtml = `
-      <li>請學藝股長確實將此通知單貼於教室日誌旁備查。</li>
-      <li>實際上課老師請確實於教室日誌上簽章。</li>
-    `;
-  } else {
-    titleLabel = '教學組留存聯';
-    if (isMutualCover) {
-      descHtml = `<div style="line-height: 1.3; font-size: 0.75rem; color: #1e293b;"><strong>${leaveNames}</strong> 老師因 <strong>${reasonsStr}</strong>（活動互代），由 <strong>${subName}</strong> 老師代課。<strong style="color:#6b21a8;">經費：扣額度</strong>。共 <strong>${g.periods.length}</strong> 節：<ul style="margin:2px 0 0 14px;padding:0;">${periodListHtml}</ul><br><span style="font-size:0.7rem; color:#64748b;">* 行政備註：${escapePrintHtml(g.note || '無')}</span></div>`;
-    } else {
-      descHtml = `<div style="line-height: 1.3; font-size: 0.75rem; color: #1e293b;"><strong>${leaveNames}</strong> 老師因 <strong>${reasonsStr}</strong>，由 <strong>${subName}</strong> 老師代課。經費來源：<strong>${escapePrintHtml(g.subFee)}</strong>。共 <strong>${g.periods.length}</strong> 節：<ul style="margin:2px 0 0 14px;padding:0;">${periodListHtml}</ul><br><span style="font-size:0.7rem; color:#64748b;">* 行政備註：${escapePrintHtml(g.note || '無')}</span></div>`;
-    }
-    remarkHtml = `
-      <li>本聯由教學組存查核帳。</li>
-      ${isMutualCover ? '<li>扣額度：不計入代課費與請假扣減鐘點，並扣代課老師折抵額度。</li>' : ''}
-    `;
-  }
-
-  const days = ['一', '二', '三', '四', '五'];
-  const dayIdx = ['日', '一', '二', '三', '四', '五', '六'];
-  // 欄寬固定：節次 12% ＋ 五天各 13.6% ＋ 簽名 20% ＝ 100%
-  let tableHeader = '<tr><th style="width:12%;">星期<br>節次</th>';
-  days.forEach(d => {
-    const periodOnDay = g.periods.find(x => dayIdx[new Date(x.date + 'T00:00:00').getDay()] === d);
-    const headerDate = periodOnDay ? periodOnDay.date.slice(5) : '';
-    const hasPeriod = !!periodOnDay;
-    tableHeader += `<th style="width:13.6%;${hasPeriod ? 'background:#bfdbfe !important;' : ''}">${escapePrintHtml(headerDate)}<br>${escapePrintHtml(d)}</th>`;
+function uniquePrintValues(values) {
+  const seen = new Set();
+  return (values || []).map(value => String(value == null ? '' : value).trim()).filter(value => {
+    if (!value || seen.has(value)) return false;
+    seen.add(value);
+    return true;
   });
-  tableHeader += '<th style="width:20%; border-left: 1.5pt solid black !important;">調（代）課教師<br>簽名</th></tr>';
+}
 
-  let tableBody = '';
-  for (let pi = 0; pi < printPeriodList.length; pi++) {
-    const p = printPeriodList[pi];
-    const rowStyle = p === 4 ? 'border-bottom: 2.5pt solid black !important;' : '';
-    tableBody += '<tr>';
-    tableBody += `<td style="background:#f8fafc; font-weight:bold; text-align:center;">${escapePrintHtml(getPeriodChinese(p))}</td>`;
-    days.forEach(d => {
-      const matchPeriod = g.periods.find(x => parseInt(x.num, 10) === parseInt(p, 10) && dayIdx[new Date(x.date + 'T00:00:00').getDay()] === d);
-      let cellContent = '';
-      let cellStyle = '';
-      if (matchPeriod) {
-        cellContent = escapePrintHtml(matchPeriod.sub);
-        cellStyle = 'background:#fef08a !important; font-weight:bold; text-align:center; font-size:0.75rem;';
-      }
-      tableBody += `<td style="${cellStyle}">${cellContent}</td>`;
-    });
-    const hasAnyPeriod = g.periods.some(x => x.num === p);
-    const sigStyle = hasAnyPeriod ? 'font-weight:600; font-size:0.75rem; text-align:center; vertical-align:middle; background:#fcffef;' : '';
-    const signatureNames = g.subEmailAll && g.subEmailAll.length ? g.subEmailAll : [g.subEmail];
-    const signatureText = hasAnyPeriod
-      ? getPaperGroupSignatureText(g, signatureNames.map(function (email) { return getTeacherNameByEmail(email); }))
-      : '';
-    const normalSignature = hasAnyPeriod ? signatureNames.map(function (email) { return getTeacherNameByEmail(email); }).filter(Boolean).join('、') : '';
-    tableBody += `<td rowspan="2" style="border-left:1.5pt solid black !important; text-align:center; vertical-align:middle; ${sigStyle} ${rowStyle}">${escapePrintHtml(g.isPaperDraft ? signatureText : normalSignature)}</td>`;
-    tableBody += '</tr>';
+function getPrintDateParts(value) {
+  const match = String(value || '').match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if (!match) return null;
+  const year = parseInt(match[1], 10);
+  const month = parseInt(match[2], 10);
+  const day = parseInt(match[3], 10);
+  const date = new Date(year, month - 1, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
+  return { year, month, day, date, key: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}` };
+}
 
-    tableBody += '<tr>';
-    tableBody += `<td style="background:#f8fafc; font-weight:bold; text-align:center; border-bottom: 1.5pt solid black !important;">班級</td>`;
-    days.forEach(d => {
-      const matchPeriod = g.periods.find(x => x.num === p && dayIdx[new Date(x.date + 'T00:00:00').getDay()] === d);
-      let cellContent = '';
-      let cellStyle = '';
-      if (matchPeriod) {
-        cellContent = escapePrintHtml(matchPeriod.cls);
-        cellStyle = 'background:#fef08a !important; font-weight:bold; text-align:center; font-size:0.75rem;';
-      }
-      tableBody += `<td style="${cellStyle} border-bottom: 1.5pt solid black !important;">${cellContent}</td>`;
-    });
-    tableBody += '</tr>';
+function getPrintWeekKey(value) {
+  const parts = getPrintDateParts(value);
+  if (!parts) return '';
+  const monday = new Date(parts.date);
+  const day = monday.getDay();
+  monday.setDate(monday.getDate() + (day === 0 ? -6 : 1 - day));
+  return `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`;
+}
+
+function getPrintWeekDates(anchor) {
+  const parts = getPrintDateParts(anchor);
+  if (!parts) return ['', '', '', '', ''];
+  const monday = new Date(parts.date);
+  const day = monday.getDay();
+  monday.setDate(monday.getDate() + (day === 0 ? -6 : 1 - day));
+  return Array.from({ length: 5 }, function (_, index) {
+    const date = new Date(monday);
+    date.setDate(monday.getDate() + index);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  });
+}
+
+function formatPrintMonthDay(value) {
+  const parts = getPrintDateParts(value);
+  return parts ? `${parts.month}/${parts.day}` : '';
+}
+
+function formatPrintRocDate(value, time) {
+  const parts = getPrintDateParts(value);
+  if (!parts) return '';
+  const hourMatch = String(time || '').match(/(?:^|\D)(\d{1,2})(?::\d{2})?/);
+  const hour = hourMatch ? parseInt(hourMatch[1], 10) : null;
+  return `${parts.year - 1911}年${parts.month}月${parts.day}日${hour != null && !Number.isNaN(hour) ? `${hour}時` : ''}`;
+}
+
+function parsePrintTimeRange(records) {
+  const source = (records || []).map(record => String(record && record.leaveTime || '').trim()).find(Boolean) || '';
+  const type = (records || []).map(record => String(record && record.leaveTimeType || '').trim()).find(Boolean) || '';
+  const match = source.match(/(\d{1,2}(?::\d{2})?)\s*[~～至到\-－]\s*(\d{1,2}(?::\d{2})?)/);
+  if (match) return { start: match[1], end: match[2] };
+  if (/上午/.test(source) || /上午/.test(type)) return { start: '08:00', end: '12:00' };
+  if (/下午/.test(source) || /下午/.test(type)) return { start: '12:00', end: '16:00' };
+  if (/全天/.test(source) || /全天/.test(type)) return { start: '08:00', end: '16:00' };
+  return { start: '', end: '' };
+}
+
+function isPrintLeaveLikeReason(reason) {
+  const value = String(reason || '').trim();
+  if (!value || value === '請假') return true;
+  if (value === '空堂排班') return false;
+  return /公假|事假|病假|婚假|喪假|產假|娩假|生理假|身心調適|家庭照顧|育嬰|安胎|產檢|陪產|防疫|特休|休假|補休|其他|公差|公出|外出|研習|進修|請假|假$/.test(value);
+}
+
+function getPrintTeacherKey(record, side) {
+  if (!record) return '';
+  if (side === 'actual') return String(record.actualTeacherEmail || record.actualTeacherName || '').trim();
+  return String(record.originalTeacherEmail || record.originalTeacherName || record.leaveEmail || '').trim();
+}
+
+function cleanPrintTeacherName(value) {
+  return String(value || '').replace(/\s*老師\s*$/, '').trim();
+}
+
+function getPrintSlotRows(group) {
+  if (group && group.weekRows) return group.weekRows;
+  if (!group) return [];
+  if (group.isExchange) {
+    return (group.records || []).map(record => ({
+      date: record.date,
+      period: record.period,
+      cls: record.className,
+      sub: record.subject,
+      actualTeacherEmail: getPrintTeacherKey(record, 'actual'),
+      actualTeacherName: record.actualTeacherName,
+       leaveEmail: getPrintTeacherKey(record, 'original'),
+       reason: record.reason || group.reason || '',
+       note: record.note || group.note || '',
+       leaveTimeType: record.leaveTimeType || '',
+       leaveTime: record.leaveTime || '',
+       subFee: record.subFee || group.subFee || ''
+    }));
   }
+  if (group.periods && group.periods.length) return group.periods;
+  return (group.records || []).map(record => ({
+    date: record.date,
+    num: record.period,
+    cls: record.className,
+    sub: record.subject,
+    actualTeacherEmail: getPrintTeacherKey(record, 'actual'),
+    actualTeacherName: record.actualTeacherName,
+     leaveEmail: getPrintTeacherKey(record, 'original'),
+     reason: record.reason || group.reason || '',
+     note: record.note || group.note || '',
+     leaveTimeType: record.leaveTimeType || '',
+     leaveTime: record.leaveTime || '',
+     subFee: record.subFee || group.subFee || ''
+  }));
+}
+
+function resolvePrintProcessingType(group, rows) {
+  const explicit = String(group && (group.processingType || group.processType) || '').trim().toLowerCase();
+  const type = explicit || String((group && group.records && group.records[0] && group.records[0].type) || '').trim().toLowerCase();
+  if (type === 'exchange' || type === '對調' || type === '調課' || /調課/.test(explicit)) return '調課';
+  if (type === 'makeup' || type === '補課' || /補課/.test(explicit)) return '補課';
+  if ((rows || []).some(row => /補課/.test(String(row && row.reason || '')))) return '補課';
+  return '代課';
+}
+
+function renderPrintCheckbox(label, checked) {
+  return `<span class="official-checkbox${checked ? ' is-checked' : ''}">${checked ? '■' : '□'}${escapePrintHtml(label)}</span>`;
+}
+
+function getPrintSignatureText(group, rows, ctx, getName) {
+  const entries = [];
+  (rows || []).forEach(row => {
+    const key = String(row.actualTeacherEmail || row.actualTeacherName || '').trim();
+    const name = cleanPrintTeacherName(row.actualTeacherName || getName(key));
+    const identity = key.toLowerCase() || name.toLowerCase();
+    if (!name || entries.some(entry => entry.identity === identity)) return;
+    entries.push({ key, name, identity });
+  });
+  const admin = ctx.isAdmin === true || !!(ctx.isAdmin && ctx.isAdmin.value === true);
+  return entries.map(entry => {
+    const fallback = admin ? entry.name : '';
+    return group && group.isPaperDraft
+      ? getPaperSignatureText(group, entry.key, fallback)
+      : fallback;
+  }).filter(Boolean).join('、');
+}
+
+function generateFormHtml(g, currentType, ctx) {
+  ctx = ctx || {};
+  const getName = typeof ctx.getTeacherNameByEmail === 'function'
+    ? ctx.getTeacherNameByEmail
+    : function (value) { return String(value || ''); };
+  const getJobTitle = typeof ctx.getTeacherJobTitleByEmail === 'function'
+    ? ctx.getTeacherJobTitleByEmail
+    : function () { return ''; };
+  const rows = getPrintSlotRows(g);
+  const sourceRecords = (g && g.records && g.records.length) ? g.records : rows;
+  const serials = uniquePrintValues([
+    ...((g && g.serials) || []),
+    ...(sourceRecords || []).map(record => record && record.serial),
+    ...(rows || []).map(row => row && row.serial)
+  ]);
+  const serialMark = serials.length
+    ? `<div class="official-serial-mark">單號：${serials.map(escapePrintHtml).join('、')}</div>`
+    : '';
+  const applicantRecord = g && g.requesterEmail
+    ? null
+    : (g && g.isExchange
+      ? (sourceRecords.find(record => /_2$/.test(String(record.id || ''))) || sourceRecords[0])
+      : sourceRecords[0]);
+  const applicantKey = String((g && g.requesterEmail) || getPrintTeacherKey(applicantRecord, 'original') || '').trim();
+  const rawApplicantName = String((g && g.requesterName) || '').trim();
+  const applicantName = cleanPrintTeacherName(
+    rawApplicantName && !/@/.test(rawApplicantName) ? rawApplicantName : getName(applicantKey)
+  );
+  const applicantJob = String((g && g.jobTitle) || getJobTitle(applicantKey) || '').trim() || '教師';
+  const processingType = resolvePrintProcessingType(g || {}, rows);
+  const reasons = uniquePrintValues([
+    ...(g && g.reasons || []),
+    ...(rows || []).map(row => row.reason),
+    g && g.reason
+  ]);
+  const reason = reasons[0] || '';
+  const isLeave = reasons.length ? reasons.every(isPrintLeaveLikeReason) : true;
+  const notes = uniquePrintValues([
+    g && g.note,
+    ...(sourceRecords || []).map(record => record && record.note)
+  ]);
+  const administrativeNote = notes.join('；');
+  const dateSourceRecords = rows.length ? rows : sourceRecords;
+  const rangeRecords = g && g.isExchange
+    ? dateSourceRecords.filter(record => getPrintTeacherKey(record, 'original').toLowerCase() === applicantKey.toLowerCase())
+    : dateSourceRecords;
+  const dateRecords = (rangeRecords.length ? rangeRecords : sourceRecords).filter(record => getPrintDateParts(record.date));
+  const dates = dateRecords.map(record => getPrintDateParts(record.date).key).sort();
+  const startDate = dates[0] || '';
+  const endDate = dates[dates.length - 1] || startDate;
+  const timeRange = parsePrintTimeRange(dateRecords);
+  const dateRange = startDate
+    ? `自${formatPrintRocDate(startDate, timeRange.start)}<br>至${formatPrintRocDate(endDate, timeRange.end)}`
+    : '';
+  const weekDates = getPrintWeekDates((g && g.anchorDate) || (rows[0] && rows[0].date));
+  const days = ['一', '二', '三', '四', '五'];
+  const periods = [1, 2, 3, 4, 5, 6, 7, 8];
+  const dayCols = [3, 3, 1, 3, 2];
+  const colWidths = [417, 400, 172, 137, 416, 461, 232, 708, 75, 1014, 74, 680, 261, 608, 407, 302, 851];
+  const colgroup = colWidths.map(width => `<col style="width:${(width / 7215 * 100).toFixed(4)}%">`).join('');
+  const reprintClass = g && g.isReprint ? ' is-reprint' : '';
+  const scheduleCell = (date, period, property) => {
+    const matches = rows.filter(row => String(row.date || '') === date && parseInt(row.num != null ? row.num : row.period, 10) === period);
+    return uniquePrintValues(matches.map(row => row[property])).join('／');
+  };
+  const headerCells = days.map((day, index) => `
+    <th colspan="${dayCols[index]}" class="official-day-header">
+      <span>${day}</span><br><span class="official-day-date">${escapePrintHtml(formatPrintMonthDay(weekDates[index]))}</span>
+    </th>`).join('');
+  const bodyRows = periods.map(period => {
+    const periodRows = rows.filter(row => parseInt(row.num != null ? row.num : row.period, 10) === period);
+    const subjectCells = days.map((_, index) => {
+      const value = scheduleCell(weekDates[index], period, 'sub');
+      return `<td colspan="${dayCols[index]}" class="official-slot-value">${escapePrintHtml(value)}</td>`;
+    }).join('');
+    const classCells = days.map((_, index) => {
+      const value = scheduleCell(weekDates[index], period, 'cls');
+      return `<td colspan="${dayCols[index]}" class="official-slot-value official-class-value">${escapePrintHtml(value)}</td>`;
+    }).join('');
+    const label = ['', '第一節', '第二節', '第三節', '第四節', '第五節', '第六節', '第七節', '第八節'][period];
+    const periodSignature = getPrintSignatureText(g || {}, periodRows, ctx, getName);
+    const signatureCell = `<td colspan="2" class="official-signature-cell">${periodSignature ? `<span class="official-signature-name">${escapePrintHtml(periodSignature)}</span>` : ''}</td>`;
+    return `
+      <tr class="official-subject-row">
+        <td colspan="3" class="official-row-label">${label}</td>${subjectCells}${signatureCell}
+      </tr>
+      <tr class="official-class-row">
+        <td colspan="3" class="official-row-label">班級</td>${classCells}<td colspan="2" class="official-signature-cell"></td>
+      </tr>`;
+  }).join('');
+  const processingBoxes = ['調課', '代課', '補課'].map(label => `<div>${renderPrintCheckbox(label, processingType === label)}</div>`).join('');
+  const leaveDate = isLeave ? dateRange : '';
+  const courseReason = isLeave
+    ? administrativeNote
+    : uniquePrintValues([reason === '請假' ? '' : reason, administrativeNote]).join('；') || '課務調整';
+  const reasonLine = `假別：${isLeave ? escapePrintHtml(reason || '請假') : ''}`;
+  const instructions = '1.請於填寫線上假單時填妥課務安排情形，紙本送教務處備查。2.請先確認班級特教學生課務，有特教生抽離請通知特教組。3.代課以同科教師為原則，並先行將課務交代該代課老師。4.補課請自覓時間，於二週內完成。';
 
   return `
-    <div class="substitute-form ${reprintClass}">
-      <div class="form-top-row">
-        <span class="form-tag">${titleLabel}</span>
-        <span class="lesson-code">單號：${serialText}</span>
-      </div>
-      <div class="header-block">
-        <h1 class="title">建成國中調代課通知單</h1>
-      </div>
-      <div class="info-row">
-        <span>班級：${escapePrintHtml([...new Set(g.periods.map(x => x.cls))].join('、'))}</span>
-        <span>${currentType === 'Teacher' ? `共 ${g.periods.length} 節 | ${leaveNames} ➔ ${subNamesStr}` : `共 ${g.periods.length} 節`}</span>
-      </div>
-      <table class="schedule-table"><thead>${tableHeader}</thead><tbody>${tableBody}</tbody></table>
-      <div class="footer-block">
-        <div class="desc" style="margin-bottom:4px;">${descHtml}</div>
-        <div class="remark-area">
-          <span style="font-weight:bold;">※ 備註說明：</span>
-          <ol class="remark-list">${remarkHtml.split('\n').filter(x => x.trim()).map(x => `<li>${escapePrintHtml(x.replace(/<\/?li>/g, ''))}</li>`).join('')}</ol>
-        </div>
-      </div>
+    <div class="substitute-form official-substitution-form${reprintClass}">
+      ${serialMark}
+      <table class="official-form-table">
+        <colgroup>${colgroup}</colgroup>
+        <tbody>
+          <tr class="official-title-row"><td colspan="17">臺北市立建成國民中學代（調、補）課請示單暨班級通知單</td></tr>
+          <tr class="official-info-row">
+             <td class="official-label">職<br>別</td><td colspan="3" class="official-value official-job-value">${escapePrintHtml(applicantJob)}</td>
+             <td class="official-label">姓<br>名</td><td colspan="3" class="official-value official-name-value">${escapePrintHtml(applicantName)}老師</td>
+             <td colspan="3" class="official-label">職務<br>代理人</td><td colspan="3" class="official-value official-proxy-value">老師</td>
+             <td colspan="2" class="official-label">處理<br>方式</td><td class="official-processing-cell">${processingBoxes}</td>
+          </tr>
+          <tr class="official-leave-row">
+             <td rowspan="2" colspan="2" class="official-label">請勾選</td>
+             <td colspan="5" class="official-check-option">${renderPrintCheckbox('請假', isLeave)}</td>
+             <td rowspan="2" colspan="5" class="official-date-cell">${leaveDate}</td>
+             <td colspan="5" class="official-reason-cell">${reasonLine}</td>
+           </tr>
+           <tr class="official-course-row">
+             <td colspan="5" class="official-check-option">${renderPrintCheckbox('僅課務申請(非請假)', !isLeave)}</td>
+             <td colspan="5" class="official-reason-cell">原因：${escapePrintHtml(courseReason)}</td>
+          </tr>
+          <tr class="official-section-row"><td colspan="15">代（調、補）課情形★★請註明科目、日期★★</td><td colspan="2" class="official-signature-header">代課教師</td></tr>
+          <tr class="official-schedule-header">
+            <td colspan="3" class="official-row-label">星期<br>節次</td>${headerCells}<td colspan="2" class="official-signature-header"></td>
+          </tr>
+          ${bodyRows}
+          <tr class="official-instruction-row"><td colspan="17">${escapePrintHtml(instructions)}</td></tr>
+        </tbody>
+      </table>
     </div>
   `;
 }
@@ -422,110 +370,287 @@ function isPrintExchangeRec(r) {
   return /_[12]$/.test(String(r.id || '')) && !!(r.targetDate || r.targetPeriod);
 }
 
+function normalizePrintMergeKey(value) {
+  return String(value == null ? '' : value).trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function getPrintRecordTypeKey(record) {
+  if (isPrintExchangeRec(record)) return 'exchange';
+  const type = String(record && record.type || '').trim().toLowerCase();
+  const reason = String(record && record.reason || '').trim();
+  if (type === 'makeup' || type === '補課' || /補課/.test(type) || /補課/.test(reason)) return 'makeup';
+  return 'substitution';
+}
+
+function getPrintMergeKey(record) {
+  const type = getPrintRecordTypeKey(record);
+  const requestId = resolvePrintRequestId(record);
+  const rowId = String(record && record.id || '').trim();
+  if (type === 'exchange') return `exchange:${requestId || rowId}`;
+
+  const week = getPrintWeekKey(record && record.date);
+  const actualTeacher = normalizePrintMergeKey(getPrintTeacherKey(record, 'actual'));
+  const originalTeacher = normalizePrintMergeKey(getPrintTeacherKey(record, 'original'));
+  const className = normalizePrintMergeKey(record && record.className);
+  if (!week || !actualTeacher || !originalTeacher || !className) {
+    return `request:${requestId || rowId}:row:${rowId}`;
+  }
+
+  const leaveMode = isPrintLeaveLikeReason(record && record.reason) ? 'leave' : 'course';
+  return `merge:${JSON.stringify([week, type, actualTeacher, className, originalTeacher, leaveMode])}`;
+}
+
 /**
- * 代課紀錄合併：
- * - 教師聯：同一「被代課教師」合併
- * - 班級聯：同一「班級」合併（產版面時再切）
- * 調課仍依 requestId 一組（勿因 requestId 空而併成 exc_undefined）
+ * 一般代課／補課可跨申請單合併；調課仍以完整雙向申請單為單位。
+ * 合併條件：同週、同處理方式、同代課教師、同班級、同請假教師、同請假模式。
  */
 function buildPrintGroups(recordsToPrint, allSubs) {
-  const groups = {};
-  recordsToPrint.forEach(r => {
-    const rReason = r.reason || '請假';
-    if (isPrintExchangeRec(r)) {
-      const rid = resolvePrintRequestId(r);
-      // 每筆調課必須獨立 key；rid 空時用 id 避免多筆互併
-      const key = rid ? ('exc_' + rid) : ('exc_id_' + String(r.id || Math.random()));
-      if (!groups[key]) {
-        groups[key] = {
-          isExchange: true,
-          requestId: rid || r.id,
-          serials: [r.serial],
-          isReprint: r.printed,
-          isPaperDraft: !!r.isPaperDraft,
-          signatureByTeacher: Object.assign({}, r.signatureByTeacher || {}),
-          note: r.note || '',
-          reason: rReason,
-          records: [r]
-        };
-      } else {
-        if (!groups[key].records.some(x => x.id === r.id)) {
-          groups[key].records.push(r);
-          groups[key].serials.push(r.serial);
-        }
-        if (r.printed) groups[key].isReprint = true;
-        if (r.isPaperDraft) groups[key].isPaperDraft = true;
-        Object.assign(groups[key].signatureByTeacher, r.signatureByTeacher || {});
-      }
-    } else {
-      // 教師聯合併鍵：代課老師（actual）
-      const subKey = String(r.actualTeacherEmail || '').toLowerCase();
-      const rid = resolvePrintRequestId(r);
-      const key = 'sub_' + (subKey || rid || r.id);
-      if (!groups[key]) {
-        groups[key] = {
-          isExchange: false,
-          serials: [r.serial],
-          leaveEmails: [r.originalTeacherEmail],
-          subEmail: r.actualTeacherEmail,
-          date: r.date,
-          dates: [r.date],
-          reasons: [rReason],
-          subFee: r.subFee || '自費代課',
-          note: r.note || '',
-          periods: [],
-          isReprint: r.printed,
-          isPaperDraft: !!r.isPaperDraft,
-          signatureByTeacher: Object.assign({}, r.signatureByTeacher || {})
-        };
-      } else {
-        if (r.serial && !groups[key].serials.includes(r.serial)) groups[key].serials.push(r.serial);
-        if (!groups[key].leaveEmails.includes(r.originalTeacherEmail)) groups[key].leaveEmails.push(r.originalTeacherEmail);
-        if (!groups[key].dates.includes(r.date)) groups[key].dates.push(r.date);
-        if (!groups[key].reasons.includes(rReason)) groups[key].reasons.push(rReason);
-        if (r.printed) groups[key].isReprint = true;
-        if (r.isPaperDraft) groups[key].isPaperDraft = true;
-        Object.assign(groups[key].signatureByTeacher, r.signatureByTeacher || {});
-      }
-      groups[key].periods.push({
-        date: r.date,
-        num: parseInt(r.period, 10),
-        cls: r.className,
-        sub: r.subject,
-        leaveEmail: r.originalTeacherEmail,
-        reason: rReason,
-        subFee: r.subFee || '自費代課'
-      });
+  const groups = Object.create(null);
+  const records = Array.isArray(recordsToPrint) ? recordsToPrint : [];
+
+  const addRecord = function (group, record) {
+    if (!record || group.records.some(item => item.id === record.id)) return;
+    const reason = record.reason || '請假';
+    group.records.push(record);
+    if (record.serial && !group.serials.includes(record.serial)) group.serials.push(record.serial);
+    const originalKey = getPrintTeacherKey(record, 'original');
+    const actualKey = getPrintTeacherKey(record, 'actual');
+    if (originalKey && !group.leaveEmails.includes(originalKey)) group.leaveEmails.push(originalKey);
+    if (actualKey && !group.subEmails.includes(actualKey)) group.subEmails.push(actualKey);
+    if (record.date && !group.dates.includes(record.date)) group.dates.push(record.date);
+    if (reason && !group.reasons.includes(reason)) group.reasons.push(reason);
+    if (!group.note && record.note) group.note = record.note;
+    if (!group.subFee && record.subFee) group.subFee = record.subFee;
+    if (record.printed) group.isReprint = true;
+    if (record.isPaperDraft) group.isPaperDraft = true;
+    Object.assign(group.signatureByTeacher, record.signatureByTeacher || {});
+  };
+
+  records.forEach(function (record) {
+    const exchange = isPrintExchangeRec(record);
+    const requestId = resolvePrintRequestId(record);
+    const key = getPrintMergeKey(record);
+    if (!groups[key]) {
+      groups[key] = {
+        isExchange: exchange,
+        requestId: requestId || record.id,
+        serials: [],
+        leaveEmails: [],
+        subEmails: [],
+        dates: [],
+        reasons: [],
+        subFee: record.subFee || '',
+        note: record.note || '',
+        records: [],
+        periods: [],
+        isReprint: false,
+        isPaperDraft: false,
+        signatureByTeacher: {}
+      };
     }
+    addRecord(groups[key], record);
   });
 
   const groupList = Object.values(groups);
-  groupList.forEach(g => {
-    if (g.isExchange) {
-      if (g.records.length === 1) {
-        const rid = String(g.requestId || resolvePrintRequestId(g.records[0]) || '');
-        const curId = g.records[0].id;
-        const match = (allSubs || []).find(function (x) {
-          if (!x || x.id === curId) return false;
-          const xRid = resolvePrintRequestId(x);
-          if (rid && xRid && xRid === rid) return true;
-          // 後備：同主 id 的 _1/_2 成對
-          const base = String(curId || '').replace(/_[12]$/, '');
-          const xBase = String(x.id || '').replace(/_[12]$/, '');
-          return !!(base && xBase && base === xBase && /_[12]$/.test(String(x.id || '')));
-        });
-        if (match) {
-          g.records.push(match);
-          g.serials.push(match.serial);
-        }
-      }
-      g.records.sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || (parseInt(a.period, 10) || 0) - (parseInt(b.period, 10) || 0));
-    } else if (g.periods && g.periods.length) {
-      g.periods.sort((a, b) => String(a.date).localeCompare(String(b.date)) || a.num - b.num);
-      g.serials = compactSerials(g.serials);
+  groupList.forEach(function (group) {
+    if (group.isExchange && group.records.length === 1) {
+      const current = group.records[0];
+      const requestId = String(group.requestId || '');
+      const base = String(current.id || '').replace(/_[12]$/, '');
+      const peer = (allSubs || []).find(function (candidate) {
+        if (!candidate || candidate.id === current.id) return false;
+        const candidateRequestId = resolvePrintRequestId(candidate);
+        if (requestId && candidateRequestId && requestId === candidateRequestId) return true;
+        const candidateBase = String(candidate.id || '').replace(/_[12]$/, '');
+        return !!(base && candidateBase && base === candidateBase && /_[12]$/.test(String(candidate.id || '')));
+      });
+      if (peer) addRecord(group, peer);
     }
+
+    group.records.sort((a, b) => String(a.date || '').localeCompare(String(b.date || ''))
+      || (parseInt(a.period, 10) || 0) - (parseInt(b.period, 10) || 0));
+    group.reasons = uniquePrintValues(group.reasons);
+    group.reason = group.reasons[0] || '請假';
+    group.leaveEmail = group.leaveEmails[0] || '';
+    group.subEmail = group.subEmails[0] || '';
+    group.subEmailAll = group.subEmails.slice();
+    const applicant = group.isExchange
+      ? (group.records.find(record => /_2$/.test(String(record.id || ''))) || group.records[0])
+      : group.records[0];
+    group.requesterEmail = getPrintTeacherKey(applicant, 'original');
+    group.requesterName = applicant && applicant.originalTeacherName || '';
+    group.periods = group.records.map(function (record) {
+      return {
+        date: record.date,
+        num: parseInt(record.period, 10),
+        cls: record.className,
+        sub: record.subject,
+        actualTeacherEmail: getPrintTeacherKey(record, 'actual'),
+        actualTeacherName: record.actualTeacherName || '',
+         leaveEmail: getPrintTeacherKey(record, 'original'),
+         reason: record.reason || group.reason,
+         leaveTimeType: record.leaveTimeType || '',
+         leaveTime: record.leaveTime || '',
+         subFee: record.subFee || group.subFee || ''
+      };
+    });
+    group.serials = uniquePrintValues(group.serials);
+    group.compactSerials = compactSerials(group.serials);
   });
   return groupList;
+}
+
+function splitPrintGroupByWeek(group) {
+  const rows = getPrintSlotRows(group);
+  const buckets = Object.create(null);
+  rows.forEach(function (row) {
+    const key = getPrintWeekKey(row.date) || 'unknown';
+    if (!buckets[key]) buckets[key] = [];
+    buckets[key].push(row);
+  });
+  const keys = Object.keys(buckets);
+  if (!keys.length) return [group];
+  return keys.sort().map(function (key) {
+    const clone = Object.assign({}, group);
+    clone.weekRows = buckets[key].slice();
+    clone.anchorDate = clone.weekRows[0] && clone.weekRows[0].date;
+    return clone;
+  });
+}
+
+function packPrintForms(forms) {
+  return (forms || []).map(function (form) {
+    return `
+      <div class="print-page">
+        ${form}
+        <div class="cut-line"></div>
+        ${form}
+      </div>
+    `;
+  }).join('');
+}
+
+function getSelectedPrintRecords(ctx) {
+  try {
+    if (typeof document !== 'undefined') {
+      const ids = [];
+      document.querySelectorAll('.hist-select-cb:checked').forEach((el) => {
+        const id = el.getAttribute('data-rec-id') || el.value;
+        if (id) ids.push(id);
+      });
+      if (ids.length && ctx.selectedRecordIds) ctx.selectedRecordIds.value = ids;
+    }
+  } catch (eSync) { /* ignore */ }
+
+  const ids = ctx.selectedRecordIds && Array.isArray(ctx.selectedRecordIds.value)
+    ? ctx.selectedRecordIds.value.slice()
+    : [];
+  const records = ctx.substitutionRecords && Array.isArray(ctx.substitutionRecords.value)
+    ? ctx.substitutionRecords.value.filter(r => ids.includes(r.id))
+    : [];
+  return { ids, records };
+}
+
+function buildPrintForms(recordsToPrint, allSubs, ctx) {
+  const groupList = buildPrintGroups(recordsToPrint, allSubs);
+  const forms = [];
+  groupList.forEach(function (group) {
+    splitPrintGroupByWeek(group).forEach(function (weekGroup) {
+      forms.push(generateFormHtml(weekGroup, 'Official', ctx));
+    });
+  });
+  return forms.filter(Boolean);
+}
+
+function getPrintPreviewCss() {
+  return `
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: #e2e8f0; color: #000; }
+    body { font-family: "DFKai-SB", "標楷體", "BiauKai", "Noto Serif TC", serif; }
+    .print-preview-stack { display: flex; flex-direction: column; align-items: center; gap: 8mm; min-width: 158mm; padding: 8mm 4mm 12mm; }
+    .print-preview-item { width: 158mm; min-height: 170mm; padding: 6mm 12.7mm 7mm; background: #fff; box-shadow: 0 1px 8px rgba(15, 23, 42, .18); overflow: visible; }
+    .substitute-form { width: 132.045mm; min-height: 156.5mm; height: auto; padding: 0 !important; margin: 0 !important; position: relative; box-sizing: border-box; background: #fff !important; border: none !important; overflow: visible; }
+    .official-serial-mark { position: absolute; top: -4.5mm; left: 0; max-width: 55mm; font-size: 6.5pt; line-height: 1.1; text-align: left; white-space: normal; overflow-wrap: anywhere; color: #000; }
+    .official-form-table { width: 127.265mm; border-collapse: collapse; table-layout: fixed; font-family: "DFKai-SB", "標楷體", "BiauKai", "Noto Serif TC", serif; font-size: 10pt; color: #000; line-height: 1.05; }
+    .official-form-table td, .official-form-table th { border: .5pt solid #000; box-sizing: border-box; padding: 0 1.9mm; vertical-align: middle; overflow: hidden; }
+    .official-title-row { height: 7.34mm; font-size: 11pt; font-weight: 700; text-align: center; }
+    .official-info-row { height: 11.57mm; }
+    .official-info-row td { text-align: center; }
+    .official-info-row .official-label { font-weight: 400; white-space: normal; line-height: 1.05; }
+    .official-info-row .official-value { font-size: 9.5pt; }
+    .official-job-value { text-align: center !important; }
+    .official-name-value { text-align: left !important; }
+    .official-proxy-value { text-align: right !important; }
+    .official-processing-cell { padding: 0 .8mm !important; font-size: 8.5pt; line-height: 1; }
+    .official-leave-row, .official-course-row { height: 4.15mm; }
+    .official-leave-row td, .official-course-row td { font-size: 8.3pt; }
+    .official-label { text-align: center; }
+    .official-check-option { text-align: left; white-space: normal; }
+    .official-date-cell { text-align: left !important; white-space: nowrap; font-size: 7.4pt !important; line-height: 1.05; padding-left: 1.2mm !important; }
+    .official-reason-cell { text-align: left; white-space: normal; font-size: 7.3pt !important; line-height: 1.05; padding-left: 1.2mm !important; padding-right: .8mm !important; word-break: break-all; }
+    .official-checkbox { white-space: normal; }
+    .official-checkbox.is-checked { font-weight: 700; }
+    .official-section-row { height: 8.11mm; font-weight: 400; text-align: center; }
+    .official-signature-header { text-align: center; font-size: 9pt; }
+    .official-signature-cell { text-align: center; font-size: 10pt; line-height: 1.25; }
+    .official-signature-name { font-size: 9pt; }
+    .official-schedule-header { height: 8.11mm; text-align: center; }
+    .official-day-header { font-weight: 400; }
+    .official-day-date { font-size: 8.5pt; }
+    .official-row-label { text-align: center; font-weight: 400; white-space: nowrap; }
+    .official-subject-row { height: 8.11mm; }
+    .official-class-row { height: 4.99mm; }
+    .official-slot-value { text-align: center; font-size: 9pt; white-space: nowrap; }
+    .official-class-value { font-size: 8.5pt; }
+    .official-instruction-row { min-height: 8.11mm; height: auto; }
+    .official-instruction-row td { text-align: justify; font-size: 8.5pt; line-height: 1.15; padding-top: .6mm; padding-bottom: .6mm; }
+  `;
+}
+
+function buildPrintPreviewDocument(forms) {
+  const items = (forms || []).map(form => `<div class="print-preview-item">${form}</div>`).join('');
+  return `<!doctype html><html lang="zh-Hant"><head><meta charset="UTF-8"><title>調代課單預覽</title><style>${getPrintPreviewCss()}</style></head><body><main class="print-preview-stack">${items}</main></body></html>`;
+}
+
+function buildPrintPreview(ctx, options) {
+  const opts = options || {};
+  const recordsToPrint = Array.isArray(opts.records)
+    ? opts.records
+    : getSelectedPrintRecords(ctx).records;
+  const allSubs = Array.isArray(opts.allSubs)
+    ? opts.allSubs
+    : ((ctx.substitutionRecords && Array.isArray(ctx.substitutionRecords.value)) ? ctx.substitutionRecords.value : recordsToPrint);
+  const forms = buildPrintForms(recordsToPrint, allSubs, ctx);
+  if (!forms.length) return null;
+  return {
+    recordCount: recordsToPrint.length,
+    formCount: forms.length,
+    records: recordsToPrint.slice(),
+    recordIds: recordsToPrint.map(record => record && record.id != null ? String(record.id) : '').filter(Boolean),
+    formsHtml: forms.join(''),
+    documentHtml: buildPrintPreviewDocument(forms)
+  };
+}
+
+function buildPrintPreviewImageSvg(preview) {
+  const formsHtml = String(preview && preview.formsHtml || '');
+  const formCount = Math.max(1, parseInt(preview && preview.formCount, 10) || 1);
+  if (!formsHtml) return '';
+
+  const widthMm = 166;
+  const heightMm = 8 + 12 + (formCount * 170) + (Math.max(0, formCount - 1) * 8);
+  const pxPerMm = 96 / 25.4;
+  const width = Math.ceil(widthMm * pxPerMm);
+  const height = Math.ceil(heightMm * pxPerMm);
+  const imageCss = getPrintPreviewCss() + `
+    html, body { width: ${widthMm}mm !important; height: ${heightMm}mm !important; margin: 0 !important; padding: 0 !important; }
+    .print-preview-stack { width: ${widthMm}mm !important; min-width: 0 !important; }
+  `;
+  // SVG 的 foreignObject 需使用 XHTML 可解析的自閉合標籤，避免圖片轉換時整張失敗。
+  const xhtmlForms = formsHtml.replace(/<(br|col)(\s[^>]*?)?\/?\s*>/gi, function (_, tag, attrs) {
+    return '<' + tag + (attrs || '') + ' />';
+  });
+  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xhtml="http://www.w3.org/1999/xhtml" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><foreignObject x="0" y="0" width="${width}" height="${height}"><div xmlns="http://www.w3.org/1999/xhtml" style="width:${widthMm}mm;height:${heightMm}mm;background:#e2e8f0;"><style><![CDATA[${imageCss}]]></style><main class="print-preview-stack">${xhtmlForms}</main></div></foreignObject></svg>`;
 }
 
 function compactSerials(serials) {
@@ -564,162 +689,30 @@ function compactSerials(serials) {
 }
 
 async function printSelectedForms(formType, ctx) {
-  // 勾選可能只在 DOM：列印前從 checkbox 同步
-  try {
-    if (typeof document !== 'undefined') {
-      const ids = [];
-      document.querySelectorAll('.hist-select-cb:checked').forEach((el) => {
-        const id = el.getAttribute('data-rec-id') || el.value;
-        if (id) ids.push(id);
-      });
-      if (ids.length && ctx.selectedRecordIds) ctx.selectedRecordIds.value = ids;
+  const selection = Array.isArray(ctx.printRecords)
+    ? {
+      ids: ctx.printRecords.map(record => record && record.id != null ? String(record.id) : '').filter(Boolean),
+      records: ctx.printRecords.slice()
     }
-  } catch (eSync) { /* ignore */ }
-  if (!ctx.selectedRecordIds.value.length) {
+    : getSelectedPrintRecords(ctx);
+  if (!selection.ids.length) {
     ctx.showToast('請先勾選歷史紀錄中要列印的單據！', 'warning');
     return;
   }
 
   if (ctx.loading) ctx.loading.value = true;
-  if (ctx.loadingMessage) ctx.loadingMessage.value = '正在整理列印資料與產生預覽頁面...';
+  if (ctx.loadingMessage) ctx.loadingMessage.value = '正在整理列印資料...';
 
   try {
-    const recordsToPrint = ctx.substitutionRecords.value.filter(r => ctx.selectedRecordIds.value.includes(r.id));
-    const groupList = buildPrintGroups(recordsToPrint, ctx.substitutionRecords.value);
+    const forms = buildPrintForms(selection.records, ctx.substitutionRecords.value, ctx);
 
-    let htmlContent = '';
-    const packPages = (forms) => {
-      let html = '';
-      for (let i = 0; i < forms.length; i += 2) {
-        const left = forms[i];
-        const right = forms[i + 1]
-          || '<div class="substitute-form" style="border:none !important; background:none !important;"></div>';
-        html += `
-          <div class="print-page">
-            ${left}
-            <div class="cut-line"></div>
-            ${right}
-          </div>
-        `;
-      }
-      return html;
-    };
-
-    // NoticeTeacher = 只印教師聯；NoticeClass = 只印班級聯；Notice = 兩者都印
-    if (formType === 'Notice' || formType === 'NoticeTeacher' || formType === 'NoticeClass') {
-      const wantTeacher = formType === 'Notice' || formType === 'NoticeTeacher';
-      const wantClass = formType === 'Notice' || formType === 'NoticeClass';
-      const teacherForms = [];
-      const classForms = [];
-
-      // 教師聯：依代課老師合併（groupList 已是 sub 分組）
-      if (wantTeacher) {
-        groupList.forEach(g => {
-          teacherForms.push(generateFormHtml(g, 'Teacher', ctx));
-        });
-      }
-
-      // 班級聯：跨代課老師，依「班級」重新合併（同班不同代課老師併一張）
-      if (wantClass) {
-        const classMap = {};
-        // 代課：從 periods 拆
-        groupList.forEach(g => {
-          if (g.isExchange) {
-            // 調課：每組仍各印一張班級聯（兩班可能不同）
-            classForms.push(generateFormHtml(g, 'Class', ctx));
-            return;
-          }
-          (g.periods || []).forEach(p => {
-            const cls = String(p.cls || '').trim() || '—';
-            if (!classMap[cls]) {
-              classMap[cls] = {
-                isExchange: false,
-                serials: [],
-                leaveEmails: [],
-                subEmail: p.leaveEmail, // 班級聯可能多人代，簽名欄用多姓名
-                subEmails: [],
-                date: p.date,
-                dates: [],
-                reasons: [],
-                subFee: p.subFee || g.subFee || '自費代課',
-                note: g.note || '',
-                periods: [],
-                isReprint: !!g.isReprint,
-                isPaperDraft: !!g.isPaperDraft,
-                signatureByTeacher: Object.assign({}, g.signatureByTeacher || {})
-              };
-            }
-            const cg = classMap[cls];
-            (g.serials || []).forEach(s => {
-              if (s && !cg.serials.includes(s)) cg.serials.push(s);
-            });
-            if (p.leaveEmail && !cg.leaveEmails.includes(p.leaveEmail)) cg.leaveEmails.push(p.leaveEmail);
-            if (g.subEmail && !cg.subEmails.includes(g.subEmail)) cg.subEmails.push(g.subEmail);
-            if (p.date && !cg.dates.includes(p.date)) cg.dates.push(p.date);
-            if (p.reason && !cg.reasons.includes(p.reason)) cg.reasons.push(p.reason);
-            if (g.isReprint) cg.isReprint = true;
-            if (g.isPaperDraft) cg.isPaperDraft = true;
-            Object.assign(cg.signatureByTeacher, g.signatureByTeacher || {});
-            cg.periods.push({
-              date: p.date,
-              num: p.num,
-              cls: p.cls,
-              sub: p.sub,
-              leaveEmail: p.leaveEmail,
-              reason: p.reason,
-              subFee: p.subFee,
-              subEmail: g.subEmail // 該節實際代課老師
-            });
-          });
-        });
-        Object.keys(classMap).sort((a, b) => a.localeCompare(b, 'zh-Hant')).forEach(cls => {
-          const cg = classMap[cls];
-          cg.periods.sort((a, b) => String(a.date).localeCompare(String(b.date)) || a.num - b.num);
-          cg.serials = compactSerials(cg.serials);
-          // 簽名／說明用：若多位代課老師，合併姓名
-          if (cg.subEmails && cg.subEmails.length) {
-            cg.subEmail = cg.subEmails[0];
-            cg.subEmailAll = cg.subEmails;
-          }
-          classForms.push(generateFormHtml(cg, 'Class', ctx));
-        });
-      }
-
-      // Notice（含詳情「印通知」）：教師聯＋班級聯左右成對同一張頁
-      // NoticeTeacher／NoticeClass：各自批次排版
-      if (wantTeacher && wantClass) {
-        const paired = [];
-        const maxLen = Math.max(teacherForms.length, classForms.length);
-        for (let i = 0; i < maxLen; i++) {
-          if (teacherForms[i]) paired.push(teacherForms[i]);
-          if (classForms[i]) paired.push(classForms[i]);
-        }
-        htmlContent += packPages(paired);
-      } else {
-        if (wantTeacher) htmlContent += packPages(teacherForms);
-        if (wantClass) htmlContent += packPages(classForms);
-      }
-      if (!htmlContent) {
-        ctx.showToast('沒有可列印的內容', 'warning');
-        if (ctx.loading) ctx.loading.value = false;
-        return;
-      }
-    } else {
-      for (let i = 0; i < groupList.length; i += 2) {
-        const gLeft = groupList[i];
-        const gRight = groupList[i + 1];
-        const rightHtml = gRight
-          ? generateFormHtml(gRight, 'Admin', ctx)
-          : '<div class="substitute-form" style="border:none !important; background:none !important;"></div>';
-        htmlContent += `
-          <div class="print-page">
-            ${generateFormHtml(gLeft, 'Admin', ctx)}
-            <div class="cut-line"></div>
-            ${rightHtml}
-          </div>
-        `;
-      }
+    if (!forms.length) {
+      ctx.showToast('沒有可列印的內容', 'warning');
+      if (ctx.loading) ctx.loading.value = false;
+      return;
     }
+
+    const htmlContent = packPrintForms(forms);
 
     let printWin = ctx.printWin || ctx.targetWin || null;
     let targetDoc = null;
@@ -754,8 +747,8 @@ async function printSelectedForms(formType, ctx) {
       <head>
         <title>建成國中調代課通知單</title>
         <style>
+          @page { size: A4 landscape; margin: 0; }
           @media print {
-            @page { size: A4 landscape; margin: 0; }
             html, body { margin: 0; padding: 0; background: white !important; }
           }
           body {
@@ -763,7 +756,7 @@ async function printSelectedForms(formType, ctx) {
             color: #000 !important;
             margin: 0;
             padding: 0;
-            font-family: system-ui, -apple-system, "Noto Sans TC", sans-serif;
+            font-family: "DFKai-SB", "標楷體", "BiauKai", "Noto Serif TC", serif;
           }
           .print-page {
             width: 297mm;
@@ -772,11 +765,12 @@ async function printSelectedForms(formType, ctx) {
             page-break-after: always;
             break-after: page;
             box-sizing: border-box;
-            padding: 3mm 10mm;
+            padding: 12.7mm;
             display: flex;
             flex-direction: row;
-            justify-content: space-between;
-            align-items: stretch;
+            justify-content: flex-start;
+            align-items: flex-start;
+            gap: 7.496mm;
             position: relative;
             overflow: hidden;
             background: white !important;
@@ -788,119 +782,90 @@ async function printSelectedForms(formType, ctx) {
             break-after: avoid !important;
           }
           .cut-line {
-            position: absolute;
-            left: 50%;
-            top: 3mm;
-            bottom: 3mm;
-            border-left: 1.5px dotted #94a3b8;
-            transform: translateX(-50%);
-            z-index: 10;
+            display: none;
           }
           .substitute-form {
-            width: 133mm;
-            height: 204mm;
-            padding: 4mm 7mm !important;
+            width: 132.045mm;
+            flex: 0 0 132.045mm;
+            min-height: 156.5mm;
+            height: auto;
+            padding: 0 !important;
             margin: 0 !important;
             position: relative;
             box-sizing: border-box;
             background: white !important;
             border: none !important;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
             page-break-after: avoid;
             page-break-inside: avoid;
             break-inside: avoid;
+            overflow: visible;
+          }
+          .official-form-empty { visibility: hidden; }
+          .official-serial-mark { position: absolute; top: -4.5mm; left: 0; max-width: 55mm; font-size: 6.5pt; line-height: 1.1; text-align: left; white-space: normal; overflow-wrap: anywhere; color: #000; }
+          .official-form-table {
+            width: 127.265mm;
+            border-collapse: collapse;
+            table-layout: fixed;
+            font-family: "DFKai-SB", "標楷體", "BiauKai", "Noto Serif TC", serif;
+            font-size: 10pt;
+            color: #000;
+            line-height: 1.05;
+          }
+          .official-form-table td,
+          .official-form-table th {
+            border: 0.5pt solid #000;
+            box-sizing: border-box;
+            padding: 0 1.9mm;
+            vertical-align: middle;
             overflow: hidden;
           }
+          .official-title-row { height: 7.34mm; font-size: 11pt; font-weight: 700; text-align: center; }
+          .official-info-row { height: 11.57mm; }
+          .official-info-row td { text-align: center; }
+          .official-info-row .official-label { font-weight: 400; white-space: normal; line-height: 1.05; }
+          .official-info-row .official-value { font-size: 9.5pt; }
+          .official-job-value { text-align: center !important; }
+          .official-name-value { text-align: left !important; }
+          .official-proxy-value { text-align: right !important; }
+          .official-processing-cell { padding: 0 0.8mm !important; font-size: 8.5pt; line-height: 1; }
+          .official-leave-row,
+          .official-course-row { height: 4.15mm; }
+          .official-leave-row td,
+          .official-course-row td { font-size: 8.3pt; }
+          .official-label { text-align: center; }
+          .official-check-option { text-align: left; white-space: normal; }
+          .official-date-cell { text-align: left !important; white-space: nowrap; font-size: 7.4pt !important; line-height: 1.05; padding-left: 1.2mm !important; }
+          .official-reason-cell { text-align: left; white-space: normal; font-size: 7.3pt !important; line-height: 1.05; padding-left: 1.2mm !important; padding-right: 0.8mm !important; word-break: break-all; }
+          .official-checkbox { white-space: normal; }
+          .official-checkbox.is-checked { font-weight: 700; }
+          .official-section-row { height: 8.11mm; font-weight: 400; text-align: center; }
+          .official-signature-header { text-align: center; font-size: 9pt; }
+          .official-signature-cell { text-align: center; font-size: 10pt; line-height: 1.25; }
+          .official-signature-name { font-size: 9pt; }
+          .official-schedule-header { height: 8.11mm; text-align: center; }
+          .official-day-header { font-weight: 400; }
+          .official-day-date { font-size: 8.5pt; }
+          .official-row-label { text-align: center; font-weight: 400; white-space: nowrap; }
+          .official-subject-row { height: 8.11mm; }
+          .official-class-row { height: 4.99mm; }
+          .official-slot-value { text-align: center; font-size: 9pt; white-space: nowrap; }
+          .official-class-value { font-size: 8.5pt; }
+          .official-instruction-row { min-height: 8.11mm; height: auto; }
+          .official-instruction-row td { text-align: justify; font-size: 8.5pt; line-height: 1.15; padding-top: 0.6mm; padding-bottom: 0.6mm; }
           .substitute-form.is-reprint::after {
             content: "補發";
             position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%) rotate(-30deg);
-            font-size: 50pt;
+            font-size: 38pt;
             color: rgba(0, 0, 0, 0.04);
             font-weight: 900;
-            border: 6px solid rgba(0, 0, 0, 0.04);
-            padding: 5px 20px;
-            border-radius: 12px;
+            border: 3px solid rgba(0, 0, 0, 0.04);
+            padding: 3px 12px;
             z-index: 1000;
             pointer-events: none;
           }
-          .form-top-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1px;
-          }
-          .form-tag {
-            font-size: 8pt;
-            border: 1px solid #000;
-            padding: 1px 4px;
-            white-space: nowrap;
-          }
-          .lesson-code { font-size: 8pt; }
-          .header-block { margin-top: 1px; margin-bottom: 2px; text-align: center; }
-          .title {
-            font-size: 13pt;
-            font-weight: bold;
-            border-bottom: 2px solid #000;
-            padding-bottom: 2px;
-            margin: 1px 0;
-          }
-          .info-row {
-            display: flex;
-            justify-content: space-between;
-            margin: 3px 0;
-            font-size: 9pt;
-            font-weight: bold;
-          }
-          .schedule-table {
-            width: 100%;
-            table-layout: fixed;
-            border-collapse: collapse;
-            border: 1.5pt solid black;
-            margin: 3px 0;
-          }
-          .schedule-table col.col-period { width: 12%; }
-          .schedule-table col.col-day { width: 13.6%; }
-          .schedule-table col.col-sign { width: 20%; }
-          .schedule-table th, .schedule-table td {
-            border: 1px solid #000;
-            text-align: center;
-            font-size: 8pt;
-            height: 20px;
-            padding: 1px 2px !important;
-            vertical-align: middle;
-            overflow: hidden;
-            word-break: break-all;
-            line-height: 1.1;
-          }
-          .schedule-table th {
-            background: #eee !important;
-            height: 22px;
-            font-size: 8.5pt;
-          }
-          .footer-block {
-            flex: 1 1 auto;
-            min-height: 0;
-            overflow: hidden;
-            font-size: 7.2pt !important;
-            line-height: 1.15 !important;
-          }
-          .footer-block .desc,
-          .footer-block .desc * {
-            font-size: 7.2pt !important;
-            line-height: 1.15 !important;
-          }
-          .footer-block .desc ul {
-            margin: 1px 0 0 12px !important;
-            padding: 0 !important;
-          }
-          .remark-area { font-size: 7.2pt !important; line-height: 1.15 !important; }
-          .remark-list { margin: 1px 0 0 0; padding-left: 12px; }
-          .remark-list li { font-size: 7pt !important; line-height: 1.15 !important; }
         </style>
       </head>
       <body style="background: white !important;">
@@ -920,8 +885,8 @@ async function printSelectedForms(formType, ctx) {
     `);
     targetDoc.close();
 
-    const idsToMark = new Set(ctx.selectedRecordIds.value);
-    ctx.selectedRecordIds.value.forEach(id => {
+    const idsToMark = new Set(selection.ids);
+    selection.ids.forEach(id => {
       const rec = ctx.substitutionRecords.value.find(r => r.id === id);
       if (rec && rec.type === 'exchange' && rec.requestId) {
         const peer = ctx.substitutionRecords.value.find(r => r.requestId === rec.requestId && r.id !== id);
@@ -963,3 +928,9 @@ async function printSelectedForms(formType, ctx) {
 window.generateFormHtml = generateFormHtml;
 window.printSelectedForms = printSelectedForms;
 window.buildExchangeRouteHtml = buildExchangeRouteHtml;
+window.buildPrintGroups = buildPrintGroups;
+window.splitPrintGroupByWeek = splitPrintGroupByWeek;
+window.packPrintForms = packPrintForms;
+window.getPrintPreviewCss = getPrintPreviewCss;
+window.buildPrintPreview = buildPrintPreview;
+window.buildPrintPreviewImageSvg = buildPrintPreviewImageSvg;

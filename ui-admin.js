@@ -1288,6 +1288,25 @@ window.UiAdmin = (function () {
       return dow === 0 ? 7 : dow;
     }
 
+    function resolveHistoryTeacherValue(value) {
+      var raw = String(value || '').trim();
+      if (!raw) return '';
+      var normalized = raw.replace(/\s*老師\s*$/, '').trim().toLowerCase();
+      var list = teachersList && teachersList.value
+        ? teachersList.value
+        : (Array.isArray(teachersList) ? teachersList : []);
+      var hit = list.find(function (teacher) {
+        return [teacher && teacher.email, teacher && teacher.loginEmail, teacher && teacher.name, teacher && teacher.teacherName]
+          .filter(Boolean)
+          .some(function (candidate) {
+            return String(candidate).replace(/\s*老師\s*$/, '').trim().toLowerCase() === normalized;
+          });
+      });
+      if (!hit) return raw;
+      // 表單選項使用 name-key（t.email），不是登入用 Email。
+      return String(hit.email || hit.teacherName || hit.name || hit.loginEmail || raw).trim();
+    }
+
     function openHistoryEditModal(rec) {
       var rid = rec.requestId || String(rec.id || '').replace(/_[12]$/, '') || '';
       var matched = null;
@@ -1310,8 +1329,10 @@ window.UiAdmin = (function () {
       var unknownDate = String.fromCharCode(0x2014);
       var tgtDate = (tgtRaw && tgtRaw !== '---' && tgtRaw !== unknownDate) ? tgtRaw : '';
 
-      var leaveEmail = src.requesterEmail || rec.originalTeacherEmail || rec.requesterEmail || '';
-      var subEmail = src.targetTeacherEmail || rec.actualTeacherEmail || rec.targetTeacherEmail || '';
+       var leaveRaw = src.requesterEmail || src.requesterName || rec.originalTeacherEmail || rec.requesterEmail || rec.originalTeacherName || '';
+       var subRaw = src.targetTeacherEmail || src.targetTeacherName || rec.actualTeacherEmail || rec.targetTeacherEmail || rec.actualTeacherName || '';
+       var leaveEmail = resolveHistoryTeacherValue(leaveRaw);
+       var subEmail = resolveHistoryTeacherValue(subRaw);
       var readHistoryPeriod = function () {
         for (var pi = 0; pi < arguments.length; pi++) {
           if (arguments[pi] == null || arguments[pi] === '') continue;

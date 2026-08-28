@@ -31,7 +31,9 @@ window.FieldMap = (function () {
   }
 
   function asBool(v) {
-    return v === true || v === 'TRUE' || v === 'true' || v === 1 || v === '1';
+    if (v === true || v === 1) return true;
+    const s = String(v == null ? '' : v).trim().toLowerCase();
+    return s === 'true' || s === '1' || s === '是' || s === '紙本';
   }
 
   function asInt(v, fallback) {
@@ -294,11 +296,16 @@ window.FieldMap = (function () {
   function mapRequest(r) {
     const targetDay = pick(r, ['對調目標星期', 'targetDayOfWeek']);
     const targetPeriod = pick(r, ['對調目標節次', 'targetPeriod']);
+    const paperFlowRaw = pick(r, ['紙本流程', 'paperFlow', 'isPaperFlow']);
+    const directApproveRaw = pick(r, ['直接核准', '是否直接核准', 'directApprove']);
     const mapped = {
       id: pick(r, ['申請單ID', 'id']),
       serial: pick(r, ['單號', 'serial']),
       batchId: pick(r, ['批次ID', 'batchId']) || '',
       status: normalizeRequestStatus(pick(r, ['狀態', 'status'])),
+      paperFlow: asBool(paperFlowRaw),
+      paperFlowSpecified: paperFlowRaw !== undefined && paperFlowRaw !== null
+        && String(paperFlowRaw).trim() !== '',
       requesterName: pick(r, ['申請人姓名', 'requesterName']),
       targetTeacherName: pick(r, ['受邀人姓名', 'targetTeacherName']),
       actualTeacherName: pick(r, ['實際授課教師姓名', 'actualTeacherName']) || '',
@@ -319,8 +326,9 @@ window.FieldMap = (function () {
       printed: asBool(pick(r, ['是否已印', 'printed'])),
       createdAt: pick(r, ['建立時間', 'createdAt']) || '',
       updatedAt: pick(r, ['更新時間', 'updatedAt']) || '',
-      // 備註含 [直接核准] 或前端帶入 → 簽核進度略過「等對方同意」
+      // 舊資料仍以備註標記相容；新資料使用獨立欄位，不污染備註。
       directApprove: (function () {
+        if (asBool(directApproveRaw)) return true;
         const n = String(pick(r, ['備註', 'note']) || '');
         return n.indexOf('[直接核准]') >= 0 || r.directApprove === true;
       })(),

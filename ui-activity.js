@@ -902,7 +902,7 @@ window.UiMutualSubmit = (function () {
     var DAC = deps.DAC || function () { return window.DomainActivityCover; };
     var isSubmitting = deps.isSubmitting;
 
-    if (deps.paperMode && deps.paperMode.value && !(isAdmin && isAdmin.value)) {
+    if (deps.paperMode && deps.paperMode.value && isMutualCover.value && !(isAdmin && isAdmin.value)) {
       if (typeof deps.openPaperPrintMutualDrafts === 'function') {
         deps.openPaperPrintMutualDrafts();
       } else {
@@ -975,10 +975,7 @@ window.UiMutualSubmit = (function () {
           var serialRoot = 'SUB' + (1000 + Math.floor(Math.random() * 9000));
           var rows = workSlots.map(function (s, i) {
             var base = String(note || '').trim();
-            var noteOut = base;
-            if (isAdmin.value && directApproveMode.value) {
-              noteOut = base ? ('[直接核准] ' + base) : '[直接核准]';
-            }
+           var noteOut = base;
             return {
               "學期代號": currentSemester.value,
               "申請單ID": 'req_' + stamp + '_' + i + '_' + Math.random().toString(36).substr(2, 5),
@@ -996,9 +993,10 @@ window.UiMutualSubmit = (function () {
               "經費來源": (feeAssigns && feeAssigns[i])
                 ? feeAssigns[i].fee
                 : (s.fee || (parseInt(s.period, 10) === 8 ? PERIOD8_FEE : ACTIVITY_PUBLIC_FEE)),
-              "備註": noteOut,
-              "狀態": (isAdmin.value && directApproveMode.value) ? 'approved' : 'pending_teacher',
-              "是否已印": false,
+               "備註": noteOut,
+               "狀態": (isAdmin.value && directApproveMode.value) ? 'approved' : 'pending_teacher',
+               "直接核准": (isAdmin.value && directApproveMode.value) ? '是' : '',
+               "是否已印": false,
               "建立時間": '',
               directApprove: !!(isAdmin.value && directApproveMode.value)
             };
@@ -1122,6 +1120,7 @@ window.UiBatchSubmit = (function () {
     var currentSemester = deps.currentSemester;
     var directApproveMode = deps.directApproveMode;
     var directApproveSkipNotify = deps.directApproveSkipNotify;
+    var paperFlow = deps.paperFlow;
     var callGasApi = deps.callGasApi;
     var optimisticUpsertRequest = deps.optimisticUpsertRequest;
     var sheetRequestToFront = deps.sheetRequestToFront;
@@ -1142,7 +1141,7 @@ window.UiBatchSubmit = (function () {
     var DAC = deps.DAC || function () { return window.DomainActivityCover; };
     var isSubmitting = deps.isSubmitting;
 
-    if (deps.paperMode && deps.paperMode.value && !(isAdmin && isAdmin.value)) {
+    if (deps.paperMode && deps.paperMode.value && isMutualCover.value && !(isAdmin && isAdmin.value)) {
       if (typeof deps.openPaperPrintDraft === 'function') {
         deps.openPaperPrintDraft();
       } else {
@@ -1159,6 +1158,7 @@ window.UiBatchSubmit = (function () {
       return;
     }
     var isPerSlot = !!(pendingRequestData.value.isPerSlot || batchAssignMode.value === 'perSlot');
+    var courseAdjustmentOnly = !!pendingRequestData.value.courseAdjustmentOnly;
     var reason = pendingRequestData.value.reason || batchReason.value;
     var note = pendingRequestData.value.note || batchNote.value || '';
     if (!reason) {
@@ -1232,11 +1232,18 @@ window.UiBatchSubmit = (function () {
 
     loadingMessage.value = '正在批次送出 ' + workSlots.length + ' 筆申請...';
     try {
-      var batchId = 'bat_' + Date.now();
-      var leaveEmail = workSlots[0].teacherEmail;
-      var leaveName = getTeacherNameByEmail(leaveEmail);
-      var stamp = Date.now();
-      var serialRoot = 'SUB' + (1000 + Math.floor(Math.random() * 9000));
+       var batchId = String(pendingRequestData.value.submitBatchId || '').trim();
+       if (!batchId) {
+         batchId = 'bat_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+         pendingRequestData.value.submitBatchId = batchId;
+       }
+       var leaveEmail = workSlots[0].teacherEmail;
+       var leaveName = getTeacherNameByEmail(leaveEmail);
+       var serialRoot = String(pendingRequestData.value.submitSerial || '').trim();
+       if (!serialRoot) {
+         serialRoot = 'SUB' + (1000 + Math.floor(Math.random() * 9000));
+         pendingRequestData.value.submitSerial = serialRoot;
+       }
       var feeAssigns = null;
       // 活動互代：逐節依剩餘額度決定扣額度／活動公費（不足自動公費）
       if (isMutualCover.value && DAC() && DAC().assignFeesForBatchSlots) {
@@ -1279,33 +1286,34 @@ window.UiBatchSubmit = (function () {
         proxyByEmail = '';
         proxyByName = '';
       }
-      var doDirectApprove = !!(isAdmin.value && directApproveMode.value && !proxyActive);
+      var paperFlowActive = !!(paperFlow && paperFlow.value && !proxyActive && !isMutualCover.value);
+      var doDirectApprove = !!(isAdmin.value && directApproveMode.value && !proxyActive && !paperFlowActive);
       var leaveTimeDefaults = typeof getLeaveTimeDefaults === 'function'
         ? getLeaveTimeDefaults(leaveEmail)
         : { type: '全天', start: '08:00', end: '16:00', range: '08:00~16:00' };
-      var leaveTimeType = pendingRequestData.value.leaveTimeType || leaveTimeDefaults.type;
-      var leaveTimeStart = pendingRequestData.value.leaveTimeStart || leaveTimeDefaults.start;
-      var leaveTimeEnd = pendingRequestData.value.leaveTimeEnd || leaveTimeDefaults.end;
-      var leaveTime = pendingRequestData.value.leaveTime || (leaveTimeStart + '~' + leaveTimeEnd);
-      var batchStatus = doDirectApprove
-        ? 'approved'
-        : (proxyActive ? 'pending_admin' : 'pending_teacher');
+       var leaveTimeType = courseAdjustmentOnly ? '' : (pendingRequestData.value.leaveTimeType || leaveTimeDefaults.type);
+       var leaveTimeStart = courseAdjustmentOnly ? '' : (pendingRequestData.value.leaveTimeStart || leaveTimeDefaults.start);
+       var leaveTimeEnd = courseAdjustmentOnly ? '' : (pendingRequestData.value.leaveTimeEnd || leaveTimeDefaults.end);
+       var leaveTime = courseAdjustmentOnly ? '' : (pendingRequestData.value.leaveTime || (leaveTimeStart + '~' + leaveTimeEnd));
+      var batchStatus = paperFlowActive
+        ? 'pending_admin'
+        : (doDirectApprove ? 'approved' : (proxyActive ? 'pending_admin' : 'pending_teacher'));
       var rows = workSlots.map(function (s, i) {
         var base = String(note || '').trim();
-        var noteOut = base;
-        if (doDirectApprove) {
-          noteOut = base ? ('[直接核准] ' + base) : '[直接核准]';
-        } else if (proxyActive) {
+         var noteOut = base;
+         if (proxyActive) {
           var tag = '[行政代申請：' + (proxyByName || proxyByEmail) + ' 代 ' + leaveName + ']';
           noteOut = base ? (tag + ' ' + base) : tag;
         }
         var row = {
           "學期代號": currentSemester.value,
-          "申請單ID": 'req_' + stamp + '_' + i + '_' + Math.random().toString(36).substr(2, 5),
-          "單號": serialRoot + '-' + (i + 1),
-          "批次ID": batchId,
-          "異動類型": 'substitution',
-           "申請人姓名": leaveName,
+           "申請單ID": 'req_' + batchId + '-' + i,
+           "單號": serialRoot + '-' + (i + 1),
+           "批次ID": batchId,
+           "異動類型": 'substitution',
+           "申請人Email": leaveEmail,
+           "受邀人Email": s.subTeacherEmail,
+            "申請人姓名": leaveName,
            "受邀人姓名": s.subTeacherName || getTeacherNameByEmail(s.subTeacherEmail),
           "異動日期": s.dateStr,
           "異動節次": s.period,
@@ -1314,15 +1322,20 @@ window.UiBatchSubmit = (function () {
           "科目": s.subject,
           "請假事由": reason,
           "請假時間類型": leaveTimeType,
-          "請假時間": leaveTime,
+           "請假時間": leaveTime,
           "經費來源": feeForSlot(s, i),
-          "備註": noteOut,
-          "狀態": batchStatus,
-          "是否已印": false,
-          "建立時間": '',
-          directApprove: doDirectApprove,
-          isProxySubmit: !!proxyActive,
-           proxyByName: proxyByName || ''
+           "備註": noteOut,
+            "狀態": batchStatus,
+            "直接核准": doDirectApprove ? '是' : '',
+            "紙本流程": paperFlowActive ? 'TRUE' : 'FALSE',
+           "是否已印": false,
+           "建立時間": '',
+           directApprove: doDirectApprove,
+           isProxySubmit: !!proxyActive,
+            paperFlow: paperFlowActive,
+            courseAdjustmentOnly: courseAdjustmentOnly,
+            "僅課務調整": courseAdjustmentOnly ? '是' : '',
+            proxyByName: proxyByName || ''
          };
          if (proxyActive && proxyByEmail) {
            row["代申請人姓名"] = proxyByName || '';
@@ -1333,15 +1346,17 @@ window.UiBatchSubmit = (function () {
       // 行政代申請：不寄受邀邀請信；教學組核准時再通知
       var skipNotify = !!(
         (isMutualCover.value && mutualSkipNotify.value)
-        || (doDirectApprove && directApproveSkipNotify.value)
-        || proxyActive
-        || (deps.notificationsSuppressed && deps.notificationsSuppressed.value && isAdmin.value)
+         || (doDirectApprove && directApproveSkipNotify.value)
+         || proxyActive
+         || paperFlowActive
+         || (deps.notificationsSuppressed && deps.notificationsSuppressed.value && isAdmin.value)
       );
       await callGasApi('submitRequestBatch', {
         batchId: batchId,
-        directApprove: doDirectApprove,
-        proxySubmit: !!proxyActive,
-        skipNotify: skipNotify,
+         directApprove: doDirectApprove,
+         proxySubmit: !!proxyActive,
+         paperFlow: paperFlowActive,
+         skipNotify: skipNotify,
         requests: rows
       });
 
@@ -1352,6 +1367,18 @@ window.UiBatchSubmit = (function () {
         await deductMutualQuotaForRows(rows);
       }
       softRefreshInBackground({ delay: 2000 });
+
+      if (paperFlowActive) {
+        showCompareModal.value = false;
+        showMatchModal.value = false;
+        if (typeof deps.openPaperPrintDraft === 'function') {
+          deps.openPaperPrintDraft(rows);
+        }
+        batchSelectMode.value = false;
+        clearBatchSlots();
+        showToast('批次申請已送出，請列印紙本通知並交由調代課教師簽名，再送教學組線上核准。', 'success', 6000);
+        return;
+      }
 
       var n = rows.length;
       var groups = {};
@@ -1398,7 +1425,7 @@ window.UiBatchSubmit = (function () {
             count: g.rows.length,
             text: buildLineBatchInviteText({
               targetName: g.name,
-              requesterName: leaveName,
+               requesterName: proxyActive ? leaveName : '',
               reason: reason,
               subFee: fee,
               systemUrl: currentUrl,
@@ -1840,10 +1867,12 @@ window.UiBatchPanel = (function () {
         subject: first.subject,
         dateB: '',
         timeB: '',
-        subB: '',
-        subBClass: '',
-        reason: isMutualCover.value ? '公假' : '',
-        subFee: (function () {
+         subB: '',
+         subBClass: '',
+         reason: isMutualCover.value ? '公假' : '',
+         courseAdjustmentOnly: false,
+         leaveReasonBeforeCourseAdjustment: '',
+         subFee: (function () {
           const allP8 = (batchSlots.value || []).length && batchSlots.value.every(s => parseInt(s.period, 10) === 8);
           if (allP8) return PERIOD8_FEE;
           if (isMutualCover.value) {
@@ -1858,9 +1887,11 @@ window.UiBatchPanel = (function () {
         leaveTimeEnd: leaveTimeDefaults.end,
         leaveTime: leaveTimeDefaults.range,
         isBatch: true,
-        batchCount: batchSlots.value.length,
-        isPerSlot: false
-      };
+         batchCount: batchSlots.value.length,
+         isPerSlot: false,
+         submitBatchId: 'bat_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+         submitSerial: 'SUB' + (1000 + Math.floor(Math.random() * 9000))
+       };
       if (isMutualCover.value) directApproveMode.value = true;
       showMatchModal.value = false;
       showBatchConfirmModal.value = false;
@@ -1971,20 +2002,24 @@ window.UiBatchPanel = (function () {
         subject: first.subject,
         dateB: '',
         timeB: '',
-        subB: '',
-        subBClass: '',
-        reason: isMutualCover.value ? '公假' : '',
-        subFee: isMutualCover.value ? ACTIVITY_PUBLIC_FEE : '自費代課',
+         subB: '',
+         subBClass: '',
+         reason: isMutualCover.value ? '公假' : '',
+         courseAdjustmentOnly: false,
+         leaveReasonBeforeCourseAdjustment: '',
+         subFee: isMutualCover.value ? ACTIVITY_PUBLIC_FEE : '自費代課',
         note: '',
         leaveTimeType: leaveTimeDefaults.type,
         leaveTimeStart: leaveTimeDefaults.start,
         leaveTimeEnd: leaveTimeDefaults.end,
         leaveTime: leaveTimeDefaults.range,
-        isBatch: true,
-        batchCount: batchSlots.value.length,
-        isPerSlot: true,
-        subTeacherCount: groups.length
-      };
+         isBatch: true,
+         batchCount: batchSlots.value.length,
+         isPerSlot: true,
+         subTeacherCount: groups.length,
+         submitBatchId: 'bat_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+         submitSerial: 'SUB' + (1000 + Math.floor(Math.random() * 9000))
+       };
       if (isMutualCover.value) directApproveMode.value = true;
       showMatchModal.value = false;
       showBatchConfirmModal.value = false;
@@ -2009,8 +2044,9 @@ window.UiBatchPanel = (function () {
         callGasApi, optimisticUpsertRequest, sheetRequestToFront, deductMutualQuotaForRows, softRefreshInBackground,
         activityBalanceCtx, successModalTitle, successModalMessage, hasLineTemplate, lineBatchParts, lineCopyText,
          showSuccessModal, showCompareModal, showMatchModal, batchSelectMode, clearBatchSlots, buildLineBatchInviteText, DAC,
-         paperMode: deps.paperMode,
-         notificationsSuppressed: deps.notificationsSuppressed,
+          paperMode: deps.paperMode,
+          paperFlow: deps.paperFlow,
+          notificationsSuppressed: deps.notificationsSuppressed,
          openPaperPrintDraft: deps.openPaperPrintDraft
        });
     };
