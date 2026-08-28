@@ -219,16 +219,16 @@
       assert('代課調入 isSubstitutionDuty', inCell && inCell.isSubstitutionDuty === true);
       assert('代課調入班科', inCell && inCell.className === '701' && inCell.subject === '國文');
 
-      // 對調：班科以紀錄為準（對方課），非僅原師基礎課
+      // 對調：每位教師帶著自己的課程換時間
       var exA = {
         id: 'ex1', requestId: 'rex', type: 'exchange',
         originalTeacherEmail: 'a@x', actualTeacherEmail: 'd@x',
-        date: '2026-07-13', period: 2, className: '701', subject: '國文', subFee: '無'
+        date: '2026-07-13', period: 2, className: '702', subject: '輔導', subFee: '無'
       };
       var exB = {
         id: 'ex2', requestId: 'rex', type: 'exchange',
         originalTeacherEmail: 'd@x', actualTeacherEmail: 'a@x',
-        date: '2026-07-14', period: 3, className: '702', subject: '輔導', subFee: '無'
+        date: '2026-07-14', period: 3, className: '701', subject: '國文', subFee: '無'
       };
       var schedulesEx = schedules.concat([
         { teacherEmail: 'd@x', dayOfWeek: 2, period: 3, className: '702', subject: '輔導' }
@@ -246,7 +246,7 @@
         allSchedules: schedulesEx, scheduleIndex: idxEx,
         periodSubs: [exA], allSubs: [exA, exB], helpers: helpersEx
       });
-      // 調出：主標仍是本節離開的課（國文），副標才寫調至對方
+       // 調出：主標仍是本人課程（國文），副標才寫調至對方
       assert('對調調出主標仍是本課', aOut && aOut.isSubstituted && aOut.subject === '國文' && aOut.className === '701',
         aOut && (aOut.className + '/' + aOut.subject));
       assert('對調調出副標有對方時間', aOut && aOut.subText && aOut.subText.indexOf('調至') >= 0);
@@ -255,7 +255,7 @@
         allSchedules: schedulesEx, scheduleIndex: idxEx,
         periodSubs: [exB], allSubs: [exA, exB], helpers: helpersEx
       });
-      // 調入：主標＝自己的科目（A 專長），helpers 給 a@x 國文
+       // 調入：主標＝自己的課程（A 原課），helpers 給 a@x 國文
       helpersEx.getTeacherSubjectByEmail = function (e) {
         if (e === 'a@x') return '國文';
         if (e === 'd@x') return '輔導';
@@ -266,12 +266,11 @@
         allSchedules: schedulesEx, scheduleIndex: idxEx,
         periodSubs: [exB], allSubs: [exA, exB], helpers: helpersEx
       });
-      // 對調調入：主標＝實際要上的課（edge 寫入「帶來的班科」），副標才是調自來源
-      // 契約註記（2026-07-20 起）：顯示帶來的課，不用教師專長覆寫
-      assert('對調調入主標＝帶來的課(702/輔導)', aIn && aIn.isSubstitutionDuty && aIn.subject === '輔導' && aIn.className === '702',
+       // 對調調入：主標＝實際授課教師自己的課程
+       assert('對調調入主標＝自己的課(701/國文)', aIn && aIn.isSubstitutionDuty && aIn.subject === '國文' && aIn.className === '701',
         aIn && (aIn.className + '/' + aIn.subject));
 
-      // A理化 B國文 C數學：AB 後 BC — 課表上 B 異動格主標永遠國文
+       // A理化 B國文 C數學：AB 後 BC — 各教師異動格仍顯示自己的課程
       var schedulesABC = [
         { teacherEmail: 'a@x', dayOfWeek: 1, period: 1, className: '801', subject: '理化' },
         { teacherEmail: 'b@x', dayOfWeek: 1, period: 2, className: '802', subject: '國文' },
@@ -279,14 +278,14 @@
       ];
       var idxABC = window.DomainSchedule.buildScheduleIndex(schedulesABC);
       var ab1 = { id: 'ab1', requestId: 'ab', type: 'exchange', originalTeacherEmail: 'a@x', actualTeacherEmail: 'b@x',
-        date: '2026-07-13', period: 1, className: '801', subject: '理化', subFee: '無' };
-      var ab2 = { id: 'ab2', requestId: 'ab', type: 'exchange', originalTeacherEmail: 'b@x', actualTeacherEmail: 'a@x',
-        date: '2026-07-13', period: 2, className: '802', subject: '國文', subFee: '無' };
-      // BC：B 再調（紀錄寫國文＝自己的課）
-      var bc1 = { id: 'bc1', requestId: 'bc', type: 'exchange', originalTeacherEmail: 'b@x', actualTeacherEmail: 'c@x',
         date: '2026-07-13', period: 1, className: '802', subject: '國文', subFee: '無' };
+      var ab2 = { id: 'ab2', requestId: 'ab', type: 'exchange', originalTeacherEmail: 'b@x', actualTeacherEmail: 'a@x',
+        date: '2026-07-13', period: 2, className: '801', subject: '理化', subFee: '無' };
+      // BC：B 再調，仍帶著自己的國文課程換時間
+      var bc1 = { id: 'bc1', requestId: 'bc', type: 'exchange', originalTeacherEmail: 'b@x', actualTeacherEmail: 'c@x',
+        date: '2026-07-13', period: 1, className: '803', subject: '數學', subFee: '無' };
       var bc2 = { id: 'bc2', requestId: 'bc', type: 'exchange', originalTeacherEmail: 'c@x', actualTeacherEmail: 'b@x',
-        date: '2026-07-13', period: 3, className: '803', subject: '數學', subFee: '無' };
+        date: '2026-07-13', period: 3, className: '802', subject: '國文', subFee: '無' };
       var hABC = {
         getTeacherNameByEmail: function (e) { return e; },
         getTeacherSubjectByEmail: function (e) {
@@ -304,21 +303,21 @@
         allSchedules: schedulesABC, scheduleIndex: idxABC,
         periodSubs: [ab1, bc1], allSubs: [ab1, ab2, bc1, bc2], helpers: hABC
       });
-      assert('B 再調出主標仍是國文', bP1 && bP1.isSubstituted && bP1.subject === '國文',
-        bP1 && (bP1.subject + '/' + (bP1.isSubstituted ? 'out' : '')));
+       assert('B 再調出主標仍是國文', bP1 && bP1.isSubstituted && bP1.subject === '國文' && bP1.className === '802',
+         bP1 && (bP1.className + '/' + bP1.subject + '/' + (bP1.isSubstituted ? 'out' : '')));
       var cP1 = window.DomainSchedule.resolveApprovedSchedule({
         teacherEmail: 'c@x', dateStr: '2026-07-13', period: 1, dayOfWeek: 1,
         allSchedules: schedulesABC, scheduleIndex: idxABC,
         periodSubs: [ab1, bc1], allSubs: [ab1, ab2, bc1, bc2], helpers: hABC
       });
-      assert('C 調入主標＝帶來的課(802/國文)', cP1 && cP1.isSubstitutionDuty && cP1.subject === '國文' && cP1.className === '802',
+      assert('C 調入主標＝自己的課(803/數學)', cP1 && cP1.isSubstitutionDuty && cP1.subject === '數學' && cP1.className === '803',
         cP1 && (cP1.className + '/' + cP1.subject));
       var bP3 = window.DomainSchedule.resolveApprovedSchedule({
         teacherEmail: 'b@x', dateStr: '2026-07-13', period: 3, dayOfWeek: 1,
         allSchedules: schedulesABC, scheduleIndex: idxABC,
         periodSubs: [bc2], allSubs: [ab1, ab2, bc1, bc2], helpers: hABC
       });
-      assert('B 調入主標＝帶來的課(803/數學)', bP3 && bP3.isSubstitutionDuty && bP3.subject === '數學' && bP3.className === '803',
+      assert('B 調入主標＝自己的課(802/國文)', bP3 && bP3.isSubstitutionDuty && bP3.subject === '國文' && bP3.className === '802',
         bP3 && (bP3.className + '/' + bP3.subject));
       var bP2 = window.DomainSchedule.resolveApprovedSchedule({
         teacherEmail: 'b@x', dateStr: '2026-07-13', period: 2, dayOfWeek: 1,
@@ -328,7 +327,7 @@
       assert('B AB調出主標是國文', bP2 && bP2.isSubstituted && bP2.subject === '國文',
         bP2 && (bP2.subject + ''));
 
-      // 多段鏈：a→d 後，d 再轉給 e（同節）— e 應仍見 701 國文
+      // 多段鏈：a→d 後，d 再轉給 e（同節）— e 應仍見原課班科
       var subRec2 = {
         originalTeacherEmail: 'd@x',
         actualTeacherEmail: 'e@x',

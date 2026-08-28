@@ -872,7 +872,7 @@ createApp({
           const targetEff = resolveAt(
             req.targetTeacherEmail, req.targetDate, req.targetPeriod, dayNum
           );
-          // 調課表格依原日期節次顯示原課班科，再以對調教師與線段標示交換關係。
+          // 調課只交換日期／節次；每位教師仍帶著自己的原課程移動。
           // 僅「代課義務」再調課：優先使用有效的義務班科。
           const leaveSubDuty = !!(leaveEff && leaveEff.fromSub && (
             leaveEff.dutyType === 'substitution' || leaveEff.dutyType === '代課'
@@ -899,15 +899,15 @@ createApp({
               || ownSubject(req.targetTeacherEmail, req.targetDate, req.targetPeriod, dayNum)
               || '');
 
-          // _1：目標日放受邀人的原課班科，對調線連到原異動日。
+          // _1：目標日由申請人上自己的原課，對調線連到原異動日。
           pushSub({
             id: req.id + '_1',
              date: req.targetDate,
              period: req.targetPeriod,
              originalTeacherName: req.targetTeacherName,
              actualTeacherName: req.requesterName,
-            className: targetCls,
-            subject: targetSubj,
+            className: leaveCls,
+            subject: leaveSubj,
             requestId: req.id,
             type: 'exchange',
             printed: req.printed,
@@ -918,15 +918,15 @@ createApp({
             note: req.note
           });
 
-          // _2：原異動日放申請人的原課班科。
+          // _2：原異動日由受邀人上自己的原課。
           pushSub({
             id: req.id + '_2',
              date: req.requestDate,
              period: req.requestPeriod,
              originalTeacherName: req.requesterName,
              actualTeacherName: req.targetTeacherName,
-            className: leaveCls,
-            subject: leaveSubj,
+            className: targetCls,
+            subject: targetSubj,
             requestId: req.id,
             type: 'exchange',
             printed: req.printed,
@@ -4240,7 +4240,7 @@ createApp({
 
         if (rec.type === 'exchange' || rec.type === '對調') {
           const peers = peerByRequestId[rec.requestId] || [];
-           // leaveEdge：原異動日（申請人原課）；targetEdge：目標日（受邀人原課）
+            // leaveEdge：原異動日（受邀人自己的課）；targetEdge：目標日（申請人自己的課）
           let leaveEdge = peers.find(x => String(x.id || '').endsWith('_2')) || null;
           let targetEdge = peers.find(x => String(x.id || '').endsWith('_1')) || null;
           if (!leaveEdge || !targetEdge) {
@@ -4258,20 +4258,20 @@ createApp({
             subTeacher = matchedReq.targetTeacherEmail || subTeacher;
             targetDate = matchedReq.targetDate || targetDate;
             targetPeriod = matchedReq.targetPeriod != null ? matchedReq.targetPeriod : targetPeriod;
-             // 請假班科：申請單欄＝請假課堂；edge _2 存原異動日班科可備援
-             leaveClassName = matchedReq.className
-               || (leaveEdge && leaveEdge.className)
-               || leaveClassName;
-             leaveSubject = matchedReq.subject
-               || (leaveEdge && leaveEdge.subject)
-               || leaveSubject;
-             // 對調班科：受邀人原課＝目標日 edge _1；勿用申請單 className
-             targetClassName = (targetEdge && targetEdge.className)
-               || matchedReq.targetClassName
-               || '';
-             targetSubject = (targetEdge && targetEdge.subject)
-               || matchedReq.targetSubject
-               || '';
+              // 請假班科：申請單欄＝申請人自己的課；edge _1 可作備援
+              leaveClassName = matchedReq.className
+                || (targetEdge && targetEdge.className)
+                || leaveClassName;
+              leaveSubject = matchedReq.subject
+                || (targetEdge && targetEdge.subject)
+                || leaveSubject;
+              // 對調班科：受邀人自己的課＝原異動日 edge _2；勿用申請人課程覆蓋
+              targetClassName = (leaveEdge && leaveEdge.className)
+                || matchedReq.targetClassName
+                || '';
+              targetSubject = (leaveEdge && leaveEdge.subject)
+                || matchedReq.targetSubject
+                || '';
           } else {
             // 無申請單：用兩邊 edge
             if (leaveEdge) {
@@ -4283,13 +4283,13 @@ createApp({
             if (targetEdge) {
               targetDate = targetEdge.date;
               targetPeriod = targetEdge.period;
-               leaveClassName = leaveEdge.className || leaveClassName;
-               leaveSubject = leaveEdge.subject || leaveSubject;
-             }
-             if (targetEdge) {
-               targetClassName = targetEdge.className || '';
-               targetSubject = targetEdge.subject || '';
-             }
+                leaveClassName = targetEdge.className || leaveClassName;
+                leaveSubject = targetEdge.subject || leaveSubject;
+              }
+              if (leaveEdge) {
+                targetClassName = leaveEdge.className || '';
+                targetSubject = leaveEdge.subject || '';
+              }
           }
         }
 
@@ -6686,8 +6686,8 @@ createApp({
              actualTeacherName: getTeacherNameByEmail(p.leaveTeacher),
              date: p.dateB,
              period: timeB.period,
-             className: p.subBClass || p.cls,
-             subject: p.subB || p.subject
+             className: p.cls || p.subBClass,
+             subject: p.subject || p.subB
           }),
           Object.assign({}, common, {
              id: root + '_2',
@@ -6698,8 +6698,8 @@ createApp({
              actualTeacherName: getTeacherNameByEmail(p.subTeacher),
              date: p.date,
              period: timeA.period,
-             className: p.cls || p.subBClass,
-             subject: p.subject || p.subB
+             className: p.subBClass || p.cls,
+             subject: p.subB || p.subject
           })
         ].filter(r => r.originalTeacherEmail && r.actualTeacherEmail && r.date && r.period != null);
       }
@@ -6799,8 +6799,8 @@ createApp({
              actualTeacherName: getTeacherNameByEmail(original),
              date: targetDate,
             period: targetPeriod,
-             className: targetClass,
-             subject: targetSubject
+             className: getValue(source, ['班級', 'className']),
+             subject: getValue(source, ['科目', 'subject'])
           }));
           records.push(Object.assign({}, base, {
             id: requestId + '_2',
@@ -6811,8 +6811,8 @@ createApp({
              actualTeacherName: getTeacherNameByEmail(actual),
              date: date,
             period: period,
-             className: getValue(source, ['班級', 'className']),
-             subject: getValue(source, ['科目', 'subject'])
+             className: targetClass,
+             subject: targetSubject
           }));
         } else {
           records.push(Object.assign({}, base, {
@@ -8306,22 +8306,27 @@ createApp({
         const cls = `${clsName} ${subj}`.trim();
         return _fmtSlot(targetDate, day, targetPeriod, cls || '');
       }
-      // 備援：目標日 edge _1 的班科就是受邀人的原課堂。
-      let peerTargetEdge = null;
+      // 備援：原異動日 edge _2 的班科就是受邀人的原課堂。
+      let peerLeaveEdge = null;
       if (rec.requestId) {
         const peers = (substitutionRecords.value || []).filter(x =>
           x && x.requestId === rec.requestId
         );
-        peerTargetEdge = peers.find(x => String(x.id || '').endsWith('_1'))
+        peerLeaveEdge = peers.find(x => String(x.id || '').endsWith('_2'))
           || peers.find(x => x.id !== rec.id)
           || null;
-        if (peerTargetEdge) {
+        if (peerLeaveEdge) {
           if (!targetDate || targetDate === '---' || targetDate === '—') {
-            targetDate = peerTargetEdge.date;
-            targetPeriod = peerTargetEdge.period;
+            const targetEdge = peers.find(x => String(x.id || '').endsWith('_1'))
+              || peers.find(x => x.id !== peerLeaveEdge.id)
+              || null;
+            if (targetEdge) {
+              targetDate = targetEdge.date;
+              targetPeriod = targetEdge.period;
+            }
           }
-          if (!clsName) clsName = String(peerTargetEdge.className || '').trim();
-          if (!subj) subj = String(peerTargetEdge.subject || '').trim();
+          if (!clsName) clsName = String(peerLeaveEdge.className || '').trim();
+          if (!subj) subj = String(peerLeaveEdge.subject || '').trim();
         }
       }
       // 再備援：受邀人目標節基礎課

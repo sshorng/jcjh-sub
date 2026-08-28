@@ -125,6 +125,24 @@ function loadApprovedExchangeConverter() {
   })()`, context);
 }
 
+function loadPublicClassRequestMapper() {
+  const source = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
+  const start = source.indexOf('const mapPublicClassRequests =');
+  const end = source.indexOf('const applyClassPayload =', start);
+  assert.ok(start >= 0 && end > start, 'public class request mapper must remain discoverable');
+  const context = {
+    classViewSchedules: ref([
+      { teacherName: '吳冠萱', dayOfWeek: 3, period: 5, className: '904', subject: '輔導' }
+    ]),
+    Date, Number, String, Object, Array, parseInt, isNaN
+  };
+  vm.createContext(context);
+  return vm.runInContext(`(() => {
+    ${source.slice(start, end)}
+    return mapPublicClassRequests;
+  })()`, context);
+}
+
 function runExchangePaperRecordMappingTest() {
   const pendingRequestData = ref({
     mode: 'exchange',
@@ -145,15 +163,15 @@ function runExchangePaperRecordMappingTest() {
   const targetDateRecord = records.find(record => record.id.endsWith('_1'));
   const sourceDateRecord = records.find(record => record.id.endsWith('_2'));
   assert.equal(targetDateRecord.date, '2026-09-03');
-  assert.equal(targetDateRecord.className, '704');
-  assert.equal(targetDateRecord.subject, '國文');
+  assert.equal(targetDateRecord.className, '703');
+  assert.equal(targetDateRecord.subject, '數學');
    assert.equal(targetDateRecord.originalTeacherEmail, 'sheng@example.com');
    assert.equal(targetDateRecord.actualTeacherEmail, 'month@example.com');
    assert.equal(targetDateRecord.originalTeacherName, '吳冠萱');
    assert.equal(targetDateRecord.actualTeacherName, '洪筱仙');
    assert.equal(sourceDateRecord.date, '2026-09-01');
-  assert.equal(sourceDateRecord.className, '703');
-  assert.equal(sourceDateRecord.subject, '數學');
+  assert.equal(sourceDateRecord.className, '704');
+  assert.equal(sourceDateRecord.subject, '國文');
    assert.equal(sourceDateRecord.originalTeacherEmail, 'month@example.com');
    assert.equal(sourceDateRecord.actualTeacherEmail, 'sheng@example.com');
    assert.equal(sourceDateRecord.originalTeacherName, '洪筱仙');
@@ -175,11 +193,11 @@ function runSubmittedExchangePaperRecordMappingTest() {
   }]);
   const targetDateRecord = records.find(record => record.id.endsWith('_1'));
   const sourceDateRecord = records.find(record => record.id.endsWith('_2'));
-   assert.equal(targetDateRecord.className, '704');
-   assert.equal(targetDateRecord.subject, '國文');
+   assert.equal(targetDateRecord.className, '703');
+   assert.equal(targetDateRecord.subject, '數學');
    assert.equal(targetDateRecord.actualTeacherName, '申請人');
-   assert.equal(sourceDateRecord.className, '703');
-   assert.equal(sourceDateRecord.subject, '數學');
+   assert.equal(sourceDateRecord.className, '704');
+   assert.equal(sourceDateRecord.subject, '國文');
    assert.equal(sourceDateRecord.actualTeacherName, '受邀人');
 }
 
@@ -204,10 +222,33 @@ function runApprovedExchangeRecordMappingTest() {
   }]);
   const targetDateRecord = records.find(record => record.id.endsWith('_1'));
   const sourceDateRecord = records.find(record => record.id.endsWith('_2'));
-  assert.equal(targetDateRecord.className, '704');
+  assert.equal(targetDateRecord.className, '703');
+  assert.equal(targetDateRecord.subject, '數學');
+  assert.equal(sourceDateRecord.className, '704');
+  assert.equal(sourceDateRecord.subject, '國文');
+}
+
+function runPublicClassExchangeMappingTest() {
+  const map = loadPublicClassRequestMapper();
+  const records = map([{
+    id: 'public-exchange-1',
+    status: 'approved',
+    type: 'exchange',
+    requesterName: '洪筱仙',
+    targetTeacherName: '吳冠萱',
+    requestDate: '2026-09-04',
+    requestPeriod: 2,
+    className: '904',
+    subject: '國文',
+    targetDate: '2026-09-02',
+    targetPeriod: 5
+  }], '904');
+  const targetDateRecord = records.find(record => record.id.endsWith('_class_1'));
+  const sourceDateRecord = records.find(record => record.id.endsWith('_class_2'));
   assert.equal(targetDateRecord.subject, '國文');
-  assert.equal(sourceDateRecord.className, '703');
-  assert.equal(sourceDateRecord.subject, '數學');
+  assert.equal(targetDateRecord.actualTeacherName, '洪筱仙');
+  assert.equal(sourceDateRecord.subject, '輔導');
+  assert.equal(sourceDateRecord.actualTeacherName, '吳冠萱');
 }
 
 function runNoSyntheticStudySubjectTest() {
@@ -224,6 +265,7 @@ function runNoSyntheticStudySubjectTest() {
 
 runSubmittedExchangePaperRecordMappingTest();
 runApprovedExchangeRecordMappingTest();
+runPublicClassExchangeMappingTest();
 runNoSyntheticStudySubjectTest();
 
 function loadProgressSteps() {

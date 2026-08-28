@@ -269,7 +269,7 @@ window.DomainSchedule = (function () {
           ownOutClass = String(priorDuty.className || (firstEdge && firstEdge.className) || (baseOut && baseOut.className) || '').trim();
           ownOutSubj = String(priorDuty.subject || (firstEdge && firstEdge.subject) || '').trim();
         } else {
-          // 對調調出：科目永遠自己的；班級優先基礎，缺才用 edge（地點）
+          // 對調調出：班科永遠是自己的；無基礎列時沿用先前調入的本課班級。
           ownOutSubj = String(
             (baseOut && baseOut.subject)
             || (h.getTeacherSubjectByEmail && h.getTeacherSubjectByEmail(teacherEmail))
@@ -277,8 +277,8 @@ window.DomainSchedule = (function () {
           ).trim();
           ownOutClass = String(
             (baseOut && baseOut.className)
-            || (firstEdge && firstEdge.className)
             || (priorDuty && priorDuty.className)
+            || (firstEdge && firstEdge.className)
             || ''
           ).trim();
         }
@@ -359,8 +359,8 @@ window.DomainSchedule = (function () {
         var baseIn = inCands.find(function (s) {
           return String(s.teacherEmail || '').toLowerCase() === originalOwner;
         }) || inCands[0] || null;
-        // 調入主標＝此格實際要上的班科（edge 已由 convert 寫入「帶來的課」）
-        // 對調：各自帶自己原班到新時段 → edge 存帶來的班科，不可用教師專長覆寫
+        // 調入主標＝實際授課教師自己的班科（edge 由交換轉換器寫入）。
+        // 對調：各自帶自己的原課到新時段，不可用對方教師專長覆寫。
         // 代課：edge 存被代的那堂
         var isExIn = incomingEdge.type === 'exchange';
         var finalClassIn = String(incomingEdge.className || (baseIn && baseIn.className) || '').trim();
@@ -514,26 +514,26 @@ window.DomainSchedule = (function () {
     var target = String(request && request.targetTeacherEmail || '').toLowerCase();
     if (email === requester) {
       return {
-        className: String(request && request.targetClassName || '').trim(),
-        subject: String(request && request.targetSubject || '').trim()
+        className: String(request && request.className || '').trim(),
+        subject: String(request && request.subject || '').trim()
       };
     }
     if (email !== target) return { className: '', subject: '' };
 
-    var className = String(request && request.className || '').trim();
-    var subject = String(request && request.subject || '').trim();
-    if ((!className || !subject) && request && request.requestDate && request.requestPeriod != null) {
-      var day = parseInt(request.requestPeriodDay, 10);
+    var className = String(request && request.targetClassName || '').trim();
+    var subject = String(request && request.targetSubject || '').trim();
+    if ((!className || !subject) && request && request.targetDate && request.targetPeriod != null) {
+      var day = parseInt(request.targetDayOfWeek, 10);
       if (!(day >= 1 && day <= 7)) {
-        var date = new Date(String(request.requestDate).replace(/-/g, '/'));
+        var date = new Date(String(request.targetDate).replace(/-/g, '/'));
         if (!isNaN(date.getTime())) day = date.getDay() === 0 ? 7 : date.getDay();
       }
       var baseSlot = typeof resolveBaseSlot === 'function'
-        ? resolveBaseSlot(request.requestDate, day, request.requestPeriod, request.requesterEmail)
-        : { dayOfWeek: day, period: request.requestPeriod };
+        ? resolveBaseSlot(request.targetDate, day, request.targetPeriod, request.targetTeacherEmail)
+        : { dayOfWeek: day, period: request.targetPeriod };
       var candidates = getCandidates(
         index,
-        request.requesterEmail,
+        request.targetTeacherEmail,
         baseSlot.dayOfWeek,
         baseSlot.period,
         allSchedules

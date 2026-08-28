@@ -279,15 +279,11 @@ function renderPrintCheckbox(label, checked) {
 
 function getPrintSignatureText(group, rows, ctx, getName) {
   const entries = [];
-  const signatureSide = group && group.isExchange ? 'original' : 'actual';
+  const signatureSide = 'actual';
   (rows || []).forEach(row => {
-    // 調課課程留在原課堂位置，右側姓名也標示該原課堂教師。
-    const key = signatureSide === 'original'
-      ? String(row.originalTeacherEmail || row.originalTeacherName || '').trim()
-      : String(row.actualTeacherEmail || row.actualTeacherName || '').trim();
-    const name = cleanPrintTeacherName(signatureSide === 'original'
-      ? (row.originalTeacherName || getName(key))
-      : (row.actualTeacherName || getName(key)));
+    // 調課後格內是實際授課教師自己的課，簽名也取實際授課教師。
+    const key = String(row.actualTeacherEmail || row.actualTeacherName || '').trim();
+    const name = cleanPrintTeacherName(row.actualTeacherName || getName(key));
     const identity = key.toLowerCase() || name.toLowerCase();
     if (!name || entries.some(entry => entry.identity === identity)) return;
     entries.push({ key, name, identity });

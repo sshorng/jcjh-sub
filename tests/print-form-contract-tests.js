@@ -185,8 +185,8 @@ const exchangePreviewSvg = context.window.buildPrintPreviewImageSvg(exchangePrev
 assert.match(exchangePreviewSvg, /xmlns="http:\/\/www\.w3\.org\/2000\/svg"/, 'nested exchange SVG must declare its namespace');
 const exchangeAdminOutput = context.window.generateFormHtml(exchange, 'NoticeClass', Object.assign({}, fixtureContext, { isAdmin: true }));
 const exchangeSubjectRows = [...exchangeAdminOutput.matchAll(/<tr class="official-subject-row">([\s\S]*?)<\/tr>/g)].map(match => match[1]);
-assert.match(exchangeSubjectRows[0], /陳小華/);
-assert.match(exchangeSubjectRows[1], /王小明/);
+assert.match(exchangeSubjectRows[0], /王小明/);
+assert.match(exchangeSubjectRows[1], /陳小華/);
 
 const groups = context.window.buildPrintGroups([
   substitution.records[0],

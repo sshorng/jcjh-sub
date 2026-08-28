@@ -125,7 +125,7 @@ const courseAtTarget = context.window.DomainSchedule.applyPendingOverlay({
   scheduleIndex: context.window.DomainSchedule.buildScheduleIndex([]),
   resolveBaseSlot: (date, day, period) => ({ dayOfWeek: day, period: period })
 });
-assert.equal(courseAtTarget.subject, '數學');
+assert.equal(courseAtTarget.subject, '文旅享繪');
 
 const courseAtSource = context.window.DomainSchedule.applyPendingOverlay({
   cell: null,
@@ -139,6 +139,6 @@ const courseAtSource = context.window.DomainSchedule.applyPendingOverlay({
   scheduleIndex: context.window.DomainSchedule.buildScheduleIndex([]),
   resolveBaseSlot: (date, day, period) => ({ dayOfWeek: day, period: period })
 });
-assert.equal(courseAtSource.subject, '文旅享繪');
+assert.equal(courseAtSource.subject, '數學');
 
 console.log('school swap contract tests PASS');
