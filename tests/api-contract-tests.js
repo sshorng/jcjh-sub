@@ -113,6 +113,15 @@ function lastPayload() {
   assert.equal(lastPayload().idToken, validToken);
   assert.ok(Array.from(storageMap.keys()).some(key => /_meta$/.test(key)));
 
+  responses.push({ status: 200, body: {
+    success: true,
+    semesterId: '115-1',
+    userRole: 'teacher',
+    teachers: []
+  } });
+  await client.fetchMetaData({ semesterId: '115-1', force: true });
+  assert.deepEqual(lastPayload().data, { scope: 'fresh' });
+
   const swrPrefix = 'jcjh_swr_' + context.window.GasApi.APP_VERSION + '_115-1';
   responses.push({ status: 200, body: {
     success: true,

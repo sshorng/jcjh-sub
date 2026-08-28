@@ -81,6 +81,42 @@ function uniquePrintValues(values) {
   });
 }
 
+function resolvePrintSerial(record) {
+  if (!record) return '';
+  const explicit = record.serial || record['單號'] || record.requestSerial || '';
+  if (String(explicit).trim()) return String(explicit).trim();
+  return resolvePrintRequestId(record);
+}
+
+function getPrintAudienceLabels(group, ctx) {
+  const rows = getPrintSlotRows(group);
+  const getName = ctx && typeof ctx.getTeacherNameByEmail === 'function'
+    ? ctx.getTeacherNameByEmail
+    : function (value) { return String(value || ''); };
+  const names = function (side) {
+    return uniquePrintValues((rows || []).map(function (row) {
+      const key = getPrintTeacherKey(row, side);
+      const raw = side === 'actual' ? row.actualTeacherName : row.originalTeacherName;
+      return cleanPrintTeacherName(raw || getName(key) || key);
+    }));
+  };
+  const classes = uniquePrintValues((rows || []).map(row => row.cls || row.className));
+  return [
+    '代課/對調教師：' + names('actual').join('、'),
+    '班級：' + classes.join('、'),
+    '請假教師：' + names('original').join('、'),
+    '教學組留存'
+  ];
+}
+
+function withPrintAudienceLabel(form, label) {
+  const source = String(form || '').replace(/<div class="official-audience-label">[\s\S]*?<\/div>\s*/g, '');
+  const labelHtml = `<div class="official-audience-label">${escapePrintHtml(label || '')}</div>`;
+  const opening = /(<div\b[^>]*class="[^"]*(?:substitute-form|official-substitution-form)[^"]*"[^>]*>)/i;
+  if (opening.test(source)) return source.replace(opening, `$1${labelHtml}`);
+  return labelHtml + source;
+}
+
 function getPrintDateParts(value) {
   const match = String(value || '').match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
   if (!match) return null;
@@ -164,9 +200,12 @@ function getPrintSlotRows(group) {
       period: record.period,
       cls: record.className,
       sub: record.subject,
-      actualTeacherEmail: getPrintTeacherKey(record, 'actual'),
-      actualTeacherName: record.actualTeacherName,
-       leaveEmail: getPrintTeacherKey(record, 'original'),
+       originalTeacherEmail: getPrintTeacherKey(record, 'original'),
+       originalTeacherName: record.originalTeacherName,
+       actualTeacherEmail: getPrintTeacherKey(record, 'actual'),
+       actualTeacherName: record.actualTeacherName,
+       serial: resolvePrintSerial(record),
+        leaveEmail: getPrintTeacherKey(record, 'original'),
        reason: record.reason || group.reason || '',
        note: record.note || group.note || '',
        leaveTimeType: record.leaveTimeType || '',
@@ -180,9 +219,12 @@ function getPrintSlotRows(group) {
     num: record.period,
     cls: record.className,
     sub: record.subject,
-    actualTeacherEmail: getPrintTeacherKey(record, 'actual'),
-    actualTeacherName: record.actualTeacherName,
-     leaveEmail: getPrintTeacherKey(record, 'original'),
+     originalTeacherEmail: getPrintTeacherKey(record, 'original'),
+     originalTeacherName: record.originalTeacherName,
+     actualTeacherEmail: getPrintTeacherKey(record, 'actual'),
+     actualTeacherName: record.actualTeacherName,
+     serial: resolvePrintSerial(record),
+      leaveEmail: getPrintTeacherKey(record, 'original'),
      reason: record.reason || group.reason || '',
      note: record.note || group.note || '',
      leaveTimeType: record.leaveTimeType || '',
@@ -207,6 +249,7 @@ function renderPrintCheckbox(label, checked) {
 function getPrintSignatureText(group, rows, ctx, getName) {
   const entries = [];
   (rows || []).forEach(row => {
+    // 調課後格內顯示的是實際移入的教師自己的課，簽名也取實際授課教師。
     const key = String(row.actualTeacherEmail || row.actualTeacherName || '').trim();
     const name = cleanPrintTeacherName(row.actualTeacherName || getName(key));
     const identity = key.toLowerCase() || name.toLowerCase();
@@ -222,6 +265,74 @@ function getPrintSignatureText(group, rows, ctx, getName) {
   }).filter(Boolean).join('、');
 }
 
+const OFFICIAL_COL_WIDTHS = Object.freeze([417, 400, 172, 137, 416, 461, 232, 708, 75, 1014, 74, 680, 261, 608, 407, 302, 851]);
+const OFFICIAL_DAY_COLS = Object.freeze([3, 3, 1, 3, 2]);
+const OFFICIAL_GRID_TOP_MM = 43.43;
+const OFFICIAL_GRID_PERIOD_MM = 13.1;
+const OFFICIAL_GRID_HEIGHT_MM = OFFICIAL_GRID_PERIOD_MM * 8;
+
+function getOfficialGridLayout() {
+  const total = OFFICIAL_COL_WIDTHS.reduce((sum, width) => sum + width, 0);
+  let columnOffset = OFFICIAL_COL_WIDTHS.slice(0, 3).reduce((sum, width) => sum + width, 0);
+  const dayCenters = [];
+  const dayHalfWidths = [];
+  let colIndex = 3;
+  OFFICIAL_DAY_COLS.forEach(count => {
+    const width = OFFICIAL_COL_WIDTHS.slice(colIndex, colIndex + count).reduce((sum, value) => sum + value, 0);
+    dayCenters.push(((columnOffset + width / 2) / total) * 100);
+    dayHalfWidths.push((width / total) * 50);
+    columnOffset += width;
+    colIndex += count;
+  });
+  return { dayCenters, dayHalfWidths };
+}
+
+function getExchangeArrowSvg(group, rows, weekDates) {
+  if (!group || !group.isExchange) return '';
+  const points = [];
+  (rows || []).forEach(row => {
+    if (!row || points.length >= 2) return;
+    const date = getPrintDateParts(row.date);
+    const period = parseInt(row.num != null ? row.num : row.period, 10);
+    if (!date || Number.isNaN(period) || period < 1 || period > 8) return;
+    const dayIndex = (weekDates || []).findIndex(value => {
+      const candidate = getPrintDateParts(value);
+      return candidate && candidate.key === date.key;
+    });
+    if (dayIndex < 0 || points.some(point => point.key === `${date.key}|${period}`)) return;
+    points.push({ key: `${date.key}|${period}`, dayIndex, period });
+  });
+  if (points.length !== 2) return '';
+
+  const layout = getOfficialGridLayout();
+  const toPoint = point => ({
+    x: layout.dayCenters[point.dayIndex],
+    y: (point.period - 1) * OFFICIAL_GRID_PERIOD_MM + OFFICIAL_GRID_PERIOD_MM / 2,
+    halfWidth: layout.dayHalfWidths[point.dayIndex],
+    halfHeight: OFFICIAL_GRID_PERIOD_MM / 2
+  });
+  const start = toPoint(points[0]);
+  const end = toPoint(points[1]);
+  const edgePoint = (from, to) => {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const scaleX = dx ? from.halfWidth / Math.abs(dx) : Infinity;
+    const scaleY = dy ? from.halfHeight / Math.abs(dy) : Infinity;
+    const length = Math.hypot(dx, dy) || 1;
+    const edgeDistance = Math.min(scaleX, scaleY) * length;
+    const distance = Math.max(0, edgeDistance - 0.35);
+    return {
+      x: from.x + (dx / length) * distance,
+      y: from.y + (dy / length) * distance
+    };
+  };
+  const startEdge = edgePoint(start, end);
+  const endEdge = edgePoint(end, start);
+  const markerId = `exchange-arrow-${String(group.requestId || 'route').replace(/[^a-zA-Z0-9_-]+/g, '_')}`;
+  const number = value => Number(value.toFixed(2));
+  return `<svg xmlns="http://www.w3.org/2000/svg" class="official-exchange-overlay" aria-hidden="true" viewBox="0 0 100 ${OFFICIAL_GRID_HEIGHT_MM}" preserveAspectRatio="none"><defs><marker id="${markerId}" markerWidth="2.4" markerHeight="2.4" refX="2.4" refY="1.2" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M 0 0 L 2.4 1.2 L 0 2.4" fill="none" stroke="#111827" stroke-width=".25" stroke-linejoin="round"></path></marker></defs><line class="official-exchange-arrow-line" x1="${number(startEdge.x)}" y1="${number(startEdge.y)}" x2="${number(endEdge.x)}" y2="${number(endEdge.y)}" marker-start="url(#${markerId})" marker-end="url(#${markerId})"></line></svg>`;
+}
+
 function generateFormHtml(g, currentType, ctx) {
   ctx = ctx || {};
   const getName = typeof ctx.getTeacherNameByEmail === 'function'
@@ -234,12 +345,12 @@ function generateFormHtml(g, currentType, ctx) {
   const sourceRecords = (g && g.records && g.records.length) ? g.records : rows;
   const serials = uniquePrintValues([
     ...((g && g.serials) || []),
-    ...(sourceRecords || []).map(record => record && record.serial),
-    ...(rows || []).map(row => row && row.serial)
+    ...(sourceRecords || []).map(resolvePrintSerial),
+    ...(rows || []).map(resolvePrintSerial)
   ]);
   const serialMark = serials.length
-    ? `<div class="official-serial-mark">單號：${serials.map(escapePrintHtml).join('、')}</div>`
-    : '';
+      ? `<div class="official-serial-mark">單號：${serials.map(escapePrintHtml).join('、')}</div>`
+      : '';
   const applicantRecord = g && g.requesterEmail
     ? null
     : (g && g.isExchange
@@ -279,9 +390,8 @@ function generateFormHtml(g, currentType, ctx) {
   const weekDates = getPrintWeekDates((g && g.anchorDate) || (rows[0] && rows[0].date));
   const days = ['一', '二', '三', '四', '五'];
   const periods = [1, 2, 3, 4, 5, 6, 7, 8];
-  const dayCols = [3, 3, 1, 3, 2];
-  const colWidths = [417, 400, 172, 137, 416, 461, 232, 708, 75, 1014, 74, 680, 261, 608, 407, 302, 851];
-  const colgroup = colWidths.map(width => `<col style="width:${(width / 7215 * 100).toFixed(4)}%">`).join('');
+  const dayCols = OFFICIAL_DAY_COLS;
+  const colgroup = OFFICIAL_COL_WIDTHS.map(width => `<col style="width:${(width / 7215 * 100).toFixed(4)}%">`).join('');
   const reprintClass = g && g.isReprint ? ' is-reprint' : '';
   const scheduleCell = (date, period, property) => {
     const matches = rows.filter(row => String(row.date || '') === date && parseInt(row.num != null ? row.num : row.period, 10) === period);
@@ -319,10 +429,12 @@ function generateFormHtml(g, currentType, ctx) {
     : uniquePrintValues([reason === '請假' ? '' : reason, administrativeNote]).join('；') || '課務調整';
   const reasonLine = `假別：${isLeave ? escapePrintHtml(reason || '請假') : ''}`;
   const instructions = '1.請於填寫線上假單時填妥課務安排情形，紙本送教務處備查。2.請先確認班級特教學生課務，有特教生抽離請通知特教組。3.代課以同科教師為原則，並先行將課務交代該代課老師。4.補課請自覓時間，於二週內完成。';
+  const exchangeArrowSvg = getExchangeArrowSvg(g, rows, weekDates);
 
   return `
     <div class="substitute-form official-substitution-form${reprintClass}">
       ${serialMark}
+      <div class="official-form-table-wrap">
       <table class="official-form-table">
         <colgroup>${colgroup}</colgroup>
         <tbody>
@@ -343,14 +455,16 @@ function generateFormHtml(g, currentType, ctx) {
              <td colspan="5" class="official-check-option">${renderPrintCheckbox('僅課務申請(非請假)', !isLeave)}</td>
              <td colspan="5" class="official-reason-cell">原因：${escapePrintHtml(courseReason)}</td>
           </tr>
-          <tr class="official-section-row"><td colspan="15">代（調、補）課情形★★請註明科目、日期★★</td><td colspan="2" class="official-signature-header">代課教師</td></tr>
+            <tr class="official-section-row"><td colspan="15"><span class="official-section-caption">代（調、補）課情形★★請註明科目、日期★★</span></td><td colspan="2" class="official-signature-header">代課教師</td></tr>
           <tr class="official-schedule-header">
             <td colspan="3" class="official-row-label">星期<br>節次</td>${headerCells}<td colspan="2" class="official-signature-header"></td>
           </tr>
-          ${bodyRows}
-          <tr class="official-instruction-row"><td colspan="17">${escapePrintHtml(instructions)}</td></tr>
-        </tbody>
+         ${bodyRows}
+         <tr class="official-instruction-row"><td colspan="17">${escapePrintHtml(instructions)}</td></tr>
+       </tbody>
       </table>
+      ${exchangeArrowSvg}
+      </div>
     </div>
   `;
 }
@@ -412,7 +526,8 @@ function buildPrintGroups(recordsToPrint, allSubs) {
     if (!record || group.records.some(item => item.id === record.id)) return;
     const reason = record.reason || '請假';
     group.records.push(record);
-    if (record.serial && !group.serials.includes(record.serial)) group.serials.push(record.serial);
+    const serial = resolvePrintSerial(record);
+    if (serial && !group.serials.includes(serial)) group.serials.push(serial);
     const originalKey = getPrintTeacherKey(record, 'original');
     const actualKey = getPrintTeacherKey(record, 'actual');
     if (originalKey && !group.leaveEmails.includes(originalKey)) group.leaveEmails.push(originalKey);
@@ -519,12 +634,24 @@ function splitPrintGroupByWeek(group) {
 }
 
 function packPrintForms(forms) {
-  return (forms || []).map(function (form) {
+  const list = Array.isArray(forms) ? forms : [];
+  const labelSets = Array.isArray(list.audienceLabelSets) ? list.audienceLabelSets : [];
+  const defaultLabels = ['代課/對調教師：', '班級：', '請假教師：', '教學組留存'];
+  return list.map(function (form, index) {
+    const labels = Array.isArray(labelSets[index]) && labelSets[index].length >= 4
+      ? labelSets[index]
+      : defaultLabels;
+    const copy = label => withPrintAudienceLabel(form, label);
     return `
       <div class="print-page">
-        ${form}
+        ${copy(labels[0])}
         <div class="cut-line"></div>
-        ${form}
+        ${copy(labels[1])}
+      </div>
+      <div class="print-page">
+        ${copy(labels[2])}
+        <div class="cut-line"></div>
+        ${copy(labels[3])}
       </div>
     `;
   }).join('');
@@ -554,24 +681,32 @@ function getSelectedPrintRecords(ctx) {
 function buildPrintForms(recordsToPrint, allSubs, ctx) {
   const groupList = buildPrintGroups(recordsToPrint, allSubs);
   const forms = [];
+  const audienceLabelSets = [];
   groupList.forEach(function (group) {
     splitPrintGroupByWeek(group).forEach(function (weekGroup) {
-      forms.push(generateFormHtml(weekGroup, 'Official', ctx));
+      const form = generateFormHtml(weekGroup, 'Official', ctx);
+      if (!form) return;
+      const labels = getPrintAudienceLabels(weekGroup, ctx);
+      forms.push(withPrintAudienceLabel(form, labels[0]));
+      audienceLabelSets.push(labels);
     });
   });
-  return forms.filter(Boolean);
+  forms.audienceLabelSets = audienceLabelSets;
+  return forms;
 }
 
 function getPrintPreviewCss() {
   return `
     * { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; background: #e2e8f0; color: #000; }
-    body { font-family: "DFKai-SB", "標楷體", "BiauKai", "Noto Serif TC", serif; }
+    body { font-family: "DFKai-SB", "標楷體", "BiauKai", "Noto Serif TC", serif; font-size: 0; line-height: 0; }
     .print-preview-stack { display: flex; flex-direction: column; align-items: center; gap: 8mm; min-width: 158mm; padding: 8mm 4mm 12mm; }
-    .print-preview-item { width: 158mm; min-height: 170mm; padding: 6mm 12.7mm 7mm; background: #fff; box-shadow: 0 1px 8px rgba(15, 23, 42, .18); overflow: visible; }
-    .substitute-form { width: 132.045mm; min-height: 156.5mm; height: auto; padding: 0 !important; margin: 0 !important; position: relative; box-sizing: border-box; background: #fff !important; border: none !important; overflow: visible; }
-    .official-serial-mark { position: absolute; top: -4.5mm; left: 0; max-width: 55mm; font-size: 6.5pt; line-height: 1.1; text-align: left; white-space: normal; overflow-wrap: anywhere; color: #000; }
-    .official-form-table { width: 127.265mm; border-collapse: collapse; table-layout: fixed; font-family: "DFKai-SB", "標楷體", "BiauKai", "Noto Serif TC", serif; font-size: 10pt; color: #000; line-height: 1.05; }
+    .print-preview-item { width: 158mm; min-height: 170mm; padding: 6mm 12.7mm 7mm; background: #fff; box-shadow: 0 1px 8px rgba(15, 23, 42, .18); overflow: visible; font-size: 10pt; line-height: normal; }
+     .substitute-form { width: 132.045mm; min-height: 156.5mm; height: auto; padding: 0 !important; margin: 0 !important; position: relative; box-sizing: border-box; background: #fff !important; border: none !important; overflow: visible; font-size: 10pt; line-height: normal; }
+     .official-audience-label { position: absolute; top: -4.5mm; left: 0; max-width: 78mm; font-size: 7pt; line-height: 1.1; text-align: left; white-space: normal; overflow-wrap: anywhere; color: #000; }
+     .official-serial-mark { position: absolute; right: 0; bottom: -4.5mm; max-width: 78mm; font-size: 6.5pt; line-height: 1.1; text-align: right; white-space: normal; overflow-wrap: anywhere; color: #000; }
+     .official-form-table-wrap { position: relative; width: 127.265mm; }
+     .official-form-table { width: 127.265mm; border-collapse: collapse; table-layout: fixed; font-family: "DFKai-SB", "標楷體", "BiauKai", "Noto Serif TC", serif; font-size: 10pt; color: #000; line-height: 1.05; }
     .official-form-table td, .official-form-table th { border: .5pt solid #000; box-sizing: border-box; padding: 0 1.9mm; vertical-align: middle; overflow: hidden; }
     .official-title-row { height: 7.34mm; font-size: 11pt; font-weight: 700; text-align: center; }
     .official-info-row { height: 11.57mm; }
@@ -590,7 +725,10 @@ function getPrintPreviewCss() {
     .official-reason-cell { text-align: left; white-space: normal; font-size: 7.3pt !important; line-height: 1.05; padding-left: 1.2mm !important; padding-right: .8mm !important; word-break: break-all; }
     .official-checkbox { white-space: normal; }
     .official-checkbox.is-checked { font-weight: 700; }
-    .official-section-row { height: 8.11mm; font-weight: 400; text-align: center; }
+     .official-section-row { height: 8.11mm; font-weight: 400; text-align: center; }
+     .official-section-caption { vertical-align: middle; }
+     .official-exchange-overlay { position: absolute; z-index: 3; top: 43.43mm; left: 0; width: 127.265mm; height: 104.8mm; overflow: visible; pointer-events: none; }
+     .official-exchange-arrow-line { fill: none; stroke: #111827; stroke-width: .25; stroke-linecap: round; }
     .official-signature-header { text-align: center; font-size: 9pt; }
     .official-signature-cell { text-align: center; font-size: 10pt; line-height: 1.25; }
     .official-signature-name { font-size: 9pt; }
@@ -625,6 +763,8 @@ function buildPrintPreview(ctx, options) {
   return {
     recordCount: recordsToPrint.length,
     formCount: forms.length,
+    pageCount: forms.length * 2,
+    copyCount: forms.length * 4,
     records: recordsToPrint.slice(),
     recordIds: recordsToPrint.map(record => record && record.id != null ? String(record.id) : '').filter(Boolean),
     formsHtml: forms.join(''),
@@ -748,43 +888,49 @@ async function printSelectedForms(formType, ctx) {
         <title>建成國中調代課通知單</title>
         <style>
           @page { size: A4 landscape; margin: 0; }
-          @media print {
-            html, body { margin: 0; padding: 0; background: white !important; }
-          }
-          body {
-            background: white !important;
-            color: #000 !important;
-            margin: 0;
-            padding: 0;
-            font-family: "DFKai-SB", "標楷體", "BiauKai", "Noto Serif TC", serif;
-          }
-          .print-page {
-            width: 297mm;
-            height: 210mm;
-            min-height: 210mm;
-            page-break-after: always;
-            break-after: page;
-            box-sizing: border-box;
-            padding: 12.7mm;
-            display: flex;
-            flex-direction: row;
-            justify-content: flex-start;
-            align-items: flex-start;
-            gap: 7.496mm;
-            position: relative;
-            overflow: hidden;
-            background: white !important;
+           @media print {
+             html, body { margin: 0; padding: 0; background: white !important; }
+           }
+           body {
+             background: white !important;
+             color: #000 !important;
+             margin: 0;
+             padding: 0;
+             font-family: "DFKai-SB", "標楷體", "BiauKai", "Noto Serif TC", serif;
+             font-size: 0;
+             line-height: 0;
+             overflow: visible;
+           }
+           #print-root { display: block; margin: 0; padding: 0; }
+           .print-page {
+             width: 297mm;
+             height: 210mm;
+             min-height: 210mm;
+              page-break-after: auto;
+              break-after: auto;
+             box-sizing: border-box;
+             padding: 12.7mm;
+             display: flex;
+             flex-direction: row;
+             justify-content: flex-start;
+             align-items: flex-start;
+             gap: 7.496mm;
+             position: relative;
+             font-size: 10pt;
+             line-height: normal;
+             overflow: hidden;
+             background: white !important;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
           }
-          .print-page:last-child {
-            page-break-after: avoid !important;
-            break-after: avoid !important;
-          }
+           .print-page + .print-page {
+             page-break-before: always;
+             break-before: page;
+           }
           .cut-line {
             display: none;
           }
-          .substitute-form {
+           .substitute-form {
             width: 132.045mm;
             flex: 0 0 132.045mm;
             min-height: 156.5mm;
@@ -797,12 +943,14 @@ async function printSelectedForms(formType, ctx) {
             border: none !important;
             page-break-after: avoid;
             page-break-inside: avoid;
-            break-inside: avoid;
-            overflow: visible;
-          }
-          .official-form-empty { visibility: hidden; }
-          .official-serial-mark { position: absolute; top: -4.5mm; left: 0; max-width: 55mm; font-size: 6.5pt; line-height: 1.1; text-align: left; white-space: normal; overflow-wrap: anywhere; color: #000; }
-          .official-form-table {
+             break-inside: avoid;
+             overflow: visible;
+           }
+           .official-form-empty { visibility: hidden; }
+            .official-audience-label { position: absolute; top: -4.5mm; left: 0; max-width: 78mm; font-size: 7pt; line-height: 1.1; text-align: left; white-space: normal; overflow-wrap: anywhere; color: #000; }
+            .official-serial-mark { position: absolute; right: 0; bottom: -4.5mm; max-width: 78mm; font-size: 6.5pt; line-height: 1.1; text-align: right; white-space: normal; overflow-wrap: anywhere; color: #000; }
+           .official-form-table-wrap { position: relative; width: 127.265mm; }
+           .official-form-table {
             width: 127.265mm;
             border-collapse: collapse;
             table-layout: fixed;
@@ -838,7 +986,10 @@ async function printSelectedForms(formType, ctx) {
           .official-reason-cell { text-align: left; white-space: normal; font-size: 7.3pt !important; line-height: 1.05; padding-left: 1.2mm !important; padding-right: 0.8mm !important; word-break: break-all; }
           .official-checkbox { white-space: normal; }
           .official-checkbox.is-checked { font-weight: 700; }
-          .official-section-row { height: 8.11mm; font-weight: 400; text-align: center; }
+            .official-section-row { height: 8.11mm; font-weight: 400; text-align: center; }
+            .official-section-caption { vertical-align: middle; }
+            .official-exchange-overlay { position: absolute; z-index: 3; top: 43.43mm; left: 0; width: 127.265mm; height: 104.8mm; overflow: visible; pointer-events: none; }
+            .official-exchange-arrow-line { fill: none; stroke: #111827; stroke-width: 0.25; stroke-linecap: round; }
           .official-signature-header { text-align: center; font-size: 9pt; }
           .official-signature-cell { text-align: center; font-size: 10pt; line-height: 1.25; }
           .official-signature-name { font-size: 9pt; }
@@ -852,24 +1003,10 @@ async function printSelectedForms(formType, ctx) {
           .official-class-value { font-size: 8.5pt; }
           .official-instruction-row { min-height: 8.11mm; height: auto; }
           .official-instruction-row td { text-align: justify; font-size: 8.5pt; line-height: 1.15; padding-top: 0.6mm; padding-bottom: 0.6mm; }
-          .substitute-form.is-reprint::after {
-            content: "補發";
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%) rotate(-30deg);
-            font-size: 38pt;
-            color: rgba(0, 0, 0, 0.04);
-            font-weight: 900;
-            border: 3px solid rgba(0, 0, 0, 0.04);
-            padding: 3px 12px;
-            z-index: 1000;
-            pointer-events: none;
-          }
         </style>
       </head>
       <body style="background: white !important;">
-        ${htmlContent}
+        <main id="print-root">${htmlContent}</main>
         <script>
           window.onload = function() {
             setTimeout(function() {

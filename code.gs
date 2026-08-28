@@ -118,7 +118,7 @@ function normalizeRole_(raw) {
 }
 
 function resolveTeacherRole_(userEmail, teachers) {
-  var email = String(userEmail || "").toLowerCase();
+  var email = String(userEmail || "").trim().toLowerCase();
   var supers = getSuperAdminEmails_();
   if (supers.indexOf(email) !== -1) return "admin";
   if (!teachers || teachers.length === 0) {
@@ -126,7 +126,7 @@ function resolveTeacherRole_(userEmail, teachers) {
     return "";
   }
   var currentTeacher = teachers.find(function (t) {
-    return String(t["教師Email"] || t.email || "").toLowerCase() === email;
+    return String(t["教師Email"] || t.email || t.loginEmail || "").trim().toLowerCase() === email;
   });
   if (!currentTeacher) return "";
   return normalizeRole_(currentTeacher["系統角色"] || currentTeacher.role || "teacher");
@@ -138,6 +138,48 @@ function resolveIsAdmin_(userEmail, teachers) {
 
 function resolveIsStaff_(userEmail, teachers) {
   return resolveTeacherRole_(userEmail, teachers) === "staff";
+}
+
+function isTrueFlag_(raw) {
+  if (raw === true || raw === 1) return true;
+  var value = String(raw == null ? "" : raw).trim().toLowerCase();
+  return value === "true" || value === "1" || value === "是" || value === "yes" || value === "y";
+}
+
+/** 登入前若客戶端學期過期，找出帳號實際所屬學期。 */
+function findTeacherSemesterForLogin_(requestedSemesterId, userEmail) {
+  var requested = String(requestedSemesterId || "").trim();
+  var email = String(userEmail || "").trim().toLowerCase();
+  if (!email) return "";
+
+  var teacherRows = getTableData("教師名單") || [];
+  var matches = teacherRows.filter(function (row) {
+    var rowEmail = String(row["教師Email"] || row.email || row.loginEmail || "").trim().toLowerCase();
+    var rowSemester = String(row["學期代號"] || row.semesterId || "").trim();
+    return rowEmail === email && !!rowSemester;
+  });
+  if (!matches.length) return "";
+
+  if (requested && matches.some(function (row) {
+    return String(row["學期代號"] || row.semesterId || "").trim() === requested;
+  })) {
+    return requested;
+  }
+
+  var semesters = getTableData("學期設定") || [];
+  var defaultSemester = semesters.find(function (row) {
+    var flag = row["是否預設"] !== undefined ? row["是否預設"] : (row["預設"] !== undefined ? row["預設"] : row.isDefault);
+    return isTrueFlag_(flag);
+  });
+  var defaultId = String(defaultSemester && (defaultSemester["學期代號"] || defaultSemester.id) || "").trim();
+  if (defaultId && matches.some(function (row) {
+    return String(row["學期代號"] || row.semesterId || "").trim() === defaultId;
+  })) {
+    return defaultId;
+  }
+
+  // 沒有預設學期時，採用教師名單中最後一筆所屬學期，通常是最新匯入的學期。
+  return String(matches[matches.length - 1]["學期代號"] || matches[matches.length - 1].semesterId || "").trim();
 }
 
 /** 系統設定：可代申請的行政 Email 白名單（小寫陣列） */
@@ -425,7 +467,7 @@ function prepareNameKeyRequestRow_(row, semesterId, teacherRows) {
 function nameKeyCanonicalHeaders_(sheetName) {
   var map = {
     "教師課表": ["學期代號", "課表ID", "教師姓名", "星期", "節次", "班級", "科目", "課堂屬性", "調課限制", "特殊標記"],
-    "申請單": ["學期代號", "申請單ID", "單號", "批次ID", "狀態", "直接核准", "紙本流程", "申請人姓名", "受邀人姓名", "代申請人姓名", "班級", "科目", "異動日期", "異動星期", "異動節次", "異動類型", "對調目標日期", "對調目標星期", "對調目標節次", "經費來源", "請假事由", "請假時間類型", "請假時間", "是否已印", "備註", "建立時間", "更新時間"],
+    "申請單": ["學期代號", "申請單ID", "單號", "批次ID", "狀態", "直接核准", "紙本流程", "申請人姓名", "受邀人姓名", "代申請人姓名", "班級", "科目", "異動日期", "異動星期", "異動節次", "異動類型", "對調目標日期", "對調目標星期", "對調目標節次", "對調目標班級", "對調目標科目", "經費來源", "請假事由", "請假時間類型", "請假時間", "是否已印", "備註", "建立時間", "更新時間"],
     "代導紀錄": ["學期代號", "代導紀錄ID", "來源申請單ID", "原導師姓名", "班級", "代導日期", "請假時間類型", "請假時間", "代導教師姓名", "代導節數", "鐘點費", "狀態", "啟用", "建立時間", "更新時間", "操作者", "備註"],
     "額度帳本": ["學期代號", "流水ID", "時間", "教師姓名", "異動", "餘額後", "類型", "包ID", "事件ID", "事件名稱", "起日", "迄日", "申請單ID", "操作者", "備註", "索引鍵"]
   };
@@ -684,7 +726,7 @@ function getHeadersForSheet(sheetName) {
     // Teacher roster keeps login Email; the four domain sheets use names as relation keys.
     "教師名單": ["學期代號", "教師Email", "教師姓名", "授課科目", "職務", "鐘點支出計畫", "系統角色", "基本鐘點", "折抵額度"],
     "教師課表": ["學期代號", "課表ID", "教師姓名", "星期", "節次", "班級", "科目", "課堂屬性", "調課限制", "特殊標記"],
-    "申請單": ["學期代號", "申請單ID", "單號", "批次ID", "狀態", "直接核准", "紙本流程", "申請人姓名", "受邀人姓名", "代申請人姓名", "班級", "科目", "異動日期", "異動星期", "異動節次", "異動類型", "對調目標日期", "對調目標星期", "對調目標節次", "經費來源", "請假事由", "請假時間類型", "請假時間", "是否已印", "備註", "建立時間", "更新時間"],
+    "申請單": ["學期代號", "申請單ID", "單號", "批次ID", "狀態", "直接核准", "紙本流程", "申請人姓名", "受邀人姓名", "代申請人姓名", "班級", "科目", "異動日期", "異動星期", "異動節次", "異動類型", "對調目標日期", "對調目標星期", "對調目標節次", "對調目標班級", "對調目標科目", "經費來源", "請假事由", "請假時間類型", "請假時間", "是否已印", "備註", "建立時間", "更新時間"],
     "空堂事件": ["學期代號", "事件ID", "事件名稱", "起日", "迄日", "班級清單", "鐘點規則", "可進互代", "啟用", "備註"],
     "代導紀錄": ["學期代號", "代導紀錄ID", "來源申請單ID", "原導師姓名", "班級", "代導日期", "請假時間類型", "請假時間", "代導教師姓名", "代導節數", "鐘點費", "狀態", "啟用", "建立時間", "更新時間", "操作者", "備註"],
     "全校對調": ["學期代號", "對調ID", "事件名稱", "日期A", "星期A", "節次A", "日期B", "星期B", "節次B", "啟用", "建立時間", "更新時間", "操作者", "備註"],
@@ -791,13 +833,17 @@ function initSheets() {
 }
 
 /** 一列 values → 物件（與 getTableData 欄位規則一致） */
+function isTimestampField_(headerName) {
+  return ["建立時間", "更新時間", "申請時間", "建立日期", "申請日期"].indexOf(String(headerName || "").trim()) >= 0;
+}
+
 function rowArrayToObject_(sheetName, headers, row) {
   const obj = {};
   let hasValue = false;
   for (let j = 0; j < headers.length; j++) {
     let val = row[j];
     if (val instanceof Date) {
-      val = toLocalDateStr(val);
+      val = isTimestampField_(headers[j]) ? toLocalTimeStr(val) : toLocalDateStr(val);
     }
     if (sheetName === "申請單" || sheetName === "代導紀錄") {
       if (headers[j] === "狀態") {
@@ -2382,19 +2428,19 @@ function syncHomeroomRecordForRequest_(requestRow, operatorEmail) {
   return hit;
 }
 
-/** 分層讀取：教師（中 TTL）— 快取存瘦身列 */
-/** 分層讀取：教師（中 TTL）— 快取存瘦身列 */
-function getSemesterTeachersCached_(semesterId) {
-  var key = "jcjh_teachers_" + String(semesterId || "");
-  var raw = getCacheChunked(key);
+/** 分層讀取：教師（中 TTL），快取存瘦身列；forceFresh 供登入前置檢查使用。 */
+function getSemesterTeachersCached_(semesterId, forceFresh) {
+  var sid = String(semesterId || "").trim();
+  var key = "jcjh_teachers_" + sid;
+  var raw = forceFresh ? null : getCacheChunked(key);
   if (raw) {
     try {
       var cachedT = JSON.parse(raw);
-      if (Array.isArray(cachedT)) return slimTeacherRows_(cachedT, semesterId);
+      if (Array.isArray(cachedT)) return slimTeacherRows_(cachedT, sid);
     } catch (e) {}
   }
-  var rows = getTableData("教師名單").filter(function (t) { return String(t["學期代號"] || "").trim() === String(semesterId || "").trim(); });
-  var slim = slimTeacherRows_(rows, semesterId);
+  var rows = getTableData("教師名單").filter(function (t) { return String(t["學期代號"] || "").trim() === sid; });
+  var slim = slimTeacherRows_(rows, sid);
   try { putCacheChunked(key, JSON.stringify(slim), CACHE_TTL_TEACHERS_); } catch (e2) {}
   return slim;
 }
@@ -3885,6 +3931,15 @@ function buildMatchCandidates_(semesterId, opts) {
     if (!d0 || isNaN(p0) || !e) return;
     pendingBusy[e + "|" + d0 + "|" + p0] = true;
   }
+  function courseAt(email, date, per, day) {
+    var em = String(email || "").toLowerCase().trim();
+    var p0 = parseInt(per, 10);
+    var d0 = parseInt(day, 10);
+    if (!em || isNaN(p0) || isNaN(d0)) return { className: "", subject: "" };
+    var effective = resolveSchoolSwapSlotForTeacher_(schoolSwaps, date, d0, p0, schedules, em);
+    var key = em + "|" + parseInt(effective.dayOfWeek, 10) + "|" + parseInt(effective.period, 10);
+    return baseMap[key] || { className: "", subject: "" };
+  }
   approved.forEach(function (r) {
     if (!r) return;
     var type = String(r["異動類型"] || r.type || "");
@@ -3895,9 +3950,15 @@ function buildMatchCandidates_(semesterId, opts) {
     var cls = r["班級"] || r.className;
     var subj = r["科目"] || r.subject;
     if (type === "exchange" || type === "對調") {
-      markEdge(reqDate, reqPer, reqEm, tgtEm, cls, subj);
-      markEdge(r["對調目標日期"] || r.targetDate, r["對調目標節次"] || r.targetPeriod,
-        tgtEm, reqEm, cls, subj);
+      var targetDate = r["對調目標日期"] || r.targetDate;
+      var targetPeriod = r["對調目標節次"] || r.targetPeriod;
+      var targetDay = r["對調目標星期"] || r.targetDayOfWeek || _dayFromDateStr_(targetDate);
+      // 課程跟著原授課教師移動：源時段由受邀人帶自己的目標課程調入。
+      var targetCourse = courseAt(tgtEm, targetDate, targetPeriod, targetDay);
+      var targetCls = r["對調目標班級"] || r.targetClassName || targetCourse.className;
+      var targetSubj = r["對調目標科目"] || r.targetSubject || targetCourse.subject;
+      markEdge(reqDate, reqPer, reqEm, tgtEm, targetCls, targetSubj);
+      markEdge(targetDate, targetPeriod, tgtEm, reqEm, cls, subj);
     } else {
       markEdge(reqDate, reqPer, reqEm, tgtEm, cls, subj);
     }
@@ -4235,9 +4296,13 @@ function buildPublicClassPayload_(semesterId, className) {
   var sid = semesterId;
   var allSems = getTableData("學期設定");
   if (!sid) {
-    var def = allSems.find(function (s) { return String(s["是否預設"] || s["預設"] || "") === "是" || s["isDefault"]; });
+    var def = allSems.find(function (s) {
+      var flag = s["是否預設"] !== undefined ? s["是否預設"] : (s["預設"] !== undefined ? s["預設"] : s.isDefault);
+      return isTrueFlag_(flag);
+    });
     sid = def ? (def["學期代號"] || def.id) : (allSems[0] && (allSems[0]["學期代號"] || allSems[0].id)) || "";
   }
+  sid = String(sid || "").trim();
   var cls = String(className || "").trim();
   // 走分層快取（勿每次 getTableData 全表）
   var semesterSchedules = getSemesterSchedulesCached_(sid) || [];
@@ -4307,7 +4372,7 @@ function buildPublicClassPayload_(semesterId, className) {
   });
 
   var semRow = allSems.filter(function (s) {
-    return String(s["學期代號"] || s.id || "") === String(sid);
+    return String(s["學期代號"] || s.id || "").trim() === sid;
   });
 
   var classAwayEvents = getSemesterClassAwayCached_(sid);
@@ -4345,7 +4410,7 @@ function assertPublicClassRateLimit_() {
 // 讀取 API（僅經 doPost 呼叫；公開 action 免 Token）
 function handleReadAction_(postData) {
   const action = postData.action;
-  const semesterId = postData.semesterId;
+  var semesterId = String(postData.semesterId || "").trim();
   const idToken = postData.idToken;
   let reqData = postData.data || {};
   const scope = String(reqData.scope || postData.scope || "full").toLowerCase();
@@ -4370,9 +4435,17 @@ function handleReadAction_(postData) {
   }
 
   var tokenInfo = verifyGoogleIdToken(idToken);
-  var readerEmail = String((tokenInfo && tokenInfo.email) || "").toLowerCase();
-  var readerTeachers = getSemesterTeachersCached_(semesterId) || [];
+  var readerEmail = String((tokenInfo && tokenInfo.email) || "").trim().toLowerCase();
+  var readerTeachers = getSemesterTeachersCached_(semesterId, scope === "fresh") || [];
   var readerRole = resolveTeacherRole_(readerEmail, readerTeachers);
+  if (!readerRole && action === "getMetaData") {
+    var loginSemesterId = findTeacherSemesterForLogin_(semesterId, readerEmail);
+    if (loginSemesterId && (loginSemesterId !== semesterId || scope !== "fresh")) {
+      semesterId = loginSemesterId;
+      readerTeachers = getSemesterTeachersCached_(semesterId, true) || [];
+      readerRole = resolveTeacherRole_(readerEmail, readerTeachers);
+    }
+  }
   if (!readerRole) {
     throw new Error("您的帳號不在目前學期教師名單中，無法讀取系統資料！");
   }
@@ -4445,6 +4518,7 @@ function handleReadAction_(postData) {
         var metaObj = JSON.parse(metaCached);
         if (metaObj && metaObj.success) {
           var cachedOut = Object.assign({}, metaObj);
+          cachedOut.semesterId = semesterId;
           cachedOut.teachers = sanitizeTeacherRowsForReader_(readerTeachers, readerEmail, readerIsAdmin, readerIsStaff);
           cachedOut.settings = sanitizeSettingsForReader_(settings, readerEmail, readerIsAdmin, readerIsStaff, readerTeachers);
           cachedOut.userRole = readerRole;
@@ -4454,6 +4528,7 @@ function handleReadAction_(postData) {
     }
     var metaPayload = {
       success: true,
+      semesterId: semesterId,
       semesters: getTableData("學期設定"),
       teachers: readerTeachers,
       settings: settings
@@ -4951,7 +5026,7 @@ function doPost(e) {
     const postData = JSON.parse(e.postData.contents);
     const action = postData.action;
     requestContext.action = String(action || "unknown");
-    requestContext.semesterId = String(postData.semesterId || "");
+    requestContext.semesterId = String(postData.semesterId || "").trim();
 
     // 讀取類：不佔寫入鎖；getPublicClassData 免 Token
     if (action === "getInitialData" || action === "getMetaData" || action === "getPublicClassData"
@@ -4963,16 +5038,16 @@ function doPost(e) {
 
     // 驗證／權限在鎖外（Token＋教師快取），縮短鎖持有時間
     const idToken = postData.idToken;
-    const semesterId = postData.semesterId;
+    const semesterId = String(postData.semesterId || "").trim();
     let reqData = postData.data;
     const currentUrl = postData.currentUrl || "";
     const user = verifyGoogleIdToken(idToken);
-    const userEmail = user.email.toLowerCase();
+    const userEmail = String(user.email || "").trim().toLowerCase();
     requestContext.operator = userEmail;
     // 權限用快取教師名單；寫入教師結構的 action 仍會 invalidate
     const teachers = getSemesterTeachersCached_(semesterId) || [];
     const currentTeacher = teachers.find(function (t) {
-      return String(t["教師Email"] || t.email || "").toLowerCase() === userEmail;
+      return String(t["教師Email"] || t.email || t.loginEmail || "").trim().toLowerCase() === userEmail;
     });
     const isAdmin = resolveIsAdmin_(userEmail, teachers);
     const isStaff = resolveIsStaff_(userEmail, teachers);
@@ -7092,17 +7167,17 @@ function _buildApproveSlotListHtml_(rows, opts) {
       }
 
       var sides = _resolveExchangeSides_(req);
-      var outC = "";
-      var inC = "";
-      var peer = "";
-      if (role === "cover") {
-        outC = _fmtSlotCompact_(sides.targetDate, sides.targetDay, sides.targetPeriod, sides.targetClass, sides.targetSubject);
-        inC = _fmtSlotCompact_(sides.leaveDate, sides.leaveDay, sides.leavePeriod, sides.targetClass, sides.targetSubject);
-        peer = leaveN;
-      } else if (role === "leave") {
-        outC = _fmtSlotCompact_(sides.leaveDate, sides.leaveDay, sides.leavePeriod, sides.leaveClass, sides.leaveSubject);
-        inC = _fmtSlotCompact_(sides.targetDate, sides.targetDay, sides.targetPeriod, sides.leaveClass, sides.leaveSubject);
-        peer = subN;
+       var outC = "";
+       var inC = "";
+       var peer = "";
+        if (role === "cover") {
+          outC = _fmtSlotCompact_(sides.targetDate, sides.targetDay, sides.targetPeriod, sides.targetClass, sides.targetSubject);
+          inC = _fmtSlotCompact_(sides.leaveDate, sides.leaveDay, sides.leavePeriod, sides.targetClass, sides.targetSubject);
+          peer = leaveN;
+        } else if (role === "leave") {
+          outC = _fmtSlotCompact_(sides.leaveDate, sides.leaveDay, sides.leavePeriod, sides.leaveClass, sides.leaveSubject);
+          inC = _fmtSlotCompact_(sides.targetDate, sides.targetDay, sides.targetPeriod, sides.leaveClass, sides.leaveSubject);
+          peer = subN;
       } else {
         outC = _fmtSlotCompact_(sides.leaveDate, sides.leaveDay, sides.leavePeriod, sides.leaveClass, sides.leaveSubject);
         inC = _fmtSlotCompact_(sides.targetDate, sides.targetDay, sides.targetPeriod, sides.targetClass, sides.targetSubject);
@@ -7165,24 +7240,26 @@ function _calendarDetailsForRole_(req, role) {
   var actionLine = "";
 
   if (role === "leave") {
-    // 申請人：行事曆記「調入」＝對方時間＋自己班科
+    // 申請人：在受邀人原課的時間調入，顯示申請人自己的原課班科。
     eventDate = sides.targetDate || sides.leaveDate;
     eventPeriod = sides.targetPeriod != null && sides.targetPeriod !== "" ? sides.targetPeriod : sides.leavePeriod;
     className = sides.leaveClass;
     subject = sides.leaveSubject;
     actionLine = "【調入】本則為您要上的節次（您的課程："
       + ((className + " " + subject).trim() || "—") + "）。\n"
-      + "【調出】" + sides.leaveDate + "第" + sides.leavePeriod + "節不用上，由 "
+      + "【調出】" + sides.leaveDate + "第" + sides.leavePeriod + "節（"
+      + ((sides.leaveClass + " " + sides.leaveSubject).trim() || "—") + "）不用上，由 "
       + sides.coverName + " 上。";
   } else {
-    // 受邀人：行事曆記「調入」＝申請人時間＋自己班科（目標節原課）
+    // 受邀人：在申請人原課的時間調入，顯示受邀人自己的原課班科。
     eventDate = sides.leaveDate;
     eventPeriod = sides.leavePeriod;
     className = sides.targetClass;
     subject = sides.targetSubject;
     actionLine = "【調入】本則為您要上的節次（您的課程："
       + ((className + " " + subject).trim() || "—") + "）。\n"
-      + "【調出】" + sides.targetDate + "第" + sides.targetPeriod + "節不用上，由 "
+      + "【調出】" + sides.targetDate + "第" + sides.targetPeriod + "節（"
+      + ((sides.targetClass + " " + sides.targetSubject).trim() || "—") + "）不用上，由 "
       + sides.leaveName + " 上。";
   }
 

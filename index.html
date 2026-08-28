@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>建成國中線上調代課系統</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📅</text></svg>">
-  <link rel="stylesheet" href="style.css?v=20260828-print-preview1">
+  <link rel="stylesheet" href="style.css?v=20260828-print-preview9">
   <!-- 手機版獨立樣式：不影響桌機 -->
   <link rel="stylesheet" href="mobile.css" media="(max-width: 768px)">
   
@@ -990,7 +990,7 @@
                       </div>
                       <div v-if="req.note" class="req-note-cell" :title="req.note">{{ req.note }}</div>
                     </td>
-                    <td>{{ req.createdAt ? req.createdAt.slice(0, 10) : '---' }}</td>
+                    <td>{{ formatRequestApplicationDate(req) }}</td>
                     <td>
                       <div class="flex-wrap-gap">
                          <span class="status-badge tag-blue" v-if="req.type === 'exchange'">調課</span>
@@ -1113,7 +1113,7 @@
                       <strong>{{ req.serial || '---' }}</strong>
                       <div v-if="req.note" class="req-note-cell no-checkbox" :title="req.note">{{ req.note }}</div>
                     </td>
-                    <td>{{ req.createdAt ? req.createdAt.slice(0, 10) : '---' }}</td>
+                    <td>{{ formatRequestApplicationDate(req) }}</td>
                     <td>
                       <div class="flex-wrap-gap">
                         <span class="status-badge tag-blue" v-if="req.type === 'exchange'">調課</span>
@@ -1195,7 +1195,7 @@
                       <strong>{{ req.serial || '---' }}</strong>
                       <div v-if="req.note" class="req-note-cell no-checkbox" :title="req.note">{{ req.note }}</div>
                     </td>
-                    <td>{{ req.createdAt ? req.createdAt.slice(0, 10) : '---' }}</td>
+                    <td>{{ formatRequestApplicationDate(req) }}</td>
                     <td>
                       <div class="flex-wrap-gap">
                          <span class="status-badge tag-blue" v-if="req.type === 'exchange'">調課</span>
@@ -2726,43 +2726,6 @@
         </div>
       </div>
 
-      <!-- 紙本通知列印設定：可由草稿列印，或由已送出的紙本申請重新列印 -->
-      <div v-if="showPaperPrintModal" class="modal-overlay" @click.self="showPaperPrintModal = false">
-        <div class="modal-card" style="max-width:520px;">
-          <div class="modal-header">
-            <h3>🖨️ 列印紙本調代課單</h3>
-            <button class="btn-close" @click="showPaperPrintModal = false">&times;</button>
-          </div>
-          <div class="modal-body">
-            <p style="font-size:0.88rem;line-height:1.5;margin:0 0 12px;color:var(--text-secondary);">
-              <template v-if="paperPrintDraft && paperPrintDraft.submitted">
-                申請已送出並列入待教學組核准；請列印後交由實際授課教師簽名，再送教學組線上核准。
-              </template>
-              <template v-else>
-                這是紙本草稿，不會送出線上申請、不寄通知信，也不會寫入歷史紀錄。
-              </template>
-            </p>
-            <template v-if="isAdmin && paperSignatureTeachers.length">
-              <div style="font-weight:700;font-size:0.85rem;margin-bottom:8px;">教學組列印：簽名欄自動帶入姓名</div>
-              <div style="display:flex;flex-wrap:wrap;gap:6px;">
-                <span
-                  v-for="name in paperSignatureTeachers"
-                  :key="'paper-sign-'+name"
-                  class="status-badge tag-blue"
-                >{{ name }} 老師</span>
-              </div>
-            </template>
-            <div v-else style="padding:10px 12px;border:1px dashed var(--border-color);border-radius:8px;color:var(--text-secondary);font-size:0.82rem;">
-              非教學組列印：簽名欄保持空白，請列印後由實際授課教師簽名。
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-primary" @click="openPaperDraftPreview">👁️ 預覽後列印</button>
-            <button type="button" class="btn btn-secondary" @click="showPaperPrintModal = false">取消</button>
-          </div>
-        </div>
-      </div>
-
       <!-- 單欄列印預覽：確認後才開啟正式左右雙聯列印視窗 -->
       <div v-if="showPrintPreviewModal" class="modal-overlay print-preview-overlay" @click.self="closePrintPreview(true)">
         <div class="modal-card print-preview-modal-card">
@@ -2770,7 +2733,7 @@
             <div>
               <h3>👁️ 調代課單列印預覽</h3>
               <div v-if="printPreview" class="print-preview-meta">
-                共 {{ printPreview.recordCount }} 筆，合併後 {{ printPreview.formCount }} 張單欄表單；正式列印仍為 A4 橫式左右雙聯。
+                共 {{ printPreview.recordCount }} 筆，合併後 {{ printPreview.formCount }} 張單欄表單；正式列印每份為 A4 橫式 2 頁，共 4 張分送單據。
               </div>
             </div>
             <button class="btn-close" @click="closePrintPreview(true)">&times;</button>
@@ -3917,23 +3880,23 @@
   <!-- App Main JS Logic -->
 
   <!-- 模組：defer 依文件順序執行，不擋 HTML 解析；billing/print/export 另延後 -->
-  <script defer src="name-key-contract.js?v=20260828-print-preview1"></script>
-  <script defer src="field-map.js?v=20260828-print-preview1"></script>
-  <script defer src="date-utils.js?v=20260828-print-preview1"></script>
-  <script defer src="gas-api.js?v=20260828-print-preview1"></script>
-  <script defer src="domain-school-swap.js?v=20260828-print-preview1"></script>
-  <script defer src="domain-schedule.js?v=20260828-print-preview1"></script>
-  <script defer src="domain-match.js?v=20260828-print-preview1"></script>
+  <script defer src="name-key-contract.js?v=20260828-print-preview9"></script>
+  <script defer src="field-map.js?v=20260828-print-preview9"></script>
+  <script defer src="date-utils.js?v=20260828-print-preview9"></script>
+  <script defer src="gas-api.js?v=20260828-print-preview9"></script>
+  <script defer src="domain-school-swap.js?v=20260828-print-preview9"></script>
+  <script defer src="domain-schedule.js?v=20260828-print-preview9"></script>
+  <script defer src="domain-match.js?v=20260828-print-preview9"></script>
   <!-- domain-activity-cover：活動互代／空堂任務時 ensureDomainActivityCover -->
-  <script defer src="domain-class-away.js?v=20260828-print-preview1"></script>
-  <script defer src="fee-utils.js?v=20260828-print-preview1"></script>
-  <script defer src="ui-activity.js?v=20260828-print-preview1"></script>
-  <script defer src="ui-request.js?v=20260828-print-preview1"></script>
-  <script defer src="ui-timetable.js?v=20260828-print-preview1"></script>
-  <script defer src="ui-approval.js?v=20260828-print-preview1"></script>
+  <script defer src="domain-class-away.js?v=20260828-print-preview9"></script>
+  <script defer src="fee-utils.js?v=20260828-print-preview9"></script>
+  <script defer src="ui-activity.js?v=20260828-print-preview9"></script>
+  <script defer src="ui-request.js?v=20260828-print-preview9"></script>
+  <script defer src="ui-timetable.js?v=20260828-print-preview9"></script>
+  <script defer src="ui-approval.js?v=20260828-print-preview9"></script>
   <!-- ui-admin：僅管理員／後台操作時 ensureUiAdmin -->
-  <script defer src="app-shell-utils.js?v=20260828-print-preview1"></script>
-  <script defer src="app.js?v=20260828-print-preview1"></script>
+  <script defer src="app-shell-utils.js?v=20260828-print-preview9"></script>
+  <script defer src="app.js?v=20260828-print-preview9"></script>
   <script>
     (function () {
       function loadScript(src) {
@@ -3955,47 +3918,47 @@
       var _uiAdminP = null;
       window.ensureDomainBilling = function () {
         if (window.DomainBilling) return Promise.resolve();
-          if (!_billingP) _billingP = loadScript('domain-billing.js?v=20260828-print-preview1');
+          if (!_billingP) _billingP = loadScript('domain-billing.js?v=20260828-print-preview9');
         return _billingP;
       };
       window.ensureExportAccounting = function () {
         if (window.ExportAccounting) return Promise.resolve();
-          if (!_accountingP) _accountingP = loadScript('export-accounting.js?v=20260828-print-preview1');
+          if (!_accountingP) _accountingP = loadScript('export-accounting.js?v=20260828-print-preview9');
         return _accountingP;
       };
       /** 活動互代／額度／空堂任務邏輯（首屏不載） */
       window.ensureDomainActivityCover = function () {
         if (window.DomainActivityCover) return Promise.resolve();
-          if (!_domainActivityP) _domainActivityP = loadScript('domain-activity-cover.js?v=20260828-print-preview1');
+          if (!_domainActivityP) _domainActivityP = loadScript('domain-activity-cover.js?v=20260828-print-preview9');
         return _domainActivityP;
       };
       /** 後台匯入／教師／課表編輯（教師首屏不載） */
       window.ensureUiAdmin = function () {
         if (window.UiAdmin) return Promise.resolve();
-          if (!_uiAdminP) _uiAdminP = loadScript('ui-admin.js?v=20260828-print-preview1');
+          if (!_uiAdminP) _uiAdminP = loadScript('ui-admin.js?v=20260828-print-preview9');
         return _uiAdminP;
       };
       window.ensurePrintHelper = function () {
         if (typeof window.generateFormHtml === 'function') return Promise.resolve();
-          if (!_printP) _printP = loadScript('print-helper.js?v=20260828-print-preview1');
+          if (!_printP) _printP = loadScript('print-helper.js?v=20260828-print-preview9');
         return _printP;
       };
       window.ensureExportSchoolTimetable = function () {
         if (window.ExportSchoolTimetable) return Promise.resolve();
-          if (!_exportP) _exportP = loadScript('export-school-timetable.js?v=20260828-print-preview1');
+          if (!_exportP) _exportP = loadScript('export-school-timetable.js?v=20260828-print-preview9');
         return _exportP;
       };
       var _activityCoverP = null;
       window.ensureExportActivityCover = function () {
         if (window.ExportActivityCover) return Promise.resolve();
-          if (!_activityCoverP) _activityCoverP = loadScript('export-activity-cover.js?v=20260828-print-preview1');
+          if (!_activityCoverP) _activityCoverP = loadScript('export-activity-cover.js?v=20260828-print-preview9');
         return _activityCoverP;
       };
       var _invigP = null;
       var _excelJsP = null;
       window.ensureExportInvigilation = function () {
         if (window.ExportInvigilation) return Promise.resolve();
-          if (!_invigP) _invigP = loadScript('export-invigilation.js?v=20260828-print-preview1');
+          if (!_invigP) _invigP = loadScript('export-invigilation.js?v=20260828-print-preview9');
         return _invigP;
       };
       window.ensureExcelJS = function () {

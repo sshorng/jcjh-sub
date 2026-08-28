@@ -44,6 +44,166 @@ function load(sourceName) {
   return context.window;
 }
 
+function loadPaperDraftRecordBuilder(pendingRequestData) {
+  const source = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
+  const start = source.indexOf('const buildPaperDraftRecords =');
+  const end = source.indexOf('const buildPaperRecordsForSubmittedRequests =', start);
+  assert.ok(start >= 0 && end > start, 'paper draft record builder must remain discoverable');
+  const context = {
+    pendingRequestData,
+    batchSlots: ref([]),
+    decodePaperTimeKey: value => {
+      const parts = String(value || '').split('-');
+      return { day: parseInt(parts[0], 10), period: parseInt(parts[1], 10) };
+    }
+  };
+  vm.createContext(context);
+  return vm.runInContext(`(() => {
+    ${source.slice(start, end)}
+    return buildPaperDraftRecords;
+  })()`, context);
+}
+
+function loadSubmittedPaperRecordBuilder() {
+  const source = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
+  const start = source.indexOf('const buildPaperRecordsForSubmittedRequests =');
+  const end = source.indexOf('const openPaperPrintDraft =', start);
+  assert.ok(start >= 0 && end > start, 'submitted paper record builder must remain discoverable');
+  const context = {
+    teachersList: ref([
+      { loginEmail: 'owner@example.com', email: '申請人', teacherName: '申請人', name: '申請人' },
+      { loginEmail: 'invitee@example.com', email: '受邀人', teacherName: '受邀人', name: '受邀人' }
+    ]),
+    resolveExchangeTargetCell: () => ({ className: '704', subject: '國文' }),
+    findBaseScheduleSlot: () => null,
+    Date,
+    Number,
+    String,
+    Array,
+    Object,
+    parseInt,
+    isNaN
+  };
+  vm.createContext(context);
+  return vm.runInContext(`(() => {
+    ${source.slice(start, end)}
+    return buildPaperRecordsForSubmittedRequests;
+  })()`, context);
+}
+
+function loadApprovedExchangeConverter() {
+  const source = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
+  const start = source.indexOf('const convertRequestsToSubstitutions =');
+  const end = source.indexOf('const requestsList =', start);
+  assert.ok(start >= 0 && end > start, 'approved exchange converter must remain discoverable');
+  const context = {
+    resolveCellFromBaseAndSubs: () => null,
+    findBaseScheduleSlot: () => null,
+    getTeacherSubjectByEmail: () => '',
+    Date, Number, String, Object, Array, Set, Math, parseInt, isNaN
+  };
+  vm.createContext(context);
+  return vm.runInContext(`(() => {
+    ${source.slice(start, end)}
+    return convertRequestsToSubstitutions;
+  })()`, context);
+}
+
+function runExchangePaperRecordMappingTest() {
+  const pendingRequestData = ref({
+    mode: 'exchange',
+    leaveTeacher: 'month@example.com',
+    subTeacher: 'sheng@example.com',
+    date: '2026-09-01',
+    timeKey: '2-6',
+    cls: '703',
+    subject: '數學',
+    dateB: '2026-09-03',
+    timeB: '4-2',
+    subBClass: '704',
+    subB: '國文',
+    reason: '課務調整',
+    subFee: '無'
+  });
+  const records = loadPaperDraftRecordBuilder(pendingRequestData)();
+  const targetDateRecord = records.find(record => record.id.endsWith('_1'));
+  const sourceDateRecord = records.find(record => record.id.endsWith('_2'));
+  assert.equal(targetDateRecord.date, '2026-09-03');
+  assert.equal(targetDateRecord.className, '703');
+  assert.equal(targetDateRecord.subject, '數學');
+  assert.equal(targetDateRecord.originalTeacherEmail, 'sheng@example.com');
+  assert.equal(targetDateRecord.actualTeacherEmail, 'month@example.com');
+  assert.equal(sourceDateRecord.date, '2026-09-01');
+  assert.equal(sourceDateRecord.className, '704');
+  assert.equal(sourceDateRecord.subject, '國文');
+  assert.equal(sourceDateRecord.originalTeacherEmail, 'month@example.com');
+  assert.equal(sourceDateRecord.actualTeacherEmail, 'sheng@example.com');
+}
+
+function runSubmittedExchangePaperRecordMappingTest() {
+  const records = loadSubmittedPaperRecordBuilder()([{
+    id: 'submitted-1',
+    type: 'exchange',
+    requesterName: '申請人',
+    targetTeacherName: '受邀人',
+    requestDate: '2026-09-01',
+    requestPeriod: 6,
+    className: '703',
+    subject: '數學',
+    targetDate: '2026-09-03',
+    targetPeriod: 2
+  }]);
+  const targetDateRecord = records.find(record => record.id.endsWith('_1'));
+  const sourceDateRecord = records.find(record => record.id.endsWith('_2'));
+  assert.equal(targetDateRecord.className, '703');
+  assert.equal(targetDateRecord.subject, '數學');
+  assert.equal(sourceDateRecord.className, '704');
+  assert.equal(sourceDateRecord.subject, '國文');
+}
+
+function runApprovedExchangeRecordMappingTest() {
+  const convert = loadApprovedExchangeConverter();
+  const records = convert([{
+    id: 'approved-1',
+    status: 'approved',
+    type: 'exchange',
+    requesterEmail: 'owner@example.com',
+    requesterName: '申請人',
+    targetTeacherEmail: 'invitee@example.com',
+    targetTeacherName: '受邀人',
+    requestDate: '2026-09-01',
+    requestPeriod: 6,
+    className: '703',
+    subject: '數學',
+    targetDate: '2026-09-03',
+    targetPeriod: 2,
+    targetClassName: '704',
+    targetSubject: '國文'
+  }]);
+  const targetDateRecord = records.find(record => record.id.endsWith('_1'));
+  const sourceDateRecord = records.find(record => record.id.endsWith('_2'));
+  assert.equal(targetDateRecord.className, '703');
+  assert.equal(targetDateRecord.subject, '數學');
+  assert.equal(sourceDateRecord.className, '704');
+  assert.equal(sourceDateRecord.subject, '國文');
+}
+
+function runNoSyntheticStudySubjectTest() {
+  const source = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
+  const subjectStart = source.indexOf('const getOriginalRequestSubject =');
+  const subjectEnd = source.indexOf('const getOriginalRequestClass =', subjectStart);
+  const teacherStart = source.indexOf('const getTeacherSubjectByEmail =');
+  const teacherEnd = source.indexOf('const getTeacherJobTitleByEmail =', teacherStart);
+  assert.ok(subjectStart >= 0 && subjectEnd > subjectStart);
+  assert.ok(teacherStart >= 0 && teacherEnd > teacherStart);
+  assert.doesNotMatch(source.slice(subjectStart, subjectEnd), /自習/);
+  assert.doesNotMatch(source.slice(teacherStart, teacherEnd), /自習/);
+}
+
+runSubmittedExchangePaperRecordMappingTest();
+runApprovedExchangeRecordMappingTest();
+runNoSyntheticStudySubjectTest();
+
 function loadProgressSteps() {
   const source = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
   const start = source.indexOf('const getRequestProgressSteps = (req) => {');
@@ -55,6 +215,21 @@ function loadProgressSteps() {
     isPaperFlowRequest: req => !!(req && req.paperFlow === true),
     isProxySubmitRequest: req => !!(req && req.isProxySubmit === true)
   });
+}
+
+function loadRequestListSorter() {
+  const source = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
+  const start = source.indexOf('const requestTimestampText =');
+  const end = source.indexOf('const recomputeRequestBuckets =', start);
+  assert.ok(start >= 0 && end > start, 'request list sorter must remain discoverable');
+  const context = {
+    Date, Math, String, Number, Object, Array, RegExp, parseInt, isFinite
+  };
+  vm.createContext(context);
+  return vm.runInContext(`(() => {
+    ${source.slice(start, end)}
+    return { sortRequestListDesc, formatRequestApplicationDate };
+  })()`, context);
 }
 
 function loadLineTemplates() {
@@ -111,13 +286,44 @@ function runLineTemplateTest() {
 
   const askExchange = templates.buildAskFirstLineText({
     targetName: '王小明老師',
-    dateA: '2026-08-28', dayA: 5, periodA: 2, classA: '904', subjectA: '國文',
+    dateA: '2026-09-01', dayA: 2, periodA: 2, classA: '707', subjectA: '數學',
     isExchange: true,
-    dateB: '2026-08-26', dayB: 3, periodB: 5, classB: '904', subjectB: '輔導'
+    dateB: '2026-09-04', dayB: 5, periodB: 5, classB: '707', subjectB: '健康教育'
   });
-  assert.match(askExchange, /小明老師，想問您是否方便和我調課：/);
+  assert.equal(askExchange, [
+    '小明老師，想問您是否方便和我調課，',
+    '',
+    '09/01（週二） 第2節｜707 數學<->',
+    '09/04（週五） 第5節｜707 健康教育',
+    '',
+    '如果可以，我再拿調課單給您，感謝🙏🏻'
+  ].join('\n'));
+  const askProxyExchange = templates.buildAskFirstLineText({
+    targetName: '王小明老師', requesterName: '余月亭老師',
+    dateA: '2026-09-01', dayA: 2, periodA: 2, classA: '707', subjectA: '數學',
+    isExchange: true,
+    dateB: '2026-09-04', dayB: 5, periodB: 5, classB: '707', subjectB: '健康教育'
+  });
+  assert.match(askProxyExchange, /小明老師，想問您是否方便和月亭老師調課，/);
+  assert.doesNotMatch(askProxyExchange, /和我調課/);
+  assert.doesNotMatch(askProxyExchange, /和余月亭老師調課/);
   assert.match(askExchange, /如果可以，我再拿調課單給您，感謝/);
   assert.doesNotMatch(askExchange, /簽名/);
+
+  const onlineExchange = templates.buildLineInviteText({
+    targetName: '王小明老師', requesterName: '余月亭老師', isExchange: true,
+    dateA: '2026-09-01', dayA: 2, periodA: 2, classA: '707', subjectA: '數學',
+    dateB: '2026-09-04', dayB: 5, periodB: 5, classB: '707', subjectB: '健康教育'
+  });
+  assert.equal(onlineExchange, [
+    '小明老師，想問您是否方便和月亭老師調課，',
+    '',
+    '09/01（週二） 第2節｜707 數學<->',
+    '09/04（週五） 第5節｜707 健康教育',
+    '',
+    '感謝🙏🏻'
+  ].join('\n'));
+  assert.doesNotMatch(onlineExchange, /我的課|您的課/);
 
   const batch = templates.buildLineBatchInviteText({
     targetName: '王小明老師', requesterName: '陳小華老師', batchId: 'B1', systemUrl: 'https://school.example/',
@@ -188,6 +394,12 @@ function runProgressTest() {
 
 function runFieldMapTest() {
   const fieldMap = load('field-map.js').FieldMap;
+  const teacher = fieldMap.mapTeacher({
+    '教師Email': ' New.Teacher@School.Example ',
+    '教師姓名': '新教師'
+  });
+  assert.equal(teacher.loginEmail, 'new.teacher@school.example');
+
   const paper = fieldMap.mapRequest({
     '申請單ID': 'paper-1', '狀態': 'pending_admin', '紙本流程': ' TRUE '
   });
@@ -205,6 +417,34 @@ function runFieldMapTest() {
   });
   assert.equal(direct.directApprove, true);
   assert.equal(direct.note, '使用者原因');
+
+  const legacyTimestamp = fieldMap.mapRequest({
+    '申請單ID': 'legacy-1',
+    '申請時間': '2026-08-28 11:23:45',
+    '更新時間': '2026-08-28 11:25:00'
+  });
+  assert.equal(legacyTimestamp.createdAt, '2026-08-28 11:23:45');
+  assert.equal(legacyTimestamp.updatedAt, '2026-08-28 11:25:00');
+
+  const exchangeFields = fieldMap.mapRequest({
+    '異動類型': 'exchange',
+    '對調目標班級': '704',
+    '對調目標科目': '國文'
+  });
+  assert.equal(exchangeFields.targetClassName, '704');
+  assert.equal(exchangeFields.targetSubject, '國文');
+}
+
+function runRequestListSortTest() {
+  const sorter = loadRequestListSorter();
+  const rows = [
+    { id: 'old', serial: 'SWP5814', createdAt: '2026-08-28 11:20:09', updatedAt: '2026-08-28 11:59:59', requestDate: '2026-09-01' },
+    { id: 'late', serial: 'SWP7604', createdAt: '2026-08-28 11:20:10', requestDate: '2026-09-01' },
+    { id: 'legacy', serial: 'SUB1365', createdAt: '', updatedAt: '2026-08-28 11:19:59', requestDate: '2026-09-01' }
+  ];
+  assert.deepEqual(sorter.sortRequestListDesc(rows).map(row => row.id), ['late', 'old', 'legacy']);
+  assert.equal(sorter.formatRequestApplicationDate(rows[2]), '2026-08-28');
+  assert.equal(sorter.formatRequestApplicationDate({ requestDate: '2026-09-04' }), '2026-09-04');
 }
 
 function runApplicationFormContractTest() {
@@ -311,6 +551,26 @@ async function runSingleTest() {
   assert.equal(built.newRequest.paperFlow, true);
   assert.equal(built.newRequest['申請人Email'], 'owner@school.example');
   assert.equal(built.newRequest['受邀人Email'], 'invitee@school.example');
+
+  const exchangeDeps = singleDeps();
+  exchangeDeps.pendingRequestData.value = {
+    mode: 'exchange',
+    leaveTeacher: 'owner@school.example',
+    subTeacher: 'invitee@school.example',
+    cls: '703',
+    subject: '數學',
+    date: '2026-09-01',
+    timeKey: '2-6',
+    dateB: '2026-09-03',
+    timeB: '4-2',
+    subBClass: '704',
+    subB: '國文',
+    reason: '課務調整',
+    subFee: '無'
+  };
+  const exchangeBuilt = api.buildSubmitPayload(exchangeDeps, 'req-exchange', 'SWP1234');
+  assert.equal(exchangeBuilt.newRequest['對調目標班級'], '704');
+  assert.equal(exchangeBuilt.newRequest['對調目標科目'], '國文');
 
   const sentPayloads = [];
   let attempts = 0;
@@ -497,6 +757,8 @@ Promise.resolve()
   .then(() => runLineTemplateTest())
   .then(() => runProgressTest())
   .then(() => runFieldMapTest())
+  .then(() => runRequestListSortTest())
+  .then(() => runExchangePaperRecordMappingTest())
   .then(() => runApplicationFormContractTest())
   .then(() => runHistoryEditTeacherValueTest())
   .then(runSingleTest)

@@ -265,6 +265,11 @@ window.UiSubmitHelpers = (function () {
           };
       newRequest["對調目標節次"] = parseInt(tb.period, 10);
       newRequest["對調目標星期"] = parseInt(tb.day, 10);
+      // 固定保存雙方原課班科：調課後每位教師仍顯示自己的課程。
+      newRequest["對調目標班級"] = pending.subBClass || '';
+      newRequest["對調目標科目"] = pending.subB || '';
+      newRequest.targetClassName = pending.subBClass || '';
+      newRequest.targetSubject = pending.subB || '';
     }
 
     var payload = {

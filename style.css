@@ -2589,12 +2589,19 @@ td.table-empty {
     height: 100%;
     overflow: hidden;
     font-family: "DFKai-SB", "標楷體", "BiauKai", "Noto Serif TC", serif;
+    font-size: 0;
+    line-height: 0;
+  }
+  #print-root {
+    display: block;
+    margin: 0;
+    padding: 0;
   }
   .print-page {
     width: 297mm;
     height: 210mm;
-    page-break-after: always;
-    break-after: page;
+    page-break-after: auto;
+    break-after: auto;
     box-sizing: border-box;
     padding: 12.7mm;
     display: flex;
@@ -2603,13 +2610,15 @@ td.table-empty {
     align-items: flex-start;
     gap: 7.496mm;
     position: relative;
+    font-size: 10pt;
+    line-height: normal;
     background: white !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
-  .print-page:last-child {
-    page-break-after: avoid !important;
-    break-after: avoid !important;
+  .print-page + .print-page {
+    page-break-before: always;
+    break-before: page;
   }
   .cut-line {
     display: none;
@@ -2633,14 +2642,26 @@ td.table-empty {
   .official-form-empty {
     visibility: hidden;
   }
-  .official-serial-mark {
+  .official-audience-label {
     position: absolute;
     top: -4.5mm;
     left: 0;
-    max-width: 55mm;
-    font-size: 6.5pt;
+    max-width: 78mm;
+    font-size: 7pt;
     line-height: 1.1;
     text-align: left;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    color: #000;
+  }
+  .official-serial-mark {
+    position: absolute;
+    right: 0;
+    bottom: -4.5mm;
+    max-width: 78mm;
+    font-size: 6.5pt;
+    line-height: 1.1;
+    text-align: right;
     white-space: normal;
     overflow-wrap: anywhere;
     color: #000;
@@ -2789,20 +2810,6 @@ td.table-empty {
     line-height: 1.15;
     padding-top: 0.6mm;
     padding-bottom: 0.6mm;
-  }
-  .substitute-form.is-reprint::after {
-    content: "補發";
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%) rotate(-30deg);
-    font-size: 38pt;
-    color: rgba(0, 0, 0, 0.04);
-    font-weight: 900;
-    border: 3px solid rgba(0, 0, 0, 0.04);
-    padding: 3px 12px;
-    z-index: 1000;
-    pointer-events: none;
   }
 }
 

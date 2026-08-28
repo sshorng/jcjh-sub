@@ -473,6 +473,45 @@ window.DomainSchedule = (function () {
     return map;
   }
 
+  function pendingExchangeOwnCourse(request, teacherEmail, index, allSchedules, resolveBaseSlot) {
+    var email = String(teacherEmail || '').toLowerCase();
+    var requester = String(request && request.requesterEmail || '').toLowerCase();
+    var target = String(request && request.targetTeacherEmail || '').toLowerCase();
+    if (email === requester) {
+      return {
+        className: String(request && request.className || '').trim(),
+        subject: String(request && request.subject || '').trim()
+      };
+    }
+    if (email !== target) return { className: '', subject: '' };
+
+    var className = String(request && request.targetClassName || '').trim();
+    var subject = String(request && request.targetSubject || '').trim();
+    if ((!className || !subject) && request && request.targetDate && request.targetPeriod != null) {
+      var day = parseInt(request.targetDayOfWeek, 10);
+      if (!(day >= 1 && day <= 7)) {
+        var date = new Date(String(request.targetDate).replace(/-/g, '/'));
+        if (!isNaN(date.getTime())) day = date.getDay() === 0 ? 7 : date.getDay();
+      }
+      var baseSlot = typeof resolveBaseSlot === 'function'
+        ? resolveBaseSlot(request.targetDate, day, request.targetPeriod, request.targetTeacherEmail)
+        : { dayOfWeek: day, period: request.targetPeriod };
+      var candidates = getCandidates(
+        index,
+        request.targetTeacherEmail,
+        baseSlot.dayOfWeek,
+        baseSlot.period,
+        allSchedules
+      );
+      var base = candidates[0] || null;
+      if (base) {
+        if (!className) className = String(base.className || '').trim();
+        if (!subject) subject = String(base.subject || '').trim();
+      }
+    }
+    return { className: className, subject: subject };
+  }
+
   function applyPendingOverlay(opts) {
     opts = opts || {};
     var cell = opts.cell;
@@ -604,14 +643,10 @@ window.DomainSchedule = (function () {
 
       var pExcA = findExchangeInA();
       if (pExcA) {
-        var targetDay = parseInt(pExcA.targetDayOfWeek, 10);
-        var targetBase = resolveBaseSlot(pExcA.targetDate, targetDay, pExcA.targetPeriod, pExcA.targetTeacherEmail);
-        var schedCands = getCandidates(index, pExcA.targetTeacherEmail, targetBase.dayOfWeek, targetBase.period, allSchedules);
-        var sched = schedCands[0] || null;
-        var finalSubject = sched ? sched.subject : (pExcA.targetSubject || pExcA.subject || '自習');
+        var ownCourseA = pendingExchangeOwnCourse(pExcA, teacherEmail, index, allSchedules, resolveBaseSlot);
         return {
-          className: pExcA.className,
-          subject: finalSubject,
+          className: ownCourseA.className,
+          subject: ownCourseA.subject,
           teacherEmail: teacherEmail,
           isPending: true,
           pendingType: 'exchange_in',
@@ -622,9 +657,10 @@ window.DomainSchedule = (function () {
 
       var pExcB = findExchangeInB();
       if (pExcB) {
+        var ownCourseB = pendingExchangeOwnCourse(pExcB, teacherEmail, index, allSchedules, resolveBaseSlot);
         return {
-          className: pExcB.className,
-          subject: pExcB.subject,
+          className: ownCourseB.className,
+          subject: ownCourseB.subject,
           teacherEmail: teacherEmail,
           isPending: true,
           pendingType: 'exchange_in',

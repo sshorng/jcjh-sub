@@ -99,4 +99,46 @@ assert.equal(patrolAtB.dayOfWeek, 2);
 assert.equal(patrolAtB.period, 3);
 assert.equal(patrolAtB.row, null);
 
+const pendingExchange = {
+  type: 'exchange',
+  requesterEmail: 'owner@example.edu.tw',
+  targetTeacherEmail: 'invitee@example.edu.tw',
+  requestDate: '2026-08-31',
+  requestPeriod: 4,
+  className: '701',
+  subject: '文旅享繪',
+  targetDate: '2026-09-02',
+  targetPeriod: 7,
+  targetClassName: '701',
+  targetSubject: '數學'
+};
+const pendingIndex = context.window.DomainSchedule.buildPendingIndex([pendingExchange]);
+const ownCourseAtTarget = context.window.DomainSchedule.applyPendingOverlay({
+  cell: null,
+  teacherEmail: 'owner@example.edu.tw',
+  dateStr: '2026-09-02',
+  period: 7,
+  pendingRequests: [pendingExchange],
+  pendingIndex: pendingIndex,
+  getWeekDayText: day => String(day),
+  allSchedules: [],
+  scheduleIndex: context.window.DomainSchedule.buildScheduleIndex([]),
+  resolveBaseSlot: (date, day, period) => ({ dayOfWeek: day, period: period })
+});
+assert.equal(ownCourseAtTarget.subject, '文旅享繪');
+
+const ownCourseAtSource = context.window.DomainSchedule.applyPendingOverlay({
+  cell: null,
+  teacherEmail: 'invitee@example.edu.tw',
+  dateStr: '2026-08-31',
+  period: 4,
+  pendingRequests: [pendingExchange],
+  pendingIndex: pendingIndex,
+  getWeekDayText: day => String(day),
+  allSchedules: [],
+  scheduleIndex: context.window.DomainSchedule.buildScheduleIndex([]),
+  resolveBaseSlot: (date, day, period) => ({ dayOfWeek: day, period: period })
+});
+assert.equal(ownCourseAtSource.subject, '數學');
+
 console.log('school swap contract tests PASS');

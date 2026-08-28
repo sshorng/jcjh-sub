@@ -44,6 +44,15 @@ window.FieldMap = (function () {
     return Number.isNaN(n) ? fallback : n;
   }
 
+  function asTimestamp(v) {
+    if (v === undefined || v === null || v === '') return '';
+    if (Object.prototype.toString.call(v) === '[object Date]' && !isNaN(v.getTime())) {
+      return v.getFullYear() + '-' + String(v.getMonth() + 1).padStart(2, '0') + '-' + String(v.getDate()).padStart(2, '0')
+        + ' ' + String(v.getHours()).padStart(2, '0') + ':' + String(v.getMinutes()).padStart(2, '0') + ':' + String(v.getSeconds()).padStart(2, '0');
+    }
+    return String(v).trim();
+  }
+
   /** 折抵額度可為 0.5 倍數 */
   function asFloat(v, fallback) {
     if (v === undefined || v === null || v === '') return fallback;
@@ -184,7 +193,7 @@ window.FieldMap = (function () {
   }
 
   function mapTeacher(t) {
-    const loginEmail = pick(t, ['教師Email', 'loginEmail', 'email']) || '';
+    const loginEmail = String(pick(t, ['教師Email', 'loginEmail', 'email']) || '').trim().toLowerCase();
     const name = pick(t, ['教師姓名', 'teacherName', 'name']) || '';
     return {
       loginEmail: loginEmail,
@@ -298,6 +307,8 @@ window.FieldMap = (function () {
     const targetPeriod = pick(r, ['對調目標節次', 'targetPeriod']);
     const paperFlowRaw = pick(r, ['紙本流程', 'paperFlow', 'isPaperFlow']);
     const directApproveRaw = pick(r, ['直接核准', '是否直接核准', 'directApprove']);
+    const createdAtRaw = pick(r, ['建立時間', 'createdAt', '建立日期', '申請時間', '申請日期', 'createdDate', 'requestCreatedAt', 'created_at', 'timestamp']);
+    const updatedAtRaw = pick(r, ['更新時間', 'updatedAt', 'updated_at']);
     const mapped = {
       id: pick(r, ['申請單ID', 'id']),
       serial: pick(r, ['單號', 'serial']),
@@ -318,14 +329,16 @@ window.FieldMap = (function () {
       targetDate: pick(r, ['對調目標日期', 'targetDate']) || '',
       targetDayOfWeek: targetDay === undefined || targetDay === null || targetDay === '' ? null : asInt(targetDay, null),
       targetPeriod: targetPeriod === undefined || targetPeriod === null || targetPeriod === '' ? null : asInt(targetPeriod, null),
+      targetClassName: String(pick(r, ['對調目標班級', 'targetClassName']) || ''),
+      targetSubject: pick(r, ['對調目標科目', 'targetSubject']) || '',
       subFee: pick(r, ['經費來源', 'subFee']) || '',
       reason: pick(r, ['請假事由', 'reason']) || '',
       leaveTimeType: pick(r, ['請假時間類型', 'leaveTimeType']) || '',
       leaveTime: pick(r, ['請假時間', 'leaveTime', 'timeRange']) || '',
       note: pick(r, ['備註', 'note']) || '',
       printed: asBool(pick(r, ['是否已印', 'printed'])),
-      createdAt: pick(r, ['建立時間', 'createdAt']) || '',
-      updatedAt: pick(r, ['更新時間', 'updatedAt']) || '',
+      createdAt: asTimestamp(createdAtRaw),
+      updatedAt: asTimestamp(updatedAtRaw),
       // 舊資料仍以備註標記相容；新資料使用獨立欄位，不污染備註。
       directApprove: (function () {
         if (asBool(directApproveRaw)) return true;

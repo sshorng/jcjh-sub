@@ -537,7 +537,9 @@ window.GasApi = (function () {
     async function fetchMetaData(options) {
       options = options || {};
       const semesterId = options.semesterId || opts.getSemesterId();
-      const res = await postJson('getMetaData', {}, { abortPrevious: true, semesterId: semesterId });
+      const requestData = {};
+      if (options.force || options.scope) requestData.scope = options.force ? 'fresh' : options.scope;
+      const res = await postJson('getMetaData', requestData, { abortPrevious: true, semesterId: semesterId });
       if (res) {
         writePart(semesterId, 'meta', {
           semesters: res.semesters,
