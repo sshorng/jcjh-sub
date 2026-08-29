@@ -2519,15 +2519,15 @@
               <!-- 左：申請教師當週課表 (A) -->
               <div>
                 <div class="mini-grid-title">
-                   👤 <strong>{{ getTeacherNameByEmail(pendingRequestData.leaveTeacher) }}</strong> 老師當週課表（請假／申請人）
+                   👤 <strong>{{ getTeacherNameByEmail(pendingRequestData.leaveTeacher) }}</strong> 老師課表（請假／申請人，{{ formatDateMMDD(compareWeekDatesA[0]) }}～{{ formatDateMMDD(compareWeekDatesA[4]) }}）
                 </div>
                 <div class="mini-grid">
                   <div class="mini-grid-cell mini-grid-header">節</div>
-                  <div class="mini-grid-cell mini-grid-header">一</div>
-                  <div class="mini-grid-cell mini-grid-header">二</div>
-                  <div class="mini-grid-cell mini-grid-header">三</div>
-                  <div class="mini-grid-cell mini-grid-header">四</div>
-                  <div class="mini-grid-cell mini-grid-header">五</div>
+                    <div class="mini-grid-cell mini-grid-header">一<span class="mini-grid-date">{{ formatDateMMDD(compareWeekDatesA[0]) }}</span></div>
+                    <div class="mini-grid-cell mini-grid-header">二<span class="mini-grid-date">{{ formatDateMMDD(compareWeekDatesA[1]) }}</span></div>
+                    <div class="mini-grid-cell mini-grid-header">三<span class="mini-grid-date">{{ formatDateMMDD(compareWeekDatesA[2]) }}</span></div>
+                    <div class="mini-grid-cell mini-grid-header">四<span class="mini-grid-date">{{ formatDateMMDD(compareWeekDatesA[3]) }}</span></div>
+                    <div class="mini-grid-cell mini-grid-header">五<span class="mini-grid-date">{{ formatDateMMDD(compareWeekDatesA[4]) }}</span></div>
                   
                   <template v-for="p in timetablePeriods" :key="'A-'+p">
                     <div class="mini-grid-cell mini-grid-period">{{ getPeriodLabel(p) }}</div>
@@ -2553,7 +2553,7 @@
                     ↩ <strong>{{ getTeacherNameByEmail(resolveCompareBEmail()) || '尚未指定' }}</strong> 老師當週課表（合班代課）
                  </div>
                  <div v-else class="mini-grid-title">
-                   👤 <strong>{{ getTeacherNameByEmail(resolveCompareBEmail()) || '（尚未指定）' }}</strong> 老師當週課表（代課／受邀人）
+                    👤 <strong>{{ getTeacherNameByEmail(resolveCompareBEmail()) || '（尚未指定）' }}</strong> 老師課表（代課／受邀人，{{ formatDateMMDD(compareWeekDatesB[0]) }}～{{ formatDateMMDD(compareWeekDatesB[4]) }}）
                  </div>
                 <!-- 每節不同人：切換檢視各受邀人課表 -->
                 <div v-if="pendingRequestData.isBatch && pendingRequestData.isPerSlot && batchCompareSubGroups.length > 1" class="batch-slot-chips mb-8-block">
@@ -2575,11 +2575,11 @@
                  </div>
                  <div v-else class="mini-grid">
                   <div class="mini-grid-cell mini-grid-header">節</div>
-                  <div class="mini-grid-cell mini-grid-header">一</div>
-                  <div class="mini-grid-cell mini-grid-header">二</div>
-                  <div class="mini-grid-cell mini-grid-header">三</div>
-                  <div class="mini-grid-cell mini-grid-header">四</div>
-                  <div class="mini-grid-cell mini-grid-header">五</div>
+                    <div class="mini-grid-cell mini-grid-header">一<span class="mini-grid-date">{{ formatDateMMDD(compareWeekDatesB[0]) }}</span></div>
+                    <div class="mini-grid-cell mini-grid-header">二<span class="mini-grid-date">{{ formatDateMMDD(compareWeekDatesB[1]) }}</span></div>
+                    <div class="mini-grid-cell mini-grid-header">三<span class="mini-grid-date">{{ formatDateMMDD(compareWeekDatesB[2]) }}</span></div>
+                    <div class="mini-grid-cell mini-grid-header">四<span class="mini-grid-date">{{ formatDateMMDD(compareWeekDatesB[3]) }}</span></div>
+                    <div class="mini-grid-cell mini-grid-header">五<span class="mini-grid-date">{{ formatDateMMDD(compareWeekDatesB[4]) }}</span></div>
                   
                   <template v-for="p in timetablePeriods" :key="'B-'+p">
                     <div class="mini-grid-cell mini-grid-period">{{ getPeriodLabel(p) }}</div>

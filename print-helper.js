@@ -259,19 +259,20 @@ function getPrintSlotRows(group) {
     return (group.records || []).map(record => ({
       date: record.date,
       period: record.period,
-      cls: record.className,
-      sub: record.subject,
-       originalTeacherEmail: getPrintTeacherKey(record, 'original'),
-       originalTeacherName: record.originalTeacherName,
-       actualTeacherEmail: getPrintTeacherKey(record, 'actual'),
-       actualTeacherName: record.actualTeacherName,
-       serial: resolvePrintSerial(record),
-        leaveEmail: getPrintTeacherKey(record, 'original'),
-       reason: record.reason || group.reason || '',
-       note: record.note || group.note || '',
-       leaveTimeType: record.leaveTimeType || '',
-       leaveTime: record.leaveTime || '',
-       subFee: record.subFee || group.subFee || ''
+      // 網頁交換列的班科已是交換後視圖；紙本改讀原始端欄位。
+      cls: record.formClassName || record.className,
+      sub: record.formSubject || record.subject,
+      originalTeacherEmail: getPrintTeacherKey(record, 'original'),
+      originalTeacherName: record.originalTeacherName,
+      actualTeacherEmail: getPrintTeacherKey(record, 'actual'),
+      actualTeacherName: record.actualTeacherName,
+      serial: resolvePrintSerial(record),
+      leaveEmail: getPrintTeacherKey(record, 'original'),
+      reason: record.reason || group.reason || '',
+      note: record.note || group.note || '',
+      leaveTimeType: record.leaveTimeType || '',
+      leaveTime: record.leaveTime || '',
+      subFee: record.subFee || group.subFee || ''
     }));
   }
   if (group.periods && group.periods.length) return group.periods;
@@ -309,9 +310,9 @@ function renderPrintCheckbox(label, checked) {
 
 function getPrintSignatureText(group, rows, ctx, getName) {
   const entries = [];
-  const signatureSide = group && group.isExchange ? 'original' : 'actual';
+  const signatureSide = 'actual';
   (rows || []).forEach(row => {
-    // 調課格保留原位置課程，簽名取該課原授課教師。
+    // 紙本格內顯示原位置課程，簽名由實際授課教師簽署。
     const key = String(signatureSide === 'original'
       ? (row.originalTeacherEmail || row.originalTeacherName || '')
       : (row.actualTeacherEmail || row.actualTeacherName || '')).trim();
@@ -681,8 +682,8 @@ function buildPrintGroups(recordsToPrint, allSubs, ctx) {
       return {
         date: record.date,
         num: parseInt(record.period, 10),
-        cls: record.className,
-        sub: record.subject,
+        cls: record.formClassName || record.className,
+        sub: record.formSubject || record.subject,
         actualTeacherEmail: getPrintTeacherKey(record, 'actual'),
         actualTeacherName: record.actualTeacherName || '',
          leaveEmail: getPrintTeacherKey(record, 'original'),

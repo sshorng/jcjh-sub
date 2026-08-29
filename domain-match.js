@@ -228,6 +228,7 @@ window.DomainMatch = (function () {
     const weekDates = opts.weekDates || []; // index 0 = Mon
     const getScheduleForDate = opts.getScheduleForDate;
     const getTeacherNameByEmail = opts.getTeacherNameByEmail;
+    const isSingleWeek = opts.isSingleWeek;
     var awaySet = {};
     (opts.awayClasses || []).forEach(function (c) {
       var k = String(c || '').trim();
@@ -254,10 +255,21 @@ window.DomainMatch = (function () {
       }
       return String(schedClass || '') === String(targetCls || '');
     }
+    function isScheduleActiveForExchange(schedule, dateStr) {
+      if (window.DomainSchedule && window.DomainSchedule.isActiveOnDate
+          && !window.DomainSchedule.isActiveOnDate(schedule, dateStr)) {
+        return false;
+      }
+      var attr = String(schedule && schedule.attr || '').trim();
+      if ((attr === '單週' || attr === '雙週') && typeof isSingleWeek === 'function') {
+        var single = !!isSingleWeek(dateStr);
+        return attr === '單週' ? single : !single;
+      }
+      return true;
+    }
     const classSchedules = allSchedules.filter(function (s) {
       return classMatches(s.className, cls) && s.teacherEmail !== leaveTeacher
-        && (!window.DomainSchedule || !window.DomainSchedule.isActiveOnDate
-          || window.DomainSchedule.isActiveOnDate(s, weekDates[s.dayOfWeek - 1]));
+        && isScheduleActiveForExchange(s, weekDates[s.dayOfWeek - 1]);
     });
     const res = [];
     var leaveP = parseInt(leavePeriod, 10);

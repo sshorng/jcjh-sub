@@ -21,7 +21,7 @@ function teacherName(email) {
 
 function load(sourceName) {
   const context = {
-    window: {},
+    window: { location: { origin: 'https://school.example', pathname: '/index.html' } },
     console: { log: console.log, warn: console.warn, error: () => {} },
     Date,
     Error,
@@ -163,8 +163,8 @@ function runExchangePaperRecordMappingTest() {
   const targetDateRecord = records.find(record => record.id.endsWith('_1'));
   const sourceDateRecord = records.find(record => record.id.endsWith('_2'));
   assert.equal(targetDateRecord.date, '2026-09-03');
-  assert.equal(targetDateRecord.className, '704');
-  assert.equal(targetDateRecord.subject, '國文');
+   assert.equal(targetDateRecord.className, '704');
+   assert.equal(targetDateRecord.subject, '國文');
    assert.equal(targetDateRecord.originalTeacherEmail, 'sheng@example.com');
    assert.equal(targetDateRecord.actualTeacherEmail, 'month@example.com');
    assert.equal(targetDateRecord.originalTeacherName, '吳冠萱');
@@ -225,10 +225,14 @@ function runApprovedExchangeRecordMappingTest() {
    const sourceDateRecord = records.find(record => record.id.endsWith('_2'));
    assert.equal(targetDateRecord.serial, 'SWP7759');
    assert.equal(sourceDateRecord.serial, 'SWP7759');
-   assert.equal(targetDateRecord.className, '704');
-  assert.equal(targetDateRecord.subject, '國文');
-  assert.equal(sourceDateRecord.className, '703');
-  assert.equal(sourceDateRecord.subject, '數學');
+   assert.equal(targetDateRecord.className, '703');
+   assert.equal(targetDateRecord.subject, '數學');
+   assert.equal(targetDateRecord.formClassName, '704');
+   assert.equal(targetDateRecord.formSubject, '國文');
+   assert.equal(sourceDateRecord.className, '704');
+   assert.equal(sourceDateRecord.subject, '國文');
+   assert.equal(sourceDateRecord.formClassName, '703');
+   assert.equal(sourceDateRecord.formSubject, '數學');
 }
 
 function runApprovedCombinedReturnMappingTest() {
@@ -717,6 +721,7 @@ function singleDeps() {
     ACTIVITY_PUBLIC_FEE: '活動公費',
     defaultSubFeeForReason: () => '自費代課',
     activeCell: ref(null),
+    inputRequestDate: ref('2026-08-17'),
     DAC: () => null,
     isProxySubmitActive: () => false,
     canStaffProxySubmit: () => false,
@@ -864,6 +869,67 @@ async function runSingleTest() {
    assert.equal(printedRows.length, 1);
    assert.equal(printedRows[0]['紙本流程'], 'TRUE');
    assert.equal(deps.successActionRequests.value.length, 1);
+}
+
+async function runLineHandledSlotTest() {
+  const api = load('ui-request.js').UiSubmitHelpers;
+  const linePayloads = [];
+  const deps = singleDeps();
+  deps.paperFlow.value = false;
+  deps.inputRequestDate.value = '2026-08-25';
+  deps.activeCell.value = {
+    dayOfWeek: 2,
+    period: 4,
+    classData: { className: '803', subject: '體育' }
+  };
+  Object.assign(deps, {
+    validateSubmitRequest: async () => true,
+    loading: ref(false),
+    loadingMessage: ref(''),
+    isSubmitting: ref(false),
+    mutualSkipNotify: ref(false),
+    directApproveSkipNotify: ref(false),
+    notificationsSuppressed: ref(false),
+    callGasApi: async () => ({ success: true }),
+    showCompareModal: ref(true),
+    showMatchModal: ref(false),
+    optimisticUpsertRequest: () => {},
+    sheetRequestToFront: row => row,
+    deductMutualQuotaForRows: async () => {},
+    softRefreshInBackground: () => {},
+    isQuotaDeductFee: () => false,
+    buildLineInviteText: payload => { linePayloads.push(payload); return ''; },
+    successModalTitle: ref(''),
+    successModalMessage: ref(''),
+    lineCopyText: ref(''),
+    hasLineTemplate: ref(false),
+    showSuccessModal: ref(false),
+    successActionRequests: ref([]),
+    showToast: () => {},
+    buildSubmitPayload: () => ({
+      payload: { request: {} },
+      isExchange: false,
+      newRequest: {
+        '狀態': 'pending_teacher',
+        '申請人姓名': '黃俊升',
+        '受邀人姓名': '健忠',
+        '異動日期': '2026-08-01',
+        '異動星期': 6,
+        '異動節次': 1,
+        '班級': '錯誤班級',
+        '科目': '錯誤科目',
+        isProxySubmit: true
+      }
+    })
+  });
+
+  await api.executeSubmitRequest(deps);
+  assert.equal(linePayloads.length, 1);
+  assert.equal(linePayloads[0].dateA, '2026-08-25');
+  assert.equal(linePayloads[0].dayA, 2);
+  assert.equal(linePayloads[0].periodA, 4);
+  assert.equal(linePayloads[0].classA, '803');
+  assert.equal(linePayloads[0].subjectA, '體育');
 }
 
 async function runCourseAdjustmentTest() {
@@ -1096,6 +1162,7 @@ Promise.resolve()
   .then(() => runCombinedHistoryEditContractTest())
   .then(runConsecutiveWarningTest)
   .then(runSingleTest)
+  .then(runLineHandledSlotTest)
   .then(runCourseAdjustmentTest)
   .then(runRechangeLabelTest)
   .then(runBatchTest)

@@ -205,6 +205,26 @@ window.DateUtils = (function () {
     return dates;
   }
 
+  /** 依原課日期、目標星期與週次偏移，計算調課目標日期。 */
+  function getExchangeTargetDate(dateStr, timeKey, weekOffset) {
+    const dateParts = String(dateStr || '').slice(0, 10).split('-').map(Number);
+    const targetDay = decodeTimeKey(timeKey).day;
+    if (dateParts.length !== 3 || dateParts.some(function (value) { return !Number.isFinite(value); })
+        || !Number.isInteger(targetDay) || targetDay < 1 || targetDay > 5) {
+      return '';
+    }
+    const sourceDate = new Date(dateParts[0], dateParts[1] - 1, dateParts[2]);
+    if (sourceDate.getFullYear() !== dateParts[0]
+        || sourceDate.getMonth() !== dateParts[1] - 1
+        || sourceDate.getDate() !== dateParts[2]) {
+      return '';
+    }
+    const sourceDay = sourceDate.getDay() === 0 ? 7 : sourceDate.getDay();
+    const offset = Number(weekOffset) || 0;
+    sourceDate.setDate(sourceDate.getDate() + targetDay - sourceDay + offset * 7);
+    return toLocalDateStr(sourceDate);
+  }
+
   return {
     toLocalDateStr,
     getTodayString,
@@ -213,6 +233,7 @@ window.DateUtils = (function () {
     getPeriodTimeSpan,
     getWeekDatesFrom,
     getWeekDatesFromDate,
+    getExchangeTargetDate,
     TIMETABLE_PERIODS,
     LUNCH_PERIOD,
     getTimetablePeriods,

@@ -142,10 +142,12 @@ assert.match(context.window.getPrintPreviewCss(), /official-serial-mark \{[^}]*r
 assert.match(styleSource, /\.official-serial-mark \{[^}]*right: 4\.78mm;[^}]*bottom: -4\.5mm[^}]*text-align: right/);
 assert.match(appSource, /data:image\/svg\+xml;charset=utf-8,['"] \+ encodeURIComponent\(svg\)/);
 assert.doesNotMatch(appSource, /createObjectURL\(svgBlob\)/);
-assert.match(printHelperSource, /const signatureSide = group && group\.isExchange \? 'original' : 'actual';/);
+assert.match(printHelperSource, /const signatureSide = 'actual';/);
 assert.match(indexSource, /print-helper\.js\?v=20260829-patrol-empty1/);
 assert.match(indexSource, /<title>建成國中線上課表系統<\/title>/);
 assert.match(indexSource, /application-name" content="JCJH Timetable"/);
+assert.equal((indexSource.match(/class="mini-grid-date"/g) || []).length, 10, '對照頁左右兩張課表都應顯示五天日期');
+assert.match(styleSource, /\.mini-grid-header \{[^}]*height: 38px[^}]*flex-direction: column/);
 const leaveHistorySlotStart = indexSource.indexOf('{{ formatHistoryLeaveSlot(rec) }}');
 const leaveHistorySlotEnd = indexSource.indexOf('</td>', leaveHistorySlotStart);
 assert.ok(leaveHistorySlotStart >= 0 && leaveHistorySlotEnd > leaveHistorySlotStart);
@@ -192,8 +194,8 @@ const exchange = {
   requesterName: '陳小華',
   serials: ['EX-1'],
   records: [
-    { id: 'EX-1_2', type: 'exchange', originalTeacherEmail: 'owner@school.example', actualTeacherEmail: 'invitee@school.example', date: '2026-09-04', period: 1, className: '802', subject: '生活科技', reason: '課務調整' },
-    { id: 'EX-1_1', type: 'exchange', originalTeacherEmail: 'invitee@school.example', actualTeacherEmail: 'owner@school.example', date: '2026-09-04', period: 2, className: '803', subject: '國文', reason: '課務調整' }
+    { id: 'EX-1_2', type: 'exchange', originalTeacherEmail: 'owner@school.example', actualTeacherEmail: 'invitee@school.example', date: '2026-09-04', period: 1, className: '803', subject: '國文', formClassName: '802', formSubject: '生活科技', reason: '課務調整' },
+    { id: 'EX-1_1', type: 'exchange', originalTeacherEmail: 'invitee@school.example', actualTeacherEmail: 'owner@school.example', date: '2026-09-04', period: 2, className: '802', subject: '生活科技', formClassName: '803', formSubject: '國文', reason: '課務調整' }
   ]
 };
 const exchangeOutput = context.window.generateFormHtml(exchange, 'NoticeClass', fixtureContext);
@@ -240,8 +242,8 @@ const exchangePreviewSvg = context.window.buildPrintPreviewImageSvg(exchangePrev
 assert.match(exchangePreviewSvg, /xmlns="http:\/\/www\.w3\.org\/2000\/svg"/, 'nested exchange SVG must declare its namespace');
 const exchangeAdminOutput = context.window.generateFormHtml(exchange, 'NoticeClass', Object.assign({}, fixtureContext, { isAdmin: true }));
 const exchangeSubjectRows = [...exchangeAdminOutput.matchAll(/<tr class="official-subject-row">([\s\S]*?)<\/tr>/g)].map(match => match[1]);
-assert.match(exchangeSubjectRows[0], /陳小華/);
-assert.match(exchangeSubjectRows[1], /王小明/);
+assert.match(exchangeSubjectRows[0], /王小明/);
+assert.match(exchangeSubjectRows[1], /陳小華/);
 
 const groups = context.window.buildPrintGroups([
   substitution.records[0],

@@ -150,19 +150,36 @@ window.UiSubmitHelpers = (function () {
       ));
       var targetPull = false;
       if (window.DomainMatch && window.DomainMatch.isPullOutSlot) {
-        // 若 pending 有 classB／subject 對應不到 attr，用 allSchedules 回推
+        // 優先讀目標日期的有效課，才能正確處理單週／雙週課輔。
         var allS = deps.allSchedules && deps.allSchedules.value ? deps.allSchedules.value : [];
         var tb = (window.DateUtils && window.DateUtils.decodeTimeKey)
           ? window.DateUtils.decodeTimeKey(pending.timeB)
           : { day: parseInt(String(pending.timeB || '').charAt(0), 10), period: parseInt(String(pending.timeB || '').slice(1), 10) };
         var tDay = tb.day;
         var tPer = tb.period;
-        var tHit = allS.find(function (s) {
-          return s && pending.subTeacher
-            && String(s.teacherEmail || '').toLowerCase() === String(pending.subTeacher).toLowerCase()
-            && parseInt(s.dayOfWeek, 10) === tDay
-            && parseInt(s.period, 10) === tPer;
-        });
+        var tHit = null;
+        if (deps.getScheduleForDate && pending.dateB) {
+          try {
+            tHit = deps.getScheduleForDate(pending.subTeacher, pending.dateB, tPer, tDay);
+          } catch (eTargetCell) { /* 改用基礎課表回推 */ }
+        }
+        if (!tHit) {
+          tHit = allS.find(function (s) {
+            if (!s || !pending.subTeacher
+                || String(s.teacherEmail || '').toLowerCase() !== String(pending.subTeacher).toLowerCase()
+                || parseInt(s.dayOfWeek, 10) !== tDay
+                || parseInt(s.period, 10) !== tPer) return false;
+            if (pending.dateB && window.DomainSchedule && window.DomainSchedule.isActiveOnDate
+                && !window.DomainSchedule.isActiveOnDate(s, pending.dateB)) return false;
+            var attr = String(s.attr || '').trim();
+            if (attr === '單週' || attr === '雙週') {
+              if (typeof deps.isSingleWeek !== 'function') return true;
+              var single = !!deps.isSingleWeek(pending.dateB);
+              return attr === '單週' ? single : !single;
+            }
+            return true;
+          });
+        }
         targetPull = !!(tHit && window.DomainMatch.isPullOutSlot(tHit));
       }
       if (leavePull !== targetPull) {
@@ -443,6 +460,11 @@ window.UiSubmitHelpers = (function () {
     var showMatchModal = deps.showMatchModal;
     var showCompareModal = deps.showCompareModal;
     var getLeaveTimeDefaults = deps.getLeaveTimeDefaults;
+    var isSingleWeek = deps.isSingleWeek;
+    var dateBVal = '';
+    var timeBVal = '';
+    var subBVal = '';
+    var classBVal = '';
 
     var consecFn = function (teacherEmail, dateStr, addPeriod, removePeriod) {
       return getConsecutiveStatus(
@@ -451,6 +473,12 @@ window.UiSubmitHelpers = (function () {
     };
 
     if (mode === 'exchange' && periodIdVal) {
+      if (window.DateUtils && typeof window.DateUtils.getExchangeTargetDate === 'function') {
+        dateBVal = window.DateUtils.getExchangeTargetDate(
+          inputRequestDate.value, periodIdVal, exchangeWeekOffset.value
+        );
+      }
+      if (!dateBVal) dateBVal = exchangeTargetDate.value || '';
       // 請假節（原課）為綁課：模擬前再提醒一次
       if (activeCell.value && activeCell.value.classData
           && activeCell.value.classData.restriction === 'restricted') {
@@ -463,12 +491,29 @@ window.UiSubmitHelpers = (function () {
       var parts0 = periodIdVal.split('-');
       var dStr = parts0[0];
       var pStr = parts0[1];
-      var targetSched = (allSchedules.value || []).find(function (s) {
-        return s.teacherEmail && targetEmail
-          && String(s.teacherEmail).toLowerCase() === String(targetEmail).toLowerCase()
-          && parseInt(s.dayOfWeek, 10) === parseInt(dStr, 10)
-          && parseInt(s.period, 10) === parseInt(pStr, 10);
-      });
+      var targetDay = parseInt(dStr, 10);
+      var targetSched = null;
+      if (dateBVal && typeof getScheduleForDate === 'function') {
+        try {
+          targetSched = getScheduleForDate(targetEmail, dateBVal, pStr, targetDay);
+        } catch (eTarget) { /* 課表尚未就緒時改用基礎課表 */ }
+      }
+      if (!targetSched) {
+        targetSched = (allSchedules.value || []).find(function (s) {
+          if (!s.teacherEmail || !targetEmail
+              || String(s.teacherEmail).toLowerCase() !== String(targetEmail).toLowerCase()
+              || parseInt(s.dayOfWeek, 10) !== targetDay
+              || parseInt(s.period, 10) !== parseInt(pStr, 10)) return false;
+          if (dateBVal && window.DomainSchedule && window.DomainSchedule.isActiveOnDate
+              && !window.DomainSchedule.isActiveOnDate(s, dateBVal)) return false;
+          var attr = String(s.attr || '').trim();
+          if ((attr === '單週' || attr === '雙週') && typeof isSingleWeek === 'function') {
+            var single = !!isSingleWeek(dateBVal);
+            if (attr === '單週' ? !single : single) return false;
+          }
+          return true;
+        });
+      }
       if (targetSched && targetSched.restriction === 'restricted') {
         var ok = await showConfirm(
           '對調的目標課堂已標記為綁課／特殊課程，原則上不建議任意調動。請確認已與相關人員溝通後再進行模擬。',
@@ -515,32 +560,9 @@ window.UiSubmitHelpers = (function () {
       ? window.DateUtils.encodeTimeKey(activeCell.value.dayOfWeek, activeCell.value.period)
       : (String(activeCell.value.dayOfWeek) + '-' + String(activeCell.value.period));
 
-    var dateBVal = '';
-    var timeBVal = '';
-    var subBVal = '';
-    var classBVal = '';
-
     if (mode === 'exchange') {
       exchangePeriodId.value = periodIdVal;
-      try {
-        var targetDayStr = periodIdVal.split('-')[0];
-        var targetDay = parseInt(targetDayStr, 10);
-        var ymd = inputRequestDate.value.split('-').map(Number);
-        var reqDate = new Date(ymd[0], ymd[1] - 1, ymd[2]);
-        var reqDay = reqDate.getDay();
-        var currentDayOfWeek = reqDay === 0 ? 7 : reqDay;
-        var diffDays = (targetDay - currentDayOfWeek) + ((exchangeWeekOffset.value || 0) * 7);
-        var targetDateObj = new Date(reqDate);
-        targetDateObj.setDate(reqDate.getDate() + diffDays);
-        var year = targetDateObj.getFullYear();
-        var month = String(targetDateObj.getMonth() + 1).padStart(2, '0');
-        var dateVal = String(targetDateObj.getDate()).padStart(2, '0');
-        dateBVal = year + '-' + month + '-' + dateVal;
-        exchangeTargetDate.value = dateBVal;
-      } catch (e) {
-        console.error('prepCompare 推算對調日期失敗：', e);
-        dateBVal = exchangeTargetDate.value;
-      }
+      exchangeTargetDate.value = dateBVal;
       var dp = periodIdVal.split('-');
       timeBVal = (window.DateUtils && window.DateUtils.encodeTimeKey)
         ? window.DateUtils.encodeTimeKey(dp[0], dp[1])
@@ -668,9 +690,29 @@ window.UiSubmitHelpers = (function () {
     return null;
   }
 
+  function getCompareWeekDates(deps, who) {
+    var source = who === 'A' ? deps.compareWeekDatesA : deps.compareWeekDatesB;
+    var dates = source && source.value != null ? source.value : source;
+    if (Array.isArray(dates) && dates.length) return dates;
+    var fallback = deps.currentWeekDates;
+    dates = fallback && fallback.value != null ? fallback.value : fallback;
+    return Array.isArray(dates) ? dates : [];
+  }
+
+  function matchesExchangeEndpoint(pending, who, dateStr, timeKey, targetTimeKey, swapTimeKey) {
+    if (pending.mode !== 'exchange') {
+      return { atTarget: timeKey === targetTimeKey, atSwap: timeKey === swapTimeKey };
+    }
+    var targetDate = who === 'A' ? pending.date : (pending.dateB || pending.date);
+    var swapDate = who === 'A' ? (pending.dateB || pending.date) : pending.date;
+    return {
+      atTarget: timeKey === targetTimeKey && dateStr === targetDate,
+      atSwap: timeKey === swapTimeKey && dateStr === swapDate
+    };
+  }
+
   function getCompareCellText(deps, who, day, period) {
     var pending = deps.pendingRequestData.value;
-    var currentWeekDates = deps.currentWeekDates;
     var getScheduleForDate = deps.getScheduleForDate;
     var isClassAwayOnDate = deps.isClassAwayOnDate;
     var resolveCompareBEmail = deps.resolveCompareBEmail;
@@ -684,7 +726,7 @@ window.UiSubmitHelpers = (function () {
     var timeKey = (window.DateUtils && window.DateUtils.encodeTimeKey)
       ? window.DateUtils.encodeTimeKey(day, period)
       : (String(day) + '-' + String(period));
-    var dateStr = currentWeekDates.value[day - 1];
+    var dateStr = getCompareWeekDates(deps, who)[day - 1];
 
     if (pending.isBatch && pending.mode === 'substitution' && dateStr) {
       if (who === 'A' && isBatchSlotAt(dateStr, day, period)) return '移出';
@@ -711,8 +753,11 @@ window.UiSubmitHelpers = (function () {
 
     if (!email) return '';
     // 目前正在模擬的這一節（優先）
-    if (timeKey === targetTimeKey) return '移出';
-    if (timeKey === swapTimeKey) return pending.cls || '';
+    var endpoint = matchesExchangeEndpoint(pending, who, dateStr, timeKey, targetTimeKey, swapTimeKey);
+    if (endpoint.atTarget) return '移出';
+    if (endpoint.atSwap) return who === 'B'
+      ? (pending.subBClass || pending.cls || '')
+      : (pending.cls || '');
 
     // 活動互代：疊上其他暫定（移出／代入）
     var draft = findMutualDraftAt(deps, email, dateStr, period);
@@ -748,7 +793,6 @@ window.UiSubmitHelpers = (function () {
 
   function getCompareCellClass(deps, who, day, period) {
     var pending = deps.pendingRequestData.value;
-    var currentWeekDates = deps.currentWeekDates;
     var getScheduleForDate = deps.getScheduleForDate;
     var isClassAwayOnDate = deps.isClassAwayOnDate;
     var resolveCompareBEmail = deps.resolveCompareBEmail;
@@ -763,7 +807,7 @@ window.UiSubmitHelpers = (function () {
     var timeKey = (window.DateUtils && window.DateUtils.encodeTimeKey)
       ? window.DateUtils.encodeTimeKey(day, period)
       : (String(day) + '-' + String(period));
-    var dateStr = currentWeekDates.value[day - 1];
+    var dateStr = getCompareWeekDates(deps, who)[day - 1];
 
     if (pending.isBatch && pending.mode === 'substitution' && dateStr) {
       if (who === 'A' && isBatchSlotAt(dateStr, day, period)) return 'mini-cell-out';
@@ -786,8 +830,9 @@ window.UiSubmitHelpers = (function () {
     }
 
     if (!email) return '';
-    if (timeKey === targetTimeKey) return 'mini-cell-out';
-    if (timeKey === swapTimeKey) return 'mini-cell-new';
+    var endpoint = matchesExchangeEndpoint(pending, who, dateStr, timeKey, targetTimeKey, swapTimeKey);
+    if (endpoint.atTarget) return 'mini-cell-out';
+    if (endpoint.atSwap) return 'mini-cell-new';
 
     // 活動互代暫定疊色
     var draft = findMutualDraftAt(deps, email, dateStr, period);
@@ -847,6 +892,27 @@ window.UiSubmitHelpers = (function () {
      var successActionRequests = deps.successActionRequests;
      var showToast = deps.showToast;
     var notificationsSuppressed = deps.notificationsSuppressed;
+
+    // 通知要使用目前實際處理的課堂，不取可能已被交換／再異動改寫的摘要欄位。
+    var active = deps.activeCell && deps.activeCell.value ? deps.activeCell.value : {};
+    var pending = pendingRequestData.value || {};
+    var handledDate = deps.inputRequestDate && deps.inputRequestDate.value
+      ? deps.inputRequestDate.value
+      : (pending.date || '');
+    var handledPeriod = active.period != null ? active.period : null;
+    var handledDay = active.dayOfWeek != null ? active.dayOfWeek : null;
+    if ((handledPeriod == null || handledDay == null) && pending.timeKey
+        && window.DateUtils && typeof window.DateUtils.decodeTimeKey === 'function') {
+      var handledTime = window.DateUtils.decodeTimeKey(pending.timeKey);
+      if (handledPeriod == null) handledPeriod = handledTime.period;
+      if (handledDay == null) handledDay = handledTime.day;
+    }
+    var handledClass = active.classData && active.classData.className
+      ? active.classData.className
+      : (pending.cls || '');
+    var handledSubject = active.classData && active.classData.subject
+      ? active.classData.subject
+      : (pending.subject || '');
 
     // 防連點：一進來就鎖，避免 validate／confirm 期間重複點
     if (isSubmitting && isSubmitting.value) {
@@ -941,14 +1007,14 @@ window.UiSubmitHelpers = (function () {
          ? (isQuotaDeductFee(newRequest['經費來源']) ? '（活動互代／扣額度）' : '（活動互代／活動公費）')
          : '';
       var notifyTip = skipNotify ? ' 尚未寄系統信，請用下方 LINE 手動通知。' : '';
-       var linePayload = {
-         targetName: newRequest['受邀人姓名'],
-         requesterName: newRequest.isProxySubmit ? newRequest['申請人姓名'] : '',
-         dateA: newRequest['異動日期'],
-        dayA: newRequest['異動星期'],
-        periodA: newRequest['異動節次'],
-        classA: newRequest['班級'],
-        subjectA: newRequest['科目'],
+      var linePayload = {
+        targetName: newRequest['受邀人姓名'],
+        requesterName: newRequest.isProxySubmit ? newRequest['申請人姓名'] : '',
+        dateA: handledDate || newRequest['異動日期'],
+        dayA: handledDay != null ? handledDay : newRequest['異動星期'],
+        periodA: handledPeriod != null ? handledPeriod : newRequest['異動節次'],
+        classA: handledClass || newRequest['班級'],
+        subjectA: handledSubject || newRequest['科目'],
         isExchange: isExchange,
         dateB: newRequest['對調目標日期'],
         dayB: newRequest['對調目標星期'],

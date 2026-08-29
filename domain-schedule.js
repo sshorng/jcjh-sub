@@ -318,7 +318,7 @@ window.DomainSchedule = (function () {
           return String(s.teacherEmail || '').toLowerCase() === emailLower;
         }) || outCands[0] || null;
 
-        // 調出主標：優先使用這個原位置 edge 已保存的班科，缺欄位才回到基礎課。
+        // 調出格仍顯示這位教師自己的原課；交換後的課程只在對方時段顯示。
         var priorDuty = null;
         if (periodSubs && periodSubs.length) {
           for (var oi = periodSubs.length - 1; oi >= 0; oi--) {
@@ -346,18 +346,36 @@ window.DomainSchedule = (function () {
             }
           }
         }
-        var ownOutClass = String(
-          (firstEdge && firstEdge.className)
-          || (baseOut && baseOut.className)
-          || (priorDuty && priorDuty.className)
-          || ''
-        ).trim();
-        var ownOutSubj = String(
-          (firstEdge && firstEdge.subject)
-          || (baseOut && baseOut.subject)
-          || (priorDuty && priorDuty.subject)
-          || ''
-        ).trim();
+        var ownOutClass;
+        var ownOutSubj;
+        if (firstEdge.type === 'exchange') {
+          ownOutClass = String(
+            (baseOut && baseOut.className)
+            || (priorDuty && priorDuty.className)
+            || (firstEdge && firstEdge.className)
+            || ''
+          ).trim();
+          ownOutSubj = String(
+            (baseOut && baseOut.subject)
+            || (priorDuty && priorDuty.subject)
+            || (h.getTeacherSubjectByEmail && h.getTeacherSubjectByEmail(teacherEmail))
+            || (firstEdge && firstEdge.subject)
+            || ''
+          ).trim();
+        } else {
+          ownOutClass = String(
+            (firstEdge && firstEdge.className)
+            || (baseOut && baseOut.className)
+            || (priorDuty && priorDuty.className)
+            || ''
+          ).trim();
+          ownOutSubj = String(
+            (firstEdge && firstEdge.subject)
+            || (baseOut && baseOut.subject)
+            || (priorDuty && priorDuty.subject)
+            || ''
+          ).trim();
+        }
         var subText = '';
         if (firstEdge.type === 'exchange') {
           var otherSub = allSubs.find(function (x) {
@@ -435,8 +453,8 @@ window.DomainSchedule = (function () {
         var baseIn = inCands.find(function (s) {
           return String(s.teacherEmail || '').toLowerCase() === originalOwner;
         }) || inCands[0] || null;
-        // 調入主標＝該原位置的班科（edge 由交換轉換器寫入）。
-        // 對調只交換授課教師，課程仍留在原本的日期／節次位置。
+        // 調入主標＝實際授課教師帶到新時段的原課班科（edge 由交換轉換器寫入）。
+        // 對調後網頁課表以教師／班級／科目整組換時段為準。
         // 代課：edge 存被代的那堂
         var isExIn = incomingEdge.type === 'exchange';
         var finalClassIn = String(incomingEdge.className || (baseIn && baseIn.className) || '').trim();

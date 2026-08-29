@@ -4660,7 +4660,10 @@ function buildPublicClassPayload_(semesterId, className) {
   var reqPackPub = getSemesterRequestsCached_(sid, true, 14);
   var approved = (reqPackPub.rows || []).filter(function (req) {
     if (String(req["狀態"] || req.status || "") !== "approved") return false;
-    if (cls && !classFieldIncludes_(req["班級"] || req.className, cls)) return false;
+    // 調課的網頁課表會把兩端原課帶到對方時段，來源班與目標班都要公開。
+    if (cls
+        && !classFieldIncludes_(req["班級"] || req.className, cls)
+        && !classFieldIncludes_(req["對調目標班級"] || req.targetClassName, cls)) return false;
     return true;
   }).map(function (req, idx) {
     // 公開：保留顯示用姓名與課堂欄，不附備註全文

@@ -870,7 +870,7 @@ createApp({
           const targetEff = resolveAt(
             req.targetTeacherEmail, req.targetDate, req.targetPeriod, dayNum
           );
-          // 調課只交換授課教師；課程留在各自原來的日期／節次位置。
+          // 網頁課表顯示調課後的實際安排：教師帶著自己的班級／科目換到對方時段。
           // 僅「代課義務」再調課：優先使用有效的義務班科。
           const leaveSubDuty = !!(leaveEff && leaveEff.fromSub && (
             leaveEff.dutyType === 'substitution' || leaveEff.dutyType === '代課'
@@ -897,16 +897,19 @@ createApp({
               || ownSubject(req.targetTeacherEmail, req.targetDate, req.targetPeriod, dayNum)
               || '');
 
-          // _1：目標日保留受邀人的原課程，由申請人授課。
-           pushSub({
-             id: req.id + '_1',
-              date: req.targetDate,
-              period: req.targetPeriod,
-              serial: req.serial || req['單號'] || '',
-              originalTeacherName: req.targetTeacherName,
-              actualTeacherName: req.requesterName,
-            className: targetCls,
-            subject: targetSubj,
+          // _1：目標日由申請人上自己的原課程。
+          pushSub({
+            id: req.id + '_1',
+            date: req.targetDate,
+            period: req.targetPeriod,
+            serial: req.serial || req['單號'] || '',
+            originalTeacherName: req.targetTeacherName,
+            actualTeacherName: req.requesterName,
+            className: leaveCls,
+            subject: leaveSubj,
+            // 列印調代課單仍要顯示目標位置原本的班級／科目。
+            formClassName: targetCls,
+            formSubject: targetSubj,
             requestId: req.id,
             type: 'exchange',
             printed: req.printed,
@@ -917,16 +920,19 @@ createApp({
             note: req.note
           });
 
-          // _2：原異動日保留申請人的原課程，由受邀人授課。
-           pushSub({
-             id: req.id + '_2',
-              date: req.requestDate,
-              period: req.requestPeriod,
-              serial: req.serial || req['單號'] || '',
-              originalTeacherName: req.requesterName,
-              actualTeacherName: req.targetTeacherName,
-            className: leaveCls,
-            subject: leaveSubj,
+          // _2：原異動日由受邀人上自己的原課程。
+          pushSub({
+            id: req.id + '_2',
+            date: req.requestDate,
+            period: req.requestPeriod,
+            serial: req.serial || req['單號'] || '',
+            originalTeacherName: req.requesterName,
+            actualTeacherName: req.targetTeacherName,
+            className: targetCls,
+            subject: targetSubj,
+            // 列印調代課單仍要顯示申請人原位置的班級／科目。
+            formClassName: leaveCls,
+            formSubject: leaveSubj,
             requestId: req.id,
             type: 'exchange',
             printed: req.printed,
@@ -2437,6 +2443,37 @@ createApp({
       return base.length > 2 ? base.slice(-2) : base;
     };
 
+    // LINE 描述實際處理的課堂；明細列優先用 date/period，申請列才回退 requestDate/requestPeriod。
+    const getLineHandledSlot = (row) => {
+      const source = row || {};
+      const date = source.handledDate || source.dutyDate || source.date
+        || source.requestDate || source['異動日期'] || '';
+      let period = source.handledPeriod != null ? source.handledPeriod
+        : (source.dutyPeriod != null ? source.dutyPeriod
+          : (source.period != null ? source.period
+            : (source.requestPeriod != null ? source.requestPeriod : source['異動節次'])));
+      let day = source.handledDayOfWeek != null ? source.handledDayOfWeek
+        : (source.dutyDayOfWeek != null ? source.dutyDayOfWeek
+          : (source.dayOfWeek != null ? source.dayOfWeek : source.requestPeriodDay));
+      if ((day == null || day === '' || period == null || period === '') && source.timeKey
+          && window.DateUtils && typeof window.DateUtils.decodeTimeKey === 'function') {
+        const decoded = window.DateUtils.decodeTimeKey(source.timeKey);
+        if (day == null || day === '') day = decoded.day;
+        if (period == null || period === '') period = decoded.period;
+      }
+      if ((day == null || day === '') && date) {
+        const parsed = new Date(String(date).replace(/-/g, '/'));
+        if (!Number.isNaN(parsed.getTime())) day = parsed.getDay() === 0 ? 7 : parsed.getDay();
+      }
+      return {
+        date,
+        day,
+        period,
+        className: source.handledClassName || source.dutyClassName || source.className || '',
+        subject: source.handledSubject || source.dutySubject || source.subject || ''
+      };
+    };
+
     /**
      * 送出前「先問對方」LINE 範本：只有詢問，沒有同意／拒絕連結（尚未送出）
      * opts: { targetName, isExchange, dateA, dayA, periodA, classA, subjectA,
@@ -2527,61 +2564,72 @@ createApp({
         const peers = req.batchId
           ? (requestsList.value || []).filter(r =>
             r.batchId && r.batchId === req.batchId && isPaperFlowRequest(r)
-            && (!targetName || String(r.targetTeacherName || '').toLowerCase() === targetName)
+           && (!targetName || String(r.targetTeacherName || '').toLowerCase() === targetName)
           ).sort((a, b) => {
-            if ((a.requestDate || '') !== (b.requestDate || '')) return String(a.requestDate || '').localeCompare(String(b.requestDate || ''));
-            return (parseInt(a.requestPeriod) || 0) - (parseInt(b.requestPeriod) || 0);
+             const slotA = getLineHandledSlot(a);
+             const slotB = getLineHandledSlot(b);
+             if (slotA.date !== slotB.date) return String(slotA.date || '').localeCompare(String(slotB.date || ''));
+             return (parseInt(slotA.period, 10) || 0) - (parseInt(slotB.period, 10) || 0);
           })
           : [req];
-        const rows = peers.length ? peers : [req];
-        const first = rows[0];
-        const firstIsExchange = first.type === 'exchange' || first.type === '對調';
-        const askOptions = {
-          targetName: first.targetTeacherName || req.targetTeacherName,
-          requesterName: isProxySubmitRequest(first)
-            ? (first.requesterName || req.requesterName)
-            : '',
-          isExchange: firstIsExchange,
-          dateA: first.requestDate,
-          dayA: first.requestPeriodDay,
-          periodA: first.requestPeriod,
-          classA: getOriginalRequestClass(first) || first.className || '',
-          subjectA: getOriginalRequestSubject(first) || first.subject || ''
-        };
+         const rows = peers.length ? peers : [req];
+         const first = rows[0];
+         const firstIsExchange = first.type === 'exchange' || first.type === '對調';
+         const firstSlot = getLineHandledSlot(first);
+         const askOptions = {
+           targetName: first.targetTeacherName || req.targetTeacherName,
+           requesterName: isProxySubmitRequest(first)
+             ? (first.requesterName || req.requesterName)
+             : '',
+           isExchange: firstIsExchange,
+           dateA: firstSlot.date,
+           dayA: firstSlot.day,
+           periodA: firstSlot.period,
+           classA: getOriginalRequestClass(first) || firstSlot.className,
+           subjectA: getOriginalRequestSubject(first) || firstSlot.subject
+         };
         if (firstIsExchange) {
           askOptions.dateB = first.targetDate;
           askOptions.dayB = first.targetDayOfWeek;
           askOptions.periodB = first.targetPeriod;
           askOptions.classB = getOriginalTargetClass(first) || '';
           askOptions.subjectB = getOriginalTargetSubject(first) || '';
-        } else if (rows.length > 1) {
-          askOptions.slots = rows.map(row => ({
-            date: row.requestDate,
-            day: row.requestPeriodDay,
-            period: row.requestPeriod,
-            className: getOriginalRequestClass(row) || row.className || '',
-            subject: getOriginalRequestSubject(row) || row.subject || ''
-          }));
+         } else if (rows.length > 1) {
+           askOptions.slots = rows.map(row => {
+             const slot = getLineHandledSlot(row);
+             return {
+               date: slot.date,
+               day: slot.day,
+               period: slot.period,
+               className: getOriginalRequestClass(row) || slot.className,
+               subject: getOriginalRequestSubject(row) || slot.subject
+             };
+           });
         }
         lineText = buildAskFirstLineText(askOptions);
       } else if (req.batchId && !isExchange) {
         const targetEmail = String(req.targetTeacherEmail || '').toLowerCase();
         const peers = (requestsList.value || []).filter(r =>
           r.batchId && r.batchId === req.batchId &&
-          (r.status === 'pending_teacher' || r.status === req.status) &&
-          (!targetEmail || String(r.targetTeacherEmail || '').toLowerCase() === targetEmail)
-        ).sort((a, b) => {
-          if ((a.requestDate || '') !== (b.requestDate || '')) return String(a.requestDate || '').localeCompare(String(b.requestDate || ''));
-          return (parseInt(a.requestPeriod) || 0) - (parseInt(b.requestPeriod) || 0);
+           (r.status === 'pending_teacher' || r.status === req.status) &&
+           (!targetEmail || String(r.targetTeacherEmail || '').toLowerCase() === targetEmail)
+         ).sort((a, b) => {
+           const slotA = getLineHandledSlot(a);
+           const slotB = getLineHandledSlot(b);
+           if (slotA.date !== slotB.date) return String(slotA.date || '').localeCompare(String(slotB.date || ''));
+           return (parseInt(slotA.period, 10) || 0) - (parseInt(slotB.period, 10) || 0);
         });
-        const slots = (peers.length ? peers : [req]).map(r => ({
-          id: r.id,
-          date: r.requestDate,
-          day: r.requestPeriodDay,
-          period: r.requestPeriod,
-          className: getOriginalRequestClass(r) || r.className || '',
-          subject: getOriginalRequestSubject(r) || r.subject || ''
-        }));
+         const slots = (peers.length ? peers : [req]).map(r => {
+           const slot = getLineHandledSlot(r);
+           return {
+             id: r.id,
+             date: slot.date,
+             day: slot.day,
+             period: slot.period,
+             className: getOriginalRequestClass(r) || slot.className,
+             subject: getOriginalRequestSubject(r) || slot.subject
+           };
+         });
         lineText = buildLineBatchInviteText({
           targetName: req.targetTeacherName,
           requesterName: isProxySubmitRequest(req) ? req.requesterName : '',
@@ -2594,8 +2642,9 @@ createApp({
       } else {
         const agreeLink = `${currentUrl}?action=respond&id=${req.id}&status=agree`;
         const declineLink = `${currentUrl}?action=respond&id=${req.id}&status=decline`;
-        const leaveClass = getOriginalRequestClass(req) || req.className || '';
-        const leaveSubject = getOriginalRequestSubject(req) || req.subject || '';
+         const leaveSlot = getLineHandledSlot(req);
+         const leaveClass = getOriginalRequestClass(req) || leaveSlot.className;
+         const leaveSubject = getOriginalRequestSubject(req) || leaveSlot.subject;
         let swapClass = '';
         let swapSubject = '';
         if (isExchange) {
@@ -2605,9 +2654,9 @@ createApp({
         lineText = buildLineInviteText({
           targetName: req.targetTeacherName,
           requesterName: isProxySubmitRequest(req) ? req.requesterName : '',
-          dateA: req.requestDate,
-          dayA: req.requestPeriodDay,
-          periodA: req.requestPeriod,
+           dateA: leaveSlot.date,
+           dayA: leaveSlot.day,
+           periodA: leaveSlot.period,
           classA: leaveClass,
           subjectA: leaveSubject,
           isExchange,
@@ -2644,20 +2693,18 @@ createApp({
         ? String(user.value.email).trim().toLowerCase()
         : '';
       const isProxyApplication = !!(leaveEmail && currentEmail && leaveEmail !== currentEmail);
-      const tkA = (window.DateUtils && window.DateUtils.decodeTimeKey)
-        ? window.DateUtils.decodeTimeKey(p.timeKey)
-        : { day: parseInt(String(p.timeKey || '').charAt(0), 10), period: parseInt(String(p.timeKey || '').slice(-1), 10) };
+      const handledSlot = getLineHandledSlot(p);
       const opts = {
         targetName: shortTeacherName(getTeacherNameByEmail(targetEmail) || targetEmail),
         requesterName: isProxyApplication
           ? (getTeacherNameByEmail(p.leaveTeacher) || p.leaveTeacher || '')
           : '',
         isExchange: p.mode === 'exchange',
-        dateA: p.date,
-        dayA: tkA.day,
-        periodA: tkA.period,
-        classA: p.cls,
-         subjectA: p.subject
+        dateA: handledSlot.date,
+        dayA: handledSlot.day,
+        periodA: handledSlot.period,
+        classA: handledSlot.className,
+        subjectA: handledSlot.subject
       };
       if (p.mode === 'exchange') {
         const tkB = (window.DateUtils && window.DateUtils.decodeTimeKey)
@@ -3171,18 +3218,21 @@ createApp({
         return;
       }
       try {
+        if (window.DateUtils && typeof window.DateUtils.getExchangeTargetDate === 'function') {
+          exchangeTargetDate.value = window.DateUtils.getExchangeTargetDate(
+            inputRequestDate.value, exchangePeriodId.value, exchangeWeekOffset.value
+          );
+          return;
+        }
         const [targetDayStr] = exchangePeriodId.value.split('-');
         const targetDay = parseInt(targetDayStr);
         const [y, m, d] = inputRequestDate.value.split('-').map(Number);
         const reqDate = new Date(y, m - 1, d);
-        const reqDay = reqDate.getDay(); 
+        const reqDay = reqDate.getDay();
         const currentDayOfWeek = reqDay === 0 ? 7 : reqDay;
-        // 天數差 = (目標星期 - 請假星期) + (週數偏移 * 7)
         const diffDays = (targetDay - currentDayOfWeek) + (exchangeWeekOffset.value * 7);
-        
         const targetDateObj = new Date(reqDate);
         targetDateObj.setDate(reqDate.getDate() + diffDays);
-        
         const year = targetDateObj.getFullYear();
         const month = String(targetDateObj.getMonth() + 1).padStart(2, '0');
         const dateVal = String(targetDateObj.getDate()).padStart(2, '0');
@@ -3359,6 +3409,25 @@ createApp({
         dates.push(toLocalDateStr(next));
       }
       return dates;
+    });
+
+    const getWeekDatesForCompare = (dateStr) => {
+      if (dateStr && window.DateUtils && typeof window.DateUtils.getWeekDatesFrom === 'function') {
+        const dates = window.DateUtils.getWeekDatesFrom(dateStr);
+        if (Array.isArray(dates) && dates.length === 5) return dates;
+      }
+      return currentWeekDates.value || [];
+    };
+    const compareWeekDatesA = computed(() => {
+      const pending = pendingRequestData.value || {};
+      return getWeekDatesForCompare(pending.date || inputRequestDate.value);
+    });
+    const compareWeekDatesB = computed(() => {
+      const pending = pendingRequestData.value || {};
+      const date = pending.mode === 'exchange' && pending.dateB
+        ? pending.dateB
+        : (pending.date || inputRequestDate.value);
+      return getWeekDatesForCompare(date);
     });
 
     const isAdmin = computed(() => userRole.value === 'admin');
@@ -4328,7 +4397,7 @@ createApp({
 
         if (rec.type === 'exchange' || rec.type === '對調') {
           const peers = peerByRequestId[rec.requestId] || [];
-            // leaveEdge：原異動日（申請人原位置的課）；targetEdge：目標日（受邀人原位置的課）
+          // leaveEdge：原異動日（申請人原位置的課）；targetEdge：目標日（受邀人原位置的課）
           let leaveEdge = peers.find(x => String(x.id || '').endsWith('_2')) || null;
           let targetEdge = peers.find(x => String(x.id || '').endsWith('_1')) || null;
           if (!leaveEdge || !targetEdge) {
@@ -4346,20 +4415,20 @@ createApp({
             subTeacher = matchedReq.targetTeacherEmail || subTeacher;
             targetDate = matchedReq.targetDate || targetDate;
             targetPeriod = matchedReq.targetPeriod != null ? matchedReq.targetPeriod : targetPeriod;
-              // 請假班科：申請單欄＝申請人原位置的課；edge _2 可作備援
-              leaveClassName = matchedReq.className
-                || (leaveEdge && leaveEdge.className)
-                || leaveClassName;
-              leaveSubject = matchedReq.subject
-                || (leaveEdge && leaveEdge.subject)
-                || leaveSubject;
-              // 對調班科：受邀人原位置的課＝目標日 edge _1
-              targetClassName = (targetEdge && targetEdge.className)
-                || matchedReq.targetClassName
-                || '';
-              targetSubject = (targetEdge && targetEdge.subject)
-                || matchedReq.targetSubject
-                || '';
+            // 歷史／申請單欄位維持原始位置，不跟著網頁課表的交換後班科走。
+            leaveClassName = matchedReq.className
+              || (leaveEdge && (leaveEdge.formClassName || leaveEdge.className))
+              || leaveClassName;
+            leaveSubject = matchedReq.subject
+              || (leaveEdge && (leaveEdge.formSubject || leaveEdge.subject))
+              || leaveSubject;
+            // 對調班科：受邀人原位置的課＝目標日 edge _1 的表單欄位。
+            targetClassName = matchedReq.targetClassName
+              || (targetEdge && (targetEdge.formClassName || targetEdge.className))
+              || '';
+            targetSubject = matchedReq.targetSubject
+              || (targetEdge && (targetEdge.formSubject || targetEdge.subject))
+              || '';
           } else {
             // 無申請單：用兩邊 edge
             if (leaveEdge) {
@@ -4371,13 +4440,13 @@ createApp({
             if (targetEdge) {
               targetDate = targetEdge.date;
               targetPeriod = targetEdge.period;
-                leaveClassName = leaveEdge.className || leaveClassName;
-                leaveSubject = leaveEdge.subject || leaveSubject;
-              }
-              if (targetEdge) {
-                targetClassName = targetEdge.className || '';
-                targetSubject = targetEdge.subject || '';
-              }
+              leaveClassName = (leaveEdge && (leaveEdge.formClassName || leaveEdge.className)) || leaveClassName;
+              leaveSubject = (leaveEdge && (leaveEdge.formSubject || leaveEdge.subject)) || leaveSubject;
+            }
+            if (targetEdge) {
+              targetClassName = targetEdge.formClassName || targetEdge.className || '';
+              targetSubject = targetEdge.formSubject || targetEdge.subject || '';
+            }
           }
         }
 
@@ -4555,10 +4624,11 @@ createApp({
         leaveDate: inputRequestDate.value,
         leavePeriod: activeCell.value.period,
         leaveDay: activeCell.value.dayOfWeek,
-        leaveCell: leaveCell,
-        leaveAttr: leaveCell ? leaveCell.attr : '',
-        weekDates: targetWeekDates,
-        getScheduleForDate,
+         leaveCell: leaveCell,
+         leaveAttr: leaveCell ? leaveCell.attr : '',
+         weekDates: targetWeekDates,
+         isSingleWeek,
+         getScheduleForDate,
         getTeacherNameByEmail,
         // 調課：外出班／空堂事件釋出視同空堂（不特別優先排序）
         awayClasses: isMutualCover.value ? mutualAwayClasses.value : []
@@ -4974,7 +5044,7 @@ createApp({
       }
       return window.UiSubmitHelpers.prepCompare({
         activeCell, inputRequestDate, allSchedules, showConfirm, getScheduleForDate,
-        formatDateMMDD, getWeekDayText, exchangePeriodId, exchangeWeekOffset, exchangeTargetDate,
+         formatDateMMDD, getWeekDayText, exchangePeriodId, exchangeWeekOffset, exchangeTargetDate, isSingleWeek,
         consecAlertsA, consecAlertsB, isMutualCover, assignMutualDraftFromMatch, PERIOD8_FEE,
         pendingRequestData, showMatchModal, showCompareModal, getLeaveTimeDefaults
       }, mode, targetEmail, periodIdVal, subjectVal, classVal);
@@ -5122,7 +5192,8 @@ createApp({
     const getCompareCellText = (who, day, period) => {
       if (!window.UiSubmitHelpers || !window.UiSubmitHelpers.getCompareCellText) return '';
       return window.UiSubmitHelpers.getCompareCellText({
-        pendingRequestData, currentWeekDates, getScheduleForDate, isClassAwayOnDate,
+         pendingRequestData, currentWeekDates, compareWeekDatesA, compareWeekDatesB,
+         getScheduleForDate, isClassAwayOnDate,
         resolveCompareBEmail, isBatchSlotAt, getBatchSlotForCompareB,
         mutualDrafts, isMutualCover
       }, who, day, period);
@@ -5130,7 +5201,8 @@ createApp({
     const getCompareCellClass = (who, day, period) => {
       if (!window.UiSubmitHelpers || !window.UiSubmitHelpers.getCompareCellClass) return '';
       return window.UiSubmitHelpers.getCompareCellClass({
-        pendingRequestData, currentWeekDates, getScheduleForDate, isClassAwayOnDate,
+         pendingRequestData, currentWeekDates, compareWeekDatesA, compareWeekDatesB,
+         getScheduleForDate, isClassAwayOnDate,
         resolveCompareBEmail, isBatchSlotAt, getBatchSlotForCompareB, isSlotConflict,
         mutualDrafts, isMutualCover
       }, who, day, period);
@@ -5175,9 +5247,9 @@ createApp({
         return false;
       }
       return window.UiSubmitHelpers.validateSubmitRequest({
-        pendingRequestData, showToast, showConfirm, isAdmin, getTeacherNameByEmail,
-        hasSubTeacherConflict, assertQuotaDeductAllowed,
-        activeCell, allSchedules,
+         pendingRequestData, showToast, showConfirm, isAdmin, getTeacherNameByEmail,
+         hasSubTeacherConflict, assertQuotaDeductAllowed,
+         activeCell, allSchedules, getScheduleForDate, isSingleWeek,
         isProxySubmitActive: function () { return isProxySubmitActive.value; },
         assertCanSubmitAsLeaveTeacher: assertCanSubmitAsLeaveTeacher
       });
@@ -5312,6 +5384,7 @@ createApp({
       }
       return window.UiSubmitHelpers.executeSubmitRequest({
         validateSubmitRequest, buildSubmitPayload, loading, loadingMessage, isSubmitting, pendingRequestData,
+        activeCell, inputRequestDate,
         isMutualCover, mutualSkipNotify, isAdmin, directApproveMode, directApproveSkipNotify,
         callGasApi, showCompareModal, showMatchModal, optimisticUpsertRequest, sheetRequestToFront,
         deductMutualQuotaForRows, softRefreshInBackground, isQuotaDeductFee, buildLineInviteText,
@@ -9946,7 +10019,7 @@ createApp({
       loadHistoryMonth, setHistoryFilterMode, setHistoryTypeFilter, ensureHistoryMonthLoaded, loadFullSemesterHistory, reloadWindowedHistory,
       selectedMobileDay, isMobile, checkMobile, initMobileDay,
       currentSemester, availableSemesters, currentSemesterName, semestersList, showSemesterModal, semesterModalMode, semesterForm,
-      currentWeekDates, selectedWeekDate, currentWeekNumber,
+       currentWeekDates, compareWeekDatesA, compareWeekDatesB, selectedWeekDate, currentWeekNumber,
        classList, classSchedules, selectedClass, classReadonlyMode, classViewerReadonly, selectClassForView, getClassReadonlyLink, copyClassReadonlyLink,
        searchQuery, selectedSubject, teachersList, allSchedules, schoolSwaps, substitutionRecords, homeroomRecords, requestsList,
       mySentRequests, myPendingRequests, adminPendingRequests, allPendingRequests,
