@@ -20,7 +20,7 @@ window.OnboardingTour = (function () {
   var _resizeTimer = null;
   var _storageKey = STORAGE_KEY;
 
-  // 精簡 ≤15 步：課表 → 媒合 → 模擬 → 送出／LINE → 待辦 → 歷史 → 完成
+  // 精簡 ≤15 步：課表 → 媒合 → 代課／調課 → 模擬 → 送出 → 後續 → 完成
   var DEFAULT_STEPS = [
     {
       id: 'welcome',
@@ -46,10 +46,28 @@ window.OnboardingTour = (function () {
     {
       id: 'open-match',
       title: '智慧媒合',
-      body: '已開啟真實媒合名單（依當節空堂）。\n\n• 找人代課／節次調課：上方模式切換\n• 可搜尋姓名、點列預覽\n• 名單可能為空（該節大家都有課）\n\n下一步會選一位老師開啟「模擬」。',
+      body: '已開啟真實媒合名單（依當節空堂）。\n\n• 找人代課／節次調課：上方模式切換\n• 可搜尋姓名、點列預覽\n• 名單可能為空（該節大家都有課）\n\n下一步先介紹「節次調課」，再示範代課模擬。',
       selector: '[data-tour="match-drawer"]',
       placement: 'left',
       before: 'openMatchDemo',
+      requireMatch: true
+    },
+    {
+      id: 'match-mode',
+      title: '代課或節次調課',
+      body: '上方兩個按鈕可切換申請方式：\n• 「找人代課」：找空堂教師代替您上課\n• 「節次調課」：找另一位教師的課互換，支援同週或跨週調課\n\n點「節次調課」後，系統會只列出可互換的課堂。導覽不會送出申請。',
+      selector: '[data-tour="exchange-mode-btn"]',
+      placement: 'bottom',
+      before: 'openExchangeModeDemo',
+      requireMatch: true
+    },
+    {
+      id: 'exchange-controls',
+      title: '設定調課週次與星期',
+      body: '調課模式開啟後：\n① 選擇要對調的週次，可選本週、上週、下週或下下週\n② 用星期篩選縮小可調課節次\n③ 從下方名單選擇可互換的課堂，再查看雙方課表\n\n確認無誤後才進入模擬，導覽不會替您送出。',
+      selector: '[data-tour="exchange-controls"]',
+      placement: 'left',
+      before: 'openExchangeModeDemo',
       requireMatch: true
     },
     {
@@ -116,7 +134,7 @@ window.OnboardingTour = (function () {
     {
       id: 'done',
       title: '導覽完成',
-      body: '可以開始了！建議：「點自己的課 → 智慧媒合 → 模擬 → 送出 → 傳 LINE」。\n送出前請再核對一次對象與節次。'
+      body: '可以開始了！\n• 代課：點自己的課 → 智慧媒合 → 找人代課 → 模擬\n• 調課：點自己的課 → 智慧媒合 → 節次調課 → 選擇互換節次\n\n送出前請再核對一次對象與節次。'
     }
   ];
 
@@ -128,6 +146,12 @@ window.OnboardingTour = (function () {
     nav: {
       title: '紙本流程導覽',
       body: '紙本模式主要使用「課表總覽」發起申請，再到「申請進度」查看送出狀態。\n\n紙本模式不需要代課教師在系統內按同意／拒絕；送出後請列印、簽名，再把紙本交至教學組。'
+    },
+    'match-mode': {
+      body: '紙本模式同樣可以使用「找人代課」或「節次調課」。\n\n• 找人代課：選擇空堂教師\n• 節次調課：選擇同週或跨週可互換的課堂\n\n紙本模式送出後，兩種流程都要列印調代課單、完成簽名，再送至教學組。'
+    },
+    'exchange-controls': {
+      body: '調課模式的操作：\n① 選擇本週、上週、下週或下下週\n② 用星期篩選可互換節次\n③ 選一筆課堂查看雙方課表，確認後再進入模擬\n\n紙本模式也會依相同方式確認內容，送出後再列印紙本單。'
     },
     'open-compare': {
       body: '送出前的核對頁：\n• 黃格＝本次模擬的課堂\n• 左＝申請人、右＝被申請人，請核對課表與節次\n• 下方填寫假別、原因與備註\n• 預覽調代課單只能查看，送出前不能列印\n\n導覽不會幫您送出。'
