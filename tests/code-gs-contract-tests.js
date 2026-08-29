@@ -10,6 +10,7 @@ const root = path.resolve(__dirname, '..');
 const source = fs.readFileSync(path.join(root, 'code.gs'), 'utf8');
 
 new vm.Script(source, { filename: 'code.gs' });
+assert.match(source, /jobTitle: String\(t\["職務"\] \|\| t\.jobTitle \|\| ""\)\.trim\(\)/, 'match candidates should include teacher job title');
 
 const flowStart = source.indexOf('var SPECIAL_FLOW_COMBINED_RETURN_');
 const flowEnd = source.indexOf('// ----------------- 姓名鍵資料契約 -----------------', flowStart);

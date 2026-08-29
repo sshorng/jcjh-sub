@@ -551,15 +551,22 @@ function runApplicationFormContractTest() {
   assert.ok((html.match(/預覽調代課單/g) || []).length >= 3, 'compare modal must expose preview in every footer branch');
   assert.ok((html.match(/@click="openPaperPrintDraftFromCompare"/g) || []).length >= 3, 'preview buttons must use the shared preview flow');
   assert.doesNotMatch(html, /🖨️ 列印紙本通知/, 'compare modal must not expose the standalone paper notice button');
-  assert.doesNotMatch(html, /送出並列印紙本通知|確認送出，通知相關人員/, 'submit button must use a concise confirmation label');
-  assert.match(html, /: '確認送出'\) \}\}/, 'submit button must say confirm submit');
+   assert.doesNotMatch(html, /送出並列印紙本通知|確認送出，通知相關人員/, 'submit button must not use the retired paper notice label');
+   assert.match(html, /paperFlow \? '送出申請並列印調代課單' : '確認送出'/, 'paper flow submit button must send then print');
   assert.match(html, /data-tour="success-followup-actions"/);
   assert.match(html, /@click="openSuccessPrintPreview"/);
   assert.match(html, /@click="addSuccessToCalendar"/);
   assert.match(html, /@click="closeSuccessGoRecords"/);
   const appSource = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
-  assert.match(appSource, /returnTo === 'compare'\) showCompareModal\.value = true/);
-  assert.match(appSource, /openPaperPrintDraft\(null, \{ returnTo: 'compare' \}\)/);
+   assert.match(appSource, /returnTo === 'compare'\) showCompareModal\.value = true/);
+   assert.match(html, /getClassChangeTypeLabel\(item\.type\)/, 'class change badges should use compact labels');
+   assert.match(html, /isHomeroomTeacher\(t\)/, 'substitution candidates should show homeroom status');
+   assert.match(appSource, /const getClassChangeTypeLabel =/);
+   assert.match(appSource, /const isHomeroomTeacher =/);
+   assert.match(appSource, /openPaperPrintDraft\(null, \{ returnTo: 'compare', canPrint: false \}\)/);
+  assert.match(appSource, /canPrint: options\.canPrint === true/);
+  assert.match(appSource, /openPaperPrintDraft\(buildPaperRecordsForSubmittedRequests\(requests\), \{ canPrint: true \}\)/);
+  assert.match(appSource, /snapshot\.canPrint === false/);
   assert.match(appSource, /returnTo: draft\.returnTo \|\| ''/);
   assert.match(appSource, /successActionRequests/);
 }

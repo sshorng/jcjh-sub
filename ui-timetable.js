@@ -431,10 +431,11 @@ window.UiTimetable = (function () {
             return {
               // Domain candidate key is teacher name; email remains a local legacy alias only.
               email: teacherName,
-              teacherName: teacherName,
-              name: teacherName,
-              subject: c.subject,
-              role: c.role || 'teacher',
+               teacherName: teacherName,
+               name: teacherName,
+               subject: c.subject,
+               jobTitle: c.jobTitle || c.job || '',
+               role: c.role || 'teacher',
               baseHours: c.baseHours,
               mutualQuota: c.mutualQuota,
               todayPeriodCount: c.todayPeriodCount || 0,

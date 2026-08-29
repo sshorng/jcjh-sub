@@ -912,7 +912,7 @@
                     <div v-if="classChangeSummary.length === 0" class="class-change-empty"><span class="empty-state-title">本班目前無異動</span><span class="empty-state-hint">有核准的調代課或全校調課時會顯示在此</span></div>
                     <div v-else class="class-change-list">
                       <div v-for="item in classChangeSummary" :key="item.id" class="class-change-item" :class="{ 'is-week': item.inWeek }">
-                        <span class="class-change-type" :class="item.type === '調課' ? 'type-exchange' : (item.type === '全校對調' ? 'type-school-swap' : 'type-sub')">{{ item.type }}</span>
+                        <span class="class-change-type" :class="item.type === '調課' ? 'type-exchange' : (item.type === '全校對調' ? 'type-school-swap' : 'type-sub')">{{ getClassChangeTypeLabel(item.type) }}</span>
                         <span class="class-change-line">{{ item.line }}</span>
                       </div>
                     </div>
@@ -2328,7 +2328,8 @@
                         <td class="td-match-main">
                           <input type="radio" class="match-pick-radio" name="match-pick-sub" :id="'mps-' + t.email" :value="t.email" tabindex="-1">
                           <label class="match-pick-hit" :for="'mps-' + t.email" :aria-label="'選取 ' + t.name"></label>
-                          <strong class="text-primary-strong">{{ t.name }}</strong>
+                           <strong class="text-primary-strong">{{ t.name }}</strong>
+                           <span v-if="isHomeroomTeacher(t)" class="badge-match badge-homeroom">導師</span>
                           <span v-if="t.isReleasedByAway" class="badge-match badge-released">外出班空堂</span>
                           <span v-if="t.isSameCourse" class="badge-match badge-same-course">同課</span>
                           <span v-if="t.isSameSubject" class="badge-match badge-same-subject">同科</span>
@@ -2785,7 +2786,7 @@
                 type="button"
                 class="btn btn-primary"
                 @click="openPaperPrintDraftFromCompare"
-               >👁️ 預覽調代課單</button>
+               >👁️ 預覽調代課單（送出前不可列印）</button>
               <button type="button" class="btn btn-secondary" @click="showCompareModal = false">關閉</button>
             </template>
             <template v-else-if="isMutualCover && pendingRequestData.mutualPreview && !pendingRequestData.isBatch">
@@ -2794,7 +2795,7 @@
                 class="btn btn-secondary"
                 :disabled="isSubmitting || loading"
                 @click="openPaperPrintDraftFromCompare"
-              >👁️ 預覽調代課單</button>
+              >👁️ 預覽調代課單（送出前不可列印）</button>
               <button
                 type="button"
                 class="btn btn-primary"
@@ -2810,7 +2811,7 @@
                   class="btn btn-secondary"
                  :disabled="isSubmitting || loading"
                  @click="openPaperPrintDraftFromCompare"
-               >👁️ 預覽調代課單</button>
+                >👁️ 預覽調代課單（送出前不可列印）</button>
                <button
                  class="btn btn-success"
                 :disabled="(!isMutualCover && quotaDeductInsufficient) || isSubmitting || loading"
@@ -2821,7 +2822,7 @@
                    ? '送出中…'
                       : (pendingRequestData.isBatch
                       ? ('確認批次送出（' + (pendingRequestData.batchCount || batchSlots.length) + ' 節）')
-                      : '確認送出') }}
+                       : (paperFlow ? '送出申請並列印調代課單' : '確認送出')) }}
                </button>
               <button class="btn btn-secondary" :disabled="isSubmitting || loading" @click="showCompareModal = false">取消</button>
             </template>
@@ -2841,8 +2842,11 @@
             </div>
             <button class="btn-close" @click="closePrintPreview(true)">&times;</button>
           </div>
-          <div class="modal-body print-preview-modal-body">
-            <iframe
+           <div class="modal-body print-preview-modal-body">
+             <div v-if="printPreview && printPreview.canPrint === false" class="print-preview-lock-note">
+               目前為送出前預覽，只能查看內容；送出申請成功後才能列印、下載或複製調代課單。
+             </div>
+             <iframe
               v-if="printPreview"
               class="print-preview-frame"
               :srcdoc="printPreview.documentHtml"
@@ -2852,14 +2856,14 @@
           </div>
           <div class="modal-footer print-preview-modal-footer">
             <div class="print-preview-image-actions">
-              <button type="button" class="btn btn-secondary" :disabled="printPreviewImageBusy" @click="copyPrintPreviewImage">
+               <button type="button" class="btn btn-secondary" :disabled="printPreviewImageBusy || (printPreview && printPreview.canPrint === false)" @click="copyPrintPreviewImage">
                 {{ printPreviewImageBusy ? '處理中…' : '複製圖片' }}
               </button>
-              <button type="button" class="btn btn-secondary" :disabled="printPreviewImageBusy" @click="downloadPrintPreviewImage">下載圖片</button>
+               <button type="button" class="btn btn-secondary" :disabled="printPreviewImageBusy || (printPreview && printPreview.canPrint === false)" @click="downloadPrintPreviewImage">下載圖片</button>
             </div>
             <div class="print-preview-confirm-actions">
               <button type="button" class="btn btn-secondary" @click="closePrintPreview(true)">返回</button>
-              <button type="button" class="btn btn-primary" @click="confirmPrintPreview">🖨️ 確認列印</button>
+               <button type="button" class="btn btn-primary" :disabled="printPreview && printPreview.canPrint === false" @click="confirmPrintPreview">{{ printPreview && printPreview.canPrint === false ? '送出後才能列印' : '🖨️ 確認列印' }}</button>
             </div>
           </div>
         </div>

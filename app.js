@@ -1917,6 +1917,18 @@ createApp({
       });
       return rows;
     });
+    const classChangeTypeLabels = Object.freeze({
+      '全校對調': '全校',
+      '併班上課': '併班',
+      '合班回原班': '併班',
+      '課務調整': '調課',
+      '互代不結': '互代',
+      '空堂任務': '空堂'
+    });
+    const getClassChangeTypeLabel = (type) => {
+      const value = String(type || '').trim();
+      return classChangeTypeLabels[value] || value;
+    };
     const matchSearchQuery = ref('');
     const matchDisplayCount = ref(10);
     const matchShowNoTeacherWarning = ref(false);
@@ -6715,6 +6727,7 @@ createApp({
         printPreview.value = Object.assign({}, preview, {
           formType,
           source: opts.source || 'selection',
+          canPrint: opts.canPrint !== false,
           returnTo: opts.returnTo || '',
           skipMarkPrinted: !!opts.skipMarkPrinted,
           recordIds: (preview.recordIds || preview.records.map(r => String(r.id || ''))).filter(Boolean)
@@ -6743,6 +6756,10 @@ createApp({
     const confirmPrintPreview = async () => {
       const snapshot = printPreview.value;
       if (!snapshot) return;
+      if (snapshot.canPrint === false) {
+        showToast('調代課申請尚未送出，送出申請後才能列印。', 'warning');
+        return;
+      }
       showPrintPreviewModal.value = false;
       printPreview.value = null;
       printPreviewImageBusy.value = false;
@@ -6804,6 +6821,10 @@ createApp({
 
     const downloadPrintPreviewImage = async () => {
       if (printPreviewImageBusy.value) return;
+      if (printPreview.value && printPreview.value.canPrint === false) {
+        showToast('調代課申請尚未送出，送出申請後才能下載單據。', 'warning');
+        return;
+      }
       printPreviewImageBusy.value = true;
       try {
         const blob = await getPrintPreviewPngBlob();
@@ -6826,6 +6847,10 @@ createApp({
 
     const copyPrintPreviewImage = async () => {
       if (printPreviewImageBusy.value) return;
+      if (printPreview.value && printPreview.value.canPrint === false) {
+        showToast('調代課申請尚未送出，送出申請後才能複製單據。', 'warning');
+        return;
+      }
       if (!navigator.clipboard || typeof window.ClipboardItem !== 'function') {
         showToast('目前瀏覽器不支援複製圖片，請改用下載圖片', 'warning');
         return;
@@ -7058,13 +7083,17 @@ createApp({
            if (name) signatureMap[name.toLowerCase()] = isAdmin.value ? name : '';
          });
        });
-      paperPrintDraft.value = { records: list, returnTo: options.returnTo || '' };
+      paperPrintDraft.value = {
+        records: list,
+        returnTo: options.returnTo || '',
+        canPrint: options.canPrint === true
+      };
       paperSignatureByTeacher.value = signatureMap;
       return openPaperDraftPreview();
     };
 
     const openPaperPrintDraftForSubmittedRequests = (requests) =>
-      openPaperPrintDraft(buildPaperRecordsForSubmittedRequests(requests));
+      openPaperPrintDraft(buildPaperRecordsForSubmittedRequests(requests), { canPrint: true });
 
     const openPaperPrintForRequest = (request) => {
       if (!request) return false;
@@ -7076,7 +7105,7 @@ createApp({
       return openPaperPrintDraftForSubmittedRequests(rows.length ? rows : [request]);
     };
 
-    const openPaperPrintDraftFromCompare = () => openPaperPrintDraft(null, { returnTo: 'compare' });
+    const openPaperPrintDraftFromCompare = () => openPaperPrintDraft(null, { returnTo: 'compare', canPrint: false });
 
     const openPaperPrintMutualDrafts = () => {
       const root = 'PAPER-MUTUAL-' + Date.now();
@@ -7097,12 +7126,16 @@ createApp({
         isPaperDraft: true,
         printed: false
       }));
-      return openPaperPrintDraft(records);
+      return openPaperPrintDraft(records, { canPrint: false });
     };
 
     const printPaperDraft = async () => {
       const draft = paperPrintDraft.value;
       if (!draft || !draft.records || !draft.records.length) return;
+      if (draft.canPrint !== true) {
+        showToast('調代課申請尚未送出，送出申請後才能列印。', 'warning');
+        return;
+      }
       const signatureMap = isAdmin.value ? Object.assign({}, paperSignatureByTeacher.value) : {};
       const ids = draft.records.map((r, index) => String(r.id || ('paper-' + Date.now() + '-' + index)));
       const records = draft.records.map((r, index) => Object.assign({}, r, {
@@ -7137,6 +7170,7 @@ createApp({
         records,
         allSubs: (substitutionRecords.value || []).concat(records),
         source: 'paperDraft',
+        canPrint: draft.canPrint === true,
         returnTo: draft.returnTo || '',
         skipMarkPrinted: true
       });
@@ -7258,6 +7292,14 @@ createApp({
       if (!email) return '';
       const t = lookupTeacher(email);
       return t ? (t.jobTitle || t.job || '') : '';
+    };
+    const isHomeroomTeacher = (teacher) => {
+      if (!teacher) return false;
+      const directTitle = teacher.jobTitle || teacher.job || teacher['職務'] || '';
+      const title = String(directTitle || getTeacherJobTitleByEmail(
+        teacher.loginEmail || teacher.email || teacher.teacherName || teacher.name
+      ) || '').trim();
+      return title.includes('導師');
     };
 
     const getRealTeacherName = (s) => {
@@ -10123,7 +10165,7 @@ createApp({
       getClassCellClassForDate, getClassCellClassForClass, getScheduleForDate, weekScheduleGrid, cellFromGrid, handleCellClick, handleClassCellClick,
       isMatchSourceCell, isMatchSourceEntry, isMatchHoverCell, isMatchHoverEntry,
       selectMatchPreviewSub, selectMatchPreviewExchange, clearMatchPreview, closeMatchModal, isMatchPreviewSelected,
-      selectedClassDate, selectedClassWeekDates, classWeekNumber, classSubstitutionMap, classChangeSummary, changeClassWeek, goToClassThisWeek,
+       selectedClassDate, selectedClassWeekDates, classWeekNumber, classSubstitutionMap, classChangeSummary, getClassChangeTypeLabel, changeClassWeek, goToClassThisWeek,
        prepCompare, startCombinedReturn, getCompareCellText, getCompareCellClass, executeSubmitRequest, isSubmitting,
        getStatusText, changeMatchMode, respondToRequest, respondToBatch, adminApprove, adminReject, cancelRequest, deleteSubstitutionRecord, loadMoreMatches,
         formatRequestSummary, formatLeaveClassSlot, formatExchangeClassSlot, formatQuickTodoTitle, formatHistoryLeaveSlot, formatHistoryExchangeSlot, getRequestRiskTags, getRequestTypeTags, getApproveRiskFlags, formatApproveBatchRiskSummary, isHistoryLeaveRechanged, isHistoryExchangeRechanged, isRequestLeaveRechanged, isRequestExchangeRechanged, getCellPlainStatus, getRequestProgressSteps, isPaperFlowRequest, isLeaveClassRestricted, isExchangeClassRestricted, isHistoryLeaveRestricted, isHistoryExchangeRestricted,
@@ -10143,7 +10185,7 @@ createApp({
       invigilationExportTitle, exportInvigilationWorkbook,
       devSwitchUser, restoreAdmin,
        getTeacherNameByEmail, getTeacherSubjectByEmail, getRealTeacherName, startSecondSub,
-       getTeacherJobTitleByEmail,
+        getTeacherJobTitleByEmail, isHomeroomTeacher,
       getSubjectStyle, getClassBadgeStyle,
       changeHistoryPage, openHistoryEditModal, saveHistoryEdit, onHistoryEditDateChange, changePendingPage,
       openAddSemesterModal, openEditSemesterModal, saveSemester, deleteSemester, setDefaultSemester,

@@ -1250,6 +1250,7 @@ body {
 .badge-same-course { background: #dcfce7; color: #15803d; }   /* 同課：最高優先 */
 .badge-same-subject { background: #fef3c7; color: #b45309; }  /* 同科 */
 .badge-same-class { background: #e0f2fe; color: #0369a1; }    /* 同班 */
+.badge-homeroom { background: #fce7f3; color: #be185d; }       /* 導師 */
 
 /* 異動摘要清單 */
 .summary-list-container {
@@ -1414,6 +1415,17 @@ body {
   padding: 12px;
   overflow: hidden;
   background: #cbd5e1;
+}
+
+.print-preview-lock-note {
+  margin: 0 0 10px;
+  padding: 9px 12px;
+  border: 1px solid #fed7aa;
+  border-radius: 8px;
+  background: #fff7ed;
+  color: #9a3412;
+  font-size: 0.8rem;
+  line-height: 1.45;
 }
 
 .print-preview-frame {

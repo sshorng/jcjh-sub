@@ -4401,6 +4401,7 @@ function buildMatchCandidates_(semesterId, opts) {
       teacherName: String(t["教師姓名"] || t.name || "").trim(),
       name: String(t["教師姓名"] || t.name || "").trim(),
       subject: String(t["授課科目"] || t.subject || "").trim(),
+      jobTitle: String(t["職務"] || t.jobTitle || "").trim(),
       role: String(t["系統角色"] || t.role || "teacher"),
       baseHours: t["基本鐘點"] != null ? t["基本鐘點"] : (t.baseHours != null ? t.baseHours : 16),
       mutualQuota: t["折抵額度"] != null ? t["折抵額度"] : (t.mutualQuota != null ? t.mutualQuota : 0),
