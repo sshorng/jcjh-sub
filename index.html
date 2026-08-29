@@ -2329,7 +2329,7 @@
                           <input type="radio" class="match-pick-radio" name="match-pick-sub" :id="'mps-' + t.email" :value="t.email" tabindex="-1">
                           <label class="match-pick-hit" :for="'mps-' + t.email" :aria-label="'選取 ' + t.name"></label>
                            <strong class="text-primary-strong">{{ t.name }}</strong>
-                           <span v-if="isHomeroomTeacher(t)" class="badge-match badge-homeroom">導師</span>
+                           <span v-if="isHomeroomTeacher(t, activeCell.classData && activeCell.classData.className)" class="badge-match badge-homeroom">導師</span>
                           <span v-if="t.isReleasedByAway" class="badge-match badge-released">外出班空堂</span>
                           <span v-if="t.isSameCourse" class="badge-match badge-same-course">同課</span>
                           <span v-if="t.isSameSubject" class="badge-match badge-same-subject">同科</span>
@@ -2786,7 +2786,7 @@
                 type="button"
                 class="btn btn-primary"
                 @click="openPaperPrintDraftFromCompare"
-               >👁️ 預覽調代課單（送出前不可列印）</button>
+               >👁️ 預覽調代課單</button>
               <button type="button" class="btn btn-secondary" @click="showCompareModal = false">關閉</button>
             </template>
             <template v-else-if="isMutualCover && pendingRequestData.mutualPreview && !pendingRequestData.isBatch">
@@ -2795,7 +2795,7 @@
                 class="btn btn-secondary"
                 :disabled="isSubmitting || loading"
                 @click="openPaperPrintDraftFromCompare"
-              >👁️ 預覽調代課單（送出前不可列印）</button>
+              >👁️ 預覽調代課單</button>
               <button
                 type="button"
                 class="btn btn-primary"
@@ -2811,7 +2811,7 @@
                   class="btn btn-secondary"
                  :disabled="isSubmitting || loading"
                  @click="openPaperPrintDraftFromCompare"
-                >👁️ 預覽調代課單（送出前不可列印）</button>
+                >👁️ 預覽調代課單</button>
                <button
                  class="btn btn-success"
                 :disabled="(!isMutualCover && quotaDeductInsufficient) || isSubmitting || loading"
@@ -2855,16 +2855,16 @@
             ></iframe>
           </div>
           <div class="modal-footer print-preview-modal-footer">
-            <div class="print-preview-image-actions">
-               <button type="button" class="btn btn-secondary" :disabled="printPreviewImageBusy || (printPreview && printPreview.canPrint === false)" @click="copyPrintPreviewImage">
-                {{ printPreviewImageBusy ? '處理中…' : '複製圖片' }}
-              </button>
-               <button type="button" class="btn btn-secondary" :disabled="printPreviewImageBusy || (printPreview && printPreview.canPrint === false)" @click="downloadPrintPreviewImage">下載圖片</button>
-            </div>
-            <div class="print-preview-confirm-actions">
-              <button type="button" class="btn btn-secondary" @click="closePrintPreview(true)">返回</button>
-               <button type="button" class="btn btn-primary" :disabled="printPreview && printPreview.canPrint === false" @click="confirmPrintPreview">{{ printPreview && printPreview.canPrint === false ? '送出後才能列印' : '🖨️ 確認列印' }}</button>
-            </div>
+             <div v-if="printPreview && printPreview.canPrint !== false" class="print-preview-image-actions">
+                <button type="button" class="btn btn-secondary" :disabled="printPreviewImageBusy" @click="copyPrintPreviewImage">
+                 {{ printPreviewImageBusy ? '處理中…' : '複製圖片' }}
+               </button>
+                <button type="button" class="btn btn-secondary" :disabled="printPreviewImageBusy" @click="downloadPrintPreviewImage">下載圖片</button>
+             </div>
+             <div class="print-preview-confirm-actions">
+               <button type="button" class="btn btn-secondary" @click="closePrintPreview(true)">返回</button>
+                <button v-if="printPreview && printPreview.canPrint !== false" type="button" class="btn btn-primary" @click="confirmPrintPreview">🖨️ 確認列印</button>
+             </div>
           </div>
         </div>
       </div>

@@ -553,6 +553,9 @@ function runApplicationFormContractTest() {
   assert.doesNotMatch(html, /🖨️ 列印紙本通知/, 'compare modal must not expose the standalone paper notice button');
    assert.doesNotMatch(html, /送出並列印紙本通知|確認送出，通知相關人員/, 'submit button must not use the retired paper notice label');
    assert.match(html, /paperFlow \? '送出申請並列印調代課單' : '確認送出'/, 'paper flow submit button must send then print');
+   assert.doesNotMatch(html, /送出前不可列印/, 'preview button should not expose the lock note in its label');
+   assert.match(html, /v-if="printPreview && printPreview\.canPrint !== false" class="print-preview-image-actions"/, 'pre-submit image actions should be hidden');
+   assert.match(html, /v-if="printPreview && printPreview\.canPrint !== false" type="button" class="btn btn-primary" @click="confirmPrintPreview"/, 'pre-submit print action should be hidden');
   assert.match(html, /data-tour="success-followup-actions"/);
   assert.match(html, /@click="openSuccessPrintPreview"/);
   assert.match(html, /@click="addSuccessToCalendar"/);
@@ -560,9 +563,25 @@ function runApplicationFormContractTest() {
   const appSource = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
    assert.match(appSource, /returnTo === 'compare'\) showCompareModal\.value = true/);
    assert.match(html, /getClassChangeTypeLabel\(item\.type\)/, 'class change badges should use compact labels');
-   assert.match(html, /isHomeroomTeacher\(t\)/, 'substitution candidates should show homeroom status');
+   assert.match(html, /isHomeroomTeacher\(t, activeCell\.classData && activeCell\.classData\.className\)/, 'substitution candidates should show class-specific homeroom status');
    assert.match(appSource, /const getClassChangeTypeLabel =/);
    assert.match(appSource, /const isHomeroomTeacher =/);
+   assert.match(appSource, /const getHomeroomClassCodes =/);
+   const helperStart = appSource.indexOf('const chineseClassNumber =');
+   const helperEnd = appSource.indexOf('const getRealTeacherName =', helperStart);
+   assert.ok(helperStart >= 0 && helperEnd > helperStart, 'class-specific homeroom helper must remain discoverable');
+   const helperContext = {
+     activeCell: { value: { classData: { className: '904' } } },
+     getTeacherJobTitleByEmail: () => ''
+   };
+   vm.createContext(helperContext);
+   const homeroomHelpers = vm.runInContext(`(() => {
+     ${appSource.slice(helperStart, helperEnd)}
+     return { isHomeroomTeacher };
+   })()`, helperContext);
+   assert.equal(homeroomHelpers.isHomeroomTeacher({ jobTitle: '904導師' }, '904'), true);
+   assert.equal(homeroomHelpers.isHomeroomTeacher({ jobTitle: '901導師' }, '904'), false);
+   assert.equal(homeroomHelpers.isHomeroomTeacher({ jobTitle: '導師' }, '904'), false);
    assert.match(appSource, /openPaperPrintDraft\(null, \{ returnTo: 'compare', canPrint: false \}\)/);
   assert.match(appSource, /canPrint: options\.canPrint === true/);
   assert.match(appSource, /openPaperPrintDraft\(buildPaperRecordsForSubmittedRequests\(requests\), \{ canPrint: true \}\)/);

@@ -7293,13 +7293,39 @@ createApp({
       const t = lookupTeacher(email);
       return t ? (t.jobTitle || t.job || '') : '';
     };
-    const isHomeroomTeacher = (teacher) => {
-      if (!teacher) return false;
+    const chineseClassNumber = (raw) => {
+      const value = String(raw || '').trim();
+      if (/^\d+$/.test(value)) return parseInt(value, 10);
+      if (value === '十') return 10;
+      if (value.startsWith('十')) return 10 + parseInt(({ 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 }[value.slice(1)] || ''), 10);
+      return ({ 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 }[value] || 0);
+    };
+    const getHomeroomClassCodes = (value) => {
+      const raw = String(value || '').replace(/\s+/g, '');
+      if (!raw) return [];
+      const codes = new Set((raw.match(/[789]\d{2}/g) || []));
+      const namedClasses = raw.match(/[789七八九]年(?:級)?[0-9一二三四五六七八九十]+班/g) || [];
+      namedClasses.forEach(named => {
+        const match = named.match(/^([789七八九])年(?:級)?([0-9一二三四五六七八九十]+)班$/);
+        if (!match) return;
+        const grade = ({ 七: '7', 八: '8', 九: '9' }[match[1]] || match[1]);
+        const classNumber = chineseClassNumber(match[2]);
+        if (classNumber > 0) codes.add(grade + String(classNumber).padStart(2, '0'));
+      });
+      return Array.from(codes);
+    };
+    const isHomeroomTeacher = (teacher, className) => {
+      const targetClass = className || (activeCell.value && activeCell.value.classData && activeCell.value.classData.className);
+      if (!teacher || !targetClass) return false;
       const directTitle = teacher.jobTitle || teacher.job || teacher['職務'] || '';
       const title = String(directTitle || getTeacherJobTitleByEmail(
         teacher.loginEmail || teacher.email || teacher.teacherName || teacher.name
       ) || '').trim();
-      return title.includes('導師');
+      if (!title.includes('導師')) return false;
+      const targetCodes = getHomeroomClassCodes(targetClass);
+      if (!targetCodes.length) return false;
+      const teacherCodes = getHomeroomClassCodes(title);
+      return targetCodes.some(code => teacherCodes.includes(code));
     };
 
     const getRealTeacherName = (s) => {
