@@ -1530,6 +1530,85 @@ body {
   color: var(--text-secondary);
 }
 
+.exchange-cross-week-summary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 12px;
+  padding: 9px 12px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #1e3a8a;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.exchange-summary-arrow {
+  color: #64748b;
+  font-size: 1rem;
+}
+
+.exchange-week-panel {
+  min-width: 0;
+}
+
+.exchange-week-legend {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: -2px 0 8px;
+}
+
+.exchange-legend-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 3px 7px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.exchange-legend-out {
+  background: #e2e8f0;
+  color: #64748b;
+}
+
+.exchange-legend-in {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.exchange-week-grid {
+  grid-template-columns: 58px repeat(5, 1fr);
+}
+
+.exchange-period-label {
+  flex-direction: column;
+  gap: 1px;
+  line-height: 1;
+}
+
+.exchange-period-label small {
+  max-width: 54px;
+  overflow: hidden;
+  font-size: 0.5rem;
+  font-weight: 600;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .exchange-week-panels {
+    grid-template-columns: 1fr;
+  }
+}
+
 .mini-grid-period {
   background: #e2e8f0;
   font-weight: 600;

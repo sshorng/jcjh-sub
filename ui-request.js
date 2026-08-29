@@ -690,8 +690,10 @@ window.UiSubmitHelpers = (function () {
     return null;
   }
 
-  function getCompareWeekDates(deps, who) {
-    var source = who === 'A' ? deps.compareWeekDatesA : deps.compareWeekDatesB;
+  function getCompareWeekDates(deps, who, view) {
+    var source = view === 'source'
+      ? deps.compareWeekDatesA
+      : (view === 'target' ? deps.compareWeekDatesB : (who === 'A' ? deps.compareWeekDatesA : deps.compareWeekDatesB));
     var dates = source && source.value != null ? source.value : source;
     if (Array.isArray(dates) && dates.length) return dates;
     var fallback = deps.currentWeekDates;
@@ -711,7 +713,24 @@ window.UiSubmitHelpers = (function () {
     };
   }
 
-  function getCompareCellText(deps, who, day, period) {
+  function getExchangeViewState(pending, who, dateStr, timeKey, view) {
+    if (pending.mode !== 'exchange' || (view !== 'source' && view !== 'target')) return null;
+    var endpointDate = view === 'source' ? pending.date : pending.dateB;
+    var endpointTimeKey = view === 'source' ? pending.timeKey : pending.timeB;
+    if (!endpointDate || !endpointTimeKey || dateStr !== String(endpointDate).slice(0, 10)
+        || timeKey !== endpointTimeKey) return null;
+    return {
+      isOutgoing: (view === 'source' && who === 'A') || (view === 'target' && who === 'B')
+    };
+  }
+
+  function getExchangeIncomingClass(pending, who) {
+    return who === 'A'
+      ? (pending.subBClass || pending.cls || '')
+      : (pending.cls || pending.subBClass || '');
+  }
+
+  function getCompareCellText(deps, who, day, period, view) {
     var pending = deps.pendingRequestData.value;
     var getScheduleForDate = deps.getScheduleForDate;
     var isClassAwayOnDate = deps.isClassAwayOnDate;
@@ -726,7 +745,7 @@ window.UiSubmitHelpers = (function () {
     var timeKey = (window.DateUtils && window.DateUtils.encodeTimeKey)
       ? window.DateUtils.encodeTimeKey(day, period)
       : (String(day) + '-' + String(period));
-    var dateStr = getCompareWeekDates(deps, who)[day - 1];
+    var dateStr = getCompareWeekDates(deps, who, view)[day - 1];
 
     if (pending.isBatch && pending.mode === 'substitution' && dateStr) {
       if (who === 'A' && isBatchSlotAt(dateStr, day, period)) return '移出';
@@ -753,6 +772,11 @@ window.UiSubmitHelpers = (function () {
 
     if (!email) return '';
     // 目前正在模擬的這一節（優先）
+    var exchangeView = getExchangeViewState(pending, who, dateStr, timeKey, view);
+    if (exchangeView) {
+      var incomingClass = getExchangeIncomingClass(pending, who);
+      return exchangeView.isOutgoing ? '調出' : (incomingClass ? incomingClass + ' 換入' : '換入');
+    }
     var endpoint = matchesExchangeEndpoint(pending, who, dateStr, timeKey, targetTimeKey, swapTimeKey);
     if (endpoint.atTarget) return '移出';
     if (endpoint.atSwap) return who === 'B'
@@ -791,7 +815,7 @@ window.UiSubmitHelpers = (function () {
     return cell.className || '';
   }
 
-  function getCompareCellClass(deps, who, day, period) {
+  function getCompareCellClass(deps, who, day, period, view) {
     var pending = deps.pendingRequestData.value;
     var getScheduleForDate = deps.getScheduleForDate;
     var isClassAwayOnDate = deps.isClassAwayOnDate;
@@ -807,7 +831,7 @@ window.UiSubmitHelpers = (function () {
     var timeKey = (window.DateUtils && window.DateUtils.encodeTimeKey)
       ? window.DateUtils.encodeTimeKey(day, period)
       : (String(day) + '-' + String(period));
-    var dateStr = getCompareWeekDates(deps, who)[day - 1];
+    var dateStr = getCompareWeekDates(deps, who, view)[day - 1];
 
     if (pending.isBatch && pending.mode === 'substitution' && dateStr) {
       if (who === 'A' && isBatchSlotAt(dateStr, day, period)) return 'mini-cell-out';
@@ -830,6 +854,8 @@ window.UiSubmitHelpers = (function () {
     }
 
     if (!email) return '';
+    var exchangeView = getExchangeViewState(pending, who, dateStr, timeKey, view);
+    if (exchangeView) return exchangeView.isOutgoing ? 'mini-cell-out' : 'mini-cell-new';
     var endpoint = matchesExchangeEndpoint(pending, who, dateStr, timeKey, targetTimeKey, swapTimeKey);
     if (endpoint.atTarget) return 'mini-cell-out';
     if (endpoint.atSwap) return 'mini-cell-new';

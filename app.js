@@ -3429,6 +3429,24 @@ createApp({
         : (pending.date || inputRequestDate.value);
       return getWeekDatesForCompare(date);
     });
+    const isCrossWeekExchange = computed(() => {
+      const pending = pendingRequestData.value || {};
+      return pending.mode === 'exchange'
+        && compareWeekDatesA.value[0]
+        && compareWeekDatesB.value[0]
+        && compareWeekDatesA.value[0] !== compareWeekDatesB.value[0];
+    });
+    const getExchangeEndpointText = (which) => {
+      const pending = pendingRequestData.value || {};
+      const date = which === 'target' ? pending.dateB : pending.date;
+      const timeKey = which === 'target' ? pending.timeB : pending.timeKey;
+      if (!date || !timeKey) return '';
+      const decoded = window.DateUtils && typeof window.DateUtils.decodeTimeKey === 'function'
+        ? window.DateUtils.decodeTimeKey(timeKey)
+        : { day: parseInt(String(timeKey).split('-')[0], 10), period: parseInt(String(timeKey).split('-')[1], 10) };
+      const dayText = getWeekDayText(decoded.day);
+      return `${formatDateMMDD(date)}（週${dayText}）${formatPeriodText(decoded.period)}`;
+    };
 
     const isAdmin = computed(() => userRole.value === 'admin');
     const isStaff = computed(() => userRole.value === 'staff');
@@ -5189,23 +5207,23 @@ createApp({
     };
 
     // 模擬對比 Grid（ui-request.js → UiSubmitHelpers）
-    const getCompareCellText = (who, day, period) => {
+    const getCompareCellText = (who, day, period, view) => {
       if (!window.UiSubmitHelpers || !window.UiSubmitHelpers.getCompareCellText) return '';
       return window.UiSubmitHelpers.getCompareCellText({
          pendingRequestData, currentWeekDates, compareWeekDatesA, compareWeekDatesB,
          getScheduleForDate, isClassAwayOnDate,
         resolveCompareBEmail, isBatchSlotAt, getBatchSlotForCompareB,
         mutualDrafts, isMutualCover
-      }, who, day, period);
+      }, who, day, period, view);
     };
-    const getCompareCellClass = (who, day, period) => {
+    const getCompareCellClass = (who, day, period, view) => {
       if (!window.UiSubmitHelpers || !window.UiSubmitHelpers.getCompareCellClass) return '';
       return window.UiSubmitHelpers.getCompareCellClass({
          pendingRequestData, currentWeekDates, compareWeekDatesA, compareWeekDatesB,
          getScheduleForDate, isClassAwayOnDate,
         resolveCompareBEmail, isBatchSlotAt, getBatchSlotForCompareB, isSlotConflict,
         mutualDrafts, isMutualCover
-      }, who, day, period);
+      }, who, day, period, view);
     };
 
     // 輔助：檢查 B 師是否與請假節次衝堂（含批次全節／每節不同人）
@@ -10019,7 +10037,7 @@ createApp({
       loadHistoryMonth, setHistoryFilterMode, setHistoryTypeFilter, ensureHistoryMonthLoaded, loadFullSemesterHistory, reloadWindowedHistory,
       selectedMobileDay, isMobile, checkMobile, initMobileDay,
       currentSemester, availableSemesters, currentSemesterName, semestersList, showSemesterModal, semesterModalMode, semesterForm,
-       currentWeekDates, compareWeekDatesA, compareWeekDatesB, selectedWeekDate, currentWeekNumber,
+       currentWeekDates, compareWeekDatesA, compareWeekDatesB, isCrossWeekExchange, getExchangeEndpointText, selectedWeekDate, currentWeekNumber,
        classList, classSchedules, selectedClass, classReadonlyMode, classViewerReadonly, selectClassForView, getClassReadonlyLink, copyClassReadonlyLink,
        searchQuery, selectedSubject, teachersList, allSchedules, schoolSwaps, substitutionRecords, homeroomRecords, requestsList,
       mySentRequests, myPendingRequests, adminPendingRequests, allPendingRequests,

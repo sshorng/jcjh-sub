@@ -2513,9 +2513,84 @@
             </div>
 
             <!-- 課表模擬對比（手機可收合） -->
-            <details class="compare-grids-details" open>
-              <summary class="compare-grids-summary">📅 雙方課表對照（點可收合）</summary>
-            <div class="mini-schedule-container" data-tour="compare-grids" style="margin-bottom: 16px; margin-top: 10px;">
+             <details class="compare-grids-details" open>
+               <summary class="compare-grids-summary">📅 雙方課表對照（點可收合）</summary>
+             <template v-if="isCrossWeekExchange">
+               <div class="exchange-cross-week-summary">
+                 <strong>跨週調課</strong>
+                 <span>{{ getExchangeEndpointText('source') }}</span>
+                 <span class="exchange-summary-arrow">↔</span>
+                 <span>{{ getExchangeEndpointText('target') }}</span>
+               </div>
+               <div class="mini-schedule-container exchange-week-panels" data-tour="compare-grids" style="margin-bottom: 16px; margin-top: 10px;">
+                 <div class="exchange-week-panel">
+                   <div class="mini-grid-title">原課週 {{ formatDateMMDD(compareWeekDatesA[0]) }}～{{ formatDateMMDD(compareWeekDatesA[4]) }}</div>
+                   <div class="exchange-week-legend">
+                     <span class="exchange-legend-pill exchange-legend-out">{{ getTeacherNameByEmail(pendingRequestData.leaveTeacher) }} 原課調出</span>
+                     <span class="exchange-legend-pill exchange-legend-in">{{ getTeacherNameByEmail(resolveCompareBEmail()) }} 換入</span>
+                   </div>
+                   <div class="mini-grid exchange-week-grid">
+                     <div class="mini-grid-cell mini-grid-header">節／教師</div>
+                     <div class="mini-grid-cell mini-grid-header">一<span class="mini-grid-date">{{ formatDateMMDD(compareWeekDatesA[0]) }}</span></div>
+                     <div class="mini-grid-cell mini-grid-header">二<span class="mini-grid-date">{{ formatDateMMDD(compareWeekDatesA[1]) }}</span></div>
+                     <div class="mini-grid-cell mini-grid-header">三<span class="mini-grid-date">{{ formatDateMMDD(compareWeekDatesA[2]) }}</span></div>
+                     <div class="mini-grid-cell mini-grid-header">四<span class="mini-grid-date">{{ formatDateMMDD(compareWeekDatesA[3]) }}</span></div>
+                     <div class="mini-grid-cell mini-grid-header">五<span class="mini-grid-date">{{ formatDateMMDD(compareWeekDatesA[4]) }}</span></div>
+                     <template v-for="p in timetablePeriods" :key="'exchange-source-'+p">
+                       <div class="mini-grid-cell mini-grid-period exchange-period-label">
+                         <span>{{ getPeriodLabel(p) }}</span><small>{{ getTeacherNameByEmail(pendingRequestData.leaveTeacher) }}</small>
+                       </div>
+                       <div v-for="d in 5" :key="'exchange-source-a-'+p+'-'+d" class="mini-grid-cell" :class="getCompareCellClass('A', d, p, 'source')">
+                         {{ getCompareCellText('A', d, p, 'source') }}
+                       </div>
+                       <div class="mini-grid-cell mini-grid-period exchange-period-label">
+                         <span>{{ getPeriodLabel(p) }}</span><small>{{ getTeacherNameByEmail(resolveCompareBEmail()) }}</small>
+                       </div>
+                       <div v-for="d in 5" :key="'exchange-source-b-'+p+'-'+d" class="mini-grid-cell" :class="getCompareCellClass('B', d, p, 'source')">
+                         {{ getCompareCellText('B', d, p, 'source') }}
+                       </div>
+                     </template>
+                   </div>
+                   <div v-if="consecAlertsB && consecAlertsB.length" class="hint-amber-box">
+                     連堂警示：{{ consecAlertsB.join('、') }}
+                   </div>
+                 </div>
+                 <div class="exchange-week-panel">
+                   <div class="mini-grid-title">目標週 {{ formatDateMMDD(compareWeekDatesB[0]) }}～{{ formatDateMMDD(compareWeekDatesB[4]) }}</div>
+                   <div class="exchange-week-legend">
+                     <span class="exchange-legend-pill exchange-legend-in">{{ getTeacherNameByEmail(pendingRequestData.leaveTeacher) }} 換入</span>
+                     <span class="exchange-legend-pill exchange-legend-out">{{ getTeacherNameByEmail(resolveCompareBEmail()) }} 原課調出</span>
+                   </div>
+                   <div class="mini-grid exchange-week-grid">
+                     <div class="mini-grid-cell mini-grid-header">節／教師</div>
+                     <div class="mini-grid-cell mini-grid-header">一<span class="mini-grid-date">{{ formatDateMMDD(compareWeekDatesB[0]) }}</span></div>
+                     <div class="mini-grid-cell mini-grid-header">二<span class="mini-grid-date">{{ formatDateMMDD(compareWeekDatesB[1]) }}</span></div>
+                     <div class="mini-grid-cell mini-grid-header">三<span class="mini-grid-date">{{ formatDateMMDD(compareWeekDatesB[2]) }}</span></div>
+                     <div class="mini-grid-cell mini-grid-header">四<span class="mini-grid-date">{{ formatDateMMDD(compareWeekDatesB[3]) }}</span></div>
+                     <div class="mini-grid-cell mini-grid-header">五<span class="mini-grid-date">{{ formatDateMMDD(compareWeekDatesB[4]) }}</span></div>
+                     <template v-for="p in timetablePeriods" :key="'exchange-target-'+p">
+                       <div class="mini-grid-cell mini-grid-period exchange-period-label">
+                         <span>{{ getPeriodLabel(p) }}</span><small>{{ getTeacherNameByEmail(pendingRequestData.leaveTeacher) }}</small>
+                       </div>
+                       <div v-for="d in 5" :key="'exchange-target-a-'+p+'-'+d" class="mini-grid-cell" :class="getCompareCellClass('A', d, p, 'target')">
+                         {{ getCompareCellText('A', d, p, 'target') }}
+                       </div>
+                       <div class="mini-grid-cell mini-grid-period exchange-period-label">
+                         <span>{{ getPeriodLabel(p) }}</span><small>{{ getTeacherNameByEmail(resolveCompareBEmail()) }}</small>
+                       </div>
+                       <div v-for="d in 5" :key="'exchange-target-b-'+p+'-'+d" class="mini-grid-cell" :class="getCompareCellClass('B', d, p, 'target')">
+                         {{ getCompareCellText('B', d, p, 'target') }}
+                       </div>
+                     </template>
+                   </div>
+                   <div v-if="consecAlertsA && consecAlertsA.length" class="hint-amber-box">
+                     連堂警示：{{ consecAlertsA.join('、') }}
+                   </div>
+                 </div>
+               </div>
+             </template>
+             <template v-else>
+             <div class="mini-schedule-container" data-tour="compare-grids" style="margin-bottom: 16px; margin-top: 10px;">
               <!-- 左：申請教師當週課表 (A) -->
               <div>
                 <div class="mini-grid-title">
@@ -2598,8 +2673,9 @@
                   ⚠️ 連堂警示：{{ consecAlertsB.join('、') }}
                 </div>
               </div>
-            </div>
-            </details>
+             </div>
+             </template>
+             </details>
 
             <!-- 批次節次摘要 -->
             <div v-if="pendingRequestData.isBatch" class="card" style="background:#eff6ff;border:1px solid #bfdbfe;padding:12px 14px;margin:0 0 12px;">

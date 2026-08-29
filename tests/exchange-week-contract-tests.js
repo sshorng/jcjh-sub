@@ -115,6 +115,12 @@ assert.equal(UiSubmitHelpers.getCompareCellClass(compareDeps, 'A', 1, 8), 'mini-
 assert.equal(UiSubmitHelpers.getCompareCellClass(compareDeps, 'A', 2, 8), '');
 assert.equal(UiSubmitHelpers.getCompareCellClass(compareDeps, 'B', 2, 8), 'mini-cell-out');
 assert.equal(UiSubmitHelpers.getCompareCellClass(compareDeps, 'B', 1, 8), '');
+assert.equal(UiSubmitHelpers.getCompareCellClass(compareDeps, 'A', 1, 8, 'source'), 'mini-cell-out');
+assert.equal(UiSubmitHelpers.getCompareCellClass(compareDeps, 'B', 1, 8, 'source'), 'mini-cell-new');
+assert.equal(UiSubmitHelpers.getCompareCellText(compareDeps, 'B', 1, 8, 'source'), '701 換入');
+assert.equal(UiSubmitHelpers.getCompareCellClass(compareDeps, 'A', 2, 8, 'target'), 'mini-cell-new');
+assert.equal(UiSubmitHelpers.getCompareCellText(compareDeps, 'A', 2, 8, 'target'), '702 換入');
+assert.equal(UiSubmitHelpers.getCompareCellClass(compareDeps, 'B', 2, 8, 'target'), 'mini-cell-out');
 
 runDateAwareValidationTest()
   .then(() => console.log('exchange week contract tests PASS'))
