@@ -181,6 +181,20 @@ function getPrintWeekDates(anchor) {
   });
 }
 
+/** 調課單的五個星期欄只列出實際有異動的日期。 */
+function getPrintExchangeDateLists(records) {
+  const lists = [[], [], [], [], []];
+  (records || []).forEach(record => {
+    const parts = getPrintDateParts(record && record.date);
+    if (!parts) return;
+    const day = parts.date.getDay();
+    if (day >= 1 && day <= 5 && !lists[day - 1].includes(parts.key)) {
+      lists[day - 1].push(parts.key);
+    }
+  });
+  return lists.map(list => list.sort());
+}
+
 function formatPrintMonthDay(value) {
   const parts = getPrintDateParts(value);
   return parts ? `${parts.month}/${parts.day}` : '';
@@ -356,17 +370,20 @@ function getOfficialGridLayout() {
 
 function getExchangeArrowSvg(group, rows, weekDates) {
   if (!group || !group.isExchange) return '';
+  const dateLists = Array.isArray(weekDates && weekDates[0])
+    ? weekDates
+    : (weekDates || []).map(value => value ? [value] : []);
   const points = [];
   (rows || []).forEach(row => {
     if (!row || points.length >= 2) return;
     const date = getPrintDateParts(row.date);
     const period = parseInt(row.num != null ? row.num : row.period, 10);
     if (!date || Number.isNaN(period) || period < 1 || period > 8) return;
-    const dayIndex = (weekDates || []).findIndex(value => {
+    const dayIndex = dateLists.findIndex(values => values.some(value => {
       const candidate = getPrintDateParts(value);
       return candidate && candidate.key === date.key;
-    });
-    if (dayIndex < 0 || points.some(point => point.key === `${date.key}|${period}`)) return;
+    }));
+    if (dayIndex < 0 || points.some(point => point.dayIndex === dayIndex && point.period === period)) return;
     points.push({ key: `${date.key}|${period}`, dayIndex, period });
   });
   if (points.length !== 2) return '';
@@ -470,27 +487,32 @@ function generateFormHtml(g, currentType, ctx) {
     ? `自${formatPrintRocDate(startDate, timeRange.start)}<br>至${formatPrintRocDate(endDate, timeRange.end)}`
     : '';
   const weekDates = getPrintWeekDates((g && g.anchorDate) || (rows[0] && rows[0].date));
+  const dateLists = g && g.isExchange
+    ? getPrintExchangeDateLists(sourceRecords)
+    : weekDates.map(date => date ? [date] : []);
   const days = ['一', '二', '三', '四', '五'];
   const periods = [1, 2, 3, 4, 5, 6, 7, 8];
   const dayCols = OFFICIAL_DAY_COLS;
   const colgroup = OFFICIAL_COL_WIDTHS.map(width => `<col style="width:${(width / 7215 * 100).toFixed(4)}%">`).join('');
   const reprintClass = g && g.isReprint ? ' is-reprint' : '';
-  const scheduleCell = (date, period, property) => {
-    const matches = rows.filter(row => String(row.date || '') === date && parseInt(row.num != null ? row.num : row.period, 10) === period);
+  const scheduleCell = (datesForDay, period, property) => {
+    const dateSet = datesForDay || [];
+    const matches = rows.filter(row => dateSet.includes(String(row.date || '').slice(0, 10))
+      && parseInt(row.num != null ? row.num : row.period, 10) === period);
     return uniquePrintValues(matches.map(row => row[property])).join('／');
   };
   const headerCells = days.map((day, index) => `
     <th colspan="${dayCols[index]}" class="official-day-header">
-      <span>${day}</span><br><span class="official-day-date">${escapePrintHtml(formatPrintMonthDay(weekDates[index]))}</span>
+      <span>${day}</span>${dateLists[index].length ? `<br><span class="official-day-date">${escapePrintHtml(dateLists[index].map(formatPrintMonthDay).join('／'))}</span>` : ''}
     </th>`).join('');
   const bodyRows = periods.map(period => {
     const periodRows = rows.filter(row => parseInt(row.num != null ? row.num : row.period, 10) === period);
     const subjectCells = days.map((_, index) => {
-      const value = scheduleCell(weekDates[index], period, 'sub');
+      const value = scheduleCell(dateLists[index], period, 'sub');
       return `<td colspan="${dayCols[index]}" class="official-slot-value">${escapePrintHtml(value)}</td>`;
     }).join('');
     const classCells = days.map((_, index) => {
-      const value = scheduleCell(weekDates[index], period, 'cls');
+      const value = scheduleCell(dateLists[index], period, 'cls');
       return `<td colspan="${dayCols[index]}" class="official-slot-value official-class-value">${escapePrintHtml(value)}</td>`;
     }).join('');
     const label = ['', '第一節', '第二節', '第三節', '第四節', '第五節', '第六節', '第七節', '第八節'][period];
@@ -511,7 +533,7 @@ function generateFormHtml(g, currentType, ctx) {
     : uniquePrintValues([reason === '請假' ? '' : reason, administrativeNote]).join('；') || '課務調整';
   const reasonLine = `假別：${isLeave ? escapePrintHtml(reason || '請假') : ''}`;
   const instructions = '1.請於填寫線上假單時填妥課務安排情形，紙本送教務處備查。2.請先確認班級特教學生課務，有特教生抽離請通知特教組。3.代課以同科教師為原則，並先行將課務交代該代課老師。4.補課請自覓時間，於二週內完成。';
-  const exchangeArrowSvg = getExchangeArrowSvg(g, rows, weekDates);
+  const exchangeArrowSvg = getExchangeArrowSvg(g, rows, dateLists);
 
   return `
     <div class="substitute-form official-substitution-form${reprintClass}">
@@ -537,11 +559,11 @@ function generateFormHtml(g, currentType, ctx) {
              <td colspan="5" class="official-check-option">${renderPrintCheckbox('僅課務申請(非請假)', !isLeave)}</td>
              <td colspan="5" class="official-reason-cell">原因：${escapePrintHtml(courseReason)}</td>
           </tr>
-            <tr class="official-section-row"><td colspan="15"><span class="official-section-caption">代（調、補）課情形★★請註明科目、日期★★</span></td><td colspan="2" class="official-signature-header">代課教師</td></tr>
-          <tr class="official-schedule-header">
-            <td colspan="3" class="official-row-label">星期<br>節次</td>${headerCells}<td colspan="2" class="official-signature-header"></td>
-          </tr>
-         ${bodyRows}
+             <tr class="official-section-row"><td colspan="15"><span class="official-section-caption">代（調、補）課情形★★請註明科目、日期★★</span></td><td colspan="2" class="official-signature-header">代課教師</td></tr>
+           <tr class="official-schedule-header">
+             <td colspan="3" class="official-row-label">星期<br>節次</td>${headerCells}<td colspan="2" class="official-signature-header"></td>
+           </tr>
+          ${bodyRows}
          <tr class="official-instruction-row"><td colspan="17">${escapePrintHtml(instructions)}</td></tr>
        </tbody>
       </table>
@@ -767,7 +789,8 @@ function buildPrintForms(recordsToPrint, allSubs, ctx) {
   const forms = [];
   const audienceLabelSets = [];
   groupList.forEach(function (group) {
-    splitPrintGroupByWeek(group).forEach(function (weekGroup) {
+    const weekGroups = group.isExchange ? [group] : splitPrintGroupByWeek(group);
+    weekGroups.forEach(function (weekGroup) {
       const form = generateFormHtml(weekGroup, 'Official', ctx);
       if (!form) return;
       const labels = getPrintAudienceLabels(weekGroup, ctx);

@@ -3429,6 +3429,25 @@ createApp({
         : (pending.date || inputRequestDate.value);
       return getWeekDatesForCompare(date);
     });
+    const compareWeekSelectionA = ref('source');
+    const compareWeekSelectionB = ref('target');
+    const compareDisplayDatesA = computed(() =>
+      compareWeekSelectionA.value === 'target' ? compareWeekDatesB.value : compareWeekDatesA.value
+    );
+    const compareDisplayDatesB = computed(() =>
+      compareWeekSelectionB.value === 'target' ? compareWeekDatesB.value : compareWeekDatesA.value
+    );
+    const setCompareWeekSelection = (who, view) => {
+      const value = view === 'target' ? 'target' : 'source';
+      if (who === 'A') compareWeekSelectionA.value = value;
+      if (who === 'B') compareWeekSelectionB.value = value;
+    };
+    watch(pendingRequestData, (pending) => {
+      if (pending && pending.mode === 'exchange') {
+        compareWeekSelectionA.value = 'source';
+        compareWeekSelectionB.value = 'target';
+      }
+    });
     const isCrossWeekExchange = computed(() => {
       const pending = pendingRequestData.value || {};
       return pending.mode === 'exchange'
@@ -10037,7 +10056,7 @@ createApp({
       loadHistoryMonth, setHistoryFilterMode, setHistoryTypeFilter, ensureHistoryMonthLoaded, loadFullSemesterHistory, reloadWindowedHistory,
       selectedMobileDay, isMobile, checkMobile, initMobileDay,
       currentSemester, availableSemesters, currentSemesterName, semestersList, showSemesterModal, semesterModalMode, semesterForm,
-       currentWeekDates, compareWeekDatesA, compareWeekDatesB, isCrossWeekExchange, getExchangeEndpointText, selectedWeekDate, currentWeekNumber,
+       currentWeekDates, compareWeekDatesA, compareWeekDatesB, compareWeekSelectionA, compareWeekSelectionB, compareDisplayDatesA, compareDisplayDatesB, setCompareWeekSelection, isCrossWeekExchange, getExchangeEndpointText, selectedWeekDate, currentWeekNumber,
        classList, classSchedules, selectedClass, classReadonlyMode, classViewerReadonly, selectClassForView, getClassReadonlyLink, copyClassReadonlyLink,
        searchQuery, selectedSubject, teachersList, allSchedules, schoolSwaps, substitutionRecords, homeroomRecords, requestsList,
       mySentRequests, myPendingRequests, adminPendingRequests, allPendingRequests,

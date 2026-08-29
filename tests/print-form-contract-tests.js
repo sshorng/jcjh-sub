@@ -146,10 +146,13 @@ assert.match(printHelperSource, /const signatureSide = 'actual';/);
 assert.match(indexSource, /print-helper\.js\?v=20260829-patrol-empty1/);
 assert.match(indexSource, /<title>建成國中線上課表系統<\/title>/);
 assert.match(indexSource, /application-name" content="JCJH Timetable"/);
-assert.equal((indexSource.match(/class="mini-grid-date"/g) || []).length, 20, '對照頁一般與跨週課表都應顯示五天日期');
+assert.equal((indexSource.match(/class="mini-grid-date"/g) || []).length, 12, '對照頁一般與左右兩張跨週課表都應顯示日期');
 assert.match(styleSource, /\.mini-grid-header \{[^}]*height: 38px[^}]*flex-direction: column/);
 assert.match(indexSource, /isCrossWeekExchange/);
 assert.match(indexSource, /exchange-week-grid/);
+assert.match(indexSource, /exchange-two-table-panels/);
+assert.match(indexSource, /compareWeekSelectionA/);
+assert.match(indexSource, /compareWeekSelectionB/);
 const leaveHistorySlotStart = indexSource.indexOf('{{ formatHistoryLeaveSlot(rec) }}');
 const leaveHistorySlotEnd = indexSource.indexOf('</td>', leaveHistorySlotStart);
 assert.ok(leaveHistorySlotStart >= 0 && leaveHistorySlotEnd > leaveHistorySlotStart);
@@ -217,7 +220,7 @@ assert.match(exchangeGridSubjectRows[0], /生活科技/);
 assert.match(exchangeGridSubjectRows[1], /國文/);
 assert.match(exchangeGridClassRows[0], /802/);
 assert.match(exchangeGridClassRows[1], /803/);
-assert.doesNotMatch(exchangeOutput, /official-exchange-route/);
+assert.equal((exchangeOutput.match(/class="official-day-date"/g) || []).length, 1, '調課單同一天只顯示一個異動日期');
 assert.match(exchangeOutput, /class="official-exchange-overlay"/);
 assert.match(exchangeOutput, /marker-start="url\(#exchange-arrow-/);
 assert.match(exchangeOutput, /marker-end="url\(#exchange-arrow-/);
@@ -243,9 +246,34 @@ const exchangePreview = context.window.buildPrintPreview(Object.assign({}, fixtu
 const exchangePreviewSvg = context.window.buildPrintPreviewImageSvg(exchangePreview);
 assert.match(exchangePreviewSvg, /xmlns="http:\/\/www\.w3\.org\/2000\/svg"/, 'nested exchange SVG must declare its namespace');
 const exchangeAdminOutput = context.window.generateFormHtml(exchange, 'NoticeClass', Object.assign({}, fixtureContext, { isAdmin: true }));
-const exchangeSubjectRows = [...exchangeAdminOutput.matchAll(/<tr class="official-subject-row">([\s\S]*?)<\/tr>/g)].map(match => match[1]);
-assert.match(exchangeSubjectRows[0], /王小明/);
-assert.match(exchangeSubjectRows[1], /陳小華/);
+assert.match(exchangeAdminOutput, /official-subject-row/);
+assert.match(exchangeAdminOutput, /official-class-row/);
+assert.match(exchangeAdminOutput, /王小明/);
+assert.match(exchangeAdminOutput, /陳小華/);
+
+const crossWeekExchange = {
+  isExchange: true,
+  requesterEmail: 'owner@school.example',
+  requesterName: '陳小華',
+  records: [
+    Object.assign({}, exchange.records[0], { id: 'EX-WEEK_2', requestId: 'EX-WEEK', date: '2026-08-31', period: 3 }),
+    Object.assign({}, exchange.records[1], { id: 'EX-WEEK_1', requestId: 'EX-WEEK', date: '2026-09-11', period: 2 })
+  ]
+};
+const crossWeekPreview = context.window.buildPrintPreview(Object.assign({}, fixtureContext, {
+  selectedRecordIds: { value: crossWeekExchange.records.map(record => record.id) },
+  substitutionRecords: { value: crossWeekExchange.records }
+}), { records: crossWeekExchange.records, allSubs: crossWeekExchange.records });
+assert.equal(crossWeekPreview.formCount, 1, '跨週調課的兩個端點應合併為一張調代課單');
+const crossWeekOutput = context.window.generateFormHtml(
+  context.window.buildPrintGroups(crossWeekExchange.records, [])[0],
+  'NoticeClass',
+  fixtureContext
+);
+assert.match(crossWeekOutput, /8\/31/);
+assert.match(crossWeekOutput, /9\/11/);
+assert.equal((crossWeekOutput.match(/class="official-day-date"/g) || []).length, 2, '跨週調課單只顯示兩個異動日期');
+assert.match(crossWeekOutput, /class="official-exchange-overlay"/);
 
 const groups = context.window.buildPrintGroups([
   substitution.records[0],
