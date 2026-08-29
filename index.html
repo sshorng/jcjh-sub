@@ -6,9 +6,9 @@
   <title>建成國中線上課表系統</title>
   <meta name="application-name" content="JCJH Timetable">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📅</text></svg>">
-  <link rel="stylesheet" href="style.css?v=20260829-paper2">
+  <link rel="stylesheet" href="style.css?v=20260829-paper3">
   <!-- 手機版獨立樣式：不影響桌機 -->
-  <link rel="stylesheet" href="mobile.css?v=20260829-paper2" media="(max-width: 768px)">
+  <link rel="stylesheet" href="mobile.css?v=20260829-paper3" media="(max-width: 768px)">
   
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 
@@ -2134,9 +2134,10 @@
               <button class="match-mode-btn flex-1" :class="{ active: matchMode === 'substitution' }" @click="changeMatchMode('substitution')">
                 找人代課
               </button>
-             <button
-                class="match-mode-btn flex-1"
-                :class="{ active: matchMode === 'exchange' }"
+              <button
+                 class="match-mode-btn flex-1"
+                 data-tour="exchange-mode-btn"
+                 :class="{ active: matchMode === 'exchange' }"
                 :disabled="activeCell.classData && (activeCell.classData.isPatrol || activeCell.classData.attr === '巡堂')"
                 :title="(activeCell.classData && (activeCell.classData.isPatrol || activeCell.classData.attr === '巡堂')) ? '巡堂不可調課' : ((activeCell.classData && activeCell.classData.restriction === 'restricted') ? '綁課可調課，點選後會提醒確認' : '')"
                 @click="changeMatchMode('exchange')"
@@ -2252,27 +2253,29 @@
                   {{ activeCell.classData ? activeCell.classData.subject : '' }}
                 </div>
                 <!-- 跨週調課週次選擇 -->
-                <div v-if="matchMode === 'exchange'" style="margin-top: 10px; display: flex; align-items: center; gap: 8px;">
-                  <label class="form-label" style="margin: 0; font-size: 0.8rem; white-space: nowrap;">對調至週次：</label>
-                  <select class="form-control" style="padding: 4px 8px; font-size: 0.8rem; max-width: 150px;" v-model.number="exchangeWeekOffset">
-                     <option :value="0">本週（同週對調）</option>
-                     <option :value="1">下週（往後一週）</option>
-                     <option :value="-1">上週（往前一週）</option>
-                     <option :value="2">下下週（往後兩週）</option>
-                  </select>
-                </div>
-                <div v-if="matchMode === 'exchange'" class="exchange-weekday-filter" role="group" aria-label="調課星期篩選">
-                  <span class="history-filter-label">篩選星期：</span>
-                  <div class="filter-chip-group">
-                    <button
-                      v-for="option in exchangeWeekdayOptions"
-                      :key="'exchange-day-' + option.value"
-                      type="button"
-                      class="btn btn-secondary filter-chip"
-                      :class="{ 'btn-primary': exchangeWeekdayFilter === option.value }"
-                      :aria-pressed="exchangeWeekdayFilter === option.value"
-                      @click="setExchangeWeekdayFilter(option.value)"
-                    >{{ option.label }}</button>
+                <div v-if="matchMode === 'exchange'" data-tour="exchange-controls">
+                  <div style="margin-top: 10px; display: flex; align-items: center; gap: 8px;">
+                    <label class="form-label" style="margin: 0; font-size: 0.8rem; white-space: nowrap;">對調至週次：</label>
+                    <select class="form-control" style="padding: 4px 8px; font-size: 0.8rem; max-width: 150px;" v-model.number="exchangeWeekOffset">
+                       <option :value="0">本週（同週對調）</option>
+                       <option :value="1">下週（往後一週）</option>
+                       <option :value="-1">上週（往前一週）</option>
+                       <option :value="2">下下週（往後兩週）</option>
+                    </select>
+                  </div>
+                  <div class="exchange-weekday-filter" role="group" aria-label="調課星期篩選">
+                    <span class="history-filter-label">篩選星期：</span>
+                    <div class="filter-chip-group">
+                      <button
+                        v-for="option in exchangeWeekdayOptions"
+                        :key="'exchange-day-' + option.value"
+                        type="button"
+                        class="btn btn-secondary filter-chip"
+                        :class="{ 'btn-primary': exchangeWeekdayFilter === option.value }"
+                        :aria-pressed="exchangeWeekdayFilter === option.value"
+                        @click="setExchangeWeekdayFilter(option.value)"
+                      >{{ option.label }}</button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -4036,23 +4039,23 @@
   <!-- App Main JS Logic -->
 
   <!-- 模組：defer 依文件順序執行，不擋 HTML 解析；billing/print/export 另延後 -->
-    <script defer src="name-key-contract.js?v=20260829-paper2"></script>
-    <script defer src="field-map.js?v=20260829-paper2"></script>
-    <script defer src="date-utils.js?v=20260829-paper2"></script>
-    <script defer src="gas-api.js?v=20260829-paper2"></script>
-    <script defer src="domain-school-swap.js?v=20260829-paper2"></script>
-    <script defer src="domain-schedule.js?v=20260829-paper2"></script>
-    <script defer src="domain-match.js?v=20260829-paper2"></script>
+    <script defer src="name-key-contract.js?v=20260829-paper3"></script>
+    <script defer src="field-map.js?v=20260829-paper3"></script>
+    <script defer src="date-utils.js?v=20260829-paper3"></script>
+    <script defer src="gas-api.js?v=20260829-paper3"></script>
+    <script defer src="domain-school-swap.js?v=20260829-paper3"></script>
+    <script defer src="domain-schedule.js?v=20260829-paper3"></script>
+    <script defer src="domain-match.js?v=20260829-paper3"></script>
   <!-- domain-activity-cover：活動互代／空堂任務時 ensureDomainActivityCover -->
-    <script defer src="domain-class-away.js?v=20260829-paper2"></script>
-    <script defer src="fee-utils.js?v=20260829-paper2"></script>
-    <script defer src="ui-activity.js?v=20260829-paper2"></script>
-    <script defer src="ui-request.js?v=20260829-paper2"></script>
-    <script defer src="ui-timetable.js?v=20260829-paper2"></script>
-    <script defer src="ui-approval.js?v=20260829-paper2"></script>
+    <script defer src="domain-class-away.js?v=20260829-paper3"></script>
+    <script defer src="fee-utils.js?v=20260829-paper3"></script>
+    <script defer src="ui-activity.js?v=20260829-paper3"></script>
+    <script defer src="ui-request.js?v=20260829-paper3"></script>
+    <script defer src="ui-timetable.js?v=20260829-paper3"></script>
+    <script defer src="ui-approval.js?v=20260829-paper3"></script>
   <!-- ui-admin：僅管理員／後台操作時 ensureUiAdmin -->
-        <script defer src="app-shell-utils.js?v=20260829-paper2"></script>
-        <script defer src="app.js?v=20260829-paper2"></script>
+    <script defer src="app-shell-utils.js?v=20260829-paper3"></script>
+        <script defer src="app.js?v=20260829-paper3"></script>
   <script>
     (function () {
       function loadScript(src) {
@@ -4074,47 +4077,47 @@
       var _uiAdminP = null;
       window.ensureDomainBilling = function () {
         if (window.DomainBilling) return Promise.resolve();
-          if (!_billingP) _billingP = loadScript('domain-billing.js?v=20260829-paper2');
+          if (!_billingP) _billingP = loadScript('domain-billing.js?v=20260829-paper3');
         return _billingP;
       };
       window.ensureExportAccounting = function () {
         if (window.ExportAccounting) return Promise.resolve();
-          if (!_accountingP) _accountingP = loadScript('export-accounting.js?v=20260829-paper2');
+          if (!_accountingP) _accountingP = loadScript('export-accounting.js?v=20260829-paper3');
         return _accountingP;
       };
       /** 活動互代／額度／空堂任務邏輯（首屏不載） */
       window.ensureDomainActivityCover = function () {
         if (window.DomainActivityCover) return Promise.resolve();
-          if (!_domainActivityP) _domainActivityP = loadScript('domain-activity-cover.js?v=20260829-paper2');
+          if (!_domainActivityP) _domainActivityP = loadScript('domain-activity-cover.js?v=20260829-paper3');
         return _domainActivityP;
       };
       /** 後台匯入／教師／課表編輯（教師首屏不載） */
       window.ensureUiAdmin = function () {
         if (window.UiAdmin) return Promise.resolve();
-          if (!_uiAdminP) _uiAdminP = loadScript('ui-admin.js?v=20260829-paper2');
+          if (!_uiAdminP) _uiAdminP = loadScript('ui-admin.js?v=20260829-paper3');
         return _uiAdminP;
       };
       window.ensurePrintHelper = function () {
         if (typeof window.generateFormHtml === 'function') return Promise.resolve();
-            if (!_printP) _printP = loadScript('print-helper.js?v=20260829-paper2');
+            if (!_printP) _printP = loadScript('print-helper.js?v=20260829-paper3');
         return _printP;
       };
       window.ensureExportSchoolTimetable = function () {
         if (window.ExportSchoolTimetable) return Promise.resolve();
-          if (!_exportP) _exportP = loadScript('export-school-timetable.js?v=20260829-paper2');
+          if (!_exportP) _exportP = loadScript('export-school-timetable.js?v=20260829-paper3');
         return _exportP;
       };
       var _activityCoverP = null;
       window.ensureExportActivityCover = function () {
         if (window.ExportActivityCover) return Promise.resolve();
-          if (!_activityCoverP) _activityCoverP = loadScript('export-activity-cover.js?v=20260829-paper2');
+          if (!_activityCoverP) _activityCoverP = loadScript('export-activity-cover.js?v=20260829-paper3');
         return _activityCoverP;
       };
       var _invigP = null;
       var _excelJsP = null;
       window.ensureExportInvigilation = function () {
         if (window.ExportInvigilation) return Promise.resolve();
-          if (!_invigP) _invigP = loadScript('export-invigilation.js?v=20260829-paper2');
+          if (!_invigP) _invigP = loadScript('export-invigilation.js?v=20260829-paper3');
         return _invigP;
       };
       window.ensureExcelJS = function () {

@@ -143,7 +143,7 @@ assert.match(styleSource, /\.official-serial-mark \{[^}]*right: 4\.78mm;[^}]*bot
 assert.match(appSource, /data:image\/svg\+xml;charset=utf-8,['"] \+ encodeURIComponent\(svg\)/);
 assert.doesNotMatch(appSource, /createObjectURL\(svgBlob\)/);
 assert.match(printHelperSource, /const signatureSide = 'actual';/);
-assert.match(indexSource, /print-helper\.js\?v=20260829-paper2/);
+assert.match(indexSource, /print-helper\.js\?v=20260829-paper3/);
 assert.match(indexSource, /<title>建成國中線上課表系統<\/title>/);
 assert.match(indexSource, /application-name" content="JCJH Timetable"/);
 assert.equal((indexSource.match(/class="mini-grid-date"/g) || []).length, 12, '對照頁一般與左右兩張跨週課表都應顯示日期');

@@ -1136,7 +1136,7 @@ createApp({
 
     // 新手引導 UI（簡潔版：置中卡牌，無 spotlight，手機友善）
     // ── 新手 Spotlight 導覽（懶載入 onboarding-tour.js）──
-    const ONBOARDING_SCRIPT = 'onboarding-tour.js?v=20260829-paper2';
+    const ONBOARDING_SCRIPT = 'onboarding-tour.js?v=20260829-paper3';
     const ONBOARDING_PAPER_STORAGE_KEY = 'jcjh_onboarding_paper_v1';
     /** 導覽用虛擬「收到的邀請」（不寫入後端） */
     const tourDemoInvite = ref(null);
@@ -1244,6 +1244,23 @@ createApp({
       }
     };
 
+    /** 導覽：切到節次調課模式，僅顯示可調課條件，不選取也不送出 */
+    const openExchangeModeDemoForTour = async () => {
+      if (!showMatchModal.value) {
+        const opened = await openMatchDemoForTour();
+        if (!opened) return false;
+      }
+      matchMode.value = 'exchange';
+      matchSearchQuery.value = '';
+      matchDisplayCount.value = 10;
+      try { clearMatchPreview(); } catch (e) {}
+      await nextTick();
+      try { fetchRecommendations(); } catch (e) { /* ignore */ }
+      await new Promise((resolve) => setTimeout(resolve, 320));
+      return !!document.querySelector('[data-tour="exchange-mode-btn"]')
+        && !!document.querySelector('[data-tour="exchange-controls"]');
+    };
+
     /** 導覽：選第一位媒合老師並開啟「模擬」視窗（不送出） */
     const openCompareDemoForTour = async () => {
       // 確保媒合已開
@@ -1252,6 +1269,13 @@ createApp({
         if (!ok) return false;
       }
       await nextTick();
+      // 調課介紹後回到代課模擬，避免沿用調課名單造成示範錯位。
+      if (matchMode.value !== 'substitution') {
+        matchMode.value = 'substitution';
+        try { clearMatchPreview(); } catch (e) {}
+        try { fetchRecommendations(); } catch (e) { /* ignore */ }
+        await new Promise((r) => setTimeout(r, 280));
+      }
       // 等名單出現（真實 API 可能稍慢）
       let list = recommendedTeachers.value || [];
       for (let i = 0; i < 12 && (!list || !list.length); i++) {
@@ -1304,6 +1328,7 @@ createApp({
         className: classData.className || '701',
         subject: classData.subject || '國文',
         reason: '事假',
+        subFee: '自費代課',
         leaveTimeType: '全天',
         leaveTime: '08:00~16:00',
         note: '操作教學示範',
@@ -1524,6 +1549,7 @@ createApp({
       },
       openMatchDemo: () => openMatchDemoForTour(),
       closeMatchDemo: () => { closeMatchDemoForTour(); return true; },
+      openExchangeModeDemo: () => openExchangeModeDemoForTour(),
       openCompareDemo: () => openCompareDemoForTour(),
       closeCompareDemo: () => { closeCompareDemoForTour(); return true; },
       openPaperPrintDemo: () => openPaperPrintDemoForTour(),
@@ -3554,10 +3580,9 @@ createApp({
     };
     const getLeaveTimePresetRange = (leaveEmail, type) => {
       const d = getLeaveTimeDefaults(leaveEmail);
-      const shortHour = (value) => String(parseInt(String(value).split(':')[0], 10));
-      if (type === '上午') return shortHour(d.start) + '~12時';
-      if (type === '下午') return '12~' + shortHour(d.end) + '時';
-      return shortHour(d.start) + '~' + shortHour(d.end) + '時';
+      if (type === '上午') return d.start + '~12:00';
+      if (type === '下午') return '12:00~' + d.end;
+      return d.range;
     };
     const setLeaveTimePreset = (type) => {
       const p = pendingRequestData.value || {};
