@@ -292,7 +292,7 @@ assert.strictEqual(rowKeyForSheet_('教師名單', { '學期代號': '115-1', '�
 assert.strictEqual(translateStatusToEn('已核准'), 'approved');
 assert.throws(() => assertRequestState_({ '狀態': 'approved' }, 'adminApprove'), /無法執行/);
 assert.strictEqual(escapeHtml_('<img src=x onerror="alert(1)">'), '&lt;img src=x onerror=&quot;alert(1)&quot;&gt;');
-assert.strictEqual(trustedSystemUrl_('https://attacker.example/phishing'), 'https://jcjh-sub.vercel.app/');
+assert.strictEqual(trustedSystemUrl_('https://attacker.example/phishing'), 'https://jcjh-timetable.vercel.app/');
 
 getTableData = function (sheetName) {
   if (sheetName === '學期設定') return [{ '學期代號': '115-1', '是否預設': 'TRUE' }];

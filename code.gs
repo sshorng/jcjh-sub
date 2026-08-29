@@ -51,7 +51,7 @@ var ALLOW_MOCK_TOKEN_ = (getConfig_("ALLOW_MOCK_TOKEN", "false").toLowerCase() =
 // 預設禁止萬用網域；僅隔離測試環境可明確開啟。
 var ALLOW_UNRESTRICTED_DOMAIN_ = (getConfig_("ALLOW_UNRESTRICTED_DOMAIN", "false").toLowerCase() === "true");
 var SUPER_ADMIN_EMAILS_ = getConfig_("SUPER_ADMIN_EMAILS", "");
-var PUBLIC_APP_URL_ = getConfig_("PUBLIC_APP_URL", "https://jcjh-sub.vercel.app/");
+var PUBLIC_APP_URL_ = getConfig_("PUBLIC_APP_URL", "https://jcjh-timetable.vercel.app/");
 // 全量／分層快取秒數（可於指令碼屬性覆寫）
 var CACHE_TTL_FULL_ = parseInt(getConfig_("CACHE_TTL_FULL", "120"), 10) || 120; // admin 組裝後 payload
 var CACHE_TTL_TEACHER_FULL_ = parseInt(getConfig_("CACHE_TTL_TEACHER_FULL", "60"), 10) || 60; // 教師共用底包（短 TTL）
@@ -7128,11 +7128,11 @@ function escapeHtml_(value) {
 }
 
 function trustedSystemUrl_(candidate) {
-  var fallback = String(PUBLIC_APP_URL_ || "https://jcjh-sub.vercel.app/").trim();
+  var fallback = String(PUBLIC_APP_URL_ || "https://jcjh-timetable.vercel.app/").trim();
   var fallbackMatch = fallback.match(/^(https?:\/\/[^/?#]+)(?:\/[^?#]*)?$/i);
-  var fallbackOrigin = fallbackMatch ? fallbackMatch[1].replace(/\/$/, "") : "https://jcjh-sub.vercel.app";
+  var fallbackOrigin = fallbackMatch ? fallbackMatch[1].replace(/\/$/, "") : "https://jcjh-timetable.vercel.app";
   var allowedOrigins = {
-    "https://jcjh-sub.vercel.app": true,
+    "https://jcjh-timetable.vercel.app": true,
     "http://localhost:8000": true,
     "http://127.0.0.1:8000": true
   };
@@ -7156,7 +7156,7 @@ function sendSystemEmail_(to, subject, htmlBody) {
   }
   GmailApp.sendEmail(String(to), encSubject, "請使用可顯示 HTML 的郵件用戶端開啟此通知。", {
     htmlBody: body,
-    name: "建成國中調代課系統"
+    name: "建成國中線上課表系統"
   });
 }
 
@@ -7229,7 +7229,7 @@ function sendSubInviteEmail_(req, currentUrl) {
   var serial = req.serial || req["單號"] || "SUB";
   var requesterName = req.requesterName || req["申請人姓名"];
   var targetTeacherName = req.targetTeacherName || req["受邀人姓名"];
-  var subject = "【調代課系統】您收到一份來自 " + requesterName + " 老師的線上簽核邀請 (" + serial + ")";
+  var subject = "【建成國中線上課表系統】您收到一份來自 " + requesterName + " 老師的線上簽核邀請 (" + serial + ")";
    var sysUrl = trustedSystemUrl_(currentUrl);
    var reqId = req.id || req.requestId || req["申請單ID"];
    var agreeLink  = sysUrl + "?action=respond&id=" + encodeURIComponent(reqId) + "&status=agree";
@@ -7267,7 +7267,7 @@ function sendSubInviteBatchEmail_(rows, currentUrl) {
    var safeTargetTeacherName = escapeHtml_(targetTeacherName);
    var safeReason = escapeHtml_(reason);
    var safeFee = escapeHtml_(fee);
-  var subject = "【調代課系統】您收到一批來自 " + requesterName + " 老師的代課邀請（共 " + n + " 節）";
+  var subject = "【建成國中線上課表系統】您收到一批來自 " + requesterName + " 老師的代課邀請（共 " + n + " 節）";
 
   var getShortDay = function (d) {
     return { "1": "一", "2": "二", "3": "三", "4": "四", "5": "五" }[String(d)] || "";
@@ -7342,7 +7342,7 @@ function sendRespondAgreeBatchEmail_(rows, currentUrl) {
    var sysUrl = trustedSystemUrl_(currentUrl);
    var safeRequesterName = escapeHtml_(requesterName);
    var safeTargetTeacherName = escapeHtml_(targetTeacherName);
-  var subject = "【調代課系統】" + targetTeacherName + " 老師已全部同意您的批次代課（共 " + n + " 節），待行政審核";
+  var subject = "【建成國中線上課表系統】" + targetTeacherName + " 老師已全部同意您的批次代課（共 " + n + " 節），待行政審核";
   var getShortDay = function (d) {
     return { "1": "一", "2": "二", "3": "三", "4": "四", "5": "五" }[String(d)] || "";
   };
@@ -7377,7 +7377,7 @@ function sendRespondRejectBatchEmail_(rows, currentUrl) {
    var sysUrl = trustedSystemUrl_(currentUrl);
    var safeRequesterName = escapeHtml_(requesterName);
    var safeTargetTeacherName = escapeHtml_(targetTeacherName);
-  var subject = "【調代課系統】" + targetTeacherName + " 老師已全部拒絕您的批次代課（共 " + n + " 節）";
+  var subject = "【建成國中線上課表系統】" + targetTeacherName + " 老師已全部拒絕您的批次代課（共 " + n + " 節）";
    var content = '<p style="color:#1e293b;font-size:15px;margin-bottom:8px;">親愛的 <b>' + safeRequesterName + '</b> 老師，您好：</p>'
      + '<p style="color:#475569;margin-top:0;"><b>' + safeTargetTeacherName + '</b> 老師已<strong>全部拒絕</strong>您的批次代課邀請（共 ' + n + ' 節）。</p>'
     + '<p style="color:#475569;">請進入系統重新媒合：</p>'
@@ -7666,7 +7666,7 @@ function _calendarDetailsForRole_(req, role) {
         + "\n請假教師：" + combinedLeaveName
         + "\n代課教師：" + combinedCoverName
         + "\n經費鐘點：" + (req.subFee || req["經費來源"] || "自費代課")
-        + "\n單號：" + serial + "\n（建成國中調代課系統）",
+        + "\n單號：" + serial + "\n（建成國中線上課表系統）",
       titleTag: combinedTitleTag
     };
   }
@@ -7693,7 +7693,7 @@ function _calendarDetailsForRole_(req, role) {
       startIso: datePart0 + "T" + parts0[0].replace(":", "") + "00",
       endIso: datePart0 + "T" + parts0[1].replace(":", "") + "00",
       details: action0 + "\n\n請假教師：" + leaveName0 + "\n代課教師：" + coverName0
-        + "\n假別事由：" + reason + "\n單號：" + serial + "\n（建成國中調代課系統）",
+        + "\n假別事由：" + reason + "\n單號：" + serial + "\n（建成國中線上課表系統）",
       titleTag: titleTag0
     };
   }
@@ -7745,7 +7745,7 @@ function _calendarDetailsForRole_(req, role) {
     + ((sides.leaveClass + " " + sides.leaveSubject).trim() || "—") + "） ⇄ "
     + sides.targetDate + "第" + sides.targetPeriod + "節（"
     + ((sides.targetClass + " " + sides.targetSubject).trim() || "—") + "）"
-    + "\n（建成國中調代課系統）";
+    + "\n（建成國中線上課表系統）";
   return {
     title: "【" + titleTag + "】" + slotLabel,
     startIso: datePart + "T" + parts[0].replace(":", "") + "00",
@@ -7858,7 +7858,7 @@ function sendAdminApproveBatchEmail_(rows, currentUrl) {
     var hasEx = items.some(function (it) { return _isExchangeReq_(it.req); });
     var hasSub = items.some(function (it) { return !_isExchangeReq_(it.req); });
     var noun = hasEx && hasSub ? "調代課" : (hasEx ? "調課" : "代課");
-    var subject = "【調代課系統】" + noun + "已核准生效（您有 " + n + " 項異動）";
+    var subject = "【建成國中線上課表系統】" + noun + "已核准生效（您有 " + n + " 項異動）";
 
     // 單一清單：依 items 順序串 li（避免兩段 ul 疊出大行距）
     var liParts = items.map(function (it) {
@@ -7906,7 +7906,7 @@ function sendRespondAgreeEmail_(req, currentUrl) {
   var serial = req.serial || req["單號"] || "SUB";
    var requesterName = req.requesterName || req["申請人姓名"];
    var targetTeacherName = req.targetTeacherName || req["受邀人姓名"];
-   var subject = "【調代課系統】" + targetTeacherName + " 老師已接受您的代課邀請，待行政審核中";
+   var subject = "【建成國中線上課表系統】" + targetTeacherName + " 老師已接受您的代課邀請，待行政審核中";
    var sysUrl = trustedSystemUrl_(currentUrl);
    var content = '<p style="color:#1e293b;font-size:15px;margin-bottom:8px;">親愛的 <b>' + escapeHtml_(requesterName) + '</b> 老師，您好：</p>'
      + '<p style="color:#475569;margin-top:0;"><b>' + escapeHtml_(targetTeacherName) + '</b> 老師已同意接受了您的調代課邀請。</p>'
@@ -7923,7 +7923,7 @@ function sendRespondRejectEmail_(req, currentUrl) {
   if (!to || to.indexOf("@") === -1) return;
    var requesterName = req.requesterName || req["申請人姓名"];
    var targetTeacherName = req.targetTeacherName || req["受邀人姓名"];
-   var subject = "【調代課系統】" + targetTeacherName + " 老師已拒絕了您的調代課邀請";
+   var subject = "【建成國中線上課表系統】" + targetTeacherName + " 老師已拒絕了您的調代課邀請";
    var sysUrl = trustedSystemUrl_(currentUrl);
    var content = '<p style="color:#1e293b;font-size:15px;margin-bottom:8px;">親愛的 <b>' + escapeHtml_(requesterName) + '</b> 老師，您好：</p>'
      + '<p style="color:#475569;margin-top:0;"><b>' + escapeHtml_(targetTeacherName) + '</b> 老師已拒絕了您的調代課邀請。</p>'
@@ -7947,7 +7947,7 @@ function sendAdminApproveEmail_(req, currentUrl) {
     if (isCombinedReturnRequest_(req)) {
       var combinedLeaveName = req.requesterName || req["申請人姓名"] || "請假教師";
       var combinedCoverName = req.targetTeacherName || req["受邀人姓名"] || "代課教師";
-      var combinedSubject = "【調代課系統】合班回原班申請已核准生效 (" + serial + ")";
+      var combinedSubject = "【建成國中線上課表系統】合班回原班申請已核准生效 (" + serial + ")";
       if (to1 && String(to1).indexOf("@") !== -1) {
         var leaveContent = '<p style="color:#1e293b;font-size:15px;margin-bottom:8px;">親愛的 <b>' + escapeHtml_(combinedLeaveName) + "</b> 老師，您好：</p>"
           + '<p style="color:#475569;margin-top:0;">您的「合班回原班」申請已由教學組核准生效，本節不用上，由 ' + escapeHtml_(combinedCoverName) + " 老師代課。</p>"
@@ -7967,7 +7967,7 @@ function sendAdminApproveEmail_(req, currentUrl) {
     }
    var isExchange = !!(req.targetDate || req["對調目標日期"]
     || req.type === "exchange" || req["異動類型"] === "exchange" || req["異動類型"] === "對調");
-  var subject = "【調代課系統】您的調代課申請已由教學組核准出單並生效 (" + serial + ")";
+   var subject = "【建成國中線上課表系統】您的調代課申請已由教學組核准出單並生效 (" + serial + ")";
 
   var tips = '<div style="margin-top:24px;border-top:1px dashed #e2e8f0;padding-top:16px;">'
     + '<h4 style="color:#ef4444;margin:0 0 8px 0;font-size:15px;">貼心提醒：</h4>'
@@ -8014,7 +8014,7 @@ function sendAdminRejectEmail_(req, currentUrl) {
    var emails = [to1, to2].filter(function(e) { return e && e.indexOf("@") !== -1; });
   if (emails.length === 0) return;
    var serial = req.serial || req["單號"] || "SUB";
-   var subject = "【調代課系統】您的調代課申請已被教學組駁回 (單號: " + serial + ")";
+   var subject = "【建成國中線上課表系統】您的調代課申請已被教學組駁回 (單號: " + serial + ")";
     var sysUrl = trustedSystemUrl_(currentUrl);
     if (isCombinedReturnRequest_(req)) {
       var combinedContent = '<p style="color:#1e293b;font-size:15px;margin-bottom:8px;">請假／代課教師您好：</p>'
@@ -8023,7 +8023,7 @@ function sendAdminRejectEmail_(req, currentUrl) {
         + '<p style="color:#475569;margin-top:24px;font-size:14px;">若有任何疑問，請向教學組洽詢。</p>'
         + '<div style="margin:16px 0;"><a href="' + sysUrl + '" style="background-color:#2563eb;color:#ffffff;padding:12px 28px;text-decoration:none;border-radius:8px;font-weight:bold;display:inline-block;font-size:14px;">進入系統查看</a></div>';
       emails.forEach(function (em) {
-        sendSystemEmail_(em, "【調代課系統】合班回原班申請已駁回 (單號: " + serial + ")", _wrapHtmlTemplate_("調代課線上系統 - 合班回原班駁回", "#ef4444", combinedContent));
+         sendSystemEmail_(em, "【建成國中線上課表系統】合班回原班申請已駁回 (單號: " + serial + ")", _wrapHtmlTemplate_("建成國中線上課表系統 - 合班回原班駁回", "#ef4444", combinedContent));
       });
       return;
    }

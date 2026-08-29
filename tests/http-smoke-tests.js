@@ -34,6 +34,8 @@ function request(server, method, requestPath) {
   try {
     const root = await request(server, 'GET', '/');
     assert.equal(root.status, 200);
+    assert.match(root.body.toString('utf8'), /<title>建成國中線上課表系統<\/title>/);
+    assert.match(root.body.toString('utf8'), /application-name" content="JCJH Timetable"/);
     assert.match(root.body.toString('utf8'), /20260829-exchange-image1/);
     assert.equal(root.headers['cache-control'], 'no-cache');
     assert.match(root.headers['content-security-policy'], /frame-ancestors 'none'/);

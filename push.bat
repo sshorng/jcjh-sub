@@ -1,6 +1,6 @@
 @echo off
 cd /d "%~dp0"
-echo Pushing jcjh-sub to GitHub...
+echo Pushing jcjh-timetable to GitHub...
 git push origin main --force
 
 echo.

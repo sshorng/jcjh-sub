@@ -203,7 +203,7 @@ createApp({
      * 間歇「要求無效」常見原因：本機/正式站混用、尾斜線不一致、預覽網域未授權。
      */
     const OAUTH_REDIRECT_BY_ORIGIN = {
-      'https://jcjh-sub.vercel.app': 'https://jcjh-sub.vercel.app/',
+      'https://jcjh-timetable.vercel.app': 'https://jcjh-timetable.vercel.app/',
       'http://localhost:8000': 'http://localhost:8000/',
       'http://127.0.0.1:8000': 'http://localhost:8000/'
     };
@@ -358,7 +358,7 @@ createApp({
       const redirectUri = getOAuthRedirectUri();
       if (!redirectUri) {
         gsiButtonError.value = '目前網域未列入 OAuth 白名單：' + location.origin
-          + '。請用 https://jcjh-sub.vercel.app/ 或 http://localhost:8000/';
+          + '。請用 https://jcjh-timetable.vercel.app/ 或 http://localhost:8000/';
         showToast('請改用正式站或本機 localhost:8000', 'error', 8000);
         return;
       }
@@ -2134,7 +2134,7 @@ createApp({
        if (isExchange) {
          details += `\n對調：${req.requestDate || ''}${formatPeriodText(req.requestPeriod)} ⇄ ${req.targetDate || ''}${formatPeriodText(req.targetPeriod)}`;
       }
-      details += `\n（建成國中調代課系統）`;
+      details += `\n（建成國中線上課表系統）`;
 
       return {
         title,
@@ -2168,7 +2168,7 @@ createApp({
       const icsContent = [
         'BEGIN:VCALENDAR',
         'VERSION:2.0',
-        'PRODID:-//建成國中線上調代課系統//NONSGML v1.0//EN',
+        'PRODID:-//建成國中線上課表系統//NONSGML v1.0//EN',
         'BEGIN:VEVENT',
         `UID:${req.id || Date.now()}@substitution.sys`,
         `DTSTAMP:${stamp}`,
@@ -7975,7 +7975,7 @@ createApp({
         return true;
       } catch (err) {
         if (!isCurrentLoad()) return false;
-        console.error("載入調代課系統資料失敗：", err);
+         console.error("載入課表系統資料失敗：", err);
         if (!silent) {
           showToast("載入資料失敗：" + err.message, 'error');
           loading.value = false;

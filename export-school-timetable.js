@@ -397,8 +397,8 @@ window.ExportSchoolTimetable = (function () {
       + 'xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" '
       + 'xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">'
       + '<dc:title>' + xmlEsc((meta && meta.title) || '全校課表彙整') + '</dc:title>'
-      + '<dc:creator>建成國中調代課系統</dc:creator>'
-      + '<cp:lastModifiedBy>建成國中調代課系統</cp:lastModifiedBy>'
+      + '<dc:creator>建成國中線上課表系統</dc:creator>'
+      + '<cp:lastModifiedBy>建成國中線上課表系統</cp:lastModifiedBy>'
       + '<dcterms:created xsi:type="dcterms:W3CDTF">' + now + '</dcterms:created>'
       + '<dcterms:modified xsi:type="dcterms:W3CDTF">' + now + '</dcterms:modified>'
       + '</cp:coreProperties>';

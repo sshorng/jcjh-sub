@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>建成國中線上調代課系統</title>
+  <title>建成國中線上課表系統</title>
+  <meta name="application-name" content="JCJH Timetable">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📅</text></svg>">
   <link rel="stylesheet" href="style.css?v=20260829-exchange-image1">
   <!-- 手機版獨立樣式：不影響桌機 -->
@@ -34,7 +35,7 @@
     <div v-if="!user && !classReadonlyMode" class="login-container">
       <div class="login-card">
         <div class="app-logo">🏫</div>
-        <h1 class="login-title">建成國中線上調代課系統</h1>
+        <h1 class="login-title">建成國中線上課表系統</h1>
         <p class="login-subtitle">請使用學校 Google 帳號登入系統，<br>即可線上發起調代課並查看每週課表狀況。</p>
         <div class="login-gsi-wrap">
           <!-- 外觀比照官方 GSI；流程用 OAuth prompt=select_account，才能每次強制選帳 -->
@@ -65,8 +66,8 @@
       <nav class="navbar">
         <div class="nav-brand">
           <div class="nav-logo-icon">JC</div>
-          <span class="nav-title-full">{{ classReadonlyMode && !user ? '建成國中班級課表' : '建成國中線上調代課系統' }}</span>
-          <span class="nav-title-short">{{ classReadonlyMode && !user ? '班級課表' : '調代課系統' }}</span>
+          <span class="nav-title-full">{{ classReadonlyMode && !user ? '建成國中班級課表' : '建成國中線上課表系統' }}</span>
+          <span class="nav-title-short">{{ classReadonlyMode && !user ? '班級課表' : '課表系統' }}</span>
         </div>
         
         <!-- Tab 選單（公開唯讀只顯示班級課表） -->

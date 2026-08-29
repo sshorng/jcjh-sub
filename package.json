@@ -1,8 +1,8 @@
 {
-  "name": "school-substitution-sys",
+  "name": "jcjh-timetable",
   "version": "1.0.0",
   "private": true,
-  "description": "建成國中線上調代課系統（純靜態前端 + GAS 後端）",
+  "description": "建成國中線上課表系統（純靜態前端 + GAS 後端）",
   "scripts": {
     "dev": "node dev-server.js",
     "test": "node tests/run-domain-tests.js && node tests/billing-data-shape-tests.js && node tests/export-accounting-tests.js && node tests/ui-admin-import-tests.js && node tests/name-key-contract-tests.js && node tests/api-contract-tests.js && node tests/http-smoke-tests.js && node tests/patrol-contract-tests.js && node tests/period-contract-tests.js && node tests/schedule-bridge-contract-tests.js && node tests/school-swap-contract-tests.js && node tests/paper-flow-contract-tests.js && node tests/print-form-contract-tests.js && node tests/code-gs-contract-tests.js && node tests/teacher-login-cache-tests.js",

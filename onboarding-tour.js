@@ -22,7 +22,7 @@ window.OnboardingTour = (function () {
   var DEFAULT_STEPS = [
     {
       id: 'welcome',
-      title: '歡迎使用調代課系統',
+      title: '歡迎使用線上課表系統',
       body: '這趟會帶您：\n① 看課表、切週次\n② 點格 → 智慧媒合 → 模擬\n③ 送出後寄信／LINE、何時生效\n④ 待辦同意、歷史查詢\n\n約 3～4 分鐘，可隨時「跳過」。'
     },
     {
