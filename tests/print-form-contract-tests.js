@@ -143,7 +143,7 @@ assert.match(styleSource, /\.official-serial-mark \{[^}]*right: 4\.78mm;[^}]*bot
 assert.match(appSource, /data:image\/svg\+xml;charset=utf-8,['"] \+ encodeURIComponent\(svg\)/);
 assert.doesNotMatch(appSource, /createObjectURL\(svgBlob\)/);
 assert.match(printHelperSource, /const signatureSide = group && group\.isExchange \? 'original' : 'actual';/);
-assert.match(indexSource, /print-helper\.js\?v=20260829-exchange-image1/);
+assert.match(indexSource, /print-helper\.js\?v=20260829-patrol-empty1/);
 assert.match(indexSource, /<title>建成國中線上課表系統<\/title>/);
 assert.match(indexSource, /application-name" content="JCJH Timetable"/);
 const leaveHistorySlotStart = indexSource.indexOf('{{ formatHistoryLeaveSlot(rec) }}');

@@ -497,8 +497,8 @@ window.UiSubmitHelpers = (function () {
         }
         return 'cancelled';
       }
-      if (targetSched && window.DomainSchedule && window.DomainSchedule.isPatrolAttr
-          && window.DomainSchedule.isPatrolAttr(targetSched.attr)) {
+      if (targetSched && window.DomainSchedule && window.DomainSchedule.isPatrolCell
+          && window.DomainSchedule.isPatrolCell(targetSched)) {
         var tipP = (window.DomainSchedule && window.DomainSchedule.PATROL_INCOMING_TIP)
           || '對方本節為【巡堂】。排入後請私下協調代巡堂或互換。';
         var okP = await showConfirm(tipP + '\n\n仍要繼續模擬？', '巡堂提醒');

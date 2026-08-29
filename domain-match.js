@@ -189,9 +189,11 @@ window.DomainMatch = (function () {
     return list;
   }
 
-  /** 該格是否可視為空堂（無課／調出被代／空堂事件／外出班釋出） */
+  /** 該格是否可視為空堂（無課／調出被代／巡堂／空堂事件／外出班釋出） */
   function isSlotFreeForMatch(cell, awaySet) {
     if (!cell || cell.isSubstituted) return true;
+    if (window.DomainSchedule && window.DomainSchedule.isPatrolCell
+        && window.DomainSchedule.isPatrolCell(cell)) return true;
     if (cell.isClassAway) return true;
     var cn = String(cell.className || '').trim();
     if (cn && awaySet && awaySet[cn]) return true;

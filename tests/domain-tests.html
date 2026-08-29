@@ -773,8 +773,9 @@
 
       // ── 媒合：外出班當空堂；僅活動互代往上排 ──
       if (window.DomainMatch && window.DomainMatch.isSlotFreeForMatch) {
-        assert('空堂事件當空', window.DomainMatch.isSlotFreeForMatch({ className: '901', isClassAway: true }, {}) === true);
-        assert('一般有課不空', window.DomainMatch.isSlotFreeForMatch({ className: '701' }, {}) === false);
+         assert('空堂事件當空', window.DomainMatch.isSlotFreeForMatch({ className: '901', isClassAway: true }, {}) === true);
+         assert('巡堂當空堂', window.DomainMatch.isSlotFreeForMatch({ attr: '巡堂' }, {}) === true);
+         assert('一般有課不空', window.DomainMatch.isSlotFreeForMatch({ className: '701' }, {}) === false);
         assert('面板外出班當空', window.DomainMatch.isSlotFreeForMatch({ className: '701' }, { '701': true }) === true);
         var teachers2 = [
           { email: 'a@x', name: '甲', subject: '國文' },
