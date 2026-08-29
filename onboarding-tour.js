@@ -4,6 +4,7 @@
  */
 window.OnboardingTour = (function () {
   var STORAGE_KEY = 'jcjh_onboarding_v2';
+  var PAPER_STORAGE_KEY = 'jcjh_onboarding_paper_v1';
   var CSS_HREF = 'onboarding-tour.css';
   var _active = false;
   var _idx = 0;
@@ -17,6 +18,7 @@ window.OnboardingTour = (function () {
   var _navDir = 1; // 1=下一步, -1=上一步
   var _going = false;
   var _resizeTimer = null;
+  var _storageKey = STORAGE_KEY;
 
   // 精簡 ≤15 步：課表 → 媒合 → 模擬 → 送出／LINE → 待辦 → 歷史 → 完成
   var DEFAULT_STEPS = [
@@ -53,7 +55,7 @@ window.OnboardingTour = (function () {
     {
       id: 'open-compare',
       title: '模擬對照',
-      body: '送出前的核對頁：\n• 黃格＝本次模擬的課堂\n• 左＝您、右＝代課人，請看是否合理\n• 下方填：假別、鐘點費、備註\n\n導覽不會幫您送出。',
+       body: '送出前的核對頁：\n• 黃格＝本次模擬的課堂\n• 左＝您、右＝代課人，請看是否合理\n• 下方填：假別、原因、備註\n\n導覽不會幫您送出。',
       selector: '[data-tour="compare-modal"]',
       placement: 'left',
       before: 'openCompareDemo',
@@ -62,8 +64,8 @@ window.OnboardingTour = (function () {
     {
       id: 'compare-submit',
       title: '確認送出與何時生效',
-      body: '「確認送出，通知相關人員」才會真的送出並寄信。\n\n之後：\n① 對方在「待辦 → 收到的邀請」同意或拒絕\n② 行政核准出單後，課表才正式變更\n\n拒絕／退回／撤回則不生效。\n下一步示範送出後的 LINE 範本。',
-      selector: '[data-tour="compare-submit"]',
+       body: '按「確認送出」才會真的送出申請並通知相關人員。\n\n之後：\n① 對方在「待辦 → 收到的邀請」同意或拒絕\n② 行政核准出單後，課表才正式變更\n\n拒絕／退回／撤回則不生效。\n下一步示範送出後的 LINE 範本。',
+       selector: '[data-tour="compare-submit-online"]',
       placement: 'top',
       requireCompare: true
     },
@@ -118,9 +120,79 @@ window.OnboardingTour = (function () {
     }
   ];
 
+  var PAPER_STEP_OVERRIDES = {
+    welcome: {
+      title: '歡迎使用紙本調代課流程',
+      body: '這趟會帶您：\n① 看課表、切週次\n② 點格 → 智慧媒合 → 模擬\n③ 送出申請並列印調代課單\n④ 完成簽名後送教學組\n\n紙本模式不寄系統信，請務必完成紙本簽核。'
+    },
+    nav: {
+      title: '紙本流程導覽',
+      body: '紙本模式主要使用「課表總覽」發起申請，再到「申請進度」查看送出狀態。\n\n紙本模式不需要代課教師在系統內按同意／拒絕；送出後請列印、簽名，再把紙本交至教學組。'
+    },
+    'open-compare': {
+      body: '送出前的核對頁：\n• 黃格＝本次模擬的課堂\n• 左＝申請人、右＝被申請人，請核對課表與節次\n• 下方填寫假別、原因與備註\n• 預覽調代課單只能查看，送出前不能列印\n\n導覽不會幫您送出。'
+    },
+    'compare-submit': {
+      title: '送出申請並列印紙本單',
+      selector: '[data-tour="compare-submit-paper"]',
+      body: '紙本作業請按「送出申請並列印調代課單」。\n申請送出成功後才會開啟可列印預覽。\n\n接下來請依序完成：\n① 送出申請\n② 列印調代課單\n③ 請相關教師簽名\n④ 將簽名後紙本送至教學組\n\n請勿只完成線上送出，務必把簽名後調代課單交到教學組。'
+    },
+    'paper-print-preview': {
+      title: '開啟列印預覽',
+      body: '送出申請成功後，系統會自動開啟「調代課單列印預覽」。\n請先在預覽中核對姓名、日期、節次與課程內容，再進行下一步。\n\n這是教學示範，不會真的送出或列印。'
+    },
+    'paper-print-button': {
+      title: '點選確認列印',
+      body: '確認預覽內容無誤後，點選右下角「確認列印」。\n實際列印後，請完成相關教師簽名，並將簽名後調代課單提交至教學組。'
+    },
+    batch: {
+      body: '一次選同一位老師多節課，再找人代課。\n紙本模式批次送出成功後，也要列印調代課單，完成簽名後送至教學組。'
+    },
+    history: {
+      body: '送出後可在「待辦／歷史紀錄」查看申請進度。\n需要補印時，請從已送出的申請使用列印功能。\n\n紙本單據完成相關教師簽名後，務必送教學組留存。'
+    },
+    done: {
+      title: '紙本導覽完成',
+      body: '紙本流程重點：\n點自己的課 → 智慧媒合 → 模擬 →「送出申請並列印調代課單」\n\n最重要：列印後請完成簽名，並將簽名後調代課單提交至教學組。'
+    }
+  };
+
+  function getSteps(mode) {
+    var paper = mode === 'paper';
+    var steps = DEFAULT_STEPS
+      .filter(function (step) {
+        return !paper || (step.id !== 'line-success' && step.id !== 'pending-invite');
+      })
+      .map(function (step) { return Object.assign({}, step); });
+    if (!paper) return steps;
+    var paperSteps = [];
+    steps.forEach(function (step) {
+      paperSteps.push(step);
+      if (step.id === 'compare-submit') {
+        paperSteps.push({
+          id: 'paper-print-preview',
+          selector: '[data-tour="print-preview-modal"]',
+          placement: 'top',
+          before: 'openPaperPrintDemo',
+          requirePrintPreview: true
+        });
+        paperSteps.push({
+          id: 'paper-print-button',
+          selector: '[data-tour="print-confirm"]',
+          placement: 'top',
+          requirePrintPreview: true
+        });
+      }
+    });
+    steps = paperSteps;
+    return steps.map(function (step) {
+      return Object.assign({}, step, PAPER_STEP_OVERRIDES[step.id] || {});
+    });
+  }
+
   function markDone() {
     try {
-      localStorage.setItem(STORAGE_KEY, '1');
+      localStorage.setItem(_storageKey, '1');
       // 相容舊鍵，避免舊邏輯再彈
       localStorage.setItem('jcjh_onboarding_done', '1');
     } catch (e) {}
@@ -172,7 +244,7 @@ window.OnboardingTour = (function () {
     if (typeof fn !== 'function') return Promise.resolve(true);
     var heavy = name === 'openMatchDemo' || name === 'openCompareDemo'
       || name === 'openLineDemo' || name === 'closeLineAndShowDemoInvite'
-      || name === 'showDemoInvite';
+      || name === 'showDemoInvite' || name === 'openPaperPrintDemo';
     if (heavy) setLoading(true, '載入畫面中…');
     try {
       var r = fn();
@@ -282,14 +354,18 @@ window.OnboardingTour = (function () {
   function needsCompare(step) {
     return !!(step && (step.requireCompare || step.before === 'openCompareDemo'));
   }
-  function needsLine(step) {
-    return !!(step && (step.requireLine || step.before === 'openLineDemo'));
-  }
+    function needsLine(step) {
+      return !!(step && (step.requireLine || step.before === 'openLineDemo'));
+    }
+    function needsPrintPreview(step) {
+      return !!(step && (step.requirePrintPreview || step.before === 'openPaperPrintDemo'));
+    }
 
   /** 依目標步驟關閉不需要的視窗，再開 before 需要的 */
   function prepareEnv(step) {
     try {
       if (!needsLine(step) && typeof _cb.closeLineDemo === 'function') _cb.closeLineDemo();
+      if (!needsPrintPreview(step) && typeof _cb.closePaperPrintDemo === 'function') _cb.closePaperPrintDemo();
       if (!needsCompare(step) && typeof _cb.closeCompareDemo === 'function') _cb.closeCompareDemo();
       // 模擬依賴媒合時不要關媒合
       if (!needsMatch(step) && !needsCompare(step) && typeof _cb.closeMatchDemo === 'function') {
@@ -311,8 +387,9 @@ window.OnboardingTour = (function () {
   function waitUi(step) {
     var ms = 100;
     var b = step && step.before;
-    if (step && (step.requireMatch || step.requireCompare || step.requireLine
-        || b === 'showDemoInvite' || b === 'closeLineAndShowDemoInvite')) {
+      if (step && (step.requireMatch || step.requireCompare || step.requireLine
+          || step.requirePrintPreview
+          || b === 'showDemoInvite' || b === 'closeLineAndShowDemoInvite')) {
       ms = 520; // 關 modal + 切 tab + 置頂 + 掛示範列
     } else if (b && String(b).indexOf('go') === 0) {
       ms = 280; // 切 tab + 置頂
@@ -351,7 +428,7 @@ window.OnboardingTour = (function () {
     prepareEnv(step).then(function (ok) {
       return waitUi(step).then(function () {
         _going = false;
-        if (!ok && step && (step.requireMatch || step.requireCompare || step.requireLine)) {
+        if (!ok && step && (step.requireMatch || step.requireCompare || step.requireLine || step.requirePrintPreview)) {
           skipInNavDir();
           return;
         }
@@ -388,6 +465,10 @@ window.OnboardingTour = (function () {
       skipInNavDir();
       return;
     }
+    if (step.requirePrintPreview && !resolveEl('[data-tour="print-preview-modal"]')) {
+      skipInNavDir();
+      return;
+    }
     if (step.optional && step.selector && !el) {
       skipInNavDir();
       return;
@@ -411,7 +492,7 @@ window.OnboardingTour = (function () {
           setTimeout(retry, 120);
           return;
         }
-        if (step.requireMatch || step.requireCompare || step.requireLine) {
+        if (step.requireMatch || step.requireCompare || step.requireLine || step.requirePrintPreview) {
           skipInNavDir();
           return;
         }
@@ -555,6 +636,9 @@ window.OnboardingTour = (function () {
     if (typeof _cb.closeMatchDemo === 'function') {
       try { _cb.closeMatchDemo(); } catch (e) {}
     }
+    if (typeof _cb.closePaperPrintDemo === 'function') {
+      try { _cb.closePaperPrintDemo(); } catch (ePaper) {}
+    }
     // 關閉 LINE 示範／模擬（不切 tab）
     try {
       if (_cb.closeLineCompareMatchGoPending) {
@@ -569,7 +653,8 @@ window.OnboardingTour = (function () {
     opts = opts || {};
     _cb = opts.callbacks || {};
     return ensureCss().then(function () {
-      _steps = (opts.steps && opts.steps.length) ? opts.steps : DEFAULT_STEPS.slice();
+      _storageKey = opts.mode === 'paper' ? PAPER_STORAGE_KEY : STORAGE_KEY;
+      _steps = (opts.steps && opts.steps.length) ? opts.steps : getSteps(opts.mode);
       _idx = 0;
       _navDir = 1;
       _going = false;
@@ -583,9 +668,10 @@ window.OnboardingTour = (function () {
     return _active;
   }
 
-  function isDone() {
+  function isDone(mode) {
     try {
-      return localStorage.getItem(STORAGE_KEY) === '1';
+      var key = mode === 'paper' ? PAPER_STORAGE_KEY : STORAGE_KEY;
+      return localStorage.getItem(key) === '1';
     } catch (e) {
       return false;
     }
@@ -593,6 +679,7 @@ window.OnboardingTour = (function () {
 
   return {
     STORAGE_KEY: STORAGE_KEY,
+    PAPER_STORAGE_KEY: PAPER_STORAGE_KEY,
     start: start,
     stop: stop,
     isActive: isActive,

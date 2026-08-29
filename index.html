@@ -6,9 +6,9 @@
   <title>建成國中線上課表系統</title>
   <meta name="application-name" content="JCJH Timetable">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📅</text></svg>">
-  <link rel="stylesheet" href="style.css?v=20260829-patrol-empty1">
+  <link rel="stylesheet" href="style.css?v=20260829-paper2">
   <!-- 手機版獨立樣式：不影響桌機 -->
-  <link rel="stylesheet" href="mobile.css?v=20260829-patrol-empty1" media="(max-width: 768px)">
+  <link rel="stylesheet" href="mobile.css?v=20260829-paper2" media="(max-width: 768px)">
   
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 
@@ -88,9 +88,9 @@
             :aria-current="activeTab === 'pending' ? 'page' : undefined"
             data-tour="nav-pending"
             @click="setActiveTab('pending')"
-            title="待辦簽核"
-          >
-            <span class="nav-label-full">待辦簽核</span><span class="nav-label-short">待辦</span>
+             :title="paperMode ? '紙本申請進度' : '待辦簽核'"
+           >
+             <span class="nav-label-full">{{ paperMode ? '申請進度' : '待辦簽核' }}</span><span class="nav-label-short">{{ paperMode ? '進度' : '待辦' }}</span>
             <span v-if="myInviteCount > 0" class="nav-badge nav-badge-invite" :title="'待您回覆 ' + myInviteCount + ' 筆'">{{ myInviteCount }}</span>
             <span v-if="adminTodoCount > 0" class="nav-badge nav-badge-admin" :title="'待核准 ' + adminTodoCount + ' 筆'">{{ adminTodoCount }}</span>
           </button>
@@ -234,8 +234,8 @@
             class="btn-nav-icon btn-help"
             data-tour="help-btn"
             @click="startOnboarding"
-            title="操作教學"
-            aria-label="操作教學"
+             :title="paperMode ? '紙本流程操作教學' : '線上簽核操作教學'"
+             :aria-label="paperMode ? '紙本流程操作教學' : '線上簽核操作教學'"
           >?</button>
           <button v-if="user" type="button" class="btn-logout" @click="logout">登出</button>
         </div>
@@ -340,7 +340,7 @@
                    🖨️ 目前為紙本審核模式：送出後會建立待教學組核准的申請，並開啟紙本通知供調代課教師簽名。
                 </div>
                 <div v-else-if="notificationsSuppressed && isAdmin" class="batch-hint-bar" style="border-color:#f59e0b;background:#fffbeb;color:#92400e;">
-                   🔧 目前為紙本作業模式：可以線上查詢調代課推薦人員，並提出申請、列印調代課單，但仍需進行紙本簽核程序。
+                   🔧 紙本作業模式：可線上提出申請、列印調代課單，但仍需進行紙本簽核程序，請務必提交簽名後調代課單至教學組。
                 </div>
                <div v-if="batchSelectMode" class="batch-hint-bar">
                 批次模式：點選<strong>同一位教師</strong>多節 → 可選「同一人全代」或「每節不同人」→ 填寫申請表。已選 {{ batchSlots.length }} 節。
@@ -2703,7 +2703,7 @@
                     <!-- 原因／假別與僅課務調整 -->
                     <div class="form-group" data-tour="compare-reason">
                       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
-                        <label class="form-label" style="margin:0;">原因 / 假別</label>
+                         <label class="form-label" style="margin:0;">假別</label>
                          <label v-if="pendingRequestData.mode === 'substitution' && pendingRequestData.specialFlow !== 'combined_return'" style="display:flex;align-items:center;gap:5px;font-size:0.78rem;color:var(--text-secondary);cursor:pointer;">
                           <input
                             id="course-adjustment-only"
@@ -2723,7 +2723,20 @@
                        </select>
                     </div>
 
-                     <div v-if="pendingRequestData.mode === 'substitution' && !pendingRequestData.courseAdjustmentOnly && pendingRequestData.specialFlow !== 'combined_return'" class="form-group compare-form-leave-time">
+                     <!-- 備註輸入 -->
+                     <div class="form-group compare-form-note">
+                       <label class="form-label">事由</label>
+                       <input type="text" class="form-input" v-model="pendingRequestData.note">
+                     </div>
+
+                     <!-- 對調模式才顯示 B 欄日期；代課經費依規則自動對應，申請頁不再選擇。 -->
+                     <div class="form-group" v-if="pendingRequestData.mode === 'exchange'">
+                       <label class="form-label">對調目標日期 (B)</label>
+                       <input type="text" class="form-input" style="background: #f1f5f9; font-weight: 600;" readonly :value="pendingRequestData.dateB">
+                     </div>
+                   </div>
+
+                   <div v-if="pendingRequestData.mode === 'substitution' && !pendingRequestData.courseAdjustmentOnly && pendingRequestData.specialFlow !== 'combined_return'" class="form-group compare-form-leave-time">
                      <label class="form-label">請假時間（代課清冊）</label>
                      <div style="display:flex;flex-wrap:wrap;gap:7px;align-items:center;">
                        <button type="button" class="btn btn-secondary pad-6-10-78"  @click="setLeaveTimePreset('全天')">全天（{{ getLeaveTimePresetRange(pendingRequestData.leaveTeacher, '全天') }}）</button>
@@ -2734,24 +2747,11 @@
                        <input type="time" class="form-input" style="width:125px;" v-model="pendingRequestData.leaveTimeStart" @change="updatePendingLeaveTime">
                        <span>至</span>
                        <input type="time" class="form-input" style="width:125px;" v-model="pendingRequestData.leaveTimeEnd" @change="updatePendingLeaveTime">
-                            <span class="text-xs-sec-78" >目前：{{ pendingRequestData.leaveTimeType || '未填' }}（{{ pendingRequestData.leaveTime || '未填' }}）</span>
+                       <span class="text-xs-sec-78" >目前：{{ pendingRequestData.leaveTimeType || '未填' }}（{{ pendingRequestData.leaveTime || '未填' }}）</span>
                      </div>
                      <small style="display:block;margin-top:5px;color:var(--text-muted);">行政人員預設全天 08:00~17:00；非行政預設全天 08:00~16:00，時間可自行修改。</small>
                    </div>
-
-                    <!-- 對調模式才顯示 B 欄日期；代課經費依規則自動對應，申請頁不再選擇。 -->
-                    <div class="form-group" v-if="pendingRequestData.mode === 'exchange'">
-                      <label class="form-label">對調目標日期 (B)</label>
-                      <input type="text" class="form-input" style="background: #f1f5f9; font-weight: 600;" readonly :value="pendingRequestData.dateB">
-                    </div>
-                  </div>
-
-                  <!-- 備註輸入 -->
-                  <div class="form-group compare-form-note">
-                    <label class="form-label">原因</label>
-                    <input type="text" class="form-input" placeholder="可輸入行政原因..." v-model="pendingRequestData.note">
-                  </div>
-                </div>
+                 </div>
 
               <!-- 舊的管理員簽核模式已移至最上方顯眼處 -->
             </div>
@@ -2812,9 +2812,10 @@
                  :disabled="isSubmitting || loading"
                  @click="openPaperPrintDraftFromCompare"
                 >👁️ 預覽調代課單</button>
-               <button
-                 class="btn btn-success"
-                :disabled="(!isMutualCover && quotaDeductInsufficient) || isSubmitting || loading"
+                <button
+                  class="btn btn-success"
+                 :data-tour="paperFlow ? 'compare-submit-paper' : 'compare-submit-online'"
+                 :disabled="(!isMutualCover && quotaDeductInsufficient) || isSubmitting || loading"
                 :title="(!isMutualCover && quotaDeductInsufficient) ? '額度不足，請改自費排代' : (isMutualCover && quotaDeductInsufficient ? '額度不足將改活動公費後送出' : (isSubmitting || loading ? '送出中，請稍候' : ''))"
                 @click="pendingRequestData.isBatch ? executeBatchSubmit() : executeSubmitRequest()"
               >
@@ -2831,8 +2832,8 @@
       </div>
 
       <!-- 單欄列印預覽：確認後才開啟正式左右雙聯列印視窗 -->
-      <div v-if="showPrintPreviewModal" class="modal-overlay print-preview-overlay" @click.self="closePrintPreview(true)">
-        <div class="modal-card print-preview-modal-card">
+       <div v-if="showPrintPreviewModal" class="modal-overlay print-preview-overlay" data-tour="print-preview-modal" @click.self="closePrintPreview(true)">
+         <div class="modal-card print-preview-modal-card">
           <div class="modal-header">
             <div>
               <h3>👁️ 調代課單列印預覽</h3>
@@ -2843,9 +2844,6 @@
             <button class="btn-close" @click="closePrintPreview(true)">&times;</button>
           </div>
            <div class="modal-body print-preview-modal-body">
-             <div v-if="printPreview && printPreview.canPrint === false" class="print-preview-lock-note">
-               目前為送出前預覽，只能查看內容；送出申請成功後才能列印、下載或複製調代課單。
-             </div>
              <iframe
               v-if="printPreview"
               class="print-preview-frame"
@@ -2863,7 +2861,10 @@
              </div>
              <div class="print-preview-confirm-actions">
                <button type="button" class="btn btn-secondary" @click="closePrintPreview(true)">返回</button>
-                <button v-if="printPreview && printPreview.canPrint !== false" type="button" class="btn btn-primary" @click="confirmPrintPreview">🖨️ 確認列印</button>
+                <div v-if="printPreview && printPreview.canPrint === false" class="print-preview-lock-note">
+                  目前為送出前預覽，只能查看內容；送出申請成功後才能列印、下載或複製調代課單。
+                </div>
+                 <button v-if="printPreview && printPreview.canPrint !== false" type="button" class="btn btn-primary" data-tour="print-confirm" @click="confirmPrintPreview">🖨️ 確認列印</button>
              </div>
           </div>
         </div>
@@ -4035,23 +4036,23 @@
   <!-- App Main JS Logic -->
 
   <!-- 模組：defer 依文件順序執行，不擋 HTML 解析；billing/print/export 另延後 -->
-    <script defer src="name-key-contract.js?v=20260829-patrol-empty1"></script>
-    <script defer src="field-map.js?v=20260829-patrol-empty1"></script>
-    <script defer src="date-utils.js?v=20260829-patrol-empty1"></script>
-    <script defer src="gas-api.js?v=20260829-patrol-empty1"></script>
-    <script defer src="domain-school-swap.js?v=20260829-patrol-empty1"></script>
-    <script defer src="domain-schedule.js?v=20260829-patrol-empty1"></script>
-    <script defer src="domain-match.js?v=20260829-patrol-empty1"></script>
+    <script defer src="name-key-contract.js?v=20260829-paper2"></script>
+    <script defer src="field-map.js?v=20260829-paper2"></script>
+    <script defer src="date-utils.js?v=20260829-paper2"></script>
+    <script defer src="gas-api.js?v=20260829-paper2"></script>
+    <script defer src="domain-school-swap.js?v=20260829-paper2"></script>
+    <script defer src="domain-schedule.js?v=20260829-paper2"></script>
+    <script defer src="domain-match.js?v=20260829-paper2"></script>
   <!-- domain-activity-cover：活動互代／空堂任務時 ensureDomainActivityCover -->
-    <script defer src="domain-class-away.js?v=20260829-patrol-empty1"></script>
-    <script defer src="fee-utils.js?v=20260829-patrol-empty1"></script>
-    <script defer src="ui-activity.js?v=20260829-patrol-empty1"></script>
-    <script defer src="ui-request.js?v=20260829-patrol-empty1"></script>
-    <script defer src="ui-timetable.js?v=20260829-patrol-empty1"></script>
-    <script defer src="ui-approval.js?v=20260829-patrol-empty1"></script>
+    <script defer src="domain-class-away.js?v=20260829-paper2"></script>
+    <script defer src="fee-utils.js?v=20260829-paper2"></script>
+    <script defer src="ui-activity.js?v=20260829-paper2"></script>
+    <script defer src="ui-request.js?v=20260829-paper2"></script>
+    <script defer src="ui-timetable.js?v=20260829-paper2"></script>
+    <script defer src="ui-approval.js?v=20260829-paper2"></script>
   <!-- ui-admin：僅管理員／後台操作時 ensureUiAdmin -->
-    <script defer src="app-shell-utils.js?v=20260829-patrol-empty1"></script>
-        <script defer src="app.js?v=20260829-patrol-empty1"></script>
+        <script defer src="app-shell-utils.js?v=20260829-paper2"></script>
+        <script defer src="app.js?v=20260829-paper2"></script>
   <script>
     (function () {
       function loadScript(src) {
@@ -4073,47 +4074,47 @@
       var _uiAdminP = null;
       window.ensureDomainBilling = function () {
         if (window.DomainBilling) return Promise.resolve();
-          if (!_billingP) _billingP = loadScript('domain-billing.js?v=20260829-patrol-empty1');
+          if (!_billingP) _billingP = loadScript('domain-billing.js?v=20260829-paper2');
         return _billingP;
       };
       window.ensureExportAccounting = function () {
         if (window.ExportAccounting) return Promise.resolve();
-          if (!_accountingP) _accountingP = loadScript('export-accounting.js?v=20260829-patrol-empty1');
+          if (!_accountingP) _accountingP = loadScript('export-accounting.js?v=20260829-paper2');
         return _accountingP;
       };
       /** 活動互代／額度／空堂任務邏輯（首屏不載） */
       window.ensureDomainActivityCover = function () {
         if (window.DomainActivityCover) return Promise.resolve();
-          if (!_domainActivityP) _domainActivityP = loadScript('domain-activity-cover.js?v=20260829-patrol-empty1');
+          if (!_domainActivityP) _domainActivityP = loadScript('domain-activity-cover.js?v=20260829-paper2');
         return _domainActivityP;
       };
       /** 後台匯入／教師／課表編輯（教師首屏不載） */
       window.ensureUiAdmin = function () {
         if (window.UiAdmin) return Promise.resolve();
-          if (!_uiAdminP) _uiAdminP = loadScript('ui-admin.js?v=20260829-patrol-empty1');
+          if (!_uiAdminP) _uiAdminP = loadScript('ui-admin.js?v=20260829-paper2');
         return _uiAdminP;
       };
       window.ensurePrintHelper = function () {
         if (typeof window.generateFormHtml === 'function') return Promise.resolve();
-            if (!_printP) _printP = loadScript('print-helper.js?v=20260829-patrol-empty1');
+            if (!_printP) _printP = loadScript('print-helper.js?v=20260829-paper2');
         return _printP;
       };
       window.ensureExportSchoolTimetable = function () {
         if (window.ExportSchoolTimetable) return Promise.resolve();
-          if (!_exportP) _exportP = loadScript('export-school-timetable.js?v=20260829-patrol-empty1');
+          if (!_exportP) _exportP = loadScript('export-school-timetable.js?v=20260829-paper2');
         return _exportP;
       };
       var _activityCoverP = null;
       window.ensureExportActivityCover = function () {
         if (window.ExportActivityCover) return Promise.resolve();
-          if (!_activityCoverP) _activityCoverP = loadScript('export-activity-cover.js?v=20260829-patrol-empty1');
+          if (!_activityCoverP) _activityCoverP = loadScript('export-activity-cover.js?v=20260829-paper2');
         return _activityCoverP;
       };
       var _invigP = null;
       var _excelJsP = null;
       window.ensureExportInvigilation = function () {
         if (window.ExportInvigilation) return Promise.resolve();
-          if (!_invigP) _invigP = loadScript('export-invigilation.js?v=20260829-patrol-empty1');
+          if (!_invigP) _invigP = loadScript('export-invigilation.js?v=20260829-paper2');
         return _invigP;
       };
       window.ensureExcelJS = function () {

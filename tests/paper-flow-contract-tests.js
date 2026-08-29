@@ -555,12 +555,13 @@ function runApplicationFormContractTest() {
    assert.match(html, /paperFlow \? '送出申請並列印調代課單' : '確認送出'/, 'paper flow submit button must send then print');
    assert.doesNotMatch(html, /送出前不可列印/, 'preview button should not expose the lock note in its label');
    assert.match(html, /v-if="printPreview && printPreview\.canPrint !== false" class="print-preview-image-actions"/, 'pre-submit image actions should be hidden');
-   assert.match(html, /v-if="printPreview && printPreview\.canPrint !== false" type="button" class="btn btn-primary" @click="confirmPrintPreview"/, 'pre-submit print action should be hidden');
+   assert.match(html, /v-if="printPreview && printPreview\.canPrint !== false" type="button" class="btn btn-primary"(?: data-tour="print-confirm")? @click="confirmPrintPreview"/, 'pre-submit print action should be hidden');
   assert.match(html, /data-tour="success-followup-actions"/);
   assert.match(html, /@click="openSuccessPrintPreview"/);
   assert.match(html, /@click="addSuccessToCalendar"/);
   assert.match(html, /@click="closeSuccessGoRecords"/);
   const appSource = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
+  const onboardingSource = fs.readFileSync(path.join(root, 'onboarding-tour.js'), 'utf8');
    assert.match(appSource, /returnTo === 'compare'\) showCompareModal\.value = true/);
    assert.match(html, /getClassChangeTypeLabel\(item\.type\)/, 'class change badges should use compact labels');
    assert.match(html, /isHomeroomTeacher\(t, activeCell\.classData && activeCell\.classData\.className\)/, 'substitution candidates should show class-specific homeroom status');
@@ -588,7 +589,26 @@ function runApplicationFormContractTest() {
   assert.match(appSource, /snapshot\.canPrint === false/);
   assert.match(appSource, /returnTo: draft\.returnTo \|\| ''/);
   assert.match(appSource, /successActionRequests/);
-}
+   assert.match(appSource, /mode: paperMode\.value \? 'paper' : 'online'/, 'onboarding should follow the active paper mode');
+   assert.match(appSource, /ONBOARDING_SCRIPT = 'onboarding-tour\.js\?v=20260829-paper2'/, 'onboarding cache must refresh with the mode-aware tour');
+   assert.match(appSource, /openPaperPrintDemo: \(\) => openPaperPrintDemoForTour\(\)/, 'paper tour should open a print preview demo');
+   assert.match(appSource, /source: 'paperTour'/, 'paper tour preview must use an isolated source');
+   assert.match(appSource, /snapshot\.source === 'paperTour'/, 'paper tour print actions must not print real data');
+   assert.match(appSource, /const shouldAutoStartOnboarding =/);
+   assert.match(appSource, /ONBOARDING_PAPER_STORAGE_KEY/);
+   assert.match(onboardingSource, /var PAPER_STORAGE_KEY = 'jcjh_onboarding_paper_v1'/);
+   assert.match(onboardingSource, /var PAPER_STEP_OVERRIDES =/);
+   assert.match(onboardingSource, /step\.id !== 'line-success' && step\.id !== 'pending-invite'/);
+   assert.doesNotMatch(onboardingSource, /鐘點費/, 'onboarding must not mention the retired hourly-fee field');
+   assert.match(onboardingSource, /paper-print-preview/, 'paper tour should include the print preview step');
+   assert.match(onboardingSource, /paper-print-button/, 'paper tour should include the confirm-print step');
+   assert.match(onboardingSource, /compare-submit-paper/, 'paper tour should target the paper submit button');
+   assert.match(onboardingSource, /_storageKey = opts\.mode === 'paper' \? PAPER_STORAGE_KEY : STORAGE_KEY/);
+   assert.match(html, /paperMode \? '紙本流程操作教學' : '線上簽核操作教學'/, 'help button label should follow the active mode');
+   assert.match(html, /paperMode \? '紙本申請進度' : '待辦簽核'/, 'pending navigation should follow the active mode');
+   assert.match(html, /data-tour="print-preview-modal"/, 'print preview should be a tour target');
+   assert.match(html, /data-tour="print-confirm"/, 'confirm print button should be a tour target');
+ }
 
 function runHistoryEditTeacherValueTest() {
   const historyEditForm = ref({});

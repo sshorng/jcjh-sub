@@ -1136,7 +1136,8 @@ createApp({
 
     // 新手引導 UI（簡潔版：置中卡牌，無 spotlight，手機友善）
     // ── 新手 Spotlight 導覽（懶載入 onboarding-tour.js）──
-    const ONBOARDING_SCRIPT = 'onboarding-tour.js';
+    const ONBOARDING_SCRIPT = 'onboarding-tour.js?v=20260829-paper2';
+    const ONBOARDING_PAPER_STORAGE_KEY = 'jcjh_onboarding_paper_v1';
     /** 導覽用虛擬「收到的邀請」（不寫入後端） */
     const tourDemoInvite = ref(null);
     let _onboardingLoadP = null;
@@ -1278,6 +1279,53 @@ createApp({
 
     const closeCompareDemoForTour = () => {
       try { showCompareModal.value = false; } catch (e) {}
+    };
+
+    /** 導覽：顯示送出後的紙本列印預覽（只用虛擬資料，不會送出申請） */
+    const openPaperPrintDemoForTour = async () => {
+      closeCompareDemoForTour();
+      closeMatchDemoForTour();
+      try { showSuccessModal.value = false; } catch (e) {}
+      const demo = findDemoScheduleCell();
+      const classData = (demo && demo.classData) || {};
+      const date = (demo && demo.dateStr) || currentWeekDates.value[0] || getTodayString();
+      const period = (demo && demo.period) || 3;
+      const records = [{
+        id: 'tour-paper-print',
+        requestId: 'tour-paper-print',
+        serial: '導覽示範',
+        type: 'substitution',
+        originalTeacherEmail: (demo && demo.teacherEmail) || 'tour-owner',
+        originalTeacherName: (demo && demo.teacherName) || (user.value && user.value.displayName) || '申請教師',
+        actualTeacherEmail: 'tour-substitute',
+        actualTeacherName: '王小明（示範）',
+        date: date,
+        period: period,
+        className: classData.className || '701',
+        subject: classData.subject || '國文',
+        reason: '事假',
+        leaveTimeType: '全天',
+        leaveTime: '08:00~16:00',
+        note: '操作教學示範',
+        isPaperDraft: true,
+        paperFlow: true,
+        printed: false
+      }];
+      const opened = await openPaperPrintDraft(records, { canPrint: true, source: 'paperTour' });
+      await nextTick();
+      await new Promise((resolve) => setTimeout(resolve, 160));
+      return !!(opened && document.querySelector('[data-tour="print-preview-modal"]'));
+    };
+
+    const closePaperPrintDemoForTour = () => {
+      try {
+        if (showPrintPreviewModal.value) closePrintPreview(false);
+        paperPrintDraft.value = null;
+        paperSignatureByTeacher.value = {};
+      } catch (e) {
+        showPrintPreviewModal.value = false;
+        printPreview.value = null;
+      }
     };
 
     /** 導覽：示範「送出成功」視窗與 LINE 範本（與正式 buildLineInviteText 同格式，不真的送出） */
@@ -1478,6 +1526,8 @@ createApp({
       closeMatchDemo: () => { closeMatchDemoForTour(); return true; },
       openCompareDemo: () => openCompareDemoForTour(),
       closeCompareDemo: () => { closeCompareDemoForTour(); return true; },
+      openPaperPrintDemo: () => openPaperPrintDemoForTour(),
+      closePaperPrintDemo: () => { closePaperPrintDemoForTour(); return true; },
       openLineDemo: () => openLineDemoForTour(),
       closeLineDemo: () => { closeLineDemoForTour(); return true; },
       closeLineCompareMatchGoPending: () => {
@@ -1506,7 +1556,7 @@ createApp({
         showToast('載入操作教學…', 'info');
         const tour = await ensureOnboardingTour();
         if (!tour || typeof tour.start !== 'function') throw new Error('教學模組未就緒');
-        await tour.start({ callbacks: tourCallbacks() });
+        await tour.start({ callbacks: tourCallbacks(), mode: paperMode.value ? 'paper' : 'online' });
       } catch (e) {
         console.error(e);
         showToast('無法載入操作教學：' + (e && e.message ? e.message : e), 'error');
@@ -1826,6 +1876,15 @@ createApp({
           });
         });
       return changes;
+    };
+    const shouldAutoStartOnboarding = () => {
+      if (classReadonlyMode.value) return false;
+      const storageKey = paperMode.value ? ONBOARDING_PAPER_STORAGE_KEY : 'jcjh_onboarding_v2';
+      try {
+        return !localStorage.getItem(storageKey);
+      } catch (e) {
+        return true;
+      }
     };
 
     // 該班異動摘要：每節一列；調課雙向各一列
@@ -3495,9 +3554,10 @@ createApp({
     };
     const getLeaveTimePresetRange = (leaveEmail, type) => {
       const d = getLeaveTimeDefaults(leaveEmail);
-      if (type === '上午') return d.start + '~12:00';
-      if (type === '下午') return '12:00~' + d.end;
-      return d.range;
+      const shortHour = (value) => String(parseInt(String(value).split(':')[0], 10));
+      if (type === '上午') return shortHour(d.start) + '~12時';
+      if (type === '下午') return '12~' + shortHour(d.end) + '時';
+      return shortHour(d.start) + '~' + shortHour(d.end) + '時';
     };
     const setLeaveTimePreset = (type) => {
       const p = pendingRequestData.value || {};
@@ -6760,6 +6820,10 @@ createApp({
         showToast('調代課申請尚未送出，送出申請後才能列印。', 'warning');
         return;
       }
+      if (snapshot.source === 'paperTour') {
+        showToast('這是紙本流程教學示範，實際操作請在送出成功後點選「確認列印」。', 'info');
+        return;
+      }
       showPrintPreviewModal.value = false;
       printPreview.value = null;
       printPreviewImageBusy.value = false;
@@ -6825,6 +6889,10 @@ createApp({
         showToast('調代課申請尚未送出，送出申請後才能下載單據。', 'warning');
         return;
       }
+      if (printPreview.value && printPreview.value.source === 'paperTour') {
+        showToast('這是紙本流程教學示範，實際操作請在送出成功後下載單據。', 'info');
+        return;
+      }
       printPreviewImageBusy.value = true;
       try {
         const blob = await getPrintPreviewPngBlob();
@@ -6849,6 +6917,10 @@ createApp({
       if (printPreviewImageBusy.value) return;
       if (printPreview.value && printPreview.value.canPrint === false) {
         showToast('調代課申請尚未送出，送出申請後才能複製單據。', 'warning');
+        return;
+      }
+      if (printPreview.value && printPreview.value.source === 'paperTour') {
+        showToast('這是紙本流程教學示範，實際操作請在送出成功後複製單據。', 'info');
         return;
       }
       if (!navigator.clipboard || typeof window.ClipboardItem !== 'function') {
@@ -7086,7 +7158,8 @@ createApp({
       paperPrintDraft.value = {
         records: list,
         returnTo: options.returnTo || '',
-        canPrint: options.canPrint === true
+        canPrint: options.canPrint === true,
+        source: options.source || 'paperDraft'
       };
       paperSignatureByTeacher.value = signatureMap;
       return openPaperDraftPreview();
@@ -7132,6 +7205,10 @@ createApp({
     const printPaperDraft = async () => {
       const draft = paperPrintDraft.value;
       if (!draft || !draft.records || !draft.records.length) return;
+      if (draft.source === 'paperTour') {
+        showToast('這是紙本流程教學示範，未建立真實申請單。', 'info');
+        return;
+      }
       if (draft.canPrint !== true) {
         showToast('調代課申請尚未送出，送出申請後才能列印。', 'warning');
         return;
@@ -7169,7 +7246,7 @@ createApp({
       return openPrintPreview('Notice', {
         records,
         allSubs: (substitutionRecords.value || []).concat(records),
-        source: 'paperDraft',
+        source: draft.source || 'paperDraft',
         canPrint: draft.canPrint === true,
         returnTo: draft.returnTo || '',
         skipMarkPrinted: true
@@ -9950,9 +10027,9 @@ createApp({
             if (!hasClassLink && !classReadonlyMode.value) restoreNavAfterLogin();
             else _navPersistReady = true;
 
-            if (!localStorage.getItem('jcjh_onboarding_v2') && !classReadonlyMode.value) {
-              setTimeout(() => startOnboarding(), 800);
-            }
+             if (shouldAutoStartOnboarding()) {
+               setTimeout(() => startOnboarding(), 800);
+             }
           } catch (eRest) {
             console.error('還原登入同步失敗', eRest);
             loading.value = false;
@@ -10018,9 +10095,9 @@ createApp({
             if (!classReadonlyMode.value) restoreNavAfterLogin();
             else _navPersistReady = true;
 
-            if (!localStorage.getItem('jcjh_onboarding_v2')) {
-              setTimeout(() => startOnboarding(), 800);
-            }
+             if (shouldAutoStartOnboarding()) {
+               setTimeout(() => startOnboarding(), 800);
+             }
           } catch (eLogin) {
             console.error('登入後同步失敗', eLogin);
             loading.value = false;
