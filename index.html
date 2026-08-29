@@ -234,8 +234,8 @@
             class="btn-nav-icon btn-help"
             data-tour="help-btn"
             @click="startOnboarding"
-             :title="paperMode ? '紙本流程操作教學' : '線上簽核操作教學'"
-             :aria-label="paperMode ? '紙本流程操作教學' : '線上簽核操作教學'"
+             :title="notificationsSuppressed ? '紙本流程操作教學' : '線上簽核操作教學'"
+             :aria-label="notificationsSuppressed ? '紙本流程操作教學' : '線上簽核操作教學'"
           >?</button>
           <button v-if="user" type="button" class="btn-logout" @click="logout">登出</button>
         </div>

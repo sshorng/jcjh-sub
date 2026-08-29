@@ -1556,7 +1556,7 @@ createApp({
         showToast('載入操作教學…', 'info');
         const tour = await ensureOnboardingTour();
         if (!tour || typeof tour.start !== 'function') throw new Error('教學模組未就緒');
-        await tour.start({ callbacks: tourCallbacks(), mode: paperMode.value ? 'paper' : 'online' });
+        await tour.start({ callbacks: tourCallbacks(), mode: notificationsSuppressed.value ? 'paper' : 'online' });
       } catch (e) {
         console.error(e);
         showToast('無法載入操作教學：' + (e && e.message ? e.message : e), 'error');
@@ -1879,7 +1879,7 @@ createApp({
     };
     const shouldAutoStartOnboarding = () => {
       if (classReadonlyMode.value) return false;
-      const storageKey = paperMode.value ? ONBOARDING_PAPER_STORAGE_KEY : 'jcjh_onboarding_v2';
+      const storageKey = notificationsSuppressed.value ? ONBOARDING_PAPER_STORAGE_KEY : 'jcjh_onboarding_v2';
       try {
         return !localStorage.getItem(storageKey);
       } catch (e) {

@@ -589,7 +589,7 @@ function runApplicationFormContractTest() {
   assert.match(appSource, /snapshot\.canPrint === false/);
   assert.match(appSource, /returnTo: draft\.returnTo \|\| ''/);
   assert.match(appSource, /successActionRequests/);
-   assert.match(appSource, /mode: paperMode\.value \? 'paper' : 'online'/, 'onboarding should follow the active paper mode');
+   assert.match(appSource, /mode: notificationsSuppressed\.value \? 'paper' : 'online'/, 'onboarding should follow the global paper mode');
    assert.match(appSource, /ONBOARDING_SCRIPT = 'onboarding-tour\.js\?v=20260829-paper2'/, 'onboarding cache must refresh with the mode-aware tour');
    assert.match(appSource, /openPaperPrintDemo: \(\) => openPaperPrintDemoForTour\(\)/, 'paper tour should open a print preview demo');
    assert.match(appSource, /source: 'paperTour'/, 'paper tour preview must use an isolated source');
@@ -604,7 +604,7 @@ function runApplicationFormContractTest() {
    assert.match(onboardingSource, /paper-print-button/, 'paper tour should include the confirm-print step');
    assert.match(onboardingSource, /compare-submit-paper/, 'paper tour should target the paper submit button');
    assert.match(onboardingSource, /_storageKey = opts\.mode === 'paper' \? PAPER_STORAGE_KEY : STORAGE_KEY/);
-   assert.match(html, /paperMode \? '紙本流程操作教學' : '線上簽核操作教學'/, 'help button label should follow the active mode');
+   assert.match(html, /notificationsSuppressed \? '紙本流程操作教學' : '線上簽核操作教學'/, 'help button label should follow the global mode');
    assert.match(html, /paperMode \? '紙本申請進度' : '待辦簽核'/, 'pending navigation should follow the active mode');
    assert.match(html, /data-tour="print-preview-modal"/, 'print preview should be a tour target');
    assert.match(html, /data-tour="print-confirm"/, 'confirm print button should be a tour target');
