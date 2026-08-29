@@ -357,7 +357,7 @@ function runLineTemplateTest() {
     agreeLink: 'https://school.example/?agree',
     declineLink: 'https://school.example/?decline'
   });
-  assert.match(single, /小明老師，想問您是否可以幫忙協助代課：/);
+  assert.match(single, /小明老師，想問您是否可以協助代課：/);
   assert.match(single, /09\/04（週五） 第1節｜904 國文（陳小華老師）/);
   assert.match(single, /✅ 可以/);
   assert.doesNotMatch(single, /詳細如下|非常感謝/);
@@ -367,7 +367,7 @@ function runLineTemplateTest() {
     dateA: '2026-09-04', dayA: 5, periodA: 1,
      classA: '904', subjectA: '國文'
   });
-  assert.match(ask, /小明老師，想問您是否可以幫忙協助代課：/);
+  assert.match(ask, /小明老師，想問您是否可以協助代課：/);
   assert.match(ask, /09\/04（週五） 第1節｜904 國文（陳小華老師）/);
   assert.match(ask, /如果可以，我再拿代課單給您，感謝/);
   assert.doesNotMatch(ask, /再麻煩您確認一下喔/);
@@ -436,7 +436,7 @@ function runLineTemplateTest() {
     targetName: '王小明老師', requesterName: '陳小華老師',
     dateA: '2026-09-04', dayA: 5, periodA: 1, classA: '904', subjectA: '國文', reason: '事假'
   });
-  assert.match(paper, /小明老師，想問您是否可以幫忙協助代課：/);
+  assert.match(paper, /小明老師，想問您是否可以協助代課：/);
   assert.match(paper, /09\/04（週五） 第1節｜904 國文（陳小華老師）/);
   assert.match(paper, /如果可以，我再拿代課單給您，感謝/);
   assert.doesNotMatch(paper, /假別：|紙本調代課通知|簽名後交回教學組|https?:\/\/|action=/);

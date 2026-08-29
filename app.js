@@ -2513,7 +2513,7 @@ createApp({
       const leaveLine = formatLineSlot(opts.dateA, opts.dayA, opts.periodA, opts.classA, opts.subjectA);
       const opening = opts.isExchange
         ? `${name}老師，想問您是否方便和${getLineExchangePartner(requesterName)}調課，`
-        : `${name}老師，想問您是否可以幫忙協助代課：`;
+        : `${name}老師，想問您是否可以協助代課：`;
       let text = `${opening}\n`;
       if (opts.isExchange) {
         const swapLine = formatLineSlot(opts.dateB, opts.dayB, opts.periodB, opts.classB, opts.subjectB);
@@ -2597,7 +2597,7 @@ createApp({
         const line = formatLineSlot(slot.date, slot.day, slot.period, slot.className, slot.subject);
         return `${slots.length > 1 ? `${index + 1}. ` : ''}${line}${requesterSuffix}`;
       });
-      return `${name}老師，想問您是否可以幫忙協助代課：\n${lines.join('\n')}\n\n如果可以，我再拿代課單給您，感謝🙏🏻`;
+      return `${name}老師，想問您是否可以協助代課：\n${lines.join('\n')}\n\n如果可以，我再拿代課單給您，感謝🙏🏻`;
     };
 
     /**
