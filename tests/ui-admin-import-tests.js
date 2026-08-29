@@ -48,7 +48,9 @@ admin.mappingFields.value = {
   className: 'className',
   attr: 'attr',
   restriction: '',
-  specialTags: ''
+  specialTags: '',
+  activeFrom: 'from',
+  activeTo: 'to'
 };
 admin.excelData.value = [{
   name: '教師',
@@ -56,7 +58,9 @@ admin.excelData.value = [{
   day: '一',
   period: '早自習',
   className: '701',
-  attr: '超鐘點'
+   attr: '超鐘點',
+  from: '2026/08/01',
+  to: '2026/08/15'
 }];
 
 admin.runImportPreview();
@@ -64,6 +68,8 @@ assert.equal(admin.importPreview.value.ok, 1);
 admin.importSchedules().then(() => {
   assert.equal(importPayload.list[0]['節次'], 0);
   assert.equal(importPayload.list[0]['課堂屬性'], '超鐘點');
+  assert.equal(importPayload.list[0]['啟用起日'], '2026-08-01');
+  assert.equal(importPayload.list[0]['啟用迄日'], '2026-08-15');
   console.log('ui-admin import tests PASS');
 }).catch(error => {
   console.error(error);

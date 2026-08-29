@@ -159,11 +159,12 @@ window.DomainActivityCover = (function () {
     var rangeDates = listDatesInRange(startDate, endDate);
     if (!rangeDates.length) rangeDates = (opts.weekDates || []).filter(Boolean);
     // 期間內出現的星期（1–5）次數
-    var dowCount = {};
+    var datesByDow = {};
     rangeDates.forEach(function (dateStr) {
       var dow = dayOfWeekMon1(dateStr);
       if (!dow) return;
-      dowCount[dow] = (dowCount[dow] || 0) + 1;
+      if (!datesByDow[dow]) datesByDow[dow] = [];
+      datesByDow[dow].push(dateStr);
     });
     var slots = null;
     if (opts._schedByTeacher && opts._schedByTeacher[em]) {
@@ -180,8 +181,11 @@ window.DomainActivityCover = (function () {
       var p = parseInt(s.period, 10);
       if (p > 7) return;
       var d = parseInt(s.dayOfWeek, 10);
-      var c = dowCount[d] || 0;
-      if (c) n += c;
+      var dates = datesByDow[d] || [];
+      dates.forEach(function (dateStr) {
+        if (!window.DomainSchedule || !window.DomainSchedule.isActiveOnDate
+            || window.DomainSchedule.isActiveOnDate(s, dateStr)) n++;
+      });
     });
     return n;
   }
@@ -644,10 +648,12 @@ window.DomainActivityCover = (function () {
         if (!dow) return;
         (opts.allSchedules || []).forEach(function (s) {
           if (!s || !s.className) return;
-          var cn = normalizeClass(s.className);
-          if (!away[cn]) return;
-          if (parseInt(s.dayOfWeek, 10) !== dow) return;
-          var per = parseInt(s.period, 10);
+           var cn = normalizeClass(s.className);
+           if (!away[cn]) return;
+           if (parseInt(s.dayOfWeek, 10) !== dow) return;
+           if (window.DomainSchedule && window.DomainSchedule.isActiveOnDate
+               && !window.DomainSchedule.isActiveOnDate(s, dateStr)) return;
+           var per = parseInt(s.period, 10);
           if (!per || per > 7) return; // 釋出額度只算 1–7
           var rk = cn + '|' + dateStr + '|' + per;
           if (releasedKeys[rk]) return;
@@ -778,10 +784,12 @@ window.DomainActivityCover = (function () {
         if (!dow) return;
         var single = isSingleWeek ? !!isSingleWeek(dateStr) : null;
         (opts.allSchedules || []).forEach(function (s) {
-          if (!s) return;
-          if (emailKey(s.teacherEmail) !== em) return;
-          if (parseInt(s.dayOfWeek, 10) !== dow) return;
-          var per = parseInt(s.period, 10);
+           if (!s) return;
+           if (emailKey(s.teacherEmail) !== em) return;
+           if (parseInt(s.dayOfWeek, 10) !== dow) return;
+           if (window.DomainSchedule && window.DomainSchedule.isActiveOnDate
+               && !window.DomainSchedule.isActiveOnDate(s, dateStr)) return;
+           var per = parseInt(s.period, 10);
           // 允許早自習 0、午休 45；其餘僅 1–8
           if (!(per === 0 || per === 45 || (per >= 1 && per <= 8))) return;
           var attr = String(s.attr || '');

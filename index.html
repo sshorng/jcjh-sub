@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>建成國中線上調代課系統</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📅</text></svg>">
-  <link rel="stylesheet" href="style.css?v=20260828-combined-return2">
+  <link rel="stylesheet" href="style.css?v=20260829-exchange-image1">
   <!-- 手機版獨立樣式：不影響桌機 -->
-  <link rel="stylesheet" href="mobile.css?v=20260828-combined-return2" media="(max-width: 768px)">
+  <link rel="stylesheet" href="mobile.css?v=20260829-exchange-image1" media="(max-width: 768px)">
   
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 
@@ -665,7 +665,7 @@
                                   <div v-if="!isMobile && slot.cell.pendingText" class="cell-sub-text cell-sub-pending">{{ slot.cell.pendingText }}</div>
                                  </div>
                                  <div class="cell-badges">
-                                   <span v-if="slot.cell.isCombinedReturn" class="cell-badge tag-combined">合班回原班</span>
+                                    <span v-if="slot.cell.isCombinedReturn" class="cell-badge tag-combined">併班上課</span>
                                     <span v-if="slot.cell.isSubstituted"
                                     class="cell-badge"
                                     :class="slot.cell.subType === 'exchange' ? 'tag-warning' : (slot.cell.isMutualCover ? 'tag-purple' : 'tag-red')"
@@ -867,7 +867,7 @@
                                    {{ classSubstitutionMap[selectedClass + '|' + dateStr + '|' + period].actualTeacherName || '未指定' }}
                                 </div>
                                    <div class="cell-sub-badge">
-                                     {{ classSubstitutionMap[selectedClass + '|' + dateStr + '|' + period].specialFlow === 'combined_return' ? '合班回原班' : (classSubstitutionMap[selectedClass + '|' + dateStr + '|' + period].type === 'exchange' ? '已調課' : '已代課') }}
+                                     {{ classSubstitutionMap[selectedClass + '|' + dateStr + '|' + period].specialFlow === 'combined_return' ? '併班上課' : (classSubstitutionMap[selectedClass + '|' + dateStr + '|' + period].type === 'exchange' ? '已調課' : '已代課') }}
                                    <span v-if="classSchedules[selectedClass] && classSchedules[selectedClass][(dayIdx+1) + '-' + period] && classSchedules[selectedClass][(dayIdx+1) + '-' + period][0] && classSchedules[selectedClass][(dayIdx+1) + '-' + period][0]._schoolSwap" class="cell-badge tag-warning">全校對調</span>
                                  </div>
                               </div>
@@ -997,7 +997,7 @@
                          <span class="status-badge tag-red" v-else>代課</span>
                          <span v-for="tag in getRequestTypeTags(req)" :key="tag.key" class="risk-tag" :class="'risk-'+tag.key">{{ tag.label }}</span>
                         <span
-                          v-for="rf in getApproveRiskFlags(req).filter(f => f.level === 'warn' || f.level === 'danger')"
+                           v-for="rf in getApproveRiskFlags(req).filter(f => (f.level === 'warn' || f.level === 'danger') && f.key !== 'chain')"
                           :key="'arf-'+rf.key"
                           class="risk-tag"
                           :class="rf.level === 'danger' ? 'risk-danger' : 'risk-warn'"
@@ -1015,6 +1015,7 @@
                       <span class="hist-slot-inline">
                         {{ formatLeaveClassSlot(req) }}
                         <span v-if="isLeaveClassRestricted(req)" class="status-badge tag-restricted">綁課</span>
+                        <span v-if="isRequestLeaveRechanged(req)" class="risk-tag risk-chain">再異動</span>
                       </span>
                     </td>
                     <td>
@@ -1128,6 +1129,7 @@
                       <span class="hist-slot-inline">
                         {{ formatLeaveClassSlot(req) }}
                         <span v-if="isLeaveClassRestricted(req)" class="status-badge tag-restricted">綁課</span>
+                        <span v-if="isRequestLeaveRechanged(req)" class="risk-tag risk-chain">再異動</span>
                       </span>
                     </td>
                     <td>
@@ -1221,6 +1223,7 @@
                       <span class="hist-slot-inline">
                         {{ formatLeaveClassSlot(req) }}
                         <span v-if="isLeaveClassRestricted(req)" class="status-badge tag-restricted">綁課</span>
+                        <span v-if="isRequestLeaveRechanged(req)" class="risk-tag risk-chain">再異動</span>
                       </span>
                     </td>
                     <td>
@@ -1400,14 +1403,14 @@
                       <span class="hist-slot-inline">
                         {{ formatHistoryLeaveSlot(rec) }}
                         <span v-if="isHistoryLeaveRestricted(rec)" class="status-badge tag-restricted">綁課</span>
-                        <span v-if="isHistoryLeaveRechanged(rec)" class="risk-tag risk-chain">再異動</span>
+                          <span v-if="isHistoryLeaveRechanged(rec)" class="risk-tag risk-chain">再異動</span>
                       </span>
                     </td>
                     <td>
                       <span class="hist-slot-inline">
-                        {{ formatHistoryExchangeSlot(rec) }}
-                        <span v-if="isHistoryExchangeRestricted(rec)" class="status-badge tag-restricted">綁課</span>
-                        <span v-if="isHistoryExchangeRechanged(rec)" class="risk-tag risk-chain">再異動</span>
+                         {{ formatHistoryExchangeSlot(rec) }}
+                         <span v-if="isHistoryExchangeRestricted(rec)" class="status-badge tag-restricted">綁課</span>
+                         <span v-if="isHistoryExchangeRechanged(rec)" class="risk-tag risk-chain">再異動</span>
                       </span>
                     </td>
                     <td>
@@ -1422,7 +1425,7 @@
                     </td>
                       <td v-if="isAdmin" @click.stop>
                         <div class="hist-actions">
-                          <button type="button" class="btn btn-secondary" title="列印此筆通知單" @click="printSingleRequest({ id: rec.requestId || rec.id }, 'Notice')">🖨️ 列印</button>
+                           <button type="button" class="btn btn-secondary" title="列印此筆通知單" aria-label="列印此筆通知單" @click="printSingleRequest({ id: rec.requestId || rec.id }, 'Notice')">🖨️</button>
                           <button type="button" class="btn btn-secondary" @click="openHistoryEditModal(rec)">編輯</button>
                           <button type="button" class="btn btn-secondary" style="color: var(--color-danger); border-color: rgba(220, 38, 38, 0.18);" @click="deleteSubstitutionRecord(rec.id, rec.requestId)">撤銷</button>
                         </div>
@@ -1808,7 +1811,7 @@
               <div style="margin-bottom:16px;font-size:0.88rem;color:var(--text-secondary);line-height:1.55;">
                 <p class="mb-8-block"><strong>策略 S1：</strong>匯入時<strong>只清除目前選取學期</strong>的課表（其他學期保留），再一次寫入。</p>
                  <p class="mb-8-block"><strong>格式：</strong>一列一節；以<strong>教師姓名</strong>對應已匯入的教師名單；同節多班可多列。</p>
-                 <p class="m-0">一般課必填：教師姓名、星期、節次、班級、科目。<strong>巡堂</strong>可省略班級／科目（科目或屬性寫「巡堂」即可）。節次可填<strong>早自習／0</strong>、1～8，或<strong>午休／45</strong>（12:35～13:15）。併班可填<strong>701、702</strong> 或 701/702。選填：課堂屬性、調課限制、特殊標記。特殊標記支援<strong>併班、綁課、預排</strong>，匯入後會保留並顯示於課表。姓名重複或名單沒有時，請先修正教師名單。</p>
+                 <p class="m-0">一般課必填：教師姓名、星期、節次、班級、科目。<strong>巡堂</strong>可省略班級／科目（科目或屬性寫「巡堂」即可）。節次可填<strong>早自習／0</strong>、1～8，或<strong>午休／45</strong>（12:35～13:15）。併班可填<strong>701、702</strong> 或 701/702。選填：課堂屬性、調課限制、特殊標記、啟用起日、啟用迄日。啟用日期請填 YYYY-MM-DD；兩欄皆空白代表整個學期有效。姓名重複或名單沒有時，請先修正教師名單。</p>
               </div>
 
               <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;background:#f8fafc;padding:14px;border-radius:12px;border:1px solid var(--border-color);margin-bottom:16px;">
@@ -2156,7 +2159,7 @@
                <div style="font-size:0.78rem;color:#9a3412;line-height:1.45;">
                   <strong>合班課堂</strong>：任課教師請假，由同節原本有課的其他併班任課教師代課。
                </div>
-               <button type="button" class="btn btn-primary btn-sm" @click="startCombinedReturn">↩ 合班回原班</button>
+                <button type="button" class="btn btn-primary btn-sm" @click="startCombinedReturn">↩ 併班上課</button>
              </div>
              <!-- 僅真正批次（≥2 節）才顯示；勿用 v-else 接在綁課提示後面，否則單節也會誤顯 -->
             <div v-if="isBatchMatchFlow" class="match-mode-selector" style="margin-bottom: 12px; display:flex; flex-direction:column; gap:8px;">
@@ -2627,7 +2630,7 @@
              <!-- 原因與審核選項 -->
              <div class="card" style="background: #f8fafc; padding: 16px; margin: 0; border: 1px solid var(--border-color);">
                <div v-if="pendingRequestData.specialFlow === 'combined_return'" style="margin-bottom:14px;padding:10px 12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;">
-                 <div style="font-size:0.82rem;font-weight:700;color:#9a3412;margin-bottom:6px;">合班回原班經費規則</div>
+                  <div style="font-size:0.82rem;font-weight:700;color:#9a3412;margin-bottom:6px;">併班上課經費規則</div>
                  <div style="font-size:0.75rem;color:#7c2d12;line-height:1.45;margin-bottom:8px;">公費：原堂為超鐘點才扣調，非超鐘點不扣；自費：一律扣調。</div>
                  <select class="form-select" v-model="pendingRequestData.subFee" style="max-width:360px;" :disabled="parseInt(pendingRequestData.timeKey && String(pendingRequestData.timeKey).split('-').pop(), 10) === 8">
                    <option v-if="parseInt(pendingRequestData.timeKey && String(pendingRequestData.timeKey).split('-').pop(), 10) !== 8" value="公費代課">公費代課</option>
@@ -2654,7 +2657,7 @@
                       </div>
                        <select class="form-select" v-model="pendingRequestData.reason" :disabled="pendingRequestData.courseAdjustmentOnly || pendingRequestData.specialFlow === 'combined_return'" @change="onLeaveReasonChange">
                          <option value="" disabled>請選擇假別...</option>
-                         <option v-if="pendingRequestData.specialFlow === 'combined_return'" value="合班回原班">合班回原班</option>
+                          <option v-if="pendingRequestData.specialFlow === 'combined_return'" value="合班回原班">併班上課</option>
                          <option v-if="pendingRequestData.courseAdjustmentOnly" value="課務調整">課務調整（無請假）</option>
                          <option v-for="r in leaveReasonOptions" :key="r" :value="r">{{ r }}</option>
                        </select>
@@ -3347,11 +3350,11 @@
           <div class="modal-body" style="display:flex;flex-direction:column;gap:10px;max-height:70vh;overflow:auto;">
             <div class="text-xs-muted-78">
                單號：<strong>{{ historyEditForm.serial || '未提供' }}</strong>
-               · 類型：{{ historyEditForm.specialFlow === 'combined_return' ? '合班回原班' : (historyEditForm.type === 'exchange' || historyEditForm.type === '對調' ? '調課' : '代課') }}
+                         · 類型：{{ historyEditForm.specialFlow === 'combined_return' ? '併班上課' : (historyEditForm.type === 'exchange' || historyEditForm.type === '對調' ? '調課' : '代課') }}
              </div>
             <div class="form-group">
               <label class="form-label">類型</label>
-              <div v-if="historyEditForm.specialFlow === 'combined_return'" class="form-input" style="background:#f8fafc;color:#0f766e;">代課（合班回原班）</div>
+               <div v-if="historyEditForm.specialFlow === 'combined_return'" class="form-input" style="background:#f8fafc;color:#0f766e;">代課（併班上課）</div>
               <select v-else class="form-select" v-model="historyEditForm.type" @change="onHistoryEditTypeChange">
                 <option value="substitution">代課</option>
                 <option value="exchange">調課</option>
@@ -3425,7 +3428,7 @@
               <label class="form-label">原因 / 假別</label>
               <select class="form-select" v-model="historyEditForm.reason" @change="onHistoryEditReasonChange" :disabled="historyEditForm.specialFlow === 'combined_return'">
                 <option value="" disabled>請選擇假別...</option>
-                <option v-if="historyEditForm.specialFlow === 'combined_return'" value="合班回原班">合班回原班</option>
+                 <option v-if="historyEditForm.specialFlow === 'combined_return'" value="合班回原班">併班上課</option>
                 <option v-for="r in leaveReasonOptions" :key="'he-r-'+r" :value="r">{{ r }}</option>
               </select>
             </div>
@@ -3507,7 +3510,7 @@
                  </div>
                  <div>
                    <span class="text-muted-block">{{ detailRequest.specialFlow === 'combined_return' ? '特殊流程' : '代課/受邀教師' }}</span>
-                   <strong>{{ detailRequest.specialFlow === 'combined_return' ? '合班回原班' : detailRequest.targetTeacherName }}</strong>
+                    <strong>{{ detailRequest.specialFlow === 'combined_return' ? '併班上課' : detailRequest.targetTeacherName }}</strong>
                 </div>
                 <div style="grid-column: span 2;">
                   <span class="text-muted-block">異動課堂</span>
@@ -3730,11 +3733,12 @@
                     :class="scheduleForm.id === e.id ? 'btn-primary' : 'btn-secondary'"
                     v-for="e in scheduleForm._entries"
                     :key="e.id"
-                    @click="pickScheduleAttr(e.attr || '一般')"
+                     @click="pickScheduleAttr(e.id || e.attr || '一般')"
                   >
-                    {{ e.attr || '一般' }}：{{ e.className }} {{ e.subject }}
-                  </button>
-                  <button type="button" class="btn btn-secondary btn-sm-14" @click="pickScheduleAttr('__new__')">＋新增一筆</button>
+                     {{ e.attr || '一般' }}：{{ e.className }} {{ e.subject }}
+                     （{{ e.activeFrom || '學期起' }}～{{ e.activeTo || '學期迄' }}）
+                   </button>
+                   <button type="button" class="btn btn-secondary btn-sm-14" @click="pickScheduleAttr('__new__')">＋建立新版本</button>
                 </div>
               </div>
               <select class="form-select" v-model="scheduleForm.attr">
@@ -3753,6 +3757,14 @@
             <div class="form-group" style="flex-direction: row; align-items: center; gap: 8px;">
               <input type="checkbox" id="chk-restricted-course" v-model="scheduleForm.restriction" true-value="restricted" false-value="" class="chk-box-16">
               <label for="chk-restricted-course" class="form-label m-0">綁課／特殊課程，調課前跳提醒（抽離課也可勾）</label>
+            </div>
+            <div class="form-group">
+              <label class="form-label">啟用期間（選填）</label>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                <input type="date" class="form-input" v-model="scheduleForm.activeFrom" :min="semesterStartDate || undefined" :max="semesterEndDate || undefined" aria-label="啟用起日">
+                <input type="date" class="form-input" v-model="scheduleForm.activeTo" :min="semesterStartDate || undefined" :max="semesterEndDate || undefined" aria-label="啟用迄日">
+              </div>
+              <span class="text-xs-muted-70">起日／迄日皆空白＝整個學期有效。建立新版本時請填啟用起日，舊版本會保留並自動結束於前一天。</span>
             </div>
           </div>
           <div class="modal-footer" style="flex-direction: column; gap: 8px;">
@@ -3960,23 +3972,23 @@
   <!-- App Main JS Logic -->
 
   <!-- 模組：defer 依文件順序執行，不擋 HTML 解析；billing/print/export 另延後 -->
-  <script defer src="name-key-contract.js?v=20260828-combined-return2"></script>
-  <script defer src="field-map.js?v=20260828-combined-return2"></script>
-  <script defer src="date-utils.js?v=20260828-combined-return2"></script>
-  <script defer src="gas-api.js?v=20260828-combined-return2"></script>
-  <script defer src="domain-school-swap.js?v=20260828-combined-return2"></script>
-  <script defer src="domain-schedule.js?v=20260828-combined-return2"></script>
-  <script defer src="domain-match.js?v=20260828-combined-return2"></script>
+    <script defer src="name-key-contract.js?v=20260829-exchange-image1"></script>
+    <script defer src="field-map.js?v=20260829-exchange-image1"></script>
+    <script defer src="date-utils.js?v=20260829-exchange-image1"></script>
+    <script defer src="gas-api.js?v=20260829-exchange-image1"></script>
+    <script defer src="domain-school-swap.js?v=20260829-exchange-image1"></script>
+    <script defer src="domain-schedule.js?v=20260829-exchange-image1"></script>
+    <script defer src="domain-match.js?v=20260829-exchange-image1"></script>
   <!-- domain-activity-cover：活動互代／空堂任務時 ensureDomainActivityCover -->
-  <script defer src="domain-class-away.js?v=20260828-combined-return2"></script>
-  <script defer src="fee-utils.js?v=20260828-combined-return2"></script>
-  <script defer src="ui-activity.js?v=20260828-combined-return2"></script>
-  <script defer src="ui-request.js?v=20260828-combined-return2"></script>
-  <script defer src="ui-timetable.js?v=20260828-combined-return2"></script>
-  <script defer src="ui-approval.js?v=20260828-combined-return2"></script>
+    <script defer src="domain-class-away.js?v=20260829-exchange-image1"></script>
+    <script defer src="fee-utils.js?v=20260829-exchange-image1"></script>
+    <script defer src="ui-activity.js?v=20260829-exchange-image1"></script>
+    <script defer src="ui-request.js?v=20260829-exchange-image1"></script>
+    <script defer src="ui-timetable.js?v=20260829-exchange-image1"></script>
+    <script defer src="ui-approval.js?v=20260829-exchange-image1"></script>
   <!-- ui-admin：僅管理員／後台操作時 ensureUiAdmin -->
-  <script defer src="app-shell-utils.js?v=20260828-combined-return2"></script>
-  <script defer src="app.js?v=20260828-combined-return2"></script>
+    <script defer src="app-shell-utils.js?v=20260829-exchange-image1"></script>
+        <script defer src="app.js?v=20260829-exchange-image1"></script>
   <script>
     (function () {
       function loadScript(src) {
@@ -3998,47 +4010,47 @@
       var _uiAdminP = null;
       window.ensureDomainBilling = function () {
         if (window.DomainBilling) return Promise.resolve();
-          if (!_billingP) _billingP = loadScript('domain-billing.js?v=20260828-combined-return2');
+          if (!_billingP) _billingP = loadScript('domain-billing.js?v=20260829-exchange-image1');
         return _billingP;
       };
       window.ensureExportAccounting = function () {
         if (window.ExportAccounting) return Promise.resolve();
-          if (!_accountingP) _accountingP = loadScript('export-accounting.js?v=20260828-combined-return2');
+          if (!_accountingP) _accountingP = loadScript('export-accounting.js?v=20260829-exchange-image1');
         return _accountingP;
       };
       /** 活動互代／額度／空堂任務邏輯（首屏不載） */
       window.ensureDomainActivityCover = function () {
         if (window.DomainActivityCover) return Promise.resolve();
-          if (!_domainActivityP) _domainActivityP = loadScript('domain-activity-cover.js?v=20260828-combined-return2');
+          if (!_domainActivityP) _domainActivityP = loadScript('domain-activity-cover.js?v=20260829-exchange-image1');
         return _domainActivityP;
       };
       /** 後台匯入／教師／課表編輯（教師首屏不載） */
       window.ensureUiAdmin = function () {
         if (window.UiAdmin) return Promise.resolve();
-          if (!_uiAdminP) _uiAdminP = loadScript('ui-admin.js?v=20260828-combined-return2');
+          if (!_uiAdminP) _uiAdminP = loadScript('ui-admin.js?v=20260829-exchange-image1');
         return _uiAdminP;
       };
       window.ensurePrintHelper = function () {
         if (typeof window.generateFormHtml === 'function') return Promise.resolve();
-          if (!_printP) _printP = loadScript('print-helper.js?v=20260828-combined-return2');
+            if (!_printP) _printP = loadScript('print-helper.js?v=20260829-exchange-image1');
         return _printP;
       };
       window.ensureExportSchoolTimetable = function () {
         if (window.ExportSchoolTimetable) return Promise.resolve();
-          if (!_exportP) _exportP = loadScript('export-school-timetable.js?v=20260828-combined-return2');
+          if (!_exportP) _exportP = loadScript('export-school-timetable.js?v=20260829-exchange-image1');
         return _exportP;
       };
       var _activityCoverP = null;
       window.ensureExportActivityCover = function () {
         if (window.ExportActivityCover) return Promise.resolve();
-          if (!_activityCoverP) _activityCoverP = loadScript('export-activity-cover.js?v=20260828-combined-return2');
+          if (!_activityCoverP) _activityCoverP = loadScript('export-activity-cover.js?v=20260829-exchange-image1');
         return _activityCoverP;
       };
       var _invigP = null;
       var _excelJsP = null;
       window.ensureExportInvigilation = function () {
         if (window.ExportInvigilation) return Promise.resolve();
-          if (!_invigP) _invigP = loadScript('export-invigilation.js?v=20260828-combined-return2');
+          if (!_invigP) _invigP = loadScript('export-invigilation.js?v=20260829-exchange-image1');
         return _invigP;
       };
       window.ensureExcelJS = function () {

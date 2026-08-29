@@ -822,12 +822,13 @@ createApp({
           const leaveSubj = emptyAssign
             ? (req.subject || '')
             : ((leaveCell && leaveCell.subject) || req.subject || '');
-          pushSub({
-            id: req.id,
-            date: req.requestDate,
-            period: req.requestPeriod,
-            originalTeacherName: req.requesterName,
-            actualTeacherName: req.actualTeacherName || req.targetTeacherName || '',
+           pushSub({
+             id: req.id,
+             date: req.requestDate,
+             period: req.requestPeriod,
+             serial: req.serial || req['單號'] || '',
+             originalTeacherName: req.requesterName,
+             actualTeacherName: req.actualTeacherName || req.targetTeacherName || '',
             className: leaveCls,
             subject: leaveSubj,
             requestId: req.id,
@@ -869,7 +870,7 @@ createApp({
           const targetEff = resolveAt(
             req.targetTeacherEmail, req.targetDate, req.targetPeriod, dayNum
           );
-          // 調課只交換日期／節次；每位教師仍帶著自己的原課程移動。
+          // 調課只交換授課教師；課程留在各自原來的日期／節次位置。
           // 僅「代課義務」再調課：優先使用有效的義務班科。
           const leaveSubDuty = !!(leaveEff && leaveEff.fromSub && (
             leaveEff.dutyType === 'substitution' || leaveEff.dutyType === '代課'
@@ -896,15 +897,16 @@ createApp({
               || ownSubject(req.targetTeacherEmail, req.targetDate, req.targetPeriod, dayNum)
               || '');
 
-          // _1：目標日由申請人上自己的原課，對調線連到原異動日。
-          pushSub({
-            id: req.id + '_1',
-             date: req.targetDate,
-             period: req.targetPeriod,
-             originalTeacherName: req.targetTeacherName,
-             actualTeacherName: req.requesterName,
-            className: leaveCls,
-            subject: leaveSubj,
+          // _1：目標日保留受邀人的原課程，由申請人授課。
+           pushSub({
+             id: req.id + '_1',
+              date: req.targetDate,
+              period: req.targetPeriod,
+              serial: req.serial || req['單號'] || '',
+              originalTeacherName: req.targetTeacherName,
+              actualTeacherName: req.requesterName,
+            className: targetCls,
+            subject: targetSubj,
             requestId: req.id,
             type: 'exchange',
             printed: req.printed,
@@ -915,15 +917,16 @@ createApp({
             note: req.note
           });
 
-          // _2：原異動日由受邀人上自己的原課。
-          pushSub({
-            id: req.id + '_2',
-             date: req.requestDate,
-             period: req.requestPeriod,
-             originalTeacherName: req.requesterName,
-             actualTeacherName: req.targetTeacherName,
-            className: targetCls,
-            subject: targetSubj,
+          // _2：原異動日保留申請人的原課程，由受邀人授課。
+           pushSub({
+             id: req.id + '_2',
+              date: req.requestDate,
+              period: req.requestPeriod,
+              serial: req.serial || req['單號'] || '',
+              originalTeacherName: req.requesterName,
+              actualTeacherName: req.targetTeacherName,
+            className: leaveCls,
+            subject: leaveSubj,
             requestId: req.id,
             type: 'exchange',
             printed: req.printed,
@@ -1793,9 +1796,11 @@ createApp({
             { endpoint: 'B', date: row.dateB, day: row.dayB, period: row.periodB, sourceDate: row.dateA, sourceDay: row.dayA, sourcePeriod: row.periodA }
           ].forEach(endpoint => {
             schedules.forEach((schedule, index) => {
-              if (parseInt(schedule.dayOfWeek, 10) !== parseInt(endpoint.sourceDay, 10)
-                  || parseInt(schedule.period, 10) !== parseInt(endpoint.sourcePeriod, 10)) return;
-              const attr = String(schedule.attr || '').trim();
+               if (parseInt(schedule.dayOfWeek, 10) !== parseInt(endpoint.sourceDay, 10)
+                   || parseInt(schedule.period, 10) !== parseInt(endpoint.sourcePeriod, 10)) return;
+               if (window.DomainSchedule && window.DomainSchedule.isActiveOnDate
+                   && !window.DomainSchedule.isActiveOnDate(schedule, endpoint.date)) return;
+               const attr = String(schedule.attr || '').trim();
               if (typeof isSingleWeekFn === 'function') {
                 if (attr === '單週' && !isSingleWeekFn(endpoint.date)) return;
                 if (attr === '雙週' && isSingleWeekFn(endpoint.date)) return;
@@ -1858,7 +1863,7 @@ createApp({
         const line = isEx
           ? `${datePart}第${r.period}節 改上 ${subject}（${toName}）`
           : isCombined
-            ? `${datePart}第${r.period}節 ${subject} 合班回原班，由${toName}代課`
+             ? `${datePart}第${r.period}節 ${subject} 併班上課，由${toName}代課`
           : isMutual
             ? `${datePart}第${r.period}節 ${subject} 由${toName}互代`
             : `${datePart}第${r.period}節 ${subject} 由${toName}代課`;
@@ -1867,7 +1872,7 @@ createApp({
           date: r.date,
           period: r.period,
           dayText: dayPart,
-          type: isEx ? '調課' : (isCombined ? '合班回原班' : (isMutual ? '互代' : '代課')),
+           type: isEx ? '調課' : (isCombined ? '併班上課' : (isMutual ? '互代' : '代課')),
           line,
           inWeek: weekSet.has(r.date)
         });
@@ -2049,7 +2054,7 @@ createApp({
             titleTag = '代課';
             actionLine = `本節請代課。\n請假教師：${req.requesterName || ''}。`;
           } else {
-            titleTag = '合班回原班';
+             titleTag = '併班上課';
             actionLine = `請假：${req.requesterName || ''}　代課：${req.targetTeacherName || ''}`;
           }
        } else if (isExchange) {
@@ -2124,7 +2129,7 @@ createApp({
        let details = `${actionLine}\n\n請假教師：${req.requesterName || ''}\n代課／對調教師：${req.targetTeacherName || ''}\n假別事由：${req.reason || '請假'}\n單號：${req.serial || ''}`;
        details += `\n節次：${periodText}`;
         if (isCombinedReturnRequest(req)) {
-          details += `\n流程：合班回原班（請假教師由其他併班任課教師代課）`;
+           details += `\n流程：併班上課（請假教師由其他併班任課教師代課）`;
         }
        if (isExchange) {
          details += `\n對調：${req.requestDate || ''}${formatPeriodText(req.requestPeriod)} ⇄ ${req.targetDate || ''}${formatPeriodText(req.targetPeriod)}`;
@@ -2291,29 +2296,29 @@ createApp({
             reqPeriod = subRecord.period;
              reqPeriodDay = subRecord.dayOfWeek;
              requesterEmail = subRecord.originalTeacherEmail;
-             requestClass = peer.className;
-             reqSubject = peer.subject;
+              requestClass = subRecord.className;
+              reqSubject = subRecord.subject;
 
             tgtDate = peer.date;
              tgtPeriod = peer.period;
              tgtDayOfWeek = peer.dayOfWeek;
              targetTeacherEmail = peer.originalTeacherEmail;
-             targetClass = subRecord.className;
-             tgtSubject = subRecord.subject;
+              targetClass = peer.className;
+              tgtSubject = peer.subject;
            } else {
             reqDate = peer.date;
             reqPeriod = peer.period;
              reqPeriodDay = peer.dayOfWeek;
              requesterEmail = peer.originalTeacherEmail;
-             requestClass = subRecord.className;
-             reqSubject = subRecord.subject;
+              requestClass = peer.className;
+              reqSubject = peer.subject;
 
             tgtDate = subRecord.date;
              tgtPeriod = subRecord.period;
              tgtDayOfWeek = subRecord.dayOfWeek;
              targetTeacherEmail = subRecord.originalTeacherEmail;
-             targetClass = peer.className;
-             tgtSubject = peer.subject;
+              targetClass = subRecord.className;
+              tgtSubject = subRecord.subject;
           }
         }
       }
@@ -2362,7 +2367,8 @@ createApp({
       selectedRecordIds.value = targetIds;
       try {
         const targetRecords = (substitutionRecords.value || []).filter(record => targetIds.includes(record.id));
-        await openPrintPreview(formType, { records: targetRecords, returnTo: 'detail' });
+        const returnTo = showDetailModal.value ? 'detail' : '';
+        await openPrintPreview(formType, { records: targetRecords, returnTo });
       } finally {
         selectedRecordIds.value = prevSelected;
       }
@@ -3277,8 +3283,10 @@ createApp({
         const sourceDay = parseInt(s.dayOfWeek, 10);
         const sourcePeriod = parseInt(s.period, 10);
         for (let actualDay = 1; actualDay <= 5; actualDay++) {
-          const dateStr = weekDates[actualDay - 1];
-          if (!dateStr) continue;
+            const dateStr = weekDates[actualDay - 1];
+            if (!dateStr) continue;
+            if (window.DomainSchedule && window.DomainSchedule.isActiveOnDate
+                && !window.DomainSchedule.isActiveOnDate(s, dateStr)) continue;
           for (let pi = 0; pi < periods.length; pi++) {
             const actualPeriod = periods[pi];
             const resolved = window.DomainSchoolSwap
@@ -4191,10 +4199,13 @@ createApp({
       if (!activeCell.value.classData) return [];
       const myClassName = activeCell.value.classData.className;
       const myTeacherEmail = activeCell.value.teacherEmail;
-      
+      const requestDate = String(inputRequestDate.value || '').trim();
+
       const emailsInSameClass = new Set(
         allSchedules.value
-          .filter(s => s.className === myClassName && s.teacherEmail !== myTeacherEmail)
+          .filter(s => s.className === myClassName && s.teacherEmail !== myTeacherEmail
+            && (!requestDate || !window.DomainSchedule || !window.DomainSchedule.isActiveOnDate
+              || window.DomainSchedule.isActiveOnDate(s, requestDate)))
           .map(s => s.teacherEmail)
       );
       return teachersList.value.filter(t => emailsInSameClass.has(t.email));
@@ -4317,7 +4328,7 @@ createApp({
 
         if (rec.type === 'exchange' || rec.type === '對調') {
           const peers = peerByRequestId[rec.requestId] || [];
-            // leaveEdge：原異動日（受邀人自己的課）；targetEdge：目標日（申請人自己的課）
+            // leaveEdge：原異動日（申請人原位置的課）；targetEdge：目標日（受邀人原位置的課）
           let leaveEdge = peers.find(x => String(x.id || '').endsWith('_2')) || null;
           let targetEdge = peers.find(x => String(x.id || '').endsWith('_1')) || null;
           if (!leaveEdge || !targetEdge) {
@@ -4335,18 +4346,18 @@ createApp({
             subTeacher = matchedReq.targetTeacherEmail || subTeacher;
             targetDate = matchedReq.targetDate || targetDate;
             targetPeriod = matchedReq.targetPeriod != null ? matchedReq.targetPeriod : targetPeriod;
-              // 請假班科：申請單欄＝申請人自己的課；edge _1 可作備援
+              // 請假班科：申請單欄＝申請人原位置的課；edge _2 可作備援
               leaveClassName = matchedReq.className
-                || (targetEdge && targetEdge.className)
+                || (leaveEdge && leaveEdge.className)
                 || leaveClassName;
               leaveSubject = matchedReq.subject
-                || (targetEdge && targetEdge.subject)
+                || (leaveEdge && leaveEdge.subject)
                 || leaveSubject;
-              // 對調班科：受邀人自己的課＝原異動日 edge _2；勿用申請人課程覆蓋
-              targetClassName = (leaveEdge && leaveEdge.className)
+              // 對調班科：受邀人原位置的課＝目標日 edge _1
+              targetClassName = (targetEdge && targetEdge.className)
                 || matchedReq.targetClassName
                 || '';
-              targetSubject = (leaveEdge && leaveEdge.subject)
+              targetSubject = (targetEdge && targetEdge.subject)
                 || matchedReq.targetSubject
                 || '';
           } else {
@@ -4360,12 +4371,12 @@ createApp({
             if (targetEdge) {
               targetDate = targetEdge.date;
               targetPeriod = targetEdge.period;
-                leaveClassName = targetEdge.className || leaveClassName;
-                leaveSubject = targetEdge.subject || leaveSubject;
+                leaveClassName = leaveEdge.className || leaveClassName;
+                leaveSubject = leaveEdge.subject || leaveSubject;
               }
-              if (leaveEdge) {
-                targetClassName = leaveEdge.className || '';
-                targetSubject = leaveEdge.subject || '';
+              if (targetEdge) {
+                targetClassName = targetEdge.className || '';
+                targetSubject = targetEdge.subject || '';
               }
           }
         }
@@ -4746,6 +4757,7 @@ createApp({
         const s = String(reason || '').trim();
         if (!s) return true; // 舊資料缺事由，保守當請假
         if (s === '空堂排班') return false;
+        if (s === '合班回原班' || s === '併班上課') return true;
         if (/公假|事假|病假|婚假|喪假|產假|娩假|生理假|家庭照顧|防疫|特休|休假|公差|公出|外出|研習|進修/.test(s)) return true;
         if (/請假/.test(s)) return true;
         return false;
@@ -4840,15 +4852,19 @@ createApp({
           ];
           // 只要任一端是巡堂，這位教師整筆對調不套用。
           if (endpoints.some(endpoint => ownSchedules.some(s =>
-            parseInt(s.dayOfWeek, 10) === parseInt(endpoint.sourceDay, 10)
-              && parseInt(s.period, 10) === parseInt(endpoint.sourcePeriod, 10)
-              && isPatrolSchedule(s)
+             parseInt(s.dayOfWeek, 10) === parseInt(endpoint.sourceDay, 10)
+               && parseInt(s.period, 10) === parseInt(endpoint.sourcePeriod, 10)
+               && (!window.DomainSchedule || !window.DomainSchedule.isActiveOnDate
+                 || window.DomainSchedule.isActiveOnDate(s, endpoint.date))
+               && isPatrolSchedule(s)
           ))) return;
           endpoints.forEach(endpoint => {
             ownSchedules
               .filter(s => {
-                if (parseInt(s.dayOfWeek, 10) !== parseInt(endpoint.sourceDay, 10)
-                    || parseInt(s.period, 10) !== parseInt(endpoint.sourcePeriod, 10)) return false;
+                 if (parseInt(s.dayOfWeek, 10) !== parseInt(endpoint.sourceDay, 10)
+                     || parseInt(s.period, 10) !== parseInt(endpoint.sourcePeriod, 10)) return false;
+                 if (window.DomainSchedule && window.DomainSchedule.isActiveOnDate
+                     && !window.DomainSchedule.isActiveOnDate(s, endpoint.date)) return false;
                 const attr = String(s.attr || '').trim();
                 if (attr === '單週' && !isSingleWeek(endpoint.date)) return false;
                 if (attr === '雙週' && isSingleWeek(endpoint.date)) return false;
@@ -4971,7 +4987,7 @@ createApp({
       const hasCombinedTag = typeof hasScheduleSpecialTag === 'function'
         && hasScheduleSpecialTag(classData, '併班');
       if (!isAdmin.value) {
-        showToast('合班回原班僅限教學組建立', 'warning');
+        showToast('併班上課僅限教學組建立', 'warning');
         return false;
       }
       if (!cell.teacherEmail || !cell.dayOfWeek || cell.period == null || !className) {
@@ -4979,7 +4995,7 @@ createApp({
         return false;
       }
       if (classData.isPatrol || classData.attr === '巡堂') {
-        showToast('巡堂節不適用合班回原班', 'warning');
+        showToast('巡堂節不適用併班上課', 'warning');
         return false;
       }
       if (!isCombinedClass(className) && !hasCombinedTag) {
@@ -5702,10 +5718,13 @@ createApp({
         exchangeTeacherClasses.value = [];
         return;
       }
-      exchangeTeacherClasses.value = allSchedules.value.filter(s => 
-        s.teacherEmail === exchangeTeacherEmail.value &&
-        s.className === activeCell.value.classData.className
-      );
+       const exchangeDate = String(inputRequestDate.value || '').trim();
+       exchangeTeacherClasses.value = allSchedules.value.filter(s =>
+         s.teacherEmail === exchangeTeacherEmail.value &&
+         s.className === activeCell.value.classData.className &&
+         (!exchangeDate || !window.DomainSchedule || !window.DomainSchedule.isActiveOnDate
+           || window.DomainSchedule.isActiveOnDate(s, exchangeDate))
+       );
     };
 
 
@@ -5727,6 +5746,7 @@ createApp({
       monthlyReportData.value = window.DomainBilling.buildMonthlyReportRows({
         teachers: teachersList.value,
         allSchedules: allSchedules.value,
+        schoolSwaps: schoolSwaps.value,
         substitutionRecords: substitutionRecords.value,
         reportMonth: reportMonth.value,
         reportWeeksCount: reportWeeksCount.value,
@@ -5817,6 +5837,7 @@ createApp({
             rows = window.DomainBilling.buildMonthlyReportRows({
               teachers: teachersList.value,
               allSchedules: allSchedules.value,
+              schoolSwaps: schoolSwaps.value,
               substitutionRecords: substitutionRecords.value,
               reportMonth: reportMonth.value,
               reportWeeksCount: weeks,
@@ -5836,6 +5857,7 @@ createApp({
           periods: initialPeriod,
           teachers: teachersList.value,
           allSchedules: allSchedules.value,
+          schoolSwaps: schoolSwaps.value,
           substitutionRecords: substitutionRecords.value,
           homeroomRecords: homeroomRecords.value,
           monthlyReportRows: buildMonthlyRowsForExport(initialWeeks),
@@ -6302,9 +6324,11 @@ createApp({
             const dow = parseInt(dayOfWeek, 10);
             const hit = allSchedules.value.find((s) => {
               if (!s || String(s.teacherEmail || '').toLowerCase() !== em) return false;
-              if (parseInt(s.period, 10) !== p) return false;
-              if (parseInt(s.dayOfWeek, 10) !== dow) return false;
-              const a = String(s.attr || '').trim();
+               if (parseInt(s.period, 10) !== p) return false;
+               if (parseInt(s.dayOfWeek, 10) !== dow) return false;
+               if (window.DomainSchedule && window.DomainSchedule.isActiveOnDate
+                   && !window.DomainSchedule.isActiveOnDate(s, dateStr)) return false;
+               const a = String(s.attr || '').trim();
               const cn = String(s.className || '').trim();
               const sub = String(s.subject || '').trim();
               return a === '巡堂' || a.indexOf('巡堂') >= 0 || cn === '巡堂' || sub === '巡堂';
@@ -6631,40 +6655,36 @@ createApp({
       }
       const svg = window.buildPrintPreviewImageSvg(printPreview.value);
       if (!svg) throw new Error('沒有可轉出的預覽內容');
-      const svgBlob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
-      const url = URL.createObjectURL(svgBlob);
-      try {
-        const image = new Image();
-        image.decoding = 'async';
-        await new Promise((resolve, reject) => {
-          image.onload = resolve;
-          image.onerror = () => reject(new Error('瀏覽器無法轉換預覽圖片'));
-          image.src = url;
-        });
-        if (!image.naturalWidth || !image.naturalHeight) {
-          throw new Error('預覽圖片尺寸無效');
-        }
-
-        let scale = 2;
-        const maxDimension = 12000;
-        const maxArea = 60000000;
-        scale = Math.min(scale, maxDimension / image.naturalWidth, maxDimension / image.naturalHeight);
-        scale = Math.min(scale, Math.sqrt(maxArea / (image.naturalWidth * image.naturalHeight)));
-        scale = Math.max(1, scale);
-        const canvas = document.createElement('canvas');
-        canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
-        canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
-        const canvasContext = canvas.getContext('2d');
-        if (!canvasContext) throw new Error('瀏覽器不支援圖片畫布');
-        canvasContext.fillStyle = '#ffffff';
-        canvasContext.fillRect(0, 0, canvas.width, canvas.height);
-        canvasContext.drawImage(image, 0, 0, canvas.width, canvas.height);
-        return await new Promise((resolve, reject) => {
-          canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('圖片輸出失敗')), 'image/png');
-        });
-      } finally {
-        URL.revokeObjectURL(url);
+      // Blob URL 內含 foreignObject 時，Chrome 會把 canvas 標成 tainted；data URL 可保留同源圖片輸出能力。
+      const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+      const image = new Image();
+      image.decoding = 'async';
+      await new Promise((resolve, reject) => {
+        image.onload = resolve;
+        image.onerror = () => reject(new Error('瀏覽器無法轉換預覽圖片'));
+        image.src = url;
+      });
+      if (!image.naturalWidth || !image.naturalHeight) {
+        throw new Error('預覽圖片尺寸無效');
       }
+
+      let scale = 2;
+      const maxDimension = 12000;
+      const maxArea = 60000000;
+      scale = Math.min(scale, maxDimension / image.naturalWidth, maxDimension / image.naturalHeight);
+      scale = Math.min(scale, Math.sqrt(maxArea / (image.naturalWidth * image.naturalHeight)));
+      scale = Math.max(1, scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+      const canvasContext = canvas.getContext('2d');
+      if (!canvasContext) throw new Error('瀏覽器不支援圖片畫布');
+      canvasContext.fillStyle = '#ffffff';
+      canvasContext.fillRect(0, 0, canvas.width, canvas.height);
+      canvasContext.drawImage(image, 0, 0, canvas.width, canvas.height);
+      return await new Promise((resolve, reject) => {
+        canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('圖片輸出失敗')), 'image/png');
+      });
     };
 
     const getPrintPreviewFileName = () => {
@@ -6770,8 +6790,8 @@ createApp({
              actualTeacherName: getTeacherNameByEmail(p.leaveTeacher),
              date: p.dateB,
              period: timeB.period,
-             className: p.cls || p.subBClass,
-             subject: p.subject || p.subB
+              className: p.subBClass || p.cls,
+              subject: p.subB || p.subject
           }),
           Object.assign({}, common, {
              id: root + '_2',
@@ -6782,8 +6802,8 @@ createApp({
              actualTeacherName: getTeacherNameByEmail(p.subTeacher),
              date: p.date,
              period: timeA.period,
-             className: p.subBClass || p.cls,
-             subject: p.subB || p.subject
+              className: p.cls || p.subBClass,
+              subject: p.subject || p.subB
           })
         ].filter(r => r.originalTeacherEmail && r.actualTeacherEmail && r.date && r.period != null);
       }
@@ -6881,8 +6901,8 @@ createApp({
              actualTeacherName: getTeacherNameByEmail(original),
              date: targetDate,
             period: targetPeriod,
-             className: getValue(source, ['班級', 'className']),
-             subject: getValue(source, ['科目', 'subject'])
+             className: targetClass,
+             subject: targetSubject
           }));
           records.push(Object.assign({}, base, {
             id: requestId + '_2',
@@ -6893,8 +6913,8 @@ createApp({
              actualTeacherName: getTeacherNameByEmail(actual),
              date: date,
             period: period,
-             className: targetClass,
-             subject: targetSubject
+             className: getValue(source, ['班級', 'className']),
+             subject: getValue(source, ['科目', 'subject'])
           }));
         } else {
           records.push(Object.assign({}, base, {
@@ -7729,9 +7749,10 @@ createApp({
       const out = [];
       (rows || []).forEach((req) => {
         if (!req || String(req.status || req['狀態'] || '').toLowerCase() !== 'approved') return;
-        const base = {
-          requestId: req.id || req['申請單ID'] || '',
-          reason: req.reason || req['請假事由'] || '',
+           const base = {
+             requestId: req.id || req['申請單ID'] || '',
+             serial: req.serial || req['單號'] || '',
+             reason: req.reason || req['請假事由'] || '',
           subFee: req.subFee || req['經費來源'] || '',
           note: req.note || req['備註'] || '',
           printed: req.printed === true || req.printed === 'TRUE'
@@ -7749,6 +7770,8 @@ createApp({
           String(schedule.teacherEmail || schedule.teacherName || '').trim().toLowerCase() === targetEmailValue
           && parseInt(schedule.dayOfWeek, 10) === parseInt(targetDayValue, 10)
           && parseInt(schedule.period, 10) === parseInt(targetPeriodValue, 10)
+          && (typeof window === 'undefined' || !window.DomainSchedule || !window.DomainSchedule.isActiveOnDate
+            || window.DomainSchedule.isActiveOnDate(schedule, targetDateValue))
         );
         const targetClassValue = String(req.targetClassName || req['對調目標班級'] || (targetSchedule && targetSchedule.className) || classValue).trim();
         const targetSubjectValue = req.targetSubject || req['對調目標科目'] || (targetSchedule && targetSchedule.subject) || (targetClassValue === classValue ? subjectValue : '');
@@ -7765,8 +7788,8 @@ createApp({
             period: targetPeriodValue,
             originalTeacherName: targetName,
             actualTeacherName: requesterName,
-             className: classValue,
-             subject: subjectValue,
+             className: targetClassValue,
+             subject: targetSubjectValue || subjectValue,
             type: 'exchange'
           }));
           out.push(Object.assign({}, base, {
@@ -7776,8 +7799,8 @@ createApp({
             period: requestPeriod,
             originalTeacherName: requesterName,
             actualTeacherName: targetName,
-             className: targetClassValue,
-             subject: targetSubjectValue || subjectValue,
+             className: classValue,
+             subject: subjectValue,
             type: 'exchange'
           }));
           return;
@@ -8128,7 +8151,7 @@ createApp({
       if (!req) return [];
       const tags = [];
       if (isCombinedReturnRequest(req)) {
-        tags.push({ key: 'combined-return', label: '合班回原班' });
+         tags.push({ key: 'combined-return', label: '併班上課' });
       }
       const period = parseInt(req.requestPeriod != null ? req.requestPeriod : req.period, 10);
       // 代申請已在申請人欄下方標示，不再加 Tag
@@ -8168,6 +8191,27 @@ createApp({
         }
       }
       return null;
+    };
+
+    /** 再異動判斷用：同一申請的 _1／_2 邊不可算成自己的前一筆。 */
+    const normalizeRechangeRequestId = (value) => String(value || '').trim().replace(/_(?:class_)?[12]$/, '');
+    const hasOtherChangedDutyAtSlot = (email, dateStr, period, excludeRequestId) => {
+      const em = String(email || '').trim().toLowerCase();
+      const dk = String(dateStr || '').trim();
+      const p = parseInt(period, 10);
+      const excluded = normalizeRechangeRequestId(excludeRequestId);
+      if (!em || !dk || Number.isNaN(p)) return false;
+      return (substitutionRecords.value || []).some(s => {
+        if (!s) return false;
+        const rowRequestId = normalizeRechangeRequestId(s.requestId || s.id);
+        if (excluded && rowRequestId === excluded) return false;
+        if (String(s.date || s.requestDate || '').trim() !== dk) return false;
+        if (parseInt(s.period != null ? s.period : s.requestPeriod, 10) !== p) return false;
+        if (!(s.className || s.subject)) return false;
+        const original = String(s.originalTeacherEmail || '').trim().toLowerCase();
+        const actual = String(s.actualTeacherEmail || '').trim().toLowerCase();
+        return original === em || actual === em;
+      });
     };
 
     /**
@@ -8269,66 +8313,46 @@ createApp({
       return cellIsRestricted(findBaseScheduleSlot(email, dayNum, period, dateStr));
     };
 
-    /** 請假節是否為「再異動」（原師同節有先前義務） */
+    /** 原始位置是否為「再異動」；請假與調課都套用同一規則。 */
     const isHistoryLeaveRechanged = (rec) => {
       if (!rec) return false;
       const dateStr = String(rec.date || rec.requestDate || '');
       const period = rec.period != null ? rec.period : rec.requestPeriod;
       const em = rec.originalTeacherEmail || rec.requesterEmail;
-      return !!findPriorDutyAtSlot(em, dateStr, period, rec.id, rec.requestId);
+      return hasOtherChangedDutyAtSlot(em, dateStr, period, rec.requestId || rec.id);
     };
 
-    /** 對調節是否為「再異動」（對方該節已是義務／異動格） */
+    /** 對調目標位置是否為「再異動」；只看目標端，不把標籤放到原始端。 */
     const isHistoryExchangeRechanged = (rec) => {
       if (!rec || (rec.type !== 'exchange' && rec.type !== '對調')) return false;
-      let peerDate = rec.targetDate;
-      let peerPeriod = rec.targetPeriod;
-      let peerOrig = rec.actualTeacherEmail || rec.targetTeacherEmail;
-      let peerExclude = null;
-      if (rec.requestId) {
-        const peer = (substitutionRecords.value || []).find(x =>
-          x && x.requestId === rec.requestId && x.id !== rec.id
-        );
-        if (peer) {
-          peerDate = peer.date || peerDate;
-          peerPeriod = peer.period != null ? peer.period : peerPeriod;
-          peerOrig = peer.originalTeacherEmail || peerOrig;
-          peerExclude = peer.id;
-        }
-      }
-      if (findPriorDutyAtSlot(peerOrig, peerDate, peerPeriod, peerExclude, rec.requestId)) return true;
-      if (!peerDate || peerPeriod == null) return false;
+      const requestId = rec.requestId || rec.id;
       const all = substitutionRecords.value || [];
-      const p = parseInt(peerPeriod, 10);
-      const dk = String(peerDate);
-      const be = String(peerOrig || '').toLowerCase();
-      return all.some(s => {
-        if (!s || (peerExclude && s.id === peerExclude)) return false;
-        if (rec.requestId && String(s.requestId || '') === String(rec.requestId)) return false;
-        if (String(s.date) !== dk || parseInt(s.period, 10) !== p) return false;
-        const o = String(s.originalTeacherEmail || '').toLowerCase();
-        const a = String(s.actualTeacherEmail || '').toLowerCase();
-        return be && (o === be || a === be);
-      });
+      const targetEdge = requestId
+        ? all.find(x => x && x.requestId === requestId && String(x.id || '').endsWith('_1'))
+          || all.find(x => x && x.requestId === requestId && x.id !== rec.id)
+        : null;
+      const targetDate = (targetEdge && targetEdge.date) || rec.targetDate;
+      const targetPeriod = targetEdge && targetEdge.period != null ? targetEdge.period : rec.targetPeriod;
+      const targetTeacher = (targetEdge && targetEdge.originalTeacherEmail)
+        || rec.targetTeacherEmail
+        || rec.actualTeacherEmail;
+      return hasOtherChangedDutyAtSlot(targetTeacher, targetDate, targetPeriod, requestId);
     };
 
-    /** 申請單：對調目標節是否再異動（進行中列表用） */
+    /** 申請單：原始位置是否再異動（進行中列表用）。 */
+    const isRequestLeaveRechanged = (req) => {
+      if (!req) return false;
+      const sourceDate = req.requestDate || req.date;
+      const sourcePeriod = req.requestPeriod != null ? req.requestPeriod : req.period;
+      const sourceTeacher = req.requesterEmail || req.originalTeacherEmail;
+      return hasOtherChangedDutyAtSlot(sourceTeacher, sourceDate, sourcePeriod, req.id);
+    };
+
+    /** 申請單：對調目標節是否再異動（進行中列表用）。 */
     const isRequestExchangeRechanged = (req) => {
       if (!req || (req.type !== 'exchange' && req.type !== '對調')) return false;
       if (!req.targetTeacherEmail || !req.targetDate) return false;
-      if (findPriorDutyAtSlot(req.targetTeacherEmail, req.targetDate, req.targetPeriod, null, req.id)) return true;
-      const all = substitutionRecords.value || [];
-      const p = parseInt(req.targetPeriod, 10);
-      const dk = String(req.targetDate);
-      const be = String(req.targetTeacherEmail).toLowerCase();
-      return all.some(s => {
-        if (!s) return false;
-        if (req.id && String(s.requestId || '') === String(req.id)) return false;
-        if (String(s.date) !== dk || parseInt(s.period, 10) !== p) return false;
-        const o = String(s.originalTeacherEmail || '').toLowerCase();
-        const a = String(s.actualTeacherEmail || '').toLowerCase();
-        return o === be || a === be;
-      });
+      return hasOtherChangedDutyAtSlot(req.targetTeacherEmail, req.targetDate, req.targetPeriod, req.id);
     };
 
     const formatHistoryLeaveSlot = (rec) => {
@@ -8391,27 +8415,22 @@ createApp({
         const cls = `${clsName} ${subj}`.trim();
         return _fmtSlot(targetDate, day, targetPeriod, cls || '');
       }
-      // 備援：原異動日 edge _2 的班科就是受邀人的原課堂。
-      let peerLeaveEdge = null;
+      // 備援：目標日 edge _1 的班科就是目標位置原本的課堂。
+      let peerTargetEdge = null;
       if (rec.requestId) {
         const peers = (substitutionRecords.value || []).filter(x =>
           x && x.requestId === rec.requestId
         );
-        peerLeaveEdge = peers.find(x => String(x.id || '').endsWith('_2'))
+        peerTargetEdge = peers.find(x => String(x.id || '').endsWith('_1'))
           || peers.find(x => x.id !== rec.id)
           || null;
-        if (peerLeaveEdge) {
+        if (peerTargetEdge) {
           if (!targetDate || targetDate === '---' || targetDate === '—') {
-            const targetEdge = peers.find(x => String(x.id || '').endsWith('_1'))
-              || peers.find(x => x.id !== peerLeaveEdge.id)
-              || null;
-            if (targetEdge) {
-              targetDate = targetEdge.date;
-              targetPeriod = targetEdge.period;
-            }
+            targetDate = peerTargetEdge.date;
+            targetPeriod = peerTargetEdge.period;
           }
-          if (!clsName) clsName = String(peerLeaveEdge.className || '').trim();
-          if (!subj) subj = String(peerLeaveEdge.subject || '').trim();
+          if (!clsName) clsName = String(peerTargetEdge.className || '').trim();
+          if (!subj) subj = String(peerTargetEdge.subject || '').trim();
         }
       }
       // 再備援：受邀人目標節基礎課
@@ -8450,12 +8469,14 @@ createApp({
       let cands = [];
       const idx = scheduleIndex.value;
       if (idx && window.DomainSchedule && window.DomainSchedule.getCandidates) {
-        cands = window.DomainSchedule.getCandidates(idx, em, dow, p, allSchedules.value) || [];
+        cands = window.DomainSchedule.getCandidates(idx, em, dow, p, allSchedules.value, dateStr) || [];
       } else {
         cands = (allSchedules.value || []).filter(s =>
           s.teacherEmail && String(s.teacherEmail).toLowerCase() === em
           && parseInt(s.dayOfWeek, 10) === dow
           && parseInt(s.period, 10) === p
+          && (!window.DomainSchedule || !window.DomainSchedule.isActiveOnDate
+            || window.DomainSchedule.isActiveOnDate(s, dateStr))
         );
       }
       if (!cands.length) return null;
@@ -8598,7 +8619,7 @@ createApp({
         req.requestDate, req.requestPeriodDay, req.requestPeriod, req.className, req.subject
       );
       if (isCombinedReturnRequest(req)) {
-        return '合班回原班 · ' + leaveSlot;
+         return '併班上課 · ' + leaveSlot;
       }
       if (isEx) {
         let dayNum = req.targetDayOfWeek;
@@ -8965,7 +8986,7 @@ createApp({
       const head = (cls || '有課') + (swapName ? `\n↔ 全校對調：${swapName}` : '');
       if (cell.isPending) {
         if (cell.pendingType === 'combined_return_out') {
-          return `${head}\n⏳ 合班回原班申請中\n${cell.pendingText || '待教學組核准'}`;
+           return `${head}\n⏳ 併班上課申請中\n${cell.pendingText || '待教學組核准'}`;
         }
         if (cell.pendingType === 'substitution_out') {
           return `${head}\n⏳ 代課申請中\n${cell.pendingText || '待對方或行政確認'}`;
@@ -8985,7 +9006,7 @@ createApp({
         return `${head}\n${cell.pendingText || '申請處理中'}`;
       }
       if (cell.isCombinedReturn) {
-        return `${head}\n↩ 合班回原班\n${cell.subText || ''}`;
+         return `${head}\n↩ 併班上課\n${cell.subText || ''}`;
       }
       if (cell.isSubstituted) {
         if (cell.subType === 'exchange') {
@@ -9095,7 +9116,8 @@ createApp({
     const showScheduleEditModal = ref(false);
     const scheduleForm = ref({
       id: null, teacherEmail: '', teacherName: '', dayOfWeek: 1, period: 1,
-       className: '', subject: '', attr: '一般', restriction: ''
+       className: '', subject: '', attr: '一般', restriction: '', activeFrom: '', activeTo: '',
+       _newVersion: false, _previousId: ''
     });
     const showTeacherModal = ref(false);
     const teacherModalMode = ref('add');
@@ -9104,7 +9126,7 @@ createApp({
     const excelHeaders = ref([]);
     const mappingFields = ref({
       teacherName: '', subject: '', dayOfWeek: '',
-      period: '', className: '', attr: '', restriction: '', specialTags: ''
+      period: '', className: '', attr: '', restriction: '', specialTags: '', activeFrom: '', activeTo: ''
     });
     const importPreview = ref(null);
 
@@ -9131,7 +9153,9 @@ createApp({
         loadWeeklyData,
          getTeacherNameByEmail,
          currentSemester,
-          teachersList,
+         semesterStartDate,
+         semesterEndDate,
+           teachersList,
         allSchedules,
         leaveReasonOptions,
         getHistoryEditDefaultSubFee: function (reason, period) {
@@ -9992,7 +10016,7 @@ createApp({
       selectedClassDate, selectedClassWeekDates, classWeekNumber, classSubstitutionMap, classChangeSummary, changeClassWeek, goToClassThisWeek,
        prepCompare, startCombinedReturn, getCompareCellText, getCompareCellClass, executeSubmitRequest, isSubmitting,
        getStatusText, changeMatchMode, respondToRequest, respondToBatch, adminApprove, adminReject, cancelRequest, deleteSubstitutionRecord, loadMoreMatches,
-       formatRequestSummary, formatLeaveClassSlot, formatExchangeClassSlot, formatQuickTodoTitle, formatHistoryLeaveSlot, formatHistoryExchangeSlot, getRequestRiskTags, getRequestTypeTags, getApproveRiskFlags, formatApproveBatchRiskSummary, isHistoryLeaveRechanged, isHistoryExchangeRechanged, isRequestExchangeRechanged, getCellPlainStatus, getRequestProgressSteps, isPaperFlowRequest, isLeaveClassRestricted, isExchangeClassRestricted, isHistoryLeaveRestricted, isHistoryExchangeRestricted,
+        formatRequestSummary, formatLeaveClassSlot, formatExchangeClassSlot, formatQuickTodoTitle, formatHistoryLeaveSlot, formatHistoryExchangeSlot, getRequestRiskTags, getRequestTypeTags, getApproveRiskFlags, formatApproveBatchRiskSummary, isHistoryLeaveRechanged, isHistoryExchangeRechanged, isRequestLeaveRechanged, isRequestExchangeRechanged, getCellPlainStatus, getRequestProgressSteps, isPaperFlowRequest, isLeaveClassRestricted, isExchangeClassRestricted, isHistoryLeaveRestricted, isHistoryExchangeRestricted,
       dashboardScope, dashboardStats,
       selectedAdminPendingIds, isAdminPendingSelected, toggleAdminPendingSelect, toggleSelectAllAdminPending, clearAdminPendingSelection,
       batchAdminApprove, batchAdminReject, lastBatchPrintIds, showBatchPrintPrompt, printLastBatchNotices, dismissBatchPrintPrompt,

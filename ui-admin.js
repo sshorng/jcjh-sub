@@ -59,7 +59,7 @@ window.UiAdmin = (function () {
     var showScheduleEditModal = useRef('showScheduleEditModal', false);
     var scheduleForm = useRef('scheduleForm', {
       id: null, teacherEmail: '', teacherName: '', dayOfWeek: 1, period: 1,
-       className: '', subject: '', attr: '一般', restriction: ''
+       className: '', subject: '', attr: '一般', restriction: '', activeFrom: '', activeTo: '', _previousId: ''
     });
 
     var showTeacherModal = useRef('showTeacherModal', false);
@@ -70,7 +70,7 @@ window.UiAdmin = (function () {
     var excelHeaders = useRef('excelHeaders', []);
     var mappingFields = useRef('mappingFields', {
       teacherName: '', subject: '', dayOfWeek: '',
-      period: '', className: '', attr: '', restriction: '', specialTags: ''
+      period: '', className: '', attr: '', restriction: '', specialTags: '', activeFrom: '', activeTo: ''
     });
     /** 乾跑預覽結果 */
     var importPreview = useRef('importPreview', null);
@@ -125,6 +125,30 @@ window.UiAdmin = (function () {
       return normalizeSpecialTagsImport(raw).split('、').map(function (value) {
         return String(value || '').trim();
       }).filter(Boolean);
+    }
+
+    function normalizeScheduleDateImport(raw) {
+      if (raw === undefined || raw === null || String(raw).trim() === '') return '';
+      if (Object.prototype.toString.call(raw) === '[object Date]' && !isNaN(raw.getTime())) {
+        return raw.getFullYear() + '-' + String(raw.getMonth() + 1).padStart(2, '0')
+          + '-' + String(raw.getDate()).padStart(2, '0');
+      }
+      if (typeof raw === 'number' && window.XLSX && window.XLSX.SSF && window.XLSX.SSF.parse_date_code) {
+        var excelDate = window.XLSX.SSF.parse_date_code(raw);
+        if (excelDate && excelDate.y && excelDate.m && excelDate.d) {
+          return String(excelDate.y) + '-' + String(excelDate.m).padStart(2, '0')
+            + '-' + String(excelDate.d).padStart(2, '0');
+        }
+      }
+      var text = String(raw).trim().split(/[T ]/)[0].replace(/\//g, '-');
+      var match = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+      if (!match) return '';
+      var date = new Date(parseInt(match[1], 10), parseInt(match[2], 10) - 1, parseInt(match[3], 10));
+      if (date.getFullYear() !== parseInt(match[1], 10)
+          || date.getMonth() !== parseInt(match[2], 10) - 1
+          || date.getDate() !== parseInt(match[3], 10)) return '';
+      return match[1] + '-' + String(parseInt(match[2], 10)).padStart(2, '0')
+        + '-' + String(parseInt(match[3], 10)).padStart(2, '0');
     }
 
     function hasSpecialTag(raw, tag) {
@@ -268,13 +292,34 @@ window.UiAdmin = (function () {
            attrRaw = String(row[mappingFields.value.attr]).trim();
          }
          var specialRaw = mappingFields.value.specialTags
-           ? String(row[mappingFields.value.specialTags] || '').trim()
+            ? String(row[mappingFields.value.specialTags] || '').trim()
+            : '';
+         var activeFromRaw = mappingFields.value.activeFrom
+           ? row[mappingFields.value.activeFrom]
            : '';
-        var isPatrol = isPatrolImportRow(subject, classNameRaw || className, attrRaw);
+         var activeToRaw = mappingFields.value.activeTo
+           ? row[mappingFields.value.activeTo]
+           : '';
+         var activeFrom = normalizeScheduleDateImport(activeFromRaw);
+         var activeTo = normalizeScheduleDateImport(activeToRaw);
+         var isPatrol = isPatrolImportRow(subject, classNameRaw || className, attrRaw);
         var snippet = formatSkipSnippet(name, emailRaw, dayRaw, periodRaw, className || classNameRaw, subject);
         var lineNo = i + 2;
 
-         if (!name && !emailRaw && !subject && !dayRaw && !periodRaw && !className && !attrRaw && !specialRaw) continue;
+          if (!name && !emailRaw && !subject && !dayRaw && !periodRaw && !className && !attrRaw && !specialRaw
+              && !String(activeFromRaw || '').trim() && !String(activeToRaw || '').trim()) continue;
+
+         if ((String(activeFromRaw || '').trim() && !activeFrom)
+             || (String(activeToRaw || '').trim() && !activeTo)) {
+           pushSkip(skippedRows, lineNo, '啟用日期格式錯誤', snippet,
+             '啟用起日／迄日需為 YYYY-MM-DD');
+           continue;
+         }
+         if (activeFrom && activeTo && activeFrom > activeTo) {
+           pushSkip(skippedRows, lineNo, '啟用日期範圍錯誤', snippet,
+             '啟用起日不可晚於啟用迄日');
+           continue;
+         }
 
        // 巡堂：姓名＋星期＋節次即可；班級／科目留白，屬性固定為「巡堂」
         if (isPatrol) {
@@ -392,18 +437,20 @@ window.UiAdmin = (function () {
          }
         var id = 'sched_' + email.split('@')[0] + '_' + dayOfWeek + '_' + period + '_' +
           (isPatrol ? 'patrol' : className) + '_' + Math.random().toString(36).substr(2, 6);
-         list.push({
-           '學期代號': currentSemester.value,
-           '課表ID': id,
-           '教師姓名': name,
-          '星期': dayOfWeek,
-          '節次': period,
-          '班級': className,
-           '科目': subject,
-           '課堂屬性': attr,
-           '調課限制': restriction,
-           '特殊標記': specialTags.join('、')
-         });
+          list.push({
+            '學期代號': currentSemester.value,
+            '課表ID': id,
+            '教師姓名': name,
+            '星期': dayOfWeek,
+            '節次': period,
+            '班級': className,
+            '科目': subject,
+            '課堂屬性': attr,
+            '調課限制': restriction,
+            '特殊標記': specialTags.join('、'),
+            '啟用起日': activeFrom,
+            '啟用迄日': activeTo
+          });
       }
       var multiSlots = 0;
       Object.keys(multiSlotKeys).forEach(function (k) {
@@ -433,10 +480,14 @@ window.UiAdmin = (function () {
         multiSlots: parsed.multiSlots,
         resolvedByName: parsed.resolvedByName || 0,
         skipList: parsed.skipped.slice(),
-         sampleRows: parsed.list.slice(0, 5).map(function (r) {
-           return r['教師姓名'] + ' 週' + r['星期'] + '第' + r['節次'] + ' ' + r['班級'] + r['科目']
-             + (r['特殊標記'] ? '「' + r['特殊標記'] + '」' : '');
-         })
+          sampleRows: parsed.list.slice(0, 5).map(function (r) {
+            var activeText = (r['啟用起日'] || r['啟用迄日'])
+              ? '（' + (r['啟用起日'] || '學期起') + '～' + (r['啟用迄日'] || '學期迄') + '）'
+              : '（整學期）';
+            return r['教師姓名'] + ' 週' + r['星期'] + '第' + r['節次'] + ' ' + r['班級'] + r['科目']
+              + activeText
+              + (r['特殊標記'] ? '「' + r['特殊標記'] + '」' : '');
+          })
       };
       if (!parsed.list.length) {
         showToast('沒有可匯入的有效列，請檢查欄位對應與資料', 'warning');
@@ -460,7 +511,9 @@ window.UiAdmin = (function () {
              '科目': '國文',
              '課堂屬性': '一般',
              '調課限制': '',
-             '特殊標記': ''
+             '特殊標記': '',
+             '啟用起日': '',
+             '啟用迄日': ''
            },
           {
             '教師姓名': '王小明',
@@ -470,7 +523,9 @@ window.UiAdmin = (function () {
              '科目': '國文',
              '課堂屬性': '一般',
              '調課限制': '',
-             '特殊標記': '併班'
+             '特殊標記': '併班',
+             '啟用起日': '',
+             '啟用迄日': ''
            },
           {
             '教師姓名': '李美華',
@@ -480,7 +535,9 @@ window.UiAdmin = (function () {
              '科目': '數學',
              '課堂屬性': '一般',
              '調課限制': '綁課',
-             '特殊標記': '併班、綁課'
+             '特殊標記': '併班、綁課',
+             '啟用起日': '',
+             '啟用迄日': ''
            },
           {
             '教師姓名': '陳志強',
@@ -490,7 +547,9 @@ window.UiAdmin = (function () {
              '科目': '課輔',
              '課堂屬性': '課輔',
              '調課限制': '',
-             '特殊標記': '預排'
+             '特殊標記': '預排',
+             '啟用起日': '',
+             '啟用迄日': ''
            },
           {
             '教師姓名': '林巡堂',
@@ -500,7 +559,9 @@ window.UiAdmin = (function () {
              '科目': '巡堂',
              '課堂屬性': '巡堂',
              '調課限制': '',
-             '特殊標記': ''
+             '特殊標記': '',
+             '啟用起日': '',
+             '啟用迄日': ''
            }
         ];
         var ws = XLSX.utils.json_to_sheet(rows);
@@ -541,8 +602,10 @@ window.UiAdmin = (function () {
              '科目': s.subject || '',
              '課堂屬性': attr,
              '調課限制': restrict,
-             '特殊標記': special
-           };
+             '特殊標記': special,
+             '啟用起日': s.activeFrom || s['啟用起日'] || s.activationStartDate || '',
+             '啟用迄日': s.activeTo || s['啟用迄日'] || s.activationEndDate || ''
+            };
         });
         if (!rows.length) {
           showToast('目前沒有課表資料可匯出', 'warning');
@@ -665,6 +728,10 @@ window.UiAdmin = (function () {
       scheduleForm.value.subject = entry ? (entry.subject || '') : '';
       scheduleForm.value.attr = entry ? normSchedAttr(entry.attr) : '一般';
       scheduleForm.value.restriction = entry ? (entry.restriction || '') : '';
+      scheduleForm.value.activeFrom = entry ? (entry.activeFrom || entry.activationStartDate || '') : '';
+      scheduleForm.value.activeTo = entry ? (entry.activeTo || entry.activationEndDate || '') : '';
+      scheduleForm.value._newVersion = false;
+      scheduleForm.value._previousId = '';
       scheduleForm.value._entries = entries || [];
     }
 
@@ -680,6 +747,10 @@ window.UiAdmin = (function () {
         subject: '',
         attr: '一般',
         restriction: '',
+        activeFrom: '',
+        activeTo: '',
+        _newVersion: false,
+        _previousId: '',
         _entries: []
       };
       var entries = allSchedules.value.filter(function (s) {
@@ -697,8 +768,17 @@ window.UiAdmin = (function () {
     function pickScheduleAttr(attr) {
       var entries = scheduleForm.value._entries || [];
       if (attr === '__new__') {
+        var previousId = scheduleForm.value.id || '';
+        var previousEntry = entries.find(function (e) { return e.id === previousId; });
         applyEntryToForm(null, entries);
-        scheduleForm.value.attr = '一般';
+        if (previousEntry) {
+          scheduleForm.value.className = previousEntry.className || '';
+          scheduleForm.value.subject = previousEntry.subject || '';
+          scheduleForm.value.attr = normSchedAttr(previousEntry.attr);
+          scheduleForm.value.restriction = previousEntry.restriction || '';
+        }
+        scheduleForm.value._newVersion = true;
+        scheduleForm.value._previousId = previousId;
         return;
       }
       var target = normSchedAttr(attr);
@@ -728,9 +808,29 @@ window.UiAdmin = (function () {
     }
 
     async function saveScheduleCell() {
+      var isNewVersion = !!scheduleForm.value._newVersion;
+      if (isNewVersion && !String(scheduleForm.value.activeFrom || '').trim()) {
+        showToast('建立新版本時，請填寫啟用起日', 'warning');
+        return;
+      }
+      if (scheduleForm.value.activeFrom && scheduleForm.value.activeTo
+          && String(scheduleForm.value.activeFrom) > String(scheduleForm.value.activeTo)) {
+        showToast('啟用起日不可晚於啟用迄日', 'warning');
+        return;
+      }
       loading.value = true;
       try {
         var currentPeriod = parseInt(scheduleForm.value.period, 10);
+        var localPreviousEnd = '';
+        if (isNewVersion && scheduleForm.value.activeFrom) {
+          var previousDate = new Date(String(scheduleForm.value.activeFrom).replace(/-/g, '/'));
+          if (!isNaN(previousDate.getTime())) {
+            previousDate.setDate(previousDate.getDate() - 1);
+            localPreviousEnd = previousDate.getFullYear() + '-'
+              + String(previousDate.getMonth() + 1).padStart(2, '0') + '-'
+              + String(previousDate.getDate()).padStart(2, '0');
+          }
+        }
         var attr = scheduleForm.value.attr || '一般';
         // 本校 1～7 節無單雙週；誤選時改回一般
         if (currentPeriod !== 8 && (attr === '單週' || attr === '雙週' || attr === '課輔')) {
@@ -738,8 +838,8 @@ window.UiAdmin = (function () {
           scheduleForm.value.attr = '一般';
           showToast('1～7 節不使用單雙週／課輔屬性，已改為一般', 'info');
         }
-        var docId = scheduleForm.value.id;
-        if (!docId) {
+         var docId = isNewVersion ? '' : scheduleForm.value.id;
+         if (!docId && !isNewVersion) {
           var dup = allSchedules.value.find(function (s) {
             return s.teacherEmail === scheduleForm.value.teacherEmail &&
               parseInt(s.dayOfWeek, 10) === parseInt(scheduleForm.value.dayOfWeek, 10) &&
@@ -757,15 +857,32 @@ window.UiAdmin = (function () {
           '星期': parseInt(scheduleForm.value.dayOfWeek, 10),
           '節次': currentPeriod,
           '班級': scheduleForm.value.className.trim(),
-          '科目': scheduleForm.value.subject.trim(),
-          '課堂屬性': attr,
-          '調課限制': scheduleForm.value.restriction === 'restricted' ? 'restricted' : ''
-        };
+           '科目': scheduleForm.value.subject.trim(),
+           '課堂屬性': attr,
+           '調課限制': scheduleForm.value.restriction === 'restricted' ? 'restricted' : '',
+           '啟用起日': String(scheduleForm.value.activeFrom || '').trim(),
+           '啟用迄日': String(scheduleForm.value.activeTo || '').trim(),
+           '前課表ID': isNewVersion ? (scheduleForm.value._previousId || '') : ''
+         };
         await callGasApi('saveScheduleCell', reqPayload);
         showScheduleEditModal.value = false;
         var mapped = window.FieldMap.mapSchedule(reqPayload);
-        var list = allSchedules.value.slice();
-        var idx = list.findIndex(function (s) { return s.id === mapped.id; });
+         var list = allSchedules.value.slice();
+         if (isNewVersion && scheduleForm.value._previousId && localPreviousEnd) {
+           var previousLocal = list.find(function (row) {
+             return row.id === scheduleForm.value._previousId;
+           });
+           var previousExistingEnd = previousLocal && (previousLocal.activeTo || previousLocal.activationEndDate || '');
+           if (previousExistingEnd && String(previousExistingEnd) < localPreviousEnd) {
+             localPreviousEnd = previousExistingEnd;
+           }
+           list = list.map(function (row) {
+             return row.id === scheduleForm.value._previousId
+               ? Object.assign({}, row, { activeTo: localPreviousEnd })
+               : row;
+           });
+         }
+         var idx = list.findIndex(function (s) { return s.id === mapped.id; });
         if (idx >= 0) list[idx] = mapped;
         else list.push(mapped);
         allSchedules.value = list;
@@ -1227,13 +1344,14 @@ window.UiAdmin = (function () {
         if (sheetData.length > 0) {
           excelHeaders.value = Object.keys(sheetData[0]);
          excelData.value = sheetData;
-         mappingFields.value = {
+          mappingFields.value = {
             teacherName: '', subject: '', dayOfWeek: '',
-            period: '', className: '', attr: '', restriction: '', specialTags: ''
+            period: '', className: '', attr: '', restriction: '', specialTags: '', activeFrom: '', activeTo: ''
          };
-          importPreview.value = null;
-          excelHeaders.value.forEach(function (h) {
-            var hl = String(h);
+           importPreview.value = null;
+           excelHeaders.value.forEach(function (h) {
+             var hl = String(h);
+             var hlLower = hl.toLowerCase();
             if (!mappingFields.value.teacherName && (hl.indexOf('姓名') >= 0 || hl === '教師')) {
               mappingFields.value.teacherName = h;
             }
@@ -1256,10 +1374,20 @@ window.UiAdmin = (function () {
                  (hl === '限制' || hl.indexOf('調課限制') >= 0 || hl.indexOf('綁課') >= 0 || hl.indexOf('restriction') >= 0)) {
                mappingFields.value.restriction = h;
              }
-             if (!mappingFields.value.specialTags &&
-                 (hl.indexOf('特殊標記') >= 0 || hl.indexOf('特殊標籤') >= 0 || hl.indexOf('special') >= 0 || hl.indexOf('tag') >= 0)) {
-               mappingFields.value.specialTags = h;
-             }
+              if (!mappingFields.value.specialTags &&
+                  (hl.indexOf('特殊標記') >= 0 || hl.indexOf('特殊標籤') >= 0 || hl.indexOf('special') >= 0 || hl.indexOf('tag') >= 0)) {
+                mappingFields.value.specialTags = h;
+              }
+              if (!mappingFields.value.activeFrom &&
+                  (hl.indexOf('啟用起日') >= 0 || hl.indexOf('啟用開始日') >= 0 || hl.indexOf('生效起日') >= 0
+                    || hlLower.indexOf('activefrom') >= 0 || hlLower.indexOf('activationstart') >= 0)) {
+                mappingFields.value.activeFrom = h;
+              }
+              if (!mappingFields.value.activeTo &&
+                  (hl.indexOf('啟用迄日') >= 0 || hl.indexOf('啟用結束日') >= 0 || hl.indexOf('生效迄日') >= 0
+                    || hlLower.indexOf('activeto') >= 0 || hlLower.indexOf('activationend') >= 0)) {
+                mappingFields.value.activeTo = h;
+              }
           });
           showToast('已載入 ' + sheetData.length + ' 列，請確認欄位對應後按「預覽」', 'info');
         }
@@ -1276,7 +1404,9 @@ window.UiAdmin = (function () {
         className: '班級（必填）',
          attr: '課堂屬性（選填）',
          restriction: '調課限制／綁課（選填）',
-         specialTags: '特殊標記（選填）'
+         specialTags: '特殊標記（選填）',
+         activeFrom: '啟用起日（選填）',
+         activeTo: '啟用迄日（選填）'
        };
       return labels[key] || key;
     }

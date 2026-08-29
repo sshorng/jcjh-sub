@@ -105,6 +105,21 @@
       // ── schedule index + resolve ──
       var idx = window.DomainSchedule.buildScheduleIndex(schedules);
       assert('index 有 a|1|2', !!(idx.byTeacherSlot['a@x|1|2'] && idx.byTeacherSlot['a@x|1|2'].length));
+      var datedSchedules = [
+        { teacherEmail: 'v@x', dayOfWeek: 1, period: 2, className: '701', subject: '國文', activeFrom: '2026-07-20', activeTo: '2026-07-31' },
+        { teacherEmail: 'v@x', dayOfWeek: 1, period: 2, className: '701', subject: '數學', activeFrom: '2026-08-01', activeTo: '' },
+        { teacherEmail: 'legacy@x', dayOfWeek: 1, period: 2, className: '702', subject: '國文' }
+      ];
+      assert('啟用日期起日含邊界', window.DomainSchedule.isActiveOnDate(datedSchedules[0], '2026-07-20') === true);
+      assert('啟用日期迄日含邊界', window.DomainSchedule.isActiveOnDate(datedSchedules[0], '2026-07-31') === true);
+      assert('啟用日期範圍外不生效', window.DomainSchedule.isActiveOnDate(datedSchedules[0], '2026-08-01') === false);
+      assert('舊資料空白代表整學期', window.DomainSchedule.isActiveOnDate(datedSchedules[2], '2026-12-31') === true);
+      assert('啟用版本日期解析', window.DomainSchedule.getCandidates(
+        window.DomainSchedule.buildScheduleIndex(datedSchedules), 'v@x', 1, 2, datedSchedules, '2026-08-03'
+      )[0].subject === '數學');
+      assert('啟用區間不重疊', window.DomainSchedule.scheduleRangesOverlap(
+        datedSchedules[0], datedSchedules[1]
+      ) === false);
       var base = window.DomainSchedule.resolveApprovedSchedule({
         teacherEmail: 'a@x',
         dateStr: '2026-07-13',
@@ -219,16 +234,16 @@
       assert('代課調入 isSubstitutionDuty', inCell && inCell.isSubstitutionDuty === true);
       assert('代課調入班科', inCell && inCell.className === '701' && inCell.subject === '國文');
 
-      // 對調：每位教師帶著自己的課程換時間
+      // 對調：課程留在原來的位置，只交換授課教師
       var exA = {
         id: 'ex1', requestId: 'rex', type: 'exchange',
         originalTeacherEmail: 'a@x', actualTeacherEmail: 'd@x',
-        date: '2026-07-13', period: 2, className: '702', subject: '輔導', subFee: '無'
+         date: '2026-07-13', period: 2, className: '701', subject: '國文', subFee: '無'
       };
       var exB = {
         id: 'ex2', requestId: 'rex', type: 'exchange',
         originalTeacherEmail: 'd@x', actualTeacherEmail: 'a@x',
-        date: '2026-07-14', period: 3, className: '701', subject: '國文', subFee: '無'
+         date: '2026-07-14', period: 3, className: '702', subject: '輔導', subFee: '無'
       };
       var schedulesEx = schedules.concat([
         { teacherEmail: 'd@x', dayOfWeek: 2, period: 3, className: '702', subject: '輔導' }
@@ -255,7 +270,7 @@
         allSchedules: schedulesEx, scheduleIndex: idxEx,
         periodSubs: [exB], allSubs: [exA, exB], helpers: helpersEx
       });
-       // 調入：主標＝自己的課程（A 原課），helpers 給 a@x 國文
+       // 調入：主標＝目標位置原本的課程（B 原課）
       helpersEx.getTeacherSubjectByEmail = function (e) {
         if (e === 'a@x') return '國文';
         if (e === 'd@x') return '輔導';
@@ -266,26 +281,26 @@
         allSchedules: schedulesEx, scheduleIndex: idxEx,
         periodSubs: [exB], allSubs: [exA, exB], helpers: helpersEx
       });
-       // 對調調入：主標＝實際授課教師自己的課程
-       assert('對調調入主標＝自己的課(701/國文)', aIn && aIn.isSubstitutionDuty && aIn.subject === '國文' && aIn.className === '701',
-        aIn && (aIn.className + '/' + aIn.subject));
+        // 對調調入：主標＝原位置課程
+       assert('對調調入主標＝原位置課(702/輔導)', aIn && aIn.isSubstitutionDuty && aIn.subject === '輔導' && aIn.className === '702',
+         aIn && (aIn.className + '/' + aIn.subject));
 
-       // A理化 B國文 C數學：AB 後 BC — 各教師異動格仍顯示自己的課程
+        // A理化 B國文 C數學：AB 後 BC — 各異動格仍顯示原位置課程
       var schedulesABC = [
         { teacherEmail: 'a@x', dayOfWeek: 1, period: 1, className: '801', subject: '理化' },
         { teacherEmail: 'b@x', dayOfWeek: 1, period: 2, className: '802', subject: '國文' },
         { teacherEmail: 'c@x', dayOfWeek: 1, period: 3, className: '803', subject: '數學' }
       ];
       var idxABC = window.DomainSchedule.buildScheduleIndex(schedulesABC);
-      var ab1 = { id: 'ab1', requestId: 'ab', type: 'exchange', originalTeacherEmail: 'a@x', actualTeacherEmail: 'b@x',
-        date: '2026-07-13', period: 1, className: '802', subject: '國文', subFee: '無' };
-      var ab2 = { id: 'ab2', requestId: 'ab', type: 'exchange', originalTeacherEmail: 'b@x', actualTeacherEmail: 'a@x',
-        date: '2026-07-13', period: 2, className: '801', subject: '理化', subFee: '無' };
-      // BC：B 再調，仍帶著自己的國文課程換時間
-      var bc1 = { id: 'bc1', requestId: 'bc', type: 'exchange', originalTeacherEmail: 'b@x', actualTeacherEmail: 'c@x',
-        date: '2026-07-13', period: 1, className: '803', subject: '數學', subFee: '無' };
-      var bc2 = { id: 'bc2', requestId: 'bc', type: 'exchange', originalTeacherEmail: 'c@x', actualTeacherEmail: 'b@x',
-        date: '2026-07-13', period: 3, className: '802', subject: '國文', subFee: '無' };
+       var ab1 = { id: 'ab1', requestId: 'ab', type: 'exchange', originalTeacherEmail: 'a@x', actualTeacherEmail: 'b@x',
+         date: '2026-07-13', period: 1, className: '801', subject: '理化', subFee: '無' };
+       var ab2 = { id: 'ab2', requestId: 'ab', type: 'exchange', originalTeacherEmail: 'b@x', actualTeacherEmail: 'a@x',
+         date: '2026-07-13', period: 2, className: '802', subject: '國文', subFee: '無' };
+       // BC：B 再調，仍保留原位置課程
+       var bc1 = { id: 'bc1', requestId: 'bc', type: 'exchange', originalTeacherEmail: 'b@x', actualTeacherEmail: 'c@x',
+         date: '2026-07-13', period: 1, className: '801', subject: '理化', subFee: '無' };
+       var bc2 = { id: 'bc2', requestId: 'bc', type: 'exchange', originalTeacherEmail: 'c@x', actualTeacherEmail: 'b@x',
+         date: '2026-07-13', period: 3, className: '803', subject: '數學', subFee: '無' };
       var hABC = {
         getTeacherNameByEmail: function (e) { return e; },
         getTeacherSubjectByEmail: function (e) {
@@ -303,21 +318,21 @@
         allSchedules: schedulesABC, scheduleIndex: idxABC,
         periodSubs: [ab1, bc1], allSubs: [ab1, ab2, bc1, bc2], helpers: hABC
       });
-       assert('B 再調出主標仍是國文', bP1 && bP1.isSubstituted && bP1.subject === '國文' && bP1.className === '802',
+        assert('B 再調出主標仍是原位置理化', bP1 && bP1.isSubstituted && bP1.subject === '理化' && bP1.className === '801',
          bP1 && (bP1.className + '/' + bP1.subject + '/' + (bP1.isSubstituted ? 'out' : '')));
       var cP1 = window.DomainSchedule.resolveApprovedSchedule({
         teacherEmail: 'c@x', dateStr: '2026-07-13', period: 1, dayOfWeek: 1,
         allSchedules: schedulesABC, scheduleIndex: idxABC,
         periodSubs: [ab1, bc1], allSubs: [ab1, ab2, bc1, bc2], helpers: hABC
       });
-      assert('C 調入主標＝自己的課(803/數學)', cP1 && cP1.isSubstitutionDuty && cP1.subject === '數學' && cP1.className === '803',
+       assert('C 調入主標＝原位置課(801/理化)', cP1 && cP1.isSubstitutionDuty && cP1.subject === '理化' && cP1.className === '801',
         cP1 && (cP1.className + '/' + cP1.subject));
       var bP3 = window.DomainSchedule.resolveApprovedSchedule({
         teacherEmail: 'b@x', dateStr: '2026-07-13', period: 3, dayOfWeek: 1,
         allSchedules: schedulesABC, scheduleIndex: idxABC,
         periodSubs: [bc2], allSubs: [ab1, ab2, bc1, bc2], helpers: hABC
       });
-      assert('B 調入主標＝自己的課(802/國文)', bP3 && bP3.isSubstitutionDuty && bP3.subject === '國文' && bP3.className === '802',
+       assert('B 調入主標＝原位置課(803/數學)', bP3 && bP3.isSubstitutionDuty && bP3.subject === '數學' && bP3.className === '803',
         bP3 && (bP3.className + '/' + bP3.subject));
       var bP2 = window.DomainSchedule.resolveApprovedSchedule({
         teacherEmail: 'b@x', dateStr: '2026-07-13', period: 2, dayOfWeek: 1,
@@ -524,9 +539,23 @@
          assert('公費午休超鐘點要扣', publicLunch.publicOvertimeUsed === 1 && publicLunch.schoolPublicPayout === 0);
          assert('公費早自習正式課不超鐘不扣', publicEarlyRegular.publicOvertimeUsed === 0 && publicEarlyRegular.schoolPublicPayout === 1);
          assert('公費午休正式課不超鐘不扣', publicLunchRegular.publicOvertimeUsed === 0 && publicLunchRegular.schoolPublicPayout === 1);
-           assert('自費早自習仍要扣', selfEarly.selfPaidDeduction === 1);
+            assert('自費早自習仍要扣', selfEarly.selfPaidDeduction === 1);
 
-           var mixedBilling = window.DomainBilling.buildMonthlyReportRows({
+          var datedBilling = window.DomainBilling.buildMonthlyReportRows({
+            teachers: [{ email: 'dated@x', name: 'Dated', baseHours: 0 }],
+            allSchedules: [
+              { teacherEmail: 'dated@x', dayOfWeek: 1, period: 1, className: '701', attr: '超鐘點', activeTo: '2026-08-09' },
+              { teacherEmail: 'dated@x', dayOfWeek: 1, period: 1, className: '701', attr: '超鐘點', activeFrom: '2026-08-10' }
+            ],
+            substitutionRecords: [],
+            reportMonth: '2026-08',
+            reportWeeksCount: 2
+          })[0];
+          assert('帳務依課表啟用週切換', datedBilling && datedBilling.weeklyPeriods === 1
+            && datedBilling.scheduledOvertime === 2,
+            datedBilling && 'scheduled=' + datedBilling.scheduledOvertime);
+
+            var mixedBilling = window.DomainBilling.buildMonthlyReportRows({
              teachers: [{ email: 'mixed@x', name: 'Mixed', baseHours: 1 }],
              allSchedules: [
                { teacherEmail: 'mixed@x', dayOfWeek: 1, period: 1, className: '701', attr: '超鐘點' },

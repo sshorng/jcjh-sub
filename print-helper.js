@@ -208,14 +208,44 @@ function parsePrintTimeRange(records) {
 function isPrintLeaveLikeReason(reason) {
   const value = String(reason || '').trim();
   if (!value || value === '請假') return true;
+  if (value === '合班回原班' || value === '併班上課') return true;
   if (value === '空堂排班') return false;
   return /公假|事假|病假|婚假|喪假|產假|娩假|生理假|身心調適|家庭照顧|育嬰|安胎|產檢|陪產|防疫|特休|休假|補休|其他|公差|公出|外出|研習|進修|請假|假$/.test(value);
+}
+
+function isPrintCombinedReturnRecord(record) {
+  if (!record) return false;
+  const flow = String(record.specialFlow || record['特殊流程'] || '').trim().toLowerCase();
+  const reason = String(record.reason || record['請假事由'] || '').trim();
+  return flow === 'combined_return' || flow === '合班回原班' || flow === '併班上課'
+    || reason === '合班回原班' || reason === '併班上課';
 }
 
 function getPrintTeacherKey(record, side) {
   if (!record) return '';
   if (side === 'actual') return String(record.actualTeacherEmail || record.actualTeacherName || '').trim();
   return String(record.originalTeacherEmail || record.originalTeacherName || record.leaveEmail || '').trim();
+}
+
+function getPrintMergeTeacherKey(record, side, ctx) {
+  if (!record) return '';
+  const isActual = side === 'actual';
+  const name = String(isActual
+    ? (record.actualTeacherName || record.targetTeacherName || '')
+    : (record.originalTeacherName || record.requesterName || record.leaveTeacherName || '')).trim();
+  const rawValues = (isActual
+    ? [record.actualTeacherEmail, record.targetTeacherEmail]
+    : [record.originalTeacherEmail, record.requesterEmail, record.leaveEmail])
+    .map(value => String(value == null ? '' : value).trim())
+    .filter(Boolean);
+  const explicitEmail = rawValues.find(value => /@/.test(value));
+  if (explicitEmail && ctx && typeof ctx.getTeacherNameByEmail === 'function') {
+    const resolved = String(ctx.getTeacherNameByEmail(explicitEmail) || '').trim();
+    if (resolved && !/@/.test(resolved)) return normalizePrintMergeKey(resolved);
+  }
+  if (explicitEmail) return normalizePrintMergeKey(explicitEmail);
+  if (name && !/@/.test(name)) return normalizePrintMergeKey(name);
+  return normalizePrintMergeKey(name || rawValues[0] || '');
 }
 
 function cleanPrintTeacherName(value) {
@@ -279,11 +309,15 @@ function renderPrintCheckbox(label, checked) {
 
 function getPrintSignatureText(group, rows, ctx, getName) {
   const entries = [];
-  const signatureSide = 'actual';
+  const signatureSide = group && group.isExchange ? 'original' : 'actual';
   (rows || []).forEach(row => {
-    // 調課後格內是實際授課教師自己的課，簽名也取實際授課教師。
-    const key = String(row.actualTeacherEmail || row.actualTeacherName || '').trim();
-    const name = cleanPrintTeacherName(row.actualTeacherName || getName(key));
+    // 調課格保留原位置課程，簽名取該課原授課教師。
+    const key = String(signatureSide === 'original'
+      ? (row.originalTeacherEmail || row.originalTeacherName || '')
+      : (row.actualTeacherEmail || row.actualTeacherName || '')).trim();
+    const name = cleanPrintTeacherName(signatureSide === 'original'
+      ? (row.originalTeacherName || getName(key))
+      : (row.actualTeacherName || getName(key)));
     const identity = key.toLowerCase() || name.toLowerCase();
     if (!name || entries.some(entry => entry.identity === identity)) return;
     entries.push({ key, name, identity });
@@ -345,21 +379,35 @@ function getExchangeArrowSvg(group, rows, weekDates) {
   });
   const start = toPoint(points[0]);
   const end = toPoint(points[1]);
-  const edgePoint = (from, to) => {
+  const edgeDistanceFor = (from, to) => {
     const dx = to.x - from.x;
     const dy = to.y - from.y;
     const scaleX = dx ? from.halfWidth / Math.abs(dx) : Infinity;
     const scaleY = dy ? from.halfHeight / Math.abs(dy) : Infinity;
     const length = Math.hypot(dx, dy) || 1;
-    const edgeDistance = Math.min(scaleX, scaleY) * length;
-    const distance = Math.max(0, edgeDistance - 0.35);
     return {
-      x: from.x + (dx / length) * distance,
-      y: from.y + (dy / length) * distance
+      dx,
+      dy,
+      length,
+      edgeDistance: Math.min(scaleX, scaleY) * length
     };
   };
-  const startEdge = edgePoint(start, end);
-  const endEdge = edgePoint(end, start);
+  const edgePoint = (from, to, inset) => {
+    const vector = edgeDistanceFor(from, to);
+    const distance = Math.max(0, vector.edgeDistance - inset);
+    return {
+      x: from.x + (vector.dx / vector.length) * distance,
+      y: from.y + (vector.dy / vector.length) * distance
+    };
+  };
+  const startBoundary = edgeDistanceFor(start, end).edgeDistance;
+  const endBoundary = edgeDistanceFor(end, start).edgeDistance;
+  const centerDistance = Math.hypot(end.x - start.x, end.y - start.y) || 1;
+  const boundaryGap = Math.max(0, centerDistance - startBoundary - endBoundary);
+  // 相鄰格的雙向箭頭頭部會重疊，短線時將端點收回格內留出清楚間距。
+  const endpointInset = 0.35 + Math.max(0, (5.6 - boundaryGap) / 2);
+  const startEdge = edgePoint(start, end, endpointInset);
+  const endEdge = edgePoint(end, start, endpointInset);
   const markerId = `exchange-arrow-${String(group.requestId || 'route').replace(/[^a-zA-Z0-9_-]+/g, '_')}`;
   const number = value => Number(value.toFixed(2));
   return `<svg xmlns="http://www.w3.org/2000/svg" class="official-exchange-overlay" aria-hidden="true" viewBox="0 0 100 ${OFFICIAL_GRID_HEIGHT_MM}" preserveAspectRatio="none"><defs><marker id="${markerId}" markerWidth="2.4" markerHeight="2.4" refX="2.4" refY="1.2" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M 0 0 L 2.4 1.2 L 0 2.4" fill="none" stroke="#111827" stroke-width=".25" stroke-linejoin="round"></path></marker></defs><line class="official-exchange-arrow-line" x1="${number(startEdge.x)}" y1="${number(startEdge.y)}" x2="${number(endEdge.x)}" y2="${number(endEdge.y)}" marker-start="url(#${markerId})" marker-end="url(#${markerId})"></line></svg>`;
@@ -400,8 +448,9 @@ function generateFormHtml(g, currentType, ctx) {
     ...(rows || []).map(row => row.reason),
     g && g.reason
   ]);
-  const reason = reasons[0] || '';
-  const isLeave = reasons.length ? reasons.every(isPrintLeaveLikeReason) : true;
+  const isCombinedReturn = [...sourceRecords, ...rows].some(isPrintCombinedReturnRecord);
+  const reason = isCombinedReturn ? '請假' : (reasons[0] || '');
+  const isLeave = isCombinedReturn || (reasons.length ? reasons.every(isPrintLeaveLikeReason) : true);
   const notes = uniquePrintValues([
     g && g.note,
     ...(sourceRecords || []).map(record => record && record.note)
@@ -528,15 +577,17 @@ function getPrintRecordTypeKey(record) {
   return 'substitution';
 }
 
-function getPrintMergeKey(record) {
+function getPrintMergeKey(record, ctx) {
   const type = getPrintRecordTypeKey(record);
   const requestId = resolvePrintRequestId(record);
   const rowId = String(record && record.id || '').trim();
   if (type === 'exchange') return `exchange:${requestId || rowId}`;
 
   const week = getPrintWeekKey(record && record.date);
-  const actualTeacher = normalizePrintMergeKey(getPrintTeacherKey(record, 'actual'));
-  const originalTeacher = normalizePrintMergeKey(getPrintTeacherKey(record, 'original'));
+  const combinedReturn = isPrintCombinedReturnRecord(record);
+  // 舊有併班資料可能沒有代課教師欄位，但同一批次仍應可合併。
+  const actualTeacher = getPrintMergeTeacherKey(record, 'actual', ctx) || (combinedReturn ? 'combined-return' : '');
+  const originalTeacher = getPrintMergeTeacherKey(record, 'original', ctx);
   const className = normalizePrintMergeKey(record && record.className);
   if (!week || !actualTeacher || !originalTeacher || !className) {
     return `request:${requestId || rowId}:row:${rowId}`;
@@ -550,7 +601,7 @@ function getPrintMergeKey(record) {
  * 一般代課／補課可跨申請單合併；調課仍以完整雙向申請單為單位。
  * 合併條件：同週、同處理方式、同代課教師、同班級、同請假教師、同請假模式。
  */
-function buildPrintGroups(recordsToPrint, allSubs) {
+function buildPrintGroups(recordsToPrint, allSubs, ctx) {
   const groups = Object.create(null);
   const records = Array.isArray(recordsToPrint) ? recordsToPrint : [];
 
@@ -576,7 +627,7 @@ function buildPrintGroups(recordsToPrint, allSubs) {
   records.forEach(function (record) {
     const exchange = isPrintExchangeRec(record);
     const requestId = resolvePrintRequestId(record);
-    const key = getPrintMergeKey(record);
+    const key = getPrintMergeKey(record, ctx);
     if (!groups[key]) {
       groups[key] = {
         isExchange: exchange,
@@ -711,7 +762,7 @@ function getSelectedPrintRecords(ctx) {
 }
 
 function buildPrintForms(recordsToPrint, allSubs, ctx) {
-  const groupList = buildPrintGroups(recordsToPrint, allSubs);
+  const groupList = buildPrintGroups(recordsToPrint, allSubs, ctx);
   const forms = [];
   const audienceLabelSets = [];
   groupList.forEach(function (group) {
@@ -735,7 +786,7 @@ function getPrintPreviewCss() {
     .print-preview-stack { display: flex; flex-direction: column; align-items: center; gap: 8mm; min-width: 158mm; padding: 8mm 4mm 12mm; }
     .print-preview-item { width: 158mm; min-height: 170mm; padding: 6mm 12.7mm 7mm; background: #fff; box-shadow: 0 1px 8px rgba(15, 23, 42, .18); overflow: visible; font-size: 10pt; line-height: normal; }
      .substitute-form { width: 132.045mm; min-height: 156.5mm; height: auto; padding: 0 !important; margin: 0 !important; position: relative; box-sizing: border-box; background: #fff !important; border: none !important; overflow: visible; font-size: 10pt; line-height: normal; }
-      .official-audience-label { position: absolute; top: -5.8mm; left: 0; max-width: 92mm; padding: .8mm 2mm; border: .7pt solid #000; background: #e5e7eb; font-size: 10pt; font-weight: 700; line-height: 1.2; text-align: left; white-space: normal; overflow-wrap: anywhere; color: #000; }
+       .official-audience-label { position: absolute; top: -5.8mm; left: 0; max-width: 92mm; padding: .8mm 2mm; border: none; background: #e5e7eb; font-size: 10pt; font-weight: 700; line-height: 1.2; text-align: left; white-space: normal; overflow-wrap: anywhere; color: #000; }
       .official-audience-label-retain { border: none; background: #e5e7eb; }
       .official-serial-mark { position: absolute; right: 4.78mm; bottom: -4.5mm; max-width: 78mm; font-size: 6.5pt; line-height: 1.1; text-align: right; white-space: normal; overflow-wrap: anywhere; color: #000; }
      .official-form-table-wrap { position: relative; width: 127.265mm; }
@@ -980,7 +1031,7 @@ async function printSelectedForms(formType, ctx) {
              overflow: visible;
            }
            .official-form-empty { visibility: hidden; }
-             .official-audience-label { position: absolute; top: -5.8mm; left: 0; max-width: 92mm; padding: .8mm 2mm; border: .7pt solid #000; background: #e5e7eb; font-size: 10pt; font-weight: 700; line-height: 1.2; text-align: left; white-space: normal; overflow-wrap: anywhere; color: #000; }
+             .official-audience-label { position: absolute; top: -5.8mm; left: 0; max-width: 92mm; padding: .8mm 2mm; border: none; background: #e5e7eb; font-size: 10pt; font-weight: 700; line-height: 1.2; text-align: left; white-space: normal; overflow-wrap: anywhere; color: #000; }
              .official-audience-label-retain { border: none; background: #e5e7eb; }
              .official-serial-mark { position: absolute; right: 4.78mm; bottom: -4.5mm; max-width: 78mm; font-size: 6.5pt; line-height: 1.1; text-align: right; white-space: normal; overflow-wrap: anywhere; color: #000; }
            .official-form-table-wrap { position: relative; width: 127.265mm; }
@@ -1084,9 +1135,17 @@ async function printSelectedForms(formType, ctx) {
     ctx.selectedRecordIds.value = [];
 
     if (!ctx.skipMarkPrinted) {
-      // 背景寫入 GAS，失敗不擋畫面
-      ctx.callGasApi('batchMarkPrinted', { ids: markIds })
-        .catch(err => console.error('背景標記列印出錯：', err));
+      // 等待寫入 GAS，避免列印後立刻關頁造成已列印狀態尚未落地。
+      if (typeof ctx.callGasApi === 'function') {
+        try {
+          await ctx.callGasApi('batchMarkPrinted', { ids: markIds });
+        } catch (err) {
+          console.error('標記列印出錯：', err);
+          if (typeof ctx.showToast === 'function') {
+            ctx.showToast('列印完成，但已列印狀態同步失敗，請重新整理確認。', 'warning');
+          }
+        }
+      }
     }
   } catch (err) {
     ctx.showToast('列印失敗：' + (err.message || err), 'error');

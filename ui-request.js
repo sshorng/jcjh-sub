@@ -73,15 +73,15 @@ window.UiSubmitHelpers = (function () {
     var combinedReturn = isCombinedReturnRequest(pending);
 
     if (combinedReturn && !(isAdmin && isAdmin.value)) {
-      showToast('合班回原班僅限教學組建立', 'warning');
+       showToast('併班上課僅限教學組建立', 'warning');
       return false;
     }
     if (combinedReturn && (pending.mode !== 'substitution' || !String(pending.subTeacher || '').trim())) {
-      showToast('合班回原班請選擇同節併班代課教師', 'warning');
+       showToast('併班上課請選擇同節併班代課教師', 'warning');
       return false;
     }
     if (combinedReturn && String(pending.leaveTeacher || '').trim().toLowerCase() === String(pending.subTeacher || '').trim().toLowerCase()) {
-      showToast('合班回原班的請假教師與代課教師不可相同', 'warning');
+       showToast('併班上課的請假教師與代課教師不可相同', 'warning');
       return false;
     }
     if (combinedReturn && Array.isArray(pending.combinedReturnCandidates)
@@ -90,11 +90,11 @@ window.UiSubmitHelpers = (function () {
           return String(candidate && candidate.email || '').trim().toLowerCase()
             === String(pending.subTeacher || '').trim().toLowerCase();
         })) {
-      showToast('合班回原班只能選擇同節併班任課教師', 'warning');
+       showToast('併班上課只能選擇同節併班任課教師', 'warning');
       return false;
     }
     if (combinedReturn && (pending.courseAdjustmentOnly || (isMutualCover && isMutualCover.value))) {
-      showToast('合班回原班不可使用課務調整或互代流程', 'warning');
+       showToast('併班上課不可使用課務調整或互代流程', 'warning');
       return false;
     }
 

@@ -8,6 +8,7 @@ const vm = require('node:vm');
 
 const root = path.resolve(__dirname, '..');
 const indexSource = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+const appSource = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
 const context = {
   window: { DateUtils: { getTimetablePeriods: () => [1, 2, 3] } },
   console: { log: () => {}, warn: () => {}, error: () => {} },
@@ -26,6 +27,7 @@ const context = {
 vm.createContext(context);
 const printHelperSource = fs.readFileSync(path.join(root, 'print-helper.js'), 'utf8');
 const styleSource = fs.readFileSync(path.join(root, 'style.css'), 'utf8');
+const mobileSource = fs.readFileSync(path.join(root, 'mobile.css'), 'utf8');
 vm.runInContext(printHelperSource, context, {
   filename: 'print-helper.js'
 });
@@ -131,13 +133,32 @@ assert.equal(preview.pageCount, 2);
 assert.equal(preview.copyCount, 4);
 assert.match(preview.documentHtml, /print-preview-stack/);
 assert.match(preview.documentHtml, /教學組留存（請簽名）/);
-assert.match(context.window.getPrintPreviewCss(), /official-audience-label \{[^}]*top: -5\.8mm[^}]*left: 0[^}]*padding: \.8mm 2mm[^}]*border: \.7pt solid #000[^}]*background: #e5e7eb[^}]*font-size: 10pt/);
+assert.match(context.window.getPrintPreviewCss(), /official-audience-label \{[^}]*top: -5\.8mm[^}]*left: 0[^}]*padding: \.8mm 2mm[^}]*border: none[^}]*background: #e5e7eb[^}]*font-size: 10pt/);
 assert.match(context.window.getPrintPreviewCss(), /official-audience-label-retain \{[^}]*border: none; background: #e5e7eb;/);
-assert.match(styleSource, /\.official-audience-label \{[^}]*top: -5\.8mm[^}]*padding: \.8mm 2mm[^}]*border: \.7pt solid #000[^}]*background: #e5e7eb[^}]*font-size: 10pt/);
+assert.match(styleSource, /\.official-audience-label \{[^}]*top: -5\.8mm[^}]*padding: \.8mm 2mm[^}]*border: none[^}]*background: #e5e7eb[^}]*font-size: 10pt/);
 assert.match(styleSource, /\.official-audience-label-retain \{[^}]*border: none;[^}]*background: #e5e7eb;/);
 assert.match(indexSource, /title="列印此筆通知單"[^>]*@click="printSingleRequest\(\{ id: rec\.requestId \|\| rec\.id \}, 'Notice'\)"/);
 assert.match(context.window.getPrintPreviewCss(), /official-serial-mark \{[^}]*right: 4\.78mm;[^}]*bottom: -4\.5mm[^}]*text-align: right/);
 assert.match(styleSource, /\.official-serial-mark \{[^}]*right: 4\.78mm;[^}]*bottom: -4\.5mm[^}]*text-align: right/);
+assert.match(appSource, /data:image\/svg\+xml;charset=utf-8,['"] \+ encodeURIComponent\(svg\)/);
+assert.doesNotMatch(appSource, /createObjectURL\(svgBlob\)/);
+assert.match(printHelperSource, /const signatureSide = group && group\.isExchange \? 'original' : 'actual';/);
+assert.match(indexSource, /print-helper\.js\?v=20260829-exchange-image1/);
+const leaveHistorySlotStart = indexSource.indexOf('{{ formatHistoryLeaveSlot(rec) }}');
+const leaveHistorySlotEnd = indexSource.indexOf('</td>', leaveHistorySlotStart);
+assert.ok(leaveHistorySlotStart >= 0 && leaveHistorySlotEnd > leaveHistorySlotStart);
+assert.match(indexSource.slice(leaveHistorySlotStart, leaveHistorySlotEnd), /isHistoryLeaveRechanged\(rec\)/);
+assert.doesNotMatch(indexSource.slice(leaveHistorySlotStart, leaveHistorySlotEnd), /isHistoryExchangeRechanged\(rec\)/);
+const exchangeHistorySlotStart = indexSource.indexOf('{{ formatHistoryExchangeSlot(rec) }}');
+const exchangeHistorySlotEnd = indexSource.indexOf('</td>', exchangeHistorySlotStart);
+assert.ok(exchangeHistorySlotStart >= 0 && exchangeHistorySlotEnd > exchangeHistorySlotStart);
+assert.match(indexSource.slice(exchangeHistorySlotStart, exchangeHistorySlotEnd), /isHistoryExchangeRechanged\(rec\)/);
+assert.equal((indexSource.match(/isRequestLeaveRechanged\(req\)/g) || []).length, 3, 'all request lists must mark the original endpoint independently');
+assert.equal((indexSource.match(/isRequestExchangeRechanged\(req\)/g) || []).length, 3, 'all request lists must mark the target endpoint independently');
+assert.match(indexSource, /getApproveRiskFlags\(req\)\.filter\(f => \(f\.level === 'warn' \|\| f\.level === 'danger'\) && f\.key !== 'chain'\)/);
+assert.match(appSource, /const returnTo = showDetailModal\.value \? 'detail' : '';/);
+assert.match(styleSource, /\.hist-actions \{[^}]*flex-wrap:\s*nowrap/);
+assert.match(mobileSource, /\.hist-actions \{[^}]*flex-direction:\s*row/);
 const previewSvg = context.window.buildPrintPreviewImageSvg(preview);
 assert.match(previewSvg, /foreignObject/);
 assert.match(previewSvg, /<br \/>/, 'preview image SVG should use XHTML-compatible line breaks');
@@ -151,6 +172,17 @@ const adjustmentLeaveOutput = context.window.generateFormHtml(Object.assign({}, 
 assert.match(adjustmentLeaveOutput, /■請假/);
 assert.match(adjustmentLeaveOutput, /假別：身心調適假/);
 assert.doesNotMatch(adjustmentLeaveOutput, /原因：身心調適假/);
+
+const combinedReturnOutput = context.window.generateFormHtml(Object.assign({}, substitution, {
+  records: [Object.assign({}, substitution.records[0], {
+    specialFlow: 'combined_return',
+    reason: '合班回原班'
+  })]
+}), 'NoticeTeacher', fixtureContext);
+assert.match(combinedReturnOutput, /■請假/);
+assert.match(combinedReturnOutput, /□僅課務申請\(非請假\)/);
+assert.match(combinedReturnOutput, /假別：請假/);
+assert.doesNotMatch(combinedReturnOutput, /假別：合班回原班/);
 
 const exchange = {
   isExchange: true,
@@ -173,12 +205,31 @@ assert.match(exchangeOutput, /■調課/);
 assert.match(exchangeOutput, /■僅課務申請\(非請假\)/);
 assert.match(exchangeOutput, /生活科技/);
 assert.match(exchangeOutput, /803/);
+const exchangeGridSubjectRows = [...exchangeOutput.matchAll(/<tr class="official-subject-row">([\s\S]*?)<\/tr>/g)].map(match => match[1]);
+const exchangeGridClassRows = [...exchangeOutput.matchAll(/<tr class="official-class-row">([\s\S]*?)<\/tr>/g)].map(match => match[1]);
+assert.match(exchangeGridSubjectRows[0], /生活科技/);
+assert.match(exchangeGridSubjectRows[1], /國文/);
+assert.match(exchangeGridClassRows[0], /802/);
+assert.match(exchangeGridClassRows[1], /803/);
 assert.doesNotMatch(exchangeOutput, /official-exchange-route/);
 assert.match(exchangeOutput, /class="official-exchange-overlay"/);
 assert.match(exchangeOutput, /marker-start="url\(#exchange-arrow-/);
 assert.match(exchangeOutput, /marker-end="url\(#exchange-arrow-/);
 assert.doesNotMatch(exchangeOutput, /official-exchange-arrow-underlay/);
 assert.match(context.window.getPrintPreviewCss(), /official-exchange-arrow-line[^}]*stroke-width: \.25/);
+assert.match(styleSource, /\.timetable-grid \.grid-cell-time,[\s\S]*?\.timetable-grid \.grid-cell-class \{[\s\S]*?height: auto;[\s\S]*?max-height: none;[\s\S]*?overflow: visible;/);
+const closeExchange = {
+  isExchange: true,
+  requestId: 'EX-CLOSE',
+  records: [
+    { id: 'EX-CLOSE_2', type: 'exchange', originalTeacherEmail: 'owner@school.example', actualTeacherEmail: 'invitee@school.example', date: '2026-09-08', period: 3, className: '802', subject: '生活科技', reason: '課務調整' },
+    { id: 'EX-CLOSE_1', type: 'exchange', originalTeacherEmail: 'invitee@school.example', actualTeacherEmail: 'owner@school.example', date: '2026-09-08', period: 4, className: '803', subject: '國文', reason: '課務調整' }
+  ]
+};
+const closeExchangeOutput = context.window.generateFormHtml(closeExchange, 'NoticeClass', fixtureContext);
+const closeArrow = closeExchangeOutput.match(/<line class="official-exchange-arrow-line"[^>]*y1="([\d.-]+)"[^>]*y2="([\d.-]+)"/);
+assert.ok(closeArrow, '相鄰課節應產生調課箭頭');
+assert.ok(Math.abs(Number(closeArrow[2]) - Number(closeArrow[1])) > 4, '相鄰課節箭頭端點應保留清楚間距');
 const exchangePreview = context.window.buildPrintPreview(Object.assign({}, fixtureContext, {
   selectedRecordIds: { value: exchange.records.map(record => record.id) },
   substitutionRecords: { value: exchange.records }
@@ -187,8 +238,8 @@ const exchangePreviewSvg = context.window.buildPrintPreviewImageSvg(exchangePrev
 assert.match(exchangePreviewSvg, /xmlns="http:\/\/www\.w3\.org\/2000\/svg"/, 'nested exchange SVG must declare its namespace');
 const exchangeAdminOutput = context.window.generateFormHtml(exchange, 'NoticeClass', Object.assign({}, fixtureContext, { isAdmin: true }));
 const exchangeSubjectRows = [...exchangeAdminOutput.matchAll(/<tr class="official-subject-row">([\s\S]*?)<\/tr>/g)].map(match => match[1]);
-assert.match(exchangeSubjectRows[0], /王小明/);
-assert.match(exchangeSubjectRows[1], /陳小華/);
+assert.match(exchangeSubjectRows[0], /陳小華/);
+assert.match(exchangeSubjectRows[1], /王小明/);
 
 const groups = context.window.buildPrintGroups([
   substitution.records[0],
@@ -209,6 +260,25 @@ const sameWeekGroups = context.window.buildPrintGroups([
 ], []);
 assert.equal(sameWeekGroups.length, 1, 'same teacher/class/requester in one week must merge across request IDs');
 assert.equal(sameWeekGroups[0].periods.length, 2);
+
+const combinedBatchRecords = [
+  Object.assign({}, substitution.records[0], {
+    id: 'combined-1', requestId: 'combined-1', date: '2026-09-01', period: 4,
+    actualTeacherEmail: '', actualTeacherName: '', specialFlow: 'combined_return', reason: '合班回原班'
+  }),
+  Object.assign({}, substitution.records[0], {
+    id: 'combined-2', requestId: 'combined-2', date: '2026-09-01', period: 3,
+    actualTeacherEmail: '', actualTeacherName: '', specialFlow: 'combined_return', reason: '合班回原班'
+  })
+];
+const combinedBatchGroups = context.window.buildPrintGroups(combinedBatchRecords, []);
+assert.equal(combinedBatchGroups.length, 1, '同週併班上課資料即使缺少舊資料代課欄位也應合併');
+assert.equal(combinedBatchGroups[0].periods.length, 2);
+const combinedBatchPreview = context.window.buildPrintPreview(Object.assign({}, fixtureContext, {
+  selectedRecordIds: { value: combinedBatchRecords.map(record => record.id) },
+  substitutionRecords: { value: combinedBatchRecords }
+}), { records: combinedBatchRecords, allSubs: combinedBatchRecords });
+assert.equal(combinedBatchPreview.formCount, 1, '批次列印的兩筆併班上課資料應只產生一張表單');
 
 const differentRequesterGroups = context.window.buildPrintGroups([
   substitution.records[0],
@@ -240,4 +310,27 @@ const split = context.window.splitPrintGroupByWeek(Object.assign({}, merged[0], 
 }));
 assert.equal(split.length, 2, 'records from different weeks must render separate original-form pages');
 
-console.log('print form contract tests PASS');
+(async () => {
+  const markedIds = [];
+  const gasCalls = [];
+  const printDoc = { open() {}, write() {}, close() {} };
+  await context.window.printSelectedForms('Notice', Object.assign({}, fixtureContext, {
+    selectedRecordIds: { value: ['request-1'] },
+    substitutionRecords: { value: substitution.records },
+    printRecords: substitution.records,
+    printWin: { document: printDoc },
+    loading: { value: false },
+    loadingMessage: { value: '' },
+    markLocalPrinted: ids => markedIds.push(...ids),
+    callGasApi: async (action, payload) => gasCalls.push({ action, payload }),
+    showToast: () => {}
+  }));
+  assert.deepEqual(markedIds, ['request-1'], '正式列印後應更新本地已列印狀態');
+  assert.equal(gasCalls.length, 1, '正式列印後應同步一次後端已列印狀態');
+  assert.equal(gasCalls[0].action, 'batchMarkPrinted');
+  assert.deepEqual(Array.from(gasCalls[0].payload.ids), ['request-1'], '後端同步應包含列印資料 ID');
+  console.log('print form contract tests PASS');
+})().catch(err => {
+  console.error(err);
+  process.exitCode = 1;
+});

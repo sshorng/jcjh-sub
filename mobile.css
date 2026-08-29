@@ -72,7 +72,10 @@
   }
   .table-responsive .hist-actions {
     gap: 4px !important;
-    min-width: 64px;
+    flex-direction: row;
+    flex-wrap: nowrap !important;
+    align-items: center;
+    min-width: 118px;
   }
   .table-responsive .action-buttons {
     gap: 4px !important;
@@ -701,6 +704,18 @@
     flex: 1 1 auto;
     min-width: 72px;
   }
+  .success-modal-footer .success-followup-actions {
+    flex-wrap: nowrap !important;
+    align-items: center;
+  }
+  .success-modal-footer .success-followup-actions .btn {
+    flex: 0 0 auto !important;
+    min-width: 0 !important;
+    min-height: 32px !important;
+    padding: 6px 10px !important;
+    font-size: 0.78rem !important;
+    line-height: 1.2 !important;
+  }
 
   /* 媒合抽屜：手機改為底部半屏 */
   .match-drawer {
@@ -807,12 +822,14 @@
     white-space: nowrap !important;
   }
   .hist-actions {
-    flex-direction: column;
-    align-items: stretch;
-    min-width: 72px;
+    flex-direction: row;
+    flex-wrap: nowrap !important;
+    align-items: center;
+    min-width: 118px;
   }
   .hist-actions .btn {
-    width: 100%;
+    width: auto;
+    flex: 0 0 auto;
   }
   .empty-state-title { font-size: 0.88rem; }
   .empty-state-hint { font-size: 0.74rem; }

@@ -61,8 +61,8 @@ var CACHE_TTL_META_ = parseInt(getConfig_("CACHE_TTL_META", "300"), 10) || 300;
 var CACHE_TTL_REQ_ = parseInt(getConfig_("CACHE_TTL_REQ", "90"), 10) || 90; // 申請單時間窗
 var CACHE_TTL_PENDING_ = parseInt(getConfig_("CACHE_TTL_PENDING", "45"), 10) || 45; // pendingOnly
 var CACHE_TTL_MATCH_ = parseInt(getConfig_("CACHE_TTL_MATCH", "45"), 10) || 45; // 媒合候選短快取
-var CACHE_SCHEMA_VERSION_ = "namekey1";
-var DATA_PAYLOAD_VERSION_ = "schoolSwap1";
+var CACHE_SCHEMA_VERSION_ = "scheduleactive1";
+var DATA_PAYLOAD_VERSION_ = "scheduleActive1";
 var SCHOOL_SWAP_SHEET_ = "全校對調";
 
 function getAllowedHdList_() {
@@ -311,7 +311,8 @@ function validateCombinedReturnTeacherSlot_(row, semesterId) {
   var schedules = (getTableData("教師課表") || []).filter(function (schedule) {
     return String(schedule["學期代號"] || schedule.semesterId || "").trim() === String(semesterId).trim()
       && parseInt(schedule["星期"] != null ? schedule["星期"] : schedule.dayOfWeek, 10) === day
-      && parseInt(schedule["節次"] != null ? schedule["節次"] : schedule.period, 10) === period;
+      && parseInt(schedule["節次"] != null ? schedule["節次"] : schedule.period, 10) === period
+      && scheduleActiveOnDate_(schedule, dateText);
   });
   var sourceRows = schedules.filter(function (schedule) {
     return combinedReturnTeacherMatches_(schedule, requesterName, requesterEmail);
@@ -591,7 +592,7 @@ function prepareNameKeyRequestRow_(row, semesterId, teacherRows) {
 
 function nameKeyCanonicalHeaders_(sheetName) {
   var map = {
-    "教師課表": ["學期代號", "課表ID", "教師姓名", "星期", "節次", "班級", "科目", "課堂屬性", "調課限制", "特殊標記"],
+    "教師課表": ["學期代號", "課表ID", "教師姓名", "星期", "節次", "班級", "科目", "課堂屬性", "調課限制", "特殊標記", "啟用起日", "啟用迄日"],
     "申請單": ["學期代號", "申請單ID", "單號", "批次ID", "狀態", "直接核准", "紙本流程", "申請人姓名", "受邀人姓名", "代申請人姓名", "班級", "科目", "異動日期", "異動星期", "異動節次", "異動類型", "特殊流程", "對調目標日期", "對調目標星期", "對調目標節次", "對調目標班級", "對調目標科目", "經費來源", "請假事由", "請假時間類型", "請假時間", "是否已印", "備註", "建立時間", "更新時間"],
     "代導紀錄": ["學期代號", "代導紀錄ID", "來源申請單ID", "原導師姓名", "班級", "代導日期", "請假時間類型", "請假時間", "代導教師姓名", "代導節數", "鐘點費", "狀態", "啟用", "建立時間", "更新時間", "操作者", "備註"],
     "額度帳本": ["學期代號", "流水ID", "時間", "教師姓名", "異動", "餘額後", "類型", "包ID", "事件ID", "事件名稱", "起日", "迄日", "申請單ID", "操作者", "備註", "索引鍵"]
@@ -853,7 +854,7 @@ function getHeadersForSheet(sheetName) {
     "學期設定": ["學期代號", "學期名稱", "開始日期", "結束日期", "結算日期", "是否預設"],
     // Teacher roster keeps login Email; the four domain sheets use names as relation keys.
     "教師名單": ["學期代號", "教師Email", "教師姓名", "授課科目", "職務", "鐘點支出計畫", "系統角色", "基本鐘點", "折抵額度"],
-    "教師課表": ["學期代號", "課表ID", "教師姓名", "星期", "節次", "班級", "科目", "課堂屬性", "調課限制", "特殊標記"],
+    "教師課表": ["學期代號", "課表ID", "教師姓名", "星期", "節次", "班級", "科目", "課堂屬性", "調課限制", "特殊標記", "啟用起日", "啟用迄日"],
     "申請單": ["學期代號", "申請單ID", "單號", "批次ID", "狀態", "直接核准", "紙本流程", "申請人姓名", "受邀人姓名", "代申請人姓名", "班級", "科目", "異動日期", "異動星期", "異動節次", "異動類型", "特殊流程", "對調目標日期", "對調目標星期", "對調目標節次", "對調目標班級", "對調目標科目", "經費來源", "請假事由", "請假時間類型", "請假時間", "是否已印", "備註", "建立時間", "更新時間"],
     "空堂事件": ["學期代號", "事件ID", "事件名稱", "起日", "迄日", "班級清單", "鐘點規則", "可進互代", "啟用", "備註"],
     "代導紀錄": ["學期代號", "代導紀錄ID", "來源申請單ID", "原導師姓名", "班級", "代導日期", "請假時間類型", "請假時間", "代導教師姓名", "代導節數", "鐘點費", "狀態", "啟用", "建立時間", "更新時間", "操作者", "備註"],
@@ -1133,7 +1134,9 @@ function pickFieldValue_(obj, headerName) {
     "鐘點支出計畫": ["鐘點支出來源", "支出計畫", "計畫"],
     "鐘點支出來源": ["鐘點支出計畫", "支出計畫", "計畫"],
     "原授課教師Email": ["原任課教師Email"],
-    "原任課教師Email": ["原授課教師Email"]
+    "原任課教師Email": ["原授課教師Email"],
+    "啟用起日": ["啟用開始日", "activeFrom", "activationStartDate", "effectiveStartDate"],
+    "啟用迄日": ["啟用結束日", "activeTo", "activationEndDate", "effectiveEndDate"]
   };
   if (obj[headerName] !== undefined && obj[headerName] !== null && obj[headerName] !== "") {
     return obj[headerName];
@@ -1754,13 +1757,154 @@ function normalizePatrolScheduleRow_(row) {
   return normalized;
 }
 
-function validateScheduleImportRows_(rows, semesterId) {
+function normalizeScheduleDate_(raw, label) {
+  if (raw === undefined || raw === null || String(raw).trim() === "") return "";
+  if (Object.prototype.toString.call(raw) === "[object Date]" && !isNaN(raw.getTime())) {
+    return toLocalDateStr(raw);
+  }
+  var text = String(raw).trim().split(/[T ]/)[0].replace(/\//g, "-");
+  var match = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (!match) throw new Error((label || "課表啟用日期") + "格式必須為 YYYY-MM-DD！");
+  var year = parseInt(match[1], 10);
+  var month = parseInt(match[2], 10);
+  var day = parseInt(match[3], 10);
+  var date = new Date(year, month - 1, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
+    throw new Error((label || "課表啟用日期") + "不是有效日期！");
+  }
+  return match[1] + "-" + String(month).padStart(2, "0") + "-" + String(day).padStart(2, "0");
+}
+
+function scheduleDateField_(row, names) {
+  var source = row || {};
+  for (var i = 0; i < names.length; i++) {
+    if (source[names[i]] !== undefined && source[names[i]] !== null && String(source[names[i]]).trim() !== "") {
+      return source[names[i]];
+    }
+  }
+  return "";
+}
+
+function scheduleActiveFrom_(row, strict) {
+  var raw = scheduleDateField_(row, ["啟用起日", "啟用開始日", "activeFrom", "activationStartDate", "effectiveStartDate"]);
+  if (!raw) return "";
+  try { return normalizeScheduleDate_(raw, "啟用起日"); } catch (e) { if (strict) throw e; return ""; }
+}
+
+function scheduleActiveTo_(row, strict) {
+  var raw = scheduleDateField_(row, ["啟用迄日", "啟用結束日", "activeTo", "activationEndDate", "effectiveEndDate"]);
+  if (!raw) return "";
+  try { return normalizeScheduleDate_(raw, "啟用迄日"); } catch (e) { if (strict) throw e; return ""; }
+}
+
+/** 空白起訖日代表整個目前學期有效。 */
+function scheduleActiveOnDate_(row, dateRaw) {
+  var date = normalizeScheduleDate_(dateRaw, "課表查詢日期");
+  var rawFrom = scheduleDateField_(row, ["啟用起日", "啟用開始日", "activeFrom", "activationStartDate", "effectiveStartDate"]);
+  var rawTo = scheduleDateField_(row, ["啟用迄日", "啟用結束日", "activeTo", "activationEndDate", "effectiveEndDate"]);
+  var from = scheduleActiveFrom_(row, false);
+  var to = scheduleActiveTo_(row, false);
+  if ((rawFrom && !from) || (rawTo && !to)) return false;
+  if (from && date < from) return false;
+  if (to && date > to) return false;
+  return (!from || !to || from <= to);
+}
+
+function scheduleDateRange_(semesterId) {
+  var sid = String(semesterId || "").trim();
+  var semester = (getTableData("學期設定") || []).find(function (row) {
+    return String(row["學期代號"] || row.id || "").trim() === sid;
+  });
+  if (!semester) return { start: "", end: "" };
+  return {
+    start: normalizeScheduleDate_(semester["開始日期"] || semester.startDate || "", "學期開始日期"),
+    end: normalizeScheduleDate_(semester["結束日期"] || semester.endDate || "", "學期結束日期")
+  };
+}
+
+function scheduleSlotKey_(row) {
+  var name = String(row["教師姓名"] || row.teacherName || row["教師Email"] || row.teacherEmail || "").trim().toLowerCase();
+  var day = parseInt(row["星期"] != null ? row["星期"] : row.dayOfWeek, 10);
+  var period = parseInt(row["節次"] != null ? row["節次"] : row.period, 10);
+  var cls = String(row["班級"] != null ? row["班級"] : row.className || "").trim().toLowerCase();
+  var attr = String(row["課堂屬性"] != null ? row["課堂屬性"] : row.attr || "").trim();
+  var parity = attr === "單週" ? "single" : (attr === "雙週" ? "double" : "all");
+  return [name, day, period, cls, parity].join("|");
+}
+
+function scheduleSlotGroupKey_(row) {
+  var name = String(row["教師姓名"] || row.teacherName || row["教師Email"] || row.teacherEmail || "").trim().toLowerCase();
+  var day = parseInt(row["星期"] != null ? row["星期"] : row.dayOfWeek, 10);
+  var period = parseInt(row["節次"] != null ? row["節次"] : row.period, 10);
+  var attr = String(row["課堂屬性"] != null ? row["課堂屬性"] : row.attr || "").trim();
+  var parity = attr === "單週" ? "single" : (attr === "雙週" ? "double" : "all");
+  return [name, day, period, parity].join("|");
+}
+
+function scheduleClassTokens_(row) {
+  return String(row && (row["班級"] != null ? row["班級"] : row.className) || "").trim()
+    .split(/[,，、\/／;；|｜\s]+/)
+    .map(function (value) { return String(value || "").trim().toLowerCase(); })
+    .filter(Boolean);
+}
+
+function scheduleClassesOverlap_(a, b) {
+  var bSet = Object.create(null);
+  scheduleClassTokens_(b).forEach(function (value) { bSet[value] = true; });
+  return scheduleClassTokens_(a).some(function (value) { return !!bSet[value]; });
+}
+
+function scheduleRangesOverlap_(a, b) {
+  var aFrom = scheduleActiveFrom_(a, true) || "0000-01-01";
+  var aTo = scheduleActiveTo_(a, true) || "9999-12-31";
+  var bFrom = scheduleActiveFrom_(b, true) || "0000-01-01";
+  var bTo = scheduleActiveTo_(b, true) || "9999-12-31";
+  return aFrom <= bTo && bFrom <= aTo;
+}
+
+function schedulePreviousDate_(dateText) {
+  var date = new Date(String(dateText || "").replace(/-/g, "/"));
+  if (isNaN(date.getTime())) throw new Error("課表啟用起日不是有效日期！");
+  date.setDate(date.getDate() - 1);
+  return toLocalDateStr(date);
+}
+
+function scheduleRowId_(row) {
+  return String(row && (row["課表ID"] != null ? row["課表ID"] : row.id) || "").trim();
+}
+
+function validateScheduleImportRows_(rows, semesterId, options) {
+  options = options || {};
   var list = Array.isArray(rows) ? rows : [];
   var sid = String(semesterId || "").trim();
   var errors = [];
   var seenIds = Object.create(null);
   var seenSlots = Object.create(null);
   var seenPatrolSlots = Object.create(null);
+  var existingRows = Array.isArray(options.existingRows) ? options.existingRows : [];
+  var semesterRange = options.semesterRange || { start: "", end: "" };
+  var ignoredIds = Object.create(null);
+  (options.ignoreIds || []).forEach(function (id) {
+    var key = String(id || "").trim();
+    if (key) ignoredIds[key] = true;
+  });
+
+  existingRows.forEach(function (existing) {
+    if (!existing) return;
+    if (ignoredIds[scheduleRowId_(existing)]) return;
+    var isPatrol = isPatrolScheduleRow_(existing);
+    var day = parseInt(existing["星期"] != null ? existing["星期"] : existing.dayOfWeek, 10);
+    var period = parseInt(existing["節次"] != null ? existing["節次"] : existing.period, 10);
+    if (isPatrol) {
+      var patrolKey = [day, period].join("|");
+      if (!seenPatrolSlots[patrolKey]) seenPatrolSlots[patrolKey] = [];
+      seenPatrolSlots[patrolKey].push(existing);
+    } else {
+      var slotKey = scheduleSlotGroupKey_(existing);
+      if (!seenSlots[slotKey]) seenSlots[slotKey] = [];
+      seenSlots[slotKey].push(existing);
+    }
+  });
 
   if (!sid) errors.push("缺少學期代號");
   if (!list.length) errors.push("匯入清單為空");
@@ -1782,6 +1926,14 @@ function validateScheduleImportRows_(rows, semesterId) {
     var isPatrol = isPatrolScheduleRow_(row);
     var day = parseInt(dayRaw, 10);
     var period = parseInt(periodRaw, 10);
+    var activeFrom = "";
+    var activeTo = "";
+    try {
+      activeFrom = scheduleActiveFrom_(row, true);
+      activeTo = scheduleActiveTo_(row, true);
+    } catch (dateError) {
+      rowErrors.push(dateError.message || "啟用日期格式錯誤");
+    }
 
     if (rowSid !== sid) rowErrors.push("學期不一致");
     if (!id) rowErrors.push("缺少課表ID");
@@ -1792,15 +1944,33 @@ function validateScheduleImportRows_(rows, semesterId) {
     if (!isPatrol && !className) rowErrors.push("缺少班級");
     if (!isPatrol && !subject) rowErrors.push("缺少科目");
     if (id && seenIds[id]) rowErrors.push("課表ID重複");
+    if (activeFrom && activeTo && activeFrom > activeTo) rowErrors.push("啟用起日不可晚於啟用迄日");
+    if (semesterRange.start && activeFrom && activeFrom < semesterRange.start) rowErrors.push("啟用起日不在學期範圍內");
+    if (semesterRange.end && activeFrom && activeFrom > semesterRange.end) rowErrors.push("啟用起日不在學期範圍內");
+    if (semesterRange.start && activeTo && activeTo < semesterRange.start) rowErrors.push("啟用迄日不在學期範圍內");
+    if (semesterRange.end && activeTo && activeTo > semesterRange.end) rowErrors.push("啟用迄日不在學期範圍內");
+
+    if (activeFrom) row["啟用起日"] = activeFrom;
+    if (activeTo) row["啟用迄日"] = activeTo;
 
     if (isPatrol) {
       var patrolSlotKey = [day, period].join("|");
-      if (day && period && seenPatrolSlots[patrolSlotKey]) rowErrors.push("同一星期與節次只能安排一位巡堂教師");
-      if (!rowErrors.length) seenPatrolSlots[patrolSlotKey] = true;
+      var patrolPrevious = (day && period ? (seenPatrolSlots[patrolSlotKey] || []) : []);
+      if (patrolPrevious.some(function (previous) { return scheduleRangesOverlap_(previous, row); })) {
+        rowErrors.push("同一星期與節次只能安排一位巡堂教師（啟用期間重疊）");
+      }
+      if (!rowErrors.length && day && period) patrolPrevious.push(row);
+      if (day && period) seenPatrolSlots[patrolSlotKey] = patrolPrevious;
     } else {
-      var slotKey = [name.toLowerCase(), day, period, className.toLowerCase(), subject.toLowerCase(), attr, restriction].join("|");
-      if (name && day && period && className && subject && seenSlots[slotKey]) rowErrors.push("同一教師／時段／班級／科目重複");
-      if (!rowErrors.length) seenSlots[slotKey] = true;
+      var slotKey = scheduleSlotGroupKey_(row);
+      var previous = (name && day && period && className ? (seenSlots[slotKey] || []) : []);
+      if (previous.some(function (prior) {
+        return scheduleClassesOverlap_(prior, row) && scheduleRangesOverlap_(prior, row);
+      })) {
+        rowErrors.push("同一教師／時段／班級／科目重複：啟用期間重疊");
+      }
+      if (!rowErrors.length && name && day && period && className) previous.push(row);
+      if (name && day && period && className) seenSlots[slotKey] = previous;
     }
 
     if (rowErrors.length) {
@@ -1975,7 +2145,9 @@ function slimScheduleRows_(rows) {
       "科目": s["科目"] || s.subject || "",
       "課堂屬性": s["課堂屬性"] || s.attr || "",
       "調課限制": s["調課限制"] || s.restriction || "",
-      "特殊標記": s["特殊標記"] || s.specialTags || s.specialTagsText || ""
+      "特殊標記": s["特殊標記"] || s.specialTags || s.specialTagsText || "",
+      "啟用起日": s["啟用起日"] || s.activeFrom || s.activationStartDate || s.effectiveStartDate || "",
+      "啟用迄日": s["啟用迄日"] || s.activeTo || s.activationEndDate || s.effectiveEndDate || ""
     };
   });
 }
@@ -2250,6 +2422,7 @@ function resolveSchoolSwapSlotForTeacher_(rows, dateStr, dayOfWeek, period, sche
       var rowDay = parseInt(row["星期"] != null ? row["星期"] : row.dayOfWeek, 10);
       var rowPeriod = parseInt(row["節次"] != null ? row["節次"] : row.period, 10);
       return rowEmail === email && rowDay === parseInt(day, 10) && rowPeriod === parseInt(per, 10)
+        && scheduleActiveOnDate_(row, dateStr)
         && isPatrolScheduleRow_(row);
     });
   }
@@ -4003,7 +4176,16 @@ function buildMatchCandidates_(semesterId, opts) {
   });
 
   var teachers = getSemesterTeachersCached_(semesterId) || [];
-  var schedules = getSemesterSchedulesCached_(semesterId) || [];
+  var rawSchedules = getSemesterSchedulesCached_(semesterId) || [];
+  var teacherDirectory = null;
+  try { teacherDirectory = buildNameKeyDirectory_(teachers); } catch (directoryError) { teacherDirectory = null; }
+  var schedules = rawSchedules.map(function (schedule) {
+    var rawEmail = String(schedule["教師Email"] || schedule.teacherEmail || "").toLowerCase().trim();
+    if (!rawEmail && teacherDirectory) {
+      rawEmail = nameKeyEmailForName_(semesterId, schedule["教師姓名"] || schedule.teacherName || "", teacherDirectory);
+    }
+    return rawEmail ? Object.assign({}, schedule, { teacherEmail: rawEmail }) : schedule;
+  });
   var schoolSwaps = getActiveSchoolSwapRows_(semesterId) || [];
   var reqPack = getSemesterRequestsCached_(semesterId, false, 14);
   var allReqRows = reqPack.rows || [];
@@ -4015,7 +4197,7 @@ function buildMatchCandidates_(semesterId, opts) {
     return st === "pending_teacher" || st === "pending_admin";
   });
 
-  // 基礎課：email|day|period → { className, subject, attr }
+  // 基礎課：email|day|period → rows[]；同一時段可依啟用日期切換版本。
   var baseMap = {};
   schedules.forEach(function (s) {
     if (!s) return;
@@ -4024,14 +4206,8 @@ function buildMatchCandidates_(semesterId, opts) {
     var p = parseInt(s["節次"] != null ? s["節次"] : s.period, 10);
     if (!em || isNaN(d) || isNaN(p)) return;
     var key = em + "|" + d + "|" + p;
-    // 多屬性格：保留第一筆一般／巡堂
-    if (!baseMap[key]) {
-      baseMap[key] = {
-        className: String(s["班級"] || s.className || "").trim(),
-        subject: String(s["科目"] || s.subject || "").trim(),
-        attr: String(s["課堂屬性"] || s.attr || "").trim()
-      };
-    }
+    if (!baseMap[key]) baseMap[key] = [];
+    baseMap[key].push(s);
   });
 
   // 核准異動：date|period 上 original 調出、actual 調入
@@ -4067,7 +4243,15 @@ function buildMatchCandidates_(semesterId, opts) {
     if (!em || isNaN(p0) || isNaN(d0)) return { className: "", subject: "" };
     var effective = resolveSchoolSwapSlotForTeacher_(schoolSwaps, date, d0, p0, schedules, em);
     var key = em + "|" + parseInt(effective.dayOfWeek, 10) + "|" + parseInt(effective.period, 10);
-    return baseMap[key] || { className: "", subject: "" };
+    var rows = (baseMap[key] || []).filter(function (row) {
+      return scheduleActiveOnDate_(row, date);
+    });
+    var row = rows[0];
+    return row ? {
+      className: String(row["班級"] || row.className || "").trim(),
+      subject: String(row["科目"] || row.subject || "").trim(),
+      attr: String(row["課堂屬性"] || row.attr || "").trim()
+    } : { className: "", subject: "" };
   }
   approved.forEach(function (r) {
     if (!r) return;
@@ -4114,7 +4298,14 @@ function buildMatchCandidates_(semesterId, opts) {
     var em = String(email || "").toLowerCase().trim();
     var effective = resolveSchoolSwapSlotForTeacher_(schoolSwaps, dateStr, d, p, schedules, em);
     var key = em + "|" + effective.dayOfWeek + "|" + effective.period;
-    var base = baseMap[key] || null;
+    var baseRow = (baseMap[key] || []).find(function (row) {
+      return scheduleActiveOnDate_(row, dateStr);
+    });
+    var base = baseRow ? {
+      className: String(baseRow["班級"] || baseRow.className || "").trim(),
+      subject: String(baseRow["科目"] || baseRow.subject || "").trim(),
+      attr: String(baseRow["課堂屬性"] || baseRow.attr || "").trim()
+    } : null;
     var dateKey = em + "|" + dateStr + "|" + p;
     if (pendingBusy[dateKey]) {
       // 進行中佔位：視同有課（不可再媒合）
@@ -4160,6 +4351,7 @@ function buildMatchCandidates_(semesterId, opts) {
   var sameCourseTeachers = {};
   schedules.forEach(function (s) {
     if (!s) return;
+    if (dateStr && !scheduleActiveOnDate_(s, dateStr)) return;
     var te = String(s["教師Email"] || s.teacherEmail || "").toLowerCase().trim();
     if (!te) return;
     var cn = String(s["班級"] || s.className || "").trim();
@@ -4451,7 +4643,9 @@ function buildPublicClassPayload_(semesterId, className) {
       "班級": s["班級"] || s.className || "",
       "科目": s["科目"] || s.subject || "",
       "課堂屬性": s["課堂屬性"] || s.attr || "",
-      "調課限制": s["調課限制"] || s.restriction || ""
+      "調課限制": s["調課限制"] || s.restriction || "",
+      "啟用起日": s["啟用起日"] || s.activeFrom || s.activationStartDate || s.effectiveStartDate || "",
+      "啟用迄日": s["啟用迄日"] || s.activeTo || s.activationEndDate || s.effectiveEndDate || ""
     };
   });
 
@@ -5574,22 +5768,48 @@ function doPost(e) {
     } else if (action === "saveScheduleCell") {
       if (!isAdmin) throw new Error("無管理員權限！");
       reqData = normalizePatrolScheduleRow_(reqData);
-      if (isPatrolScheduleRow_(reqData)) {
-        var currentScheduleRows = getTableData("教師課表") || [];
-        var patrolDay = String(reqData["星期"] || "").trim();
-        var patrolPeriod = String(reqData["節次"] || "").trim();
-        var patrolId = String(reqData["課表ID"] || "").trim();
-        var hasPatrolConflict = currentScheduleRows.some(function (row) {
-          return String(row["學期代號"] || "").trim() === String(semesterId || "").trim()
-            && String(row["課表ID"] || "").trim() !== patrolId
-            && isPatrolScheduleRow_(row)
-            && String(row["星期"] || "").trim() === patrolDay
-            && String(row["節次"] || "").trim() === patrolPeriod;
-        });
-        if (hasPatrolConflict) throw new Error("同一星期與節次只能安排一位巡堂教師");
-      }
       reqData["學期代號"] = semesterId;
-      saveRows("教師課表", [reqData], "課表ID");
+      var currentScheduleRows = getTableData("教師課表") || [];
+      var scheduleId = String(reqData["課表ID"] || "").trim();
+      var previousId = String(reqData["前課表ID"] || reqData.previousId || "").trim();
+      var saveRowsList = [reqData];
+      var ignoredScheduleIds = [scheduleId];
+      if (previousId) {
+        if (!reqData["啟用起日"] && !reqData.activeFrom) {
+          throw new Error("建立課表新版本時必須填寫啟用起日！");
+        }
+        if (previousId === scheduleId) throw new Error("課表新版本不可使用相同的課表ID！");
+        var previousRow = currentScheduleRows.find(function (row) {
+          return String(row["學期代號"] || "").trim() === String(semesterId || "").trim()
+            && scheduleRowId_(row) === previousId;
+        });
+        if (!previousRow) throw new Error("找不到要結束的舊課表版本！");
+        if (scheduleSlotKey_(previousRow) !== scheduleSlotKey_(reqData)) {
+          throw new Error("課表新版本必須與舊版本維持相同教師、星期、節次與班級！");
+        }
+        var newActiveFrom = scheduleActiveFrom_(reqData, true);
+        var previousActiveFrom = scheduleActiveFrom_(previousRow, false);
+        if (previousActiveFrom && newActiveFrom <= previousActiveFrom) {
+          throw new Error("新版本啟用起日必須晚於舊版本啟用起日！");
+        }
+        var closedPrevious = Object.assign({}, previousRow);
+        var closedTo = schedulePreviousDate_(newActiveFrom);
+        var existingPreviousTo = scheduleActiveTo_(previousRow, false);
+        if (existingPreviousTo && existingPreviousTo < closedTo) closedTo = existingPreviousTo;
+        closedPrevious["啟用迄日"] = closedTo;
+        closedPrevious["啟用起日"] = previousActiveFrom;
+        saveRowsList.unshift(closedPrevious);
+        ignoredScheduleIds.push(previousId);
+      }
+      var scheduleExistingRows = currentScheduleRows.filter(function (row) {
+        return String(row["學期代號"] || "").trim() === String(semesterId || "").trim();
+      });
+      validateScheduleImportRows_(saveRowsList, semesterId, {
+        existingRows: scheduleExistingRows,
+        ignoreIds: ignoredScheduleIds,
+        semesterRange: scheduleDateRange_(semesterId)
+      });
+      saveRows("教師課表", saveRowsList, "課表ID");
       invalidateScheduleCaches_(semesterId);
       
     } else if (action === "clearScheduleCell") {
@@ -5632,9 +5852,15 @@ function doPost(e) {
         return s;
       });
 
-      validateScheduleImportRows_(list, sidStr);
-      // 所有快照先在寫入閘門外準備，避免內部回復讀取被匯入狀態阻擋。
       var allExisting = getTableData("教師課表") || [];
+      validateScheduleImportRows_(list, sidStr, {
+        existingRows: replaceAll ? [] : allExisting.filter(function (row) {
+          return String(row[semKey] || "").trim() === sidStr;
+        }),
+        ignoreIds: replaceAll ? [] : list.map(function (row) { return row["課表ID"]; }),
+        semesterRange: scheduleDateRange_(sidStr)
+      });
+      // 所有快照先在寫入閘門外準備，避免內部回復讀取被匯入狀態阻擋。
       var scheduleBackupRows = allExisting.map(function (row) {
         return buildRowArray_("教師課表", headersImp, row);
       });
@@ -7210,7 +7436,7 @@ function _dayFromDateStr_(dateStr) {
  * 查教師課表班科（email + 星期 + 節次；可限學期）
  * 勿回傳錯誤人的課；查不到回空字串
  */
-function _lookupScheduleClassSubject_(email, dayOfWeek, period, semesterId) {
+function _lookupScheduleClassSubject_(email, dayOfWeek, period, semesterId, dateStr) {
   var out = { className: "", subject: "" };
   var em = String(email || "").toLowerCase().trim();
   var day = parseInt(dayOfWeek, 10);
@@ -7219,6 +7445,10 @@ function _lookupScheduleClassSubject_(email, dayOfWeek, period, semesterId) {
   try {
     var schedules = getTableData("教師課表") || [];
     var sid = String(semesterId || "").trim();
+    var directory = null;
+    try {
+      directory = buildNameKeyDirectory_(sid ? (getSemesterTeachersCached_(sid) || []) : (getTableData("教師名單") || []));
+    } catch (directoryError) {}
     var hit = null;
     for (var i = 0; i < schedules.length; i++) {
       var s = schedules[i];
@@ -7228,9 +7458,13 @@ function _lookupScheduleClassSubject_(email, dayOfWeek, period, semesterId) {
         if (sSid && sSid !== sid) continue;
       }
       var sEmail = String(s.teacherEmail || s["教師Email"] || "").toLowerCase().trim();
+      if (!sEmail && directory) {
+        sEmail = nameKeyEmailForName_(sid, s["教師姓名"] || s.teacherName || "", directory);
+      }
       if (sEmail !== em) continue;
       if (parseInt(s.dayOfWeek || s["星期"], 10) !== day) continue;
       if (parseInt(s.period || s["節次"], 10) !== per) continue;
+      if (dateStr && !scheduleActiveOnDate_(s, dateStr)) continue;
       hit = s;
       break;
     }
@@ -7262,7 +7496,7 @@ function _resolveExchangeSides_(req) {
 
   // 請假節缺班科 → 查申請人課表
   if ((!leaveClass && !leaveSubject) && leaveEmail && leaveDay && leavePeriod) {
-    var leaveCs = _lookupScheduleClassSubject_(leaveEmail, leaveDay, leavePeriod, semesterId);
+    var leaveCs = _lookupScheduleClassSubject_(leaveEmail, leaveDay, leavePeriod, semesterId, leaveDate);
     leaveClass = leaveCs.className || leaveClass;
     leaveSubject = leaveCs.subject || leaveSubject;
   }
@@ -7270,7 +7504,7 @@ function _resolveExchangeSides_(req) {
   var targetClass = String(req.targetClassName || req["對調目標班級"] || "").trim();
   var targetSubject = String(req.targetSubject || req["對調目標科目"] || "").trim();
   if ((!targetClass && !targetSubject) && targetEmail && targetDay && targetPeriod) {
-    var tCs = _lookupScheduleClassSubject_(targetEmail, targetDay, targetPeriod, semesterId);
+    var tCs = _lookupScheduleClassSubject_(targetEmail, targetDay, targetPeriod, semesterId, targetDate);
     targetClass = tCs.className;
     targetSubject = tCs.subject;
   }

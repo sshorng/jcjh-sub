@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 
 global.window = global;
 require('../field-map.js');
+require('../domain-school-swap.js');
 require('../domain-billing.js');
 
 const schedule = window.FieldMap.mapSchedule({
@@ -49,5 +50,40 @@ const row = window.DomainBilling.buildMonthlyReportRows({
 assert.equal(row.publicOvertimeUsed, 1);
 assert.equal(row.schoolPublicPayout, 0);
 assert.equal(row.actualOvertime, 0);
+
+const swappedSchedule = window.FieldMap.mapSchedule({
+  '教師姓名': 'Billing',
+  '星期': 2,
+  '節次': 3,
+  '班級': '701',
+  '科目': '數學',
+  '課堂屬性': '超鐘點'
+});
+const swappedRow = window.DomainBilling.buildMonthlyReportRows({
+  teachers: [{ email: 'Billing', name: 'Billing', baseHours: 0 }],
+  allSchedules: [swappedSchedule],
+  schoolSwaps: [{
+    id: 'swap-billing',
+    name: '補課',
+    dateA: '2026-07-13',
+    periodA: 1,
+    dateB: '2026-07-14',
+    periodB: 3,
+    enabled: true
+  }],
+  substitutionRecords: [{
+    date: '2026-07-13',
+    period: 1,
+    className: '701',
+    type: 'substitution',
+    originalTeacherName: 'Billing',
+    actualTeacherName: 'Cover',
+    subFee: '公費代課'
+  }],
+  reportMonth: '2026-07',
+  reportWeeksCount: 1
+})[0];
+assert.equal(swappedRow.publicOvertimeUsed, 1, 'school swap must resolve the original overtime slot');
+assert.equal(swappedRow.actualOvertime, 0);
 
 console.log('billing data shape tests PASS');

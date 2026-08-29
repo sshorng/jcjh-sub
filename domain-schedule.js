@@ -77,6 +77,79 @@ window.DomainSchedule = (function () {
     return map;
   }
 
+  function normalizeScheduleDate(value) {
+    if (value === undefined || value === null || value === '') return '';
+    if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value.getTime())) {
+      return value.getFullYear() + '-' + String(value.getMonth() + 1).padStart(2, '0')
+        + '-' + String(value.getDate()).padStart(2, '0');
+    }
+    var raw = String(value).trim().split(/[T ]/)[0].replace(/\//g, '-');
+    var match = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if (!match) return '';
+    var year = parseInt(match[1], 10);
+    var month = parseInt(match[2], 10);
+    var day = parseInt(match[3], 10);
+    var date = new Date(year, month - 1, day);
+    if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return '';
+    return match[1] + '-' + String(month).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+  }
+
+  function scheduleDateField(row, names) {
+    var source = row || {};
+    for (var i = 0; i < names.length; i++) {
+      if (source[names[i]] !== undefined && source[names[i]] !== null && source[names[i]] !== '') {
+        return source[names[i]];
+      }
+    }
+    return '';
+  }
+
+  function scheduleActiveFrom(row) {
+    return normalizeScheduleDate(scheduleDateField(row, [
+      '啟用起日', '啟用開始日', 'activeFrom', 'activationStartDate', 'effectiveStartDate'
+    ]));
+  }
+
+  function scheduleActiveTo(row) {
+    return normalizeScheduleDate(scheduleDateField(row, [
+      '啟用迄日', '啟用結束日', 'activeTo', 'activationEndDate', 'effectiveEndDate'
+    ]));
+  }
+
+  /** 空白起訖日代表整個目前學期有效。 */
+  function isActiveOnDate(row, dateStr) {
+    if (!dateStr) return true;
+    var date = normalizeScheduleDate(dateStr);
+    if (!date) return false;
+    var rawFrom = scheduleDateField(row, [
+      '啟用起日', '啟用開始日', 'activeFrom', 'activationStartDate', 'effectiveStartDate'
+    ]);
+    var rawTo = scheduleDateField(row, [
+      '啟用迄日', '啟用結束日', 'activeTo', 'activationEndDate', 'effectiveEndDate'
+    ]);
+    var from = scheduleActiveFrom(row);
+    var to = scheduleActiveTo(row);
+    if (rawFrom && !from) return false;
+    if (rawTo && !to) return false;
+    if (from && date < from) return false;
+    if (to && date > to) return false;
+    return !from || !to || from <= to;
+  }
+
+  function filterActiveRows(rows, dateStr) {
+    var list = rows || [];
+    if (!dateStr) return list.slice();
+    return list.filter(function (row) { return isActiveOnDate(row, dateStr); });
+  }
+
+  function scheduleRangesOverlap(a, b) {
+    var aFrom = scheduleActiveFrom(a) || '0000-01-01';
+    var aTo = scheduleActiveTo(a) || '9999-12-31';
+    var bFrom = scheduleActiveFrom(b) || '0000-01-01';
+    var bTo = scheduleActiveTo(b) || '9999-12-31';
+    return aFrom <= bTo && bFrom <= aTo;
+  }
+
   /**
    * 課表索引：email|dow|period → rows[]
    * 與 dow|period → emails[]
@@ -99,27 +172,40 @@ window.DomainSchedule = (function () {
     return { byTeacherSlot: byTeacherSlot, bySlotOwners: bySlotOwners };
   }
 
-  function getCandidates(index, teacherEmail, dayOfWeek, period, allSchedules) {
+  function getCandidates(index, teacherEmail, dayOfWeek, period, allSchedules, dateStr) {
     const emailLower = String(teacherEmail || '').toLowerCase();
+    var rows;
     if (index && index.byTeacherSlot) {
       const key = emailLower + '|' + parseInt(dayOfWeek, 10) + '|' + parseInt(period, 10);
-      return index.byTeacherSlot[key] || [];
+      rows = index.byTeacherSlot[key] || [];
+      return filterActiveRows(rows, dateStr);
     }
-    return (allSchedules || []).filter(function (s) {
+    rows = (allSchedules || []).filter(function (s) {
       return String(s.teacherEmail || '').toLowerCase() === emailLower &&
         parseInt(s.dayOfWeek) === parseInt(dayOfWeek) &&
         parseInt(s.period) === parseInt(period);
     });
+    return filterActiveRows(rows, dateStr);
   }
 
-  function getSlotOwnerEmails(index, dayOfWeek, period, allSchedules) {
+  function getSlotOwnerEmails(index, dayOfWeek, period, allSchedules, dateStr) {
+    var rows;
     if (index && index.bySlotOwners) {
-      return index.bySlotOwners[parseInt(dayOfWeek, 10) + '|' + parseInt(period, 10)] || [];
+      var emails = index.bySlotOwners[parseInt(dayOfWeek, 10) + '|' + parseInt(period, 10)] || [];
+      if (!dateStr) return emails;
+      rows = filterActiveRows((allSchedules || []).filter(function (s) {
+        return emails.indexOf(String(s.teacherEmail || '').toLowerCase()) >= 0
+          && parseInt(s.dayOfWeek, 10) === parseInt(dayOfWeek, 10)
+          && parseInt(s.period, 10) === parseInt(period, 10);
+      }), dateStr);
+      return rows.map(function (s) { return String(s.teacherEmail || '').toLowerCase(); })
+        .filter(function (email, i, list) { return list.indexOf(email) === i; });
     }
-    return (allSchedules || []).filter(function (s) {
+    rows = (allSchedules || []).filter(function (s) {
       return parseInt(s.dayOfWeek) === parseInt(dayOfWeek) &&
         parseInt(s.period) === parseInt(period);
-    }).map(function (s) { return String(s.teacherEmail || '').toLowerCase(); });
+    });
+    return filterActiveRows(rows, dateStr).map(function (s) { return String(s.teacherEmail || '').toLowerCase(); });
   }
 
   /**
@@ -150,7 +236,7 @@ window.DomainSchedule = (function () {
           && String(r.actualTeacherEmail || '').toLowerCase() === String(teacherEmail || '').toLowerCase();
       });
       if (combinedOwn) {
-        var combinedCandidates = getCandidates(index, teacherEmail, scheduleDayOfWeek, schedulePeriod, allSchedules);
+        var combinedCandidates = getCandidates(index, teacherEmail, scheduleDayOfWeek, schedulePeriod, allSchedules, dateStr);
         var combinedBase = combinedCandidates[0] || null;
         var combinedClass = String(combinedOwn.className || (combinedBase && combinedBase.className) || '').trim();
         var combinedSubject = String(combinedOwn.subject || (combinedBase && combinedBase.subject) || '').trim();
@@ -163,7 +249,7 @@ window.DomainSchedule = (function () {
           isCombinedReturn: true,
           specialFlow: 'combined_return',
           subType: 'substitution',
-          subText: '↩ 合班回原班',
+           subText: '↩ 併班上課',
           subRecord: combinedOwn,
           isSubstituted: false,
           isSubstitutionDuty: false,
@@ -227,14 +313,12 @@ window.DomainSchedule = (function () {
         }
 
         var firstEdge = path[0].record;
-         var outCands = getCandidates(index, teacherEmail, scheduleDayOfWeek, schedulePeriod, allSchedules);
+        var outCands = getCandidates(index, teacherEmail, scheduleDayOfWeek, schedulePeriod, allSchedules, dateStr);
         var baseOut = outCands.find(function (s) {
           return String(s.teacherEmail || '').toLowerCase() === emailLower;
         }) || outCands[0] || null;
 
-        // 調出主標科目：
-        // - 先前義務若是「代課」→ 用義務課（空堂代生物再調出）
-        // - 對調鏈／一般對調 → 一律自己的基礎／專長（絕不用他人科目）
+        // 調出主標：優先使用這個原位置 edge 已保存的班科，缺欄位才回到基礎課。
         var priorDuty = null;
         if (periodSubs && periodSubs.length) {
           for (var oi = periodSubs.length - 1; oi >= 0; oi--) {
@@ -262,26 +346,18 @@ window.DomainSchedule = (function () {
             }
           }
         }
-        var priorIsSub = priorDuty && (priorDuty.type === 'substitution' || priorDuty.type === '代課');
-        var ownOutClass = '';
-        var ownOutSubj = '';
-        if (priorIsSub) {
-          ownOutClass = String(priorDuty.className || (firstEdge && firstEdge.className) || (baseOut && baseOut.className) || '').trim();
-          ownOutSubj = String(priorDuty.subject || (firstEdge && firstEdge.subject) || '').trim();
-        } else {
-          // 對調調出：班科永遠是自己的；無基礎列時沿用先前調入的本課班級。
-          ownOutSubj = String(
-            (baseOut && baseOut.subject)
-            || (h.getTeacherSubjectByEmail && h.getTeacherSubjectByEmail(teacherEmail))
-            || ''
-          ).trim();
-          ownOutClass = String(
-            (baseOut && baseOut.className)
-            || (priorDuty && priorDuty.className)
-            || (firstEdge && firstEdge.className)
-            || ''
-          ).trim();
-        }
+        var ownOutClass = String(
+          (firstEdge && firstEdge.className)
+          || (baseOut && baseOut.className)
+          || (priorDuty && priorDuty.className)
+          || ''
+        ).trim();
+        var ownOutSubj = String(
+          (firstEdge && firstEdge.subject)
+          || (baseOut && baseOut.subject)
+          || (priorDuty && priorDuty.subject)
+          || ''
+        ).trim();
         var subText = '';
         if (firstEdge.type === 'exchange') {
           var otherSub = allSubs.find(function (x) {
@@ -318,7 +394,7 @@ window.DomainSchedule = (function () {
 
       var incomingEdge = null;
       var originalOwner = null;
-       var possibleOwners = getSlotOwnerEmails(index, scheduleDayOfWeek, schedulePeriod, allSchedules);
+       var possibleOwners = getSlotOwnerEmails(index, scheduleDayOfWeek, schedulePeriod, allSchedules, dateStr);
 
       for (var oi = 0; oi < possibleOwners.length; oi++) {
         var owner = possibleOwners[oi];
@@ -354,48 +430,22 @@ window.DomainSchedule = (function () {
 
       if (incomingEdge) {
         var inCands = originalOwner
-           ? getCandidates(index, originalOwner, scheduleDayOfWeek, schedulePeriod, allSchedules)
+           ? getCandidates(index, originalOwner, scheduleDayOfWeek, schedulePeriod, allSchedules, dateStr)
           : [];
         var baseIn = inCands.find(function (s) {
           return String(s.teacherEmail || '').toLowerCase() === originalOwner;
         }) || inCands[0] || null;
-        // 調入主標＝實際授課教師自己的班科（edge 由交換轉換器寫入）。
-        // 對調：各自帶自己的原課到新時段，不可用對方教師專長覆寫。
+        // 調入主標＝該原位置的班科（edge 由交換轉換器寫入）。
+        // 對調只交換授課教師，課程仍留在原本的日期／節次位置。
         // 代課：edge 存被代的那堂
         var isExIn = incomingEdge.type === 'exchange';
         var finalClassIn = String(incomingEdge.className || (baseIn && baseIn.className) || '').trim();
         var finalSubjIn = String(incomingEdge.subject || (baseIn && baseIn.subject) || '').trim();
-        // 對調 edge 缺班科：用「帶來者」在 peer 原時段的基礎課（peer 列班科是反向，不可直接抄）
+        // 對調 edge 缺班科：回到原位置所有者在目前日期／節次的基礎課。
         if (isExIn && (!finalClassIn || !finalSubjIn)) {
-          var peerIn = allSubs.find(function (x) {
-            return x && x.requestId === incomingEdge.requestId
-              && x.id !== incomingEdge.id;
-          });
-          var bringEmail = String(incomingEdge.actualTeacherEmail || teacherEmail || '').toLowerCase();
-          // 帶來者原課在 peer 的 date/period（對調互換前時段）
-          if (peerIn && peerIn.date != null && peerIn.period != null) {
-            var peerDay = null;
-            try {
-              var pd = new Date(String(peerIn.date).replace(/-/g, '/'));
-              if (!isNaN(pd.getTime())) peerDay = pd.getDay() === 0 ? 7 : pd.getDay();
-            } catch (ePd) {}
-             if (peerDay != null) {
-               var peerBase = h.resolveBaseSlot
-                  ? h.resolveBaseSlot(peerIn.date, peerDay, peerIn.period, bringEmail)
-                 : { dayOfWeek: peerDay, period: peerIn.period };
-               var atPeer = getCandidates(index, bringEmail, peerBase.dayOfWeek, peerBase.period, allSchedules)[0];
-              if (atPeer) {
-                if (!finalClassIn) finalClassIn = String(atPeer.className || '').trim();
-                if (!finalSubjIn) finalSubjIn = String(atPeer.subject || '').trim();
-              }
-            }
-          }
-          if (!finalClassIn || !finalSubjIn) {
-             var bringBase = getCandidates(index, bringEmail, scheduleDayOfWeek, schedulePeriod, allSchedules)[0];
-            if (bringBase) {
-              if (!finalClassIn) finalClassIn = String(bringBase.className || '').trim();
-              if (!finalSubjIn) finalSubjIn = String(bringBase.subject || '').trim();
-            }
+          if (baseIn) {
+            if (!finalClassIn) finalClassIn = String(baseIn.className || '').trim();
+            if (!finalSubjIn) finalSubjIn = String(baseIn.subject || '').trim();
           }
         }
         finalClassIn = String(finalClassIn || '').trim();
@@ -430,7 +480,7 @@ window.DomainSchedule = (function () {
       }
     }
 
-    var candidates = getCandidates(index, teacherEmail, scheduleDayOfWeek, schedulePeriod, allSchedules);
+     var candidates = getCandidates(index, teacherEmail, scheduleDayOfWeek, schedulePeriod, allSchedules, dateStr);
     var base = candidates.find(function (s) {
       if (!s.attr || s.attr === '一般' || s.attr === '課輔' || s.attr === '基本' || s.attr === '抽離' || s.attr === '巡堂') return true;
       if (s.attr === '單週' && h.isSingleWeek(dateStr)) return true;
@@ -536,7 +586,8 @@ window.DomainSchedule = (function () {
         request.targetTeacherEmail,
         baseSlot.dayOfWeek,
         baseSlot.period,
-        allSchedules
+         allSchedules,
+         request.targetDate
       );
       var base = candidates[0] || null;
       if (base) {
@@ -618,7 +669,7 @@ window.DomainSchedule = (function () {
           return Object.assign({}, cell, {
             isPending: true,
             pendingType: 'combined_return_out',
-            pendingText: '↩ 待核 合班回原班',
+           pendingText: '↩ 待核 併班上課',
             pendingRecord: pReq
           });
         }
@@ -743,6 +794,12 @@ window.DomainSchedule = (function () {
     isPatrolCell: isPatrolCell,
     isPullOutAttr: isPullOutAttr,
     isPullOutCell: isPullOutCell,
+    normalizeScheduleDate: normalizeScheduleDate,
+    scheduleActiveFrom: scheduleActiveFrom,
+    scheduleActiveTo: scheduleActiveTo,
+    isActiveOnDate: isActiveOnDate,
+    filterActiveRows: filterActiveRows,
+    scheduleRangesOverlap: scheduleRangesOverlap,
     isCombinedReturnRequest: isCombinedReturnRequest,
     PATROL_INCOMING_TIP: PATROL_INCOMING_TIP,
     PULL_OUT_EXCHANGE_TIP: PULL_OUT_EXCHANGE_TIP

@@ -2609,11 +2609,11 @@ td.table-empty {
   background: #fff !important;
 }
 
-/* 歷史操作鈕：手機可換行、不擠爆 */
+/* 歷史操作鈕：固定單排，窄螢幕由表格水平捲動承載 */
 .hist-actions {
   display: flex;
   gap: 4px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
 }
 .hist-actions .btn {
@@ -2697,7 +2697,7 @@ td.table-empty {
     left: 0;
     max-width: 92mm;
     padding: .8mm 2mm;
-    border: .7pt solid #000;
+    border: none;
     background: #e5e7eb;
     font-size: 10pt;
     font-weight: 700;
@@ -3220,7 +3220,12 @@ td.table-empty {
   justify-content: flex-start;
 }
 .success-followup-actions .btn {
-  flex: 1 1 160px;
+  flex: 0 0 auto;
+  min-width: 0;
+  min-height: 32px;
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  line-height: 1.2;
 }
 .success-actions .btn { flex: 1 1 auto; min-width: 110px; }
 
@@ -5400,4 +5405,17 @@ td.table-empty {
   .class-timetable .grid-cell-class {
     min-height: 52px;
   }
+}
+
+/* 教師課表的暫定／異動副標可能超過兩行，讓列高跟著內容展開，避免文字被裁掉。 */
+.timetable-grid .grid-cell-time,
+.timetable-grid .grid-cell-class {
+  height: auto;
+  min-height: 56px;
+  max-height: none;
+  overflow: visible;
+}
+
+.timetable-grid .grid-cell-class {
+  align-items: stretch;
 }

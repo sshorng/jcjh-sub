@@ -127,25 +127,31 @@ window.DomainSchoolSwap = (function () {
       || className === '巡堂' || subject === '巡堂';
   }
 
-  function scheduleRowsAtSlot(scheduleIndex, allSchedules, teacherEmail, dayOfWeek, period) {
+  function scheduleRowsAtSlot(scheduleIndex, allSchedules, teacherEmail, dayOfWeek, period, dateStr) {
     var email = String(teacherEmail || '').toLowerCase();
     var key = email + '|' + parseInt(dayOfWeek, 10) + '|' + parseInt(period, 10);
+    var rows;
     if (scheduleIndex && scheduleIndex.byTeacherSlot && scheduleIndex.byTeacherSlot[key]) {
-      return scheduleIndex.byTeacherSlot[key];
+      rows = scheduleIndex.byTeacherSlot[key];
+    } else {
+      rows = (allSchedules || []).filter(function (row) {
+        return String(row && (row.teacherEmail || row['教師Email'] || row.teacherName) || '').toLowerCase() === email
+          && parseInt(row.dayOfWeek != null ? row.dayOfWeek : row['星期'], 10) === parseInt(dayOfWeek, 10)
+          && parseInt(row.period != null ? row.period : row['節次'], 10) === parseInt(period, 10);
+      });
     }
-    return (allSchedules || []).filter(function (row) {
-      return String(row && (row.teacherEmail || row['教師Email'] || row.teacherName) || '').toLowerCase() === email
-        && parseInt(row.dayOfWeek != null ? row.dayOfWeek : row['星期'], 10) === parseInt(dayOfWeek, 10)
-        && parseInt(row.period != null ? row.period : row['節次'], 10) === parseInt(period, 10);
-    });
+    if (dateStr && window.DomainSchedule && window.DomainSchedule.filterActiveRows) {
+      return window.DomainSchedule.filterActiveRows(rows, dateStr);
+    }
+    return rows;
   }
 
   // 巡堂是教師原地勤務，不隨全校課表對調移動。
   function resolveSlotForTeacher(index, dateStr, dayOfWeek, period, teacherEmail, scheduleIndex, allSchedules) {
     var resolved = resolveSlot(index, dateStr, dayOfWeek, period);
     if (!teacherEmail || !resolved.row) return resolved;
-    var actualRows = scheduleRowsAtSlot(scheduleIndex, allSchedules, teacherEmail, dayOfWeek, period);
-    var sourceRows = scheduleRowsAtSlot(scheduleIndex, allSchedules, teacherEmail, resolved.dayOfWeek, resolved.period);
+    var actualRows = scheduleRowsAtSlot(scheduleIndex, allSchedules, teacherEmail, dayOfWeek, period, dateStr);
+    var sourceRows = scheduleRowsAtSlot(scheduleIndex, allSchedules, teacherEmail, resolved.dayOfWeek, resolved.period, dateStr);
     if (actualRows.some(isPatrolSchedule) || sourceRows.some(isPatrolSchedule)) {
       return {
         dayOfWeek: parseInt(dayOfWeek, 10),

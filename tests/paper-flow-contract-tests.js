@@ -163,15 +163,15 @@ function runExchangePaperRecordMappingTest() {
   const targetDateRecord = records.find(record => record.id.endsWith('_1'));
   const sourceDateRecord = records.find(record => record.id.endsWith('_2'));
   assert.equal(targetDateRecord.date, '2026-09-03');
-  assert.equal(targetDateRecord.className, '703');
-  assert.equal(targetDateRecord.subject, '數學');
+  assert.equal(targetDateRecord.className, '704');
+  assert.equal(targetDateRecord.subject, '國文');
    assert.equal(targetDateRecord.originalTeacherEmail, 'sheng@example.com');
    assert.equal(targetDateRecord.actualTeacherEmail, 'month@example.com');
    assert.equal(targetDateRecord.originalTeacherName, '吳冠萱');
    assert.equal(targetDateRecord.actualTeacherName, '洪筱仙');
    assert.equal(sourceDateRecord.date, '2026-09-01');
-  assert.equal(sourceDateRecord.className, '704');
-  assert.equal(sourceDateRecord.subject, '國文');
+  assert.equal(sourceDateRecord.className, '703');
+  assert.equal(sourceDateRecord.subject, '數學');
    assert.equal(sourceDateRecord.originalTeacherEmail, 'month@example.com');
    assert.equal(sourceDateRecord.actualTeacherEmail, 'sheng@example.com');
    assert.equal(sourceDateRecord.originalTeacherName, '洪筱仙');
@@ -193,11 +193,11 @@ function runSubmittedExchangePaperRecordMappingTest() {
   }]);
   const targetDateRecord = records.find(record => record.id.endsWith('_1'));
   const sourceDateRecord = records.find(record => record.id.endsWith('_2'));
-   assert.equal(targetDateRecord.className, '703');
-   assert.equal(targetDateRecord.subject, '數學');
+   assert.equal(targetDateRecord.className, '704');
+   assert.equal(targetDateRecord.subject, '國文');
    assert.equal(targetDateRecord.actualTeacherName, '申請人');
-   assert.equal(sourceDateRecord.className, '704');
-   assert.equal(sourceDateRecord.subject, '國文');
+   assert.equal(sourceDateRecord.className, '703');
+   assert.equal(sourceDateRecord.subject, '數學');
    assert.equal(sourceDateRecord.actualTeacherName, '受邀人');
 }
 
@@ -206,8 +206,9 @@ function runApprovedExchangeRecordMappingTest() {
   const records = convert([{
     id: 'approved-1',
     status: 'approved',
-    type: 'exchange',
-    requesterEmail: 'owner@example.com',
+     type: 'exchange',
+     serial: 'SWP7759',
+     requesterEmail: 'owner@example.com',
     requesterName: '申請人',
     targetTeacherEmail: 'invitee@example.com',
     targetTeacherName: '受邀人',
@@ -220,12 +221,14 @@ function runApprovedExchangeRecordMappingTest() {
     targetClassName: '704',
     targetSubject: '國文'
   }]);
-  const targetDateRecord = records.find(record => record.id.endsWith('_1'));
-  const sourceDateRecord = records.find(record => record.id.endsWith('_2'));
-  assert.equal(targetDateRecord.className, '703');
-  assert.equal(targetDateRecord.subject, '數學');
-  assert.equal(sourceDateRecord.className, '704');
-  assert.equal(sourceDateRecord.subject, '國文');
+   const targetDateRecord = records.find(record => record.id.endsWith('_1'));
+   const sourceDateRecord = records.find(record => record.id.endsWith('_2'));
+   assert.equal(targetDateRecord.serial, 'SWP7759');
+   assert.equal(sourceDateRecord.serial, 'SWP7759');
+   assert.equal(targetDateRecord.className, '704');
+  assert.equal(targetDateRecord.subject, '國文');
+  assert.equal(sourceDateRecord.className, '703');
+  assert.equal(sourceDateRecord.subject, '數學');
 }
 
 function runApprovedCombinedReturnMappingTest() {
@@ -267,9 +270,9 @@ function runPublicClassExchangeMappingTest() {
   }], '904');
   const targetDateRecord = records.find(record => record.id.endsWith('_class_1'));
   const sourceDateRecord = records.find(record => record.id.endsWith('_class_2'));
-  assert.equal(targetDateRecord.subject, '國文');
+  assert.equal(targetDateRecord.subject, '輔導');
   assert.equal(targetDateRecord.actualTeacherName, '洪筱仙');
-  assert.equal(sourceDateRecord.subject, '輔導');
+  assert.equal(sourceDateRecord.subject, '國文');
   assert.equal(sourceDateRecord.actualTeacherName, '吳冠萱');
 }
 
@@ -1003,13 +1006,22 @@ function runRechangeLabelTest() {
   assert.ok(start >= 0 && end > start, 'rechange detector block must remain discoverable');
   const context = {
     substitutionRecords: ref([{
-      requestId: 'exchange-1',
-      date: '2026-09-02',
-      period: 5,
-      originalTeacherEmail: '受邀人',
-      actualTeacherEmail: '申請人',
-      className: '904'
-    }]),
+       id: 'exchange-1_2',
+       requestId: 'exchange-1',
+       date: '2026-09-04',
+       period: 2,
+       originalTeacherEmail: '申請人',
+       actualTeacherEmail: '受邀人',
+       className: '904'
+     }, {
+       id: 'exchange-1_1',
+       requestId: 'exchange-1',
+       date: '2026-09-02',
+       period: 5,
+       originalTeacherEmail: '受邀人',
+       actualTeacherEmail: '申請人',
+       className: '904'
+     }]),
     String,
     Number,
     Array,
@@ -1020,25 +1032,57 @@ function runRechangeLabelTest() {
   vm.createContext(context);
   const detector = vm.runInContext(`(() => {
     ${source.slice(start, end)}
-    return isRequestExchangeRechanged;
+    return { isHistoryLeaveRechanged, isHistoryExchangeRechanged, isRequestLeaveRechanged, isRequestExchangeRechanged };
   })()`, context);
   const request = {
     id: 'exchange-1',
     type: 'exchange',
+    requesterEmail: '申請人',
+    requestDate: '2026-09-04',
+    requestPeriod: 2,
     targetTeacherEmail: '受邀人',
     targetDate: '2026-09-02',
     targetPeriod: 5
   };
-  assert.equal(detector(request), false, 'current exchange edges must not be marked rechanged');
+  const history = {
+    id: 'exchange-1_2',
+    requestId: 'exchange-1',
+    type: 'exchange',
+    originalTeacherEmail: '申請人',
+    actualTeacherEmail: '受邀人',
+    date: '2026-09-04',
+    period: 2,
+    targetDate: '2026-09-02',
+    targetPeriod: 5
+  };
+  assert.equal(detector.isRequestLeaveRechanged(request), false, 'current source edge must not be marked rechanged');
+  assert.equal(detector.isRequestExchangeRechanged(request), false, 'current target edge must not be marked rechanged');
+  assert.equal(detector.isHistoryLeaveRechanged(history), false, 'current history source edge must not be marked rechanged');
+  assert.equal(detector.isHistoryExchangeRechanged(history), false, 'current history target edge must not be marked rechanged');
   context.substitutionRecords.value.push({
     requestId: 'exchange-0',
+    date: '2026-09-04',
+    period: 2,
+    originalTeacherEmail: '申請人',
+    actualTeacherEmail: '其他教師',
+    className: '701'
+  });
+  assert.equal(detector.isRequestLeaveRechanged(request), true, 'a prior source change must mark the original endpoint');
+  assert.equal(detector.isRequestExchangeRechanged(request), false, 'a prior source change must not mark the target endpoint');
+  assert.equal(detector.isHistoryLeaveRechanged(history), true, 'history must mark a prior source change on the original endpoint');
+  assert.equal(detector.isHistoryExchangeRechanged(history), false, 'history must not mark the untouched target endpoint');
+  context.substitutionRecords.value.push({
+    requestId: 'exchange-2',
     date: '2026-09-02',
     period: 5,
     originalTeacherEmail: '受邀人',
     actualTeacherEmail: '其他教師',
-    className: '701'
+    className: '702'
   });
-  assert.equal(detector(request), true, 'a different prior exchange must be marked rechanged');
+  assert.equal(detector.isRequestLeaveRechanged(request), true, 'both endpoints must remain independently marked');
+  assert.equal(detector.isRequestExchangeRechanged(request), true, 'a prior target change must mark the target endpoint');
+  assert.equal(detector.isHistoryLeaveRechanged(history), true, 'history must keep the source marker when both endpoints changed');
+  assert.equal(detector.isHistoryExchangeRechanged(history), true, 'history must mark the target endpoint when both endpoints changed');
 }
 
 Promise.resolve()

@@ -105,6 +105,23 @@
     return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
   }
 
+  function isScheduleActiveOnDate(schedule, dateStr) {
+    if (!dateStr || !root.DomainSchedule || !root.DomainSchedule.isActiveOnDate) return true;
+    return root.DomainSchedule.isActiveOnDate(schedule, dateStr);
+  }
+
+  function scheduleActiveInPeriod(schedule, period) {
+    if (!period || !dateObj(period.start) || !dateObj(period.end)) return true;
+    var start = dateObj(period.start);
+    var end = dateObj(period.end);
+    var wantedDay = Number(schedule && (schedule.dayOfWeek != null ? schedule.dayOfWeek : schedule['星期']));
+    for (var date = new Date(start); date <= end; date.setDate(date.getDate() + 1)) {
+      var day = date.getDay() === 0 ? 7 : date.getDay();
+      if (day === wantedDay && isScheduleActiveOnDate(schedule, isoDate(date))) return true;
+    }
+    return false;
+  }
+
   function dateObj(value) {
     var s = String(value || '').slice(0, 10);
     if (!isIsoDate(s)) return null;
@@ -285,6 +302,25 @@
     return String(value || '').trim().toLowerCase();
   }
 
+  function teacherIdentityKeys(value) {
+    var values = value && typeof value === 'object'
+      ? [value.email, value.loginEmail, value.teacherEmail, value['教師Email'], value.name,
+        value.teacherName, value['教師姓名'], value.originalTeacherName, value.actualTeacherName]
+      : [value];
+    var seen = {};
+    return values.map(function (item) { return String(item == null ? '' : item).trim().toLowerCase(); })
+      .filter(function (item) {
+        if (!item || seen[item]) return false;
+        seen[item] = true;
+        return true;
+      });
+  }
+
+  function sameTeacher(left, right) {
+    var rightKeys = teacherIdentityKeys(right);
+    return teacherIdentityKeys(left).some(function (key) { return rightKeys.indexOf(key) >= 0; });
+  }
+
   function teacherName(teacher, fallback) {
     if (typeof teacher === 'string') return String(teacher || fallback || '').trim();
     return String((teacher && (teacher.name || teacher['\u6559\u5e2b\u59d3\u540d'] || teacher.teacherName)) || fallback || '').trim();
@@ -461,17 +497,16 @@
     }).filter(Boolean);
   }
 
-  function summaryNote(opts, source, period, leaveRecords, publicUsed) {
-    var email = teacherEmail(source && source.email);
+  function summaryNote(opts, source, period, leaveRecords, publicUsed, schoolSwapIndex) {
     var actualRecords = (opts.substitutionRecords || []).filter(function (record) {
       return isUsableSubstitution(record)
         && dateInPeriod(record.date, period)
-        && teacherEmail(record.actualTeacherEmail) === email
+         && sameTeacher(record.actualTeacherEmail, source)
         && isWeeklyPeriod(record.period);
     });
     var notes = groupedCoverNoteParts(actualRecords, opts);
     if (!actualRecords.length) notes = notes.concat(legacySelfSubNoteParts(source && source.selfSubDetail));
-    var chargedRecords = chargedSubstitutionRecords(opts.substitutionRecords || [], opts.allSchedules || [], source && source.email, period, source && source.weeklyOvertime);
+     var chargedRecords = chargedSubstitutionRecords(opts.substitutionRecords || [], opts.allSchedules || [], source, period, schoolSwapIndex);
     notes = notes.concat(leaveNoteParts(chargedRecords, publicUsed));
     if (source && source.note) notes.push(source.note);
     return joinAccountingNotes(notes);
@@ -583,17 +618,37 @@
       .split(/[、,，;；/／|｜\s]+/).map(function (value) { return value.trim(); });
     return tags.indexOf('\u8d85\u9418\u9ede') >= 0;
   }
+
+  function resolveOvertimeSourceSlot(record, schoolSwapIndex) {
+    var date = dateObj(record && record.date);
+    var period = Number(record && record.period);
+    var dayOfWeek = date && (date.getDay() === 0 ? 7 : date.getDay());
+    if (schoolSwapIndex && root.DomainSchoolSwap && root.DomainSchoolSwap.resolveSlot) {
+      var resolved = root.DomainSchoolSwap.resolveSlot(
+        schoolSwapIndex,
+        String(record && record.date || '').slice(0, 10),
+        dayOfWeek,
+        period
+      );
+      if (resolved) {
+        dayOfWeek = Number(resolved.dayOfWeek);
+        period = Number(resolved.period);
+      }
+    }
+    return { dayOfWeek: dayOfWeek, period: period };
+  }
   function dayNameForWeekday(day) {
     var n = Number(day);
     return DAY_NAMES[n === 7 ? 0 : n] || '';
   }
 
-  function scheduleText(email, allSchedules, onlyOvertime) {
+  function scheduleText(email, allSchedules, onlyOvertime, period) {
     var seen = {};
     var list = (allSchedules || []).filter(function (s) {
-      if (teacherEmail(s.teacherEmail) !== teacherEmail(email)) return false;
+      if (!sameTeacher(s, email)) return false;
       if (!isWeeklyPeriod(s.period)) return false;
       if (onlyOvertime && !isOvertimeSchedule(s)) return false;
+      if (!scheduleActiveInPeriod(s, period)) return false;
       return true;
     }).map(function (s) {
       return { day: Number(s.dayOfWeek) || 0, period: Number(s.period) || 0 };
@@ -619,7 +674,7 @@
       });
   }
 
-  function overtimeClassNote(opts, source, weeks) {
+  function overtimeClassNote(opts, source, weeks, period) {
     var weekly = Number(source && source.weeklyOvertime) || 0;
     var weekCount = Number(weeks) || 0;
     if (!weekly || !weekCount) return '';
@@ -627,9 +682,10 @@
     var seen = {};
     var classes = [];
     (opts.allSchedules || []).filter(function (schedule) {
-      return teacherEmail(schedule.teacherEmail) === teacherEmail(source && source.email)
+       return sameTeacher(schedule, source)
         && isWeeklyPeriod(schedule.period)
-        && isOvertimeSchedule(schedule);
+        && isOvertimeSchedule(schedule)
+        && scheduleActiveInPeriod(schedule, period);
     }).forEach(function (schedule) {
       accountingClassParts(schedule.className).forEach(function (className) {
         if (seen[className]) return;
@@ -645,10 +701,11 @@
       ? weekly + '*' + weekCount + '(' + classes.join('、') + '班)'
       : '';
   }
-  function fallbackReportRow(teacher, allSchedules) {
+  function fallbackReportRow(teacher, allSchedules, period) {
     var email = teacherEmail(teacher && teacher.email);
     var schedules = (allSchedules || []).filter(function (s) {
-      return teacherEmail(s.teacherEmail) === email && isWeeklyPeriod(s.period) && String(s.attr || '') !== '巡堂';
+       return sameTeacher(s, teacher) && isWeeklyPeriod(s.period)
+        && String(s.attr || '') !== '巡堂' && scheduleActiveInPeriod(s, period);
     });
     var weeklyPeriods = schedules.length;
     var rawBase = teacher && (teacher.baseHours !== undefined ? teacher.baseHours : teacher['基本鐘點']);
@@ -681,14 +738,14 @@
       map[teacherEmail(row.email)] = row;
     });
     return teachers.map(function (teacher) {
-      var source = map[teacherEmail(teacher.email)] || fallbackReportRow(teacher, opts.allSchedules);
+       var source = map[teacherEmail(teacher.email)] || fallbackReportRow(teacher, opts.allSchedules, opts.period);
       var plan = teacherExpensePlan(teacher) || normalizeExpensePlan(source.expensePlan || source['鐘點支出計畫'] || source['鐘點支出來源'] || source.plan);
       return Object.assign({}, source, { expensePlan: plan });
     });
   }
   function leaveRecordsFor(email, records, period) {
     return (records || []).filter(function (r) {
-      return isUsableSubstitution(r) && dateInPeriod(r.date, period) && teacherEmail(r.originalTeacherEmail) === teacherEmail(email);
+       return isUsableSubstitution(r) && dateInPeriod(r.date, period) && sameTeacher(r.originalTeacherEmail, email);
     });
   }
 
@@ -711,31 +768,32 @@
     return !cn || !scn || cn === scn || cn.indexOf(scn) >= 0 || scn.indexOf(cn) >= 0;
   }
 
-  function isOvertimeSubstitution(record, schedules) {
+  function isOvertimeSubstitution(record, schedules, schoolSwapIndex) {
     var d = dateObj(record && record.date);
     var period = Number(record && record.period);
     if (!d || !Number.isFinite(period) || !isWeeklyPeriod(period)) return false;
-    var dow = d.getDay() === 0 ? 7 : d.getDay();
+    var sourceSlot = resolveOvertimeSourceSlot(record, schoolSwapIndex);
     return (schedules || []).some(function (schedule) {
-      return teacherEmail(schedule && schedule.teacherEmail) === teacherEmail(record.originalTeacherEmail)
-        && Number(schedule.dayOfWeek) === dow
-        && Number(schedule.period) === period
+       return sameTeacher(schedule, record.originalTeacherEmail)
+        && Number(schedule.dayOfWeek) === sourceSlot.dayOfWeek
+        && Number(schedule.period) === sourceSlot.period
+        && isScheduleActiveOnDate(schedule, String(record.date || '').slice(0, 10))
         && sameScheduleClass(record, schedule)
         && isOvertimeSchedule(schedule);
     });
   }
 
-  function chargedSubstitutionRecords(records, schedules, email, period) {
+  function chargedSubstitutionRecords(records, schedules, email, period, schoolSwapIndex) {
     var eligible = (records || []).filter(function (record) {
       return isUsableSubstitution(record)
         && dateInPeriod(record.date, period)
-        && teacherEmail(record.originalTeacherEmail) === teacherEmail(email)
+         && sameTeacher(record.originalTeacherEmail, email)
         && teacherEmail(record.actualTeacherEmail);
     });
     // \u4f9d\u7db2\u9801\u6708\u5831\uff1a\u81ea\u8cbb\u5168\u90e8\u6263\u539f\u6559\u5e2b\u8d85\u9418\uff1b\u516c\u8cbb\u4f9d\u6b63\u5f0f\u8ab2\u7a0b\u539f\u5802\u5c6c\u6027\u70ba\u8d85\u9418\u9ede\u6642\u6263\uff0c\u542b\u65e9\u81ea\u7fd00\u30011\u81f37\u8207\u5348\u4f1145\u3002
     var selfRecords = eligible.filter(isSelfPaidRecord);
     var publicRecords = eligible.filter(function (record) {
-      return isPublicOvertimeRecord(record) && isOvertimeSubstitution(record, schedules);
+      return isPublicOvertimeRecord(record) && isOvertimeSubstitution(record, schedules, schoolSwapIndex);
     });
     // 自費全部扣；公費原堂為超鐘點也逐筆扣，不以每週超時數量封頂。
     var selected = selfRecords.concat(publicRecords.slice().sort(function (a, b) {
@@ -751,16 +809,16 @@
       return true;
     });
   }
-  function publicOvertimeUsed(email, records, schedules, period) {
-    return chargedSubstitutionRecords(records, schedules, email, period)
+  function publicOvertimeUsed(email, records, schedules, period, schoolSwapIndex) {
+    return chargedSubstitutionRecords(records, schedules, email, period, schoolSwapIndex)
       .filter(isPublicOvertimeRecord).length;
   }
-  function buildChargedRecordMap(opts, period) {
+  function buildChargedRecordMap(opts, period, schoolSwapIndex) {
     var result = { byKey: {}, byOriginal: {} };
     var records = opts.substitutionRecords || [];
     reportSourceRows(opts).forEach(function (source) {
       if (!normalizeExpensePlan(source.expensePlan)) return;
-      chargedSubstitutionRecords(records, opts.allSchedules, source.email, period)
+       chargedSubstitutionRecords(records, opts.allSchedules, source, period, schoolSwapIndex)
         .filter(function (record) { return !isCombinedReturnRecord(record); })
         .forEach(function (record) {
           var key = substitutionKey(record);
@@ -808,7 +866,7 @@
       note: detail
     };
   }
-  function buildSummaryRows(config, opts, period, planFilter, chargedMap) {
+  function buildSummaryRows(config, opts, period, planFilter, chargedMap, schoolSwapIndex) {
     var teacherMap = {};
     (opts.teachers || []).forEach(function (t) { addTeacherToMap(teacherMap, t); });
     var records = opts.substitutionRecords || [];
@@ -822,31 +880,34 @@
       var adjunct = isAdjunctTeacher(t);
       if (config.key === 'adjunct' ? !adjunct : adjunct) return;
       var title = teacherTitle(t) || (adjunct ? '兼課教師' : '教師');
-      var leave = leaveRecordsFor(source.email, records, period);
-      var selfCount = leave.filter(isSelfPaidRecord).length;
-      var publicUsed = publicOvertimeUsed(source.email, records, opts.allSchedules, period);
-      var chargedItemsForSource = sourcePlan && chargedMap && chargedMap.byOriginal[teacherEmail(source.email)] || [];
-      var chargedRecordsForSource = chargedSubstitutionRecords(records, opts.allSchedules || [], source.email, period);
+       var leave = leaveRecordsFor(source, records, period);
+       var selfCount = leave.filter(isSelfPaidRecord).length;
+       var publicUsed = publicOvertimeUsed(source, records, opts.allSchedules, period, schoolSwapIndex);
+       var chargedItemsForSource = sourcePlan && chargedMap && chargedMap.byOriginal[teacherEmail(source.email)] || [];
+       var chargedRecordsForSource = chargedSubstitutionRecords(records, opts.allSchedules || [], source, period, schoolSwapIndex);
       var reduce = Number(source.reduceDeduction) || 0;
       if (period.start.slice(0, 7) !== String(opts.reportMonth || '') || period.end.slice(0, 7) !== String(opts.reportMonth || '')) {
         reduce = 0;
       }
-      var grossHours = Math.max(0, (Number(source.weeklyOvertime) || 0) * weeks - reduce);
+       var scheduledOvertime = source.scheduledOvertime !== undefined
+         ? Number(source.scheduledOvertime) || 0
+         : (Number(source.weeklyOvertime) || 0) * weeks;
+       var grossHours = Math.max(0, scheduledOvertime - reduce);
       var deduction = selfCount + publicUsed;
       var actualHours = grossHours - deduction;
       var rate = Number(opts.overtimeRate) || FEE_DEFAULT;
-      var overtimeNotes = [overtimeClassNote(opts, source, weeks)]
+       var overtimeNotes = [overtimeClassNote(opts, source, weeks, period)]
         .concat(leaveNoteParts(chargedRecordsForSource, publicUsed));
       var notes = config.key === 'overtime'
         ? joinAccountingNotes(overtimeNotes)
-        : summaryNote(opts, source, period, leave, publicUsed);
+         : summaryNote(opts, source, period, leave, publicUsed, schoolSwapIndex);
       var row = {
         expensePlan: sourcePlan,
         serial: rows.length + 1,
         title: title,
         name: teacherName(t, source.name),
         weeklyOvertime: Number(source.weeklyOvertime) || 0,
-        schedule: scheduleText(source.email, opts.allSchedules, true),
+         schedule: scheduleText(source, opts.allSchedules, true, period),
         weeks: weeks,
         grossHours: grossHours,
         deduction: deduction,
@@ -956,6 +1017,9 @@
 
   function buildExportData(opts) {
     opts = opts || {};
+    var schoolSwapIndex = root.DomainSchoolSwap && root.DomainSchoolSwap.buildIndex
+      ? root.DomainSchoolSwap.buildIndex(opts.schoolSwaps || [])
+      : null;
     var periods = opts.periods || loadPeriodSettings(opts.reportMonth);
     var data = {
       periods: periods,
@@ -981,8 +1045,8 @@
 
     var overtimeConfig = SHEET_CONFIG.overtime;
     var overtimePeriod = getPeriod(periods, 'overtime', opts.reportMonth);
-    var chargedMap = buildChargedRecordMap(opts, overtimePeriod);
-    data.sheets.overtime = buildSummaryRows(overtimeConfig, opts, overtimePeriod, '', chargedMap);
+    var chargedMap = buildChargedRecordMap(opts, overtimePeriod, schoolSwapIndex);
+    data.sheets.overtime = buildSummaryRows(overtimeConfig, opts, overtimePeriod, '', chargedMap, schoolSwapIndex);
     summaryFor('overtime', '超鐘點', data.sheets.overtime);
 
     var planKeys = [];
@@ -992,7 +1056,7 @@
     });
     planKeys.sort(function (a, b) { return a.localeCompare(b, 'zh-Hant', { numeric: true }); });
     planKeys.forEach(function (plan) {
-      var rows = buildSummaryRows(overtimeConfig, opts, overtimePeriod, plan, chargedMap);
+      var rows = buildSummaryRows(overtimeConfig, opts, overtimePeriod, plan, chargedMap, schoolSwapIndex);
       if (!rows.length) return;
       data.overtimePlans.push({ plan: plan, rows: rows });
       summaryFor('overtime:' + plan, '超鐘點-' + plan, rows);
@@ -1000,7 +1064,7 @@
 
     [SHEET_CONFIG.adjunct, SHEET_CONFIG.publicSub, SHEET_CONFIG.selfSub, SHEET_CONFIG.mentor].forEach(function (config) {
       var period = getPeriod(periods, config.key, opts.reportMonth);
-      if (config.kind === 'summary') data.sheets[config.key] = buildSummaryRows(config, opts, period);
+       if (config.kind === 'summary') data.sheets[config.key] = buildSummaryRows(config, opts, period, '', null, schoolSwapIndex);
       if (config.key === 'publicSub') data.sheets[config.key] = publicRows(opts, period, chargedMap);
       if (config.key === 'selfSub') data.sheets[config.key] = selfRows(opts, period, chargedMap);
       if (config.key === 'mentor') data.sheets[config.key] = mentorRows(opts, period);

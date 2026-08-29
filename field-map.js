@@ -275,6 +275,8 @@ window.FieldMap = (function () {
       className: cn,
       subject: subj,
       attr: attr,
+      activeFrom: asDateStr(pick(s, ['啟用起日', '啟用開始日', 'activeFrom', 'activationStartDate', 'effectiveStartDate'])),
+      activeTo: asDateStr(pick(s, ['啟用迄日', '啟用結束日', 'activeTo', 'activationEndDate', 'effectiveEndDate'])),
       restriction: (function () {
         const raw = pick(s, ['調課限制', 'restriction']) || '';
         return isRestrictedScheduleValue(raw) || specialTagList.indexOf('綁課') >= 0 ? 'restricted' : raw;
@@ -546,7 +548,11 @@ window.FieldMap = (function () {
       getInitialData: '載入資料'
     }[action] || (action || '操作');
 
-    if (/登入憑證已過期|驗證失敗|verification failed|Token/i.test(cleaned)) {
+    // 課表驗證失敗是資料衝突／欄位錯誤，不是登入失效；保留後端原訊息供管理員處理。
+    if (/課表(?:匯入)?資料驗證失敗|同一星期與節次只能安排一位巡堂教師|啟用期間重疊|啟用起日|啟用迄日|課表新版本/.test(cleaned)) {
+      return actionLabel + '失敗：' + cleaned;
+    }
+    if (/登入憑證已過期|登入驗證失敗|Google 登入驗證失敗|身分認證\s*Token|aud 不符|id_token|Token/i.test(cleaned)) {
       return '登入憑證已過期或無效，請重新登入後再試。';
     }
     if (/Failed to fetch|NetworkError|網路連線失敗|Load failed/i.test(cleaned)) {

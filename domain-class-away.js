@@ -253,7 +253,7 @@ window.DomainClassAway = (function () {
    * 教師基礎課表中，屬於「reduce 空堂班」的週鐘點節數
    * （早自習0＋1–7＋午休45；基本／一般／超鐘點／抽離；不含巡堂／第8）
    */
-  function countReduceSlotsForTeacher(teacherEmail, allSchedules, awayClassSet) {
+  function countReduceSlotsForTeacher(teacherEmail, allSchedules, awayClassSet, weekDates) {
     var em = String(teacherEmail || '').toLowerCase();
     var n = 0;
     (allSchedules || []).forEach(function (s) {
@@ -278,7 +278,10 @@ window.DomainClassAway = (function () {
       }
       for (var i = 0; i < classes.length; i++) {
         if (awayClassSet[classes[i]]) {
-          n++;
+          var scheduleDay = parseInt(s.dayOfWeek != null ? s.dayOfWeek : s['星期'], 10);
+          var activeDate = (weekDates || [])[scheduleDay - 1] || '';
+          if (!activeDate || !window.DomainSchedule || !window.DomainSchedule.isActiveOnDate
+              || window.DomainSchedule.isActiveOnDate(s, activeDate)) n++;
           break;
         }
       }
@@ -310,7 +313,15 @@ window.DomainClassAway = (function () {
         eventClasses(ev).forEach(function (c) { awaySet[c] = 1; });
       });
       if (!Object.keys(awaySet).length) return;
-      total += countReduceSlotsForTeacher(email, allSchedules, awaySet);
+      var weekStart = new Date(String(mon).replace(/-/g, '/'));
+      var weekDates = [];
+      for (var wi = 0; wi < 5; wi++) {
+        var weekDate = new Date(weekStart.getTime());
+        weekDate.setDate(weekStart.getDate() + wi);
+        weekDates.push(weekDate.getFullYear() + '-' + String(weekDate.getMonth() + 1).padStart(2, '0')
+          + '-' + String(weekDate.getDate()).padStart(2, '0'));
+      }
+      total += countReduceSlotsForTeacher(email, allSchedules, awaySet, weekDates);
     });
     return total;
   }

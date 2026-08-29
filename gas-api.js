@@ -3,7 +3,7 @@
  * JWT / Token 檢查 / 錯誤格式化 / callGasApi（讀寫皆 POST，Token 不進 URL）/ SWR 分鍵
  */
 window.GasApi = (function () {
-  var APP_VERSION = '2026-08-26-school-swap';
+  var APP_VERSION = '2026-08-29-schedule-active';
   // 未取得明確網域設定時，前端也採 fail-closed；公開課表仍可免登入使用。
   var DEFAULT_ALLOWED_HD = [];
   var WRITE_ACTIONS = {

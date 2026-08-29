@@ -77,6 +77,8 @@ window.DomainMatch = (function () {
     const sameCourseTeachers = new Set();
     allSchedules.forEach(function (s) {
       if (!s || !s.teacherEmail) return;
+      if (window.DomainSchedule && window.DomainSchedule.isActiveOnDate
+          && !window.DomainSchedule.isActiveOnDate(s, dateStr)) return;
       if (myClass && String(s.className || '') === myClass) {
         sameClassTeachers.add(s.teacherEmail);
       }
@@ -251,7 +253,9 @@ window.DomainMatch = (function () {
       return String(schedClass || '') === String(targetCls || '');
     }
     const classSchedules = allSchedules.filter(function (s) {
-      return classMatches(s.className, cls) && s.teacherEmail !== leaveTeacher;
+      return classMatches(s.className, cls) && s.teacherEmail !== leaveTeacher
+        && (!window.DomainSchedule || !window.DomainSchedule.isActiveOnDate
+          || window.DomainSchedule.isActiveOnDate(s, weekDates[s.dayOfWeek - 1]));
     });
     const res = [];
     var leaveP = parseInt(leavePeriod, 10);
