@@ -20,7 +20,7 @@ window.OnboardingTour = (function () {
   var _resizeTimer = null;
   var _storageKey = STORAGE_KEY;
 
-  // 精簡 ≤15 步：課表 → 媒合 → 模擬 → 送出／LINE → 待辦 → 歷史 → 完成
+  // 精簡 ≤15 步：課表 → 媒合 → 代課／調課 → 模擬 → 送出 → 後續 → 完成
   var DEFAULT_STEPS = [
     {
       id: 'welcome',

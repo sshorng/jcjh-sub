@@ -357,7 +357,7 @@ function runLineTemplateTest() {
     agreeLink: 'https://school.example/?agree',
     declineLink: 'https://school.example/?decline'
   });
-  assert.match(single, /小明老師，想問您是否可以幫忙協助代課：/);
+  assert.match(single, /小明老師，想問您是否可以協助代課：/);
   assert.match(single, /09\/04（週五） 第1節｜904 國文（陳小華老師）/);
   assert.match(single, /✅ 可以/);
   assert.doesNotMatch(single, /詳細如下|非常感謝/);
@@ -367,7 +367,7 @@ function runLineTemplateTest() {
     dateA: '2026-09-04', dayA: 5, periodA: 1,
      classA: '904', subjectA: '國文'
   });
-  assert.match(ask, /小明老師，想問您是否可以幫忙協助代課：/);
+  assert.match(ask, /小明老師，想問您是否可以協助代課：/);
   assert.match(ask, /09\/04（週五） 第1節｜904 國文（陳小華老師）/);
   assert.match(ask, /如果可以，我再拿代課單給您，感謝/);
   assert.doesNotMatch(ask, /再麻煩您確認一下喔/);
@@ -436,7 +436,7 @@ function runLineTemplateTest() {
     targetName: '王小明老師', requesterName: '陳小華老師',
     dateA: '2026-09-04', dayA: 5, periodA: 1, classA: '904', subjectA: '國文', reason: '事假'
   });
-  assert.match(paper, /小明老師，想問您是否可以幫忙協助代課：/);
+  assert.match(paper, /小明老師，想問您是否可以協助代課：/);
   assert.match(paper, /09\/04（週五） 第1節｜904 國文（陳小華老師）/);
   assert.match(paper, /如果可以，我再拿代課單給您，感謝/);
   assert.doesNotMatch(paper, /假別：|紙本調代課通知|簽名後交回教學組|https?:\/\/|action=/);
@@ -592,6 +592,10 @@ function runApplicationFormContractTest() {
    assert.match(appSource, /mode: notificationsSuppressed\.value \? 'paper' : 'online'/, 'onboarding should follow the global paper mode');
    assert.match(appSource, /openExchangeModeDemo: \(\) => openExchangeModeDemoForTour\(\)/, 'tour should demonstrate exchange mode');
     assert.match(appSource, /ONBOARDING_SCRIPT = 'onboarding-tour\.js\?v=20260829-paper3'/, 'onboarding cache must refresh with the exchange tour');
+     assert.match(appSource, /openPaperPrintDemo: \(\) => openPaperPrintDemoForTour\(\)/, 'paper tour should open a print preview demo');
+     assert.match(appSource, /openExchangeModeDemo: \(\) => openExchangeModeDemoForTour\(\)/, 'tour should demonstrate exchange mode');
+    assert.match(appSource, /source: 'paperTour'/, 'paper tour preview must use an isolated source');
+    assert.match(appSource, /snapshot\.source === 'paperTour'/, 'paper tour print actions must not print real data');
    assert.match(appSource, /const shouldAutoStartOnboarding =/);
   assert.match(appSource, /ONBOARDING_PAPER_STORAGE_KEY/);
   assert.match(onboardingSource, /var PAPER_STORAGE_KEY = 'jcjh_onboarding_paper_v1'/);
@@ -604,6 +608,10 @@ function runApplicationFormContractTest() {
    assert.match(html, /notificationsSuppressed \? '紙本流程操作教學' : '線上簽核操作教學'/, 'help button label should follow the global mode');
    assert.match(html, /data-tour="exchange-mode-btn"/, 'exchange mode button should be a tour target');
    assert.match(html, /data-tour="exchange-controls"/, 'exchange controls should be a tour target');
+     assert.match(onboardingSource, /paper-print-preview/, 'paper tour should include the print preview step');
+     assert.match(onboardingSource, /paper-print-button/, 'paper tour should include the confirm-print step');
+     assert.match(onboardingSource, /compare-submit-paper/, 'paper tour should target the paper submit button');
+     assert.match(html, /paperMode \? '紙本申請進度' : '待辦簽核'/, 'pending navigation should follow the active mode');
    assert.match(html, /data-tour="print-preview-modal"/, 'print preview should be a tour target');
    assert.match(html, /data-tour="print-confirm"/, 'confirm print button should be a tour target');
 }
