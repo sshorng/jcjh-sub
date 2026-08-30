@@ -251,6 +251,10 @@ function requestVisibleToReader_(req, readerEmail, readerIsAdmin) {
 // ----------------- 特殊流程契約 -----------------
 var SPECIAL_FLOW_COMBINED_RETURN_ = "combined_return";
 var SPECIAL_FLOW_COMBINED_RETURN_LABEL_ = "合班回原班";
+var TRIANGLE_TYPE_ = "triangle";
+var TRIANGLE_CONSENT_PENDING_ = "pending";
+var TRIANGLE_CONSENT_AGREE_ = "agree";
+var TRIANGLE_CONSENT_DECLINE_ = "decline";
 
 function normalizeSpecialFlow_(value) {
   var raw = String(value == null ? "" : value).trim();
@@ -593,7 +597,7 @@ function prepareNameKeyRequestRow_(row, semesterId, teacherRows) {
 function nameKeyCanonicalHeaders_(sheetName) {
   var map = {
     "教師課表": ["學期代號", "課表ID", "教師姓名", "星期", "節次", "班級", "科目", "課堂屬性", "調課限制", "特殊標記", "啟用起日", "啟用迄日"],
-    "申請單": ["學期代號", "申請單ID", "單號", "批次ID", "狀態", "直接核准", "紙本流程", "申請人姓名", "受邀人姓名", "代申請人姓名", "班級", "科目", "異動日期", "異動星期", "異動節次", "異動類型", "特殊流程", "對調目標日期", "對調目標星期", "對調目標節次", "對調目標班級", "對調目標科目", "經費來源", "請假事由", "請假時間類型", "請假時間", "是否已印", "備註", "建立時間", "更新時間"],
+    "申請單": ["學期代號", "申請單ID", "單號", "批次ID", "狀態", "直接核准", "紙本流程", "申請人姓名", "受邀人姓名", "代申請人姓名", "班級", "科目", "異動日期", "異動星期", "異動節次", "異動類型", "特殊流程", "對調目標日期", "對調目標星期", "對調目標節次", "對調目標班級", "對調目標科目", "三角調ID", "三角腳次", "三角同意狀態", "三角同意時間", "三角組狀態", "經費來源", "請假事由", "請假時間類型", "請假時間", "是否已印", "備註", "建立時間", "更新時間"],
     "代導紀錄": ["學期代號", "代導紀錄ID", "來源申請單ID", "原導師姓名", "班級", "代導日期", "請假時間類型", "請假時間", "代導教師姓名", "代導節數", "鐘點費", "狀態", "啟用", "建立時間", "更新時間", "操作者", "備註"],
     "額度帳本": ["學期代號", "流水ID", "時間", "教師姓名", "異動", "餘額後", "類型", "包ID", "事件ID", "事件名稱", "起日", "迄日", "申請單ID", "操作者", "備註", "索引鍵"]
   };
@@ -855,7 +859,7 @@ function getHeadersForSheet(sheetName) {
     // Teacher roster keeps login Email; the four domain sheets use names as relation keys.
     "教師名單": ["學期代號", "教師Email", "教師姓名", "授課科目", "職務", "鐘點支出計畫", "系統角色", "基本鐘點", "折抵額度"],
     "教師課表": ["學期代號", "課表ID", "教師姓名", "星期", "節次", "班級", "科目", "課堂屬性", "調課限制", "特殊標記", "啟用起日", "啟用迄日"],
-    "申請單": ["學期代號", "申請單ID", "單號", "批次ID", "狀態", "直接核准", "紙本流程", "申請人姓名", "受邀人姓名", "代申請人姓名", "班級", "科目", "異動日期", "異動星期", "異動節次", "異動類型", "特殊流程", "對調目標日期", "對調目標星期", "對調目標節次", "對調目標班級", "對調目標科目", "經費來源", "請假事由", "請假時間類型", "請假時間", "是否已印", "備註", "建立時間", "更新時間"],
+    "申請單": ["學期代號", "申請單ID", "單號", "批次ID", "狀態", "直接核准", "紙本流程", "申請人姓名", "受邀人姓名", "代申請人姓名", "班級", "科目", "異動日期", "異動星期", "異動節次", "異動類型", "特殊流程", "對調目標日期", "對調目標星期", "對調目標節次", "對調目標班級", "對調目標科目", "三角調ID", "三角腳次", "三角同意狀態", "三角同意時間", "三角組狀態", "經費來源", "請假事由", "請假時間類型", "請假時間", "是否已印", "備註", "建立時間", "更新時間"],
     "空堂事件": ["學期代號", "事件ID", "事件名稱", "起日", "迄日", "班級清單", "鐘點規則", "可進互代", "啟用", "備註"],
     "代導紀錄": ["學期代號", "代導紀錄ID", "來源申請單ID", "原導師姓名", "班級", "代導日期", "請假時間類型", "請假時間", "代導教師姓名", "代導節數", "鐘點費", "狀態", "啟用", "建立時間", "更新時間", "操作者", "備註"],
     "全校對調": ["學期代號", "對調ID", "事件名稱", "日期A", "星期A", "節次A", "日期B", "星期B", "節次B", "啟用", "建立時間", "更新時間", "操作者", "備註"],
@@ -5304,7 +5308,8 @@ function validateRequestRow_(row, semesterId) {
     throw new Error("異動星期格式不正確！");
   }
   var type = String(row && (row["異動類型"] || row.type || "") || "").toLowerCase();
-  if (type !== "substitution" && type !== "代課" && type !== "exchange" && type !== "對調") {
+  if (type !== "substitution" && type !== "代課" && type !== "exchange" && type !== "對調"
+      && type !== TRIANGLE_TYPE_ && type !== "三角調") {
     throw new Error("異動類型不正確！");
   }
   validateCombinedReturnRequest_(row, semesterId);
@@ -5323,6 +5328,669 @@ function validateRequestRow_(row, semesterId) {
     var end = String(sem["結束日期"] || sem.endDate || "").slice(0, 10);
     if ((start && dateStr < start) || (end && dateStr > end)) throw new Error("異動日期不在目前學期範圍內！");
   }
+}
+
+// ----------------- 三角調：群組驗證／資料契約 -----------------
+// 三角調仍寫入「申請單」三列；每列代表一條 source → target 腳，三列共用三角調ID。
+function isTriangleRequest_(row) {
+  var type = String(row && (row["異動類型"] || row.type) || "").trim().toLowerCase();
+  return type === TRIANGLE_TYPE_ || type === "三角調";
+}
+
+function triangleText_(value) {
+  return String(value == null ? "" : value).trim();
+}
+
+function trianglePick_(row, names) {
+  var source = row || {};
+  for (var i = 0; i < names.length; i++) {
+    if (source[names[i]] !== undefined && source[names[i]] !== null
+        && triangleText_(source[names[i]]) !== "") return source[names[i]];
+  }
+  return "";
+}
+
+function trianglePersonValue_(value, field) {
+  if (!value || typeof value !== "object") return triangleText_(value);
+  if (field === "email") return triangleText_(value.email || value.loginEmail || value["教師Email"]);
+  return triangleText_(value.name || value.teacherName || value["教師姓名"] || value.email || value.loginEmail);
+}
+
+function triangleDateDay_(dateText) {
+  var date = new Date(String(dateText || "").replace(/-/g, "/"));
+  if (isNaN(date.getTime())) return 0;
+  return date.getDay() === 0 ? 7 : date.getDay();
+}
+
+function trianglePeriod_(value) {
+  if (value === 0 || value === "0") return 0;
+  if (value === 45 || value === "45") return 45;
+  var period = parseInt(value, 10);
+  return period === 0 || period === 45 || (period >= 1 && period <= 8) ? period : null;
+}
+
+function triangleSlotFromRow_(row, target) {
+  var isTarget = target === true;
+  var date = trianglePick_(row, isTarget
+    ? ["對調目標日期", "targetDate", "dateB"]
+    : ["異動日期", "requestDate", "dateA"]);
+  var day = trianglePick_(row, isTarget
+    ? ["對調目標星期", "targetDayOfWeek", "targetDay", "dayB"]
+    : ["異動星期", "requestPeriodDay", "sourceDay", "dayA"]);
+  var period = trianglePick_(row, isTarget
+    ? ["對調目標節次", "targetPeriod", "periodB"]
+    : ["異動節次", "requestPeriod", "sourcePeriod", "periodA"]);
+  date = triangleText_(date).slice(0, 10);
+  period = trianglePeriod_(period);
+  day = parseInt(day, 10);
+  if (!(day >= 1 && day <= 7)) day = triangleDateDay_(date);
+  return { date: date, day: day || 0, period: period };
+}
+
+function triangleCourseFromRow_(row, target) {
+  var isTarget = target === true;
+  var className = trianglePick_(row, isTarget
+    ? ["對調目標班級", "targetClassName", "classB"]
+    : ["班級", "className", "classA"]);
+  var subject = trianglePick_(row, isTarget
+    ? ["對調目標科目", "targetSubject", "subjectB"]
+    : ["科目", "subject", "subjectA"]);
+  return {
+    className: triangleText_(className),
+    subject: triangleText_(subject)
+  };
+}
+
+function triangleClassList_(value) {
+  return triangleText_(value).split(/[、,，\/／;；\s]+/).map(function (item) {
+    return triangleText_(item);
+  }).filter(Boolean);
+}
+
+function triangleSameClass_(left, right) {
+  var a = triangleClassList_(left);
+  var b = triangleClassList_(right);
+  if (!a.length || !b.length) return false;
+  return a.some(function (item) { return b.indexOf(item) !== -1; });
+}
+
+function triangleTeacherEmailFromRow_(row, target, semesterId, directory) {
+  var isTarget = target === true;
+  var name = trianglePick_(row, isTarget
+    ? ["受邀人姓名", "targetTeacherName", "toTeacher", "targetTeacher"]
+    : ["申請人姓名", "requesterName", "fromTeacher", "sourceTeacher"]);
+  var email = trianglePick_(row, isTarget
+    ? ["受邀人Email", "targetTeacherEmail"]
+    : ["申請人Email", "requesterEmail"]);
+  name = trianglePersonValue_(name, "name");
+  email = trianglePersonValue_(email, "email");
+  if (!email && name && directory) email = nameKeyEmailForName_(semesterId, name, directory);
+  return triangleText_(email).toLowerCase();
+}
+
+function triangleTeacherNameFromEmail_(email, semesterId, directory) {
+  var em = triangleText_(email).toLowerCase();
+  if (!em || !directory) return "";
+  var entry = directory.byEmail[nameKeyDirectoryKey_(semesterId, em)];
+  return entry ? entry.name : "";
+}
+
+function triangleScheduleContext_(semesterId) {
+  var sid = String(semesterId || "").trim();
+  var teachers = getSemesterTeachersCached_(sid) || [];
+  var directory = buildNameKeyDirectory_(teachers);
+  var schedules = (getSemesterSchedulesCached_(sid) || []).map(function (row) {
+    var name = triangleText_(row["教師姓名"] || row.teacherName);
+    var email = triangleText_(row["教師Email"] || row.teacherEmail).toLowerCase();
+    if (!email && name) email = nameKeyEmailForName_(sid, name, directory);
+    return {
+      row: row,
+      email: email,
+      name: name,
+      day: parseInt(row["星期"] != null ? row["星期"] : row.dayOfWeek, 10),
+      period: parseInt(row["節次"] != null ? row["節次"] : row.period, 10),
+      className: triangleText_(row["班級"] || row.className),
+      subject: triangleText_(row["科目"] || row.subject),
+      attr: triangleText_(row["課堂屬性"] || row.attr)
+    };
+  }).filter(function (item) {
+    return !!item.email && !isNaN(item.day) && !isNaN(item.period);
+  });
+  return {
+    semesterId: sid,
+    directory: directory,
+    schedules: schedules,
+    schoolSwaps: getActiveSchoolSwapRows_(sid) || [],
+    edges: {},
+    pending: {}
+  };
+}
+
+function triangleCellKey_(email, date, period) {
+  return triangleText_(email).toLowerCase() + "|" + triangleText_(date).slice(0, 10) + "|" + String(trianglePeriod_(period));
+}
+
+function triangleBaseCell_(context, email, date, day, period) {
+  var em = triangleText_(email).toLowerCase();
+  var resolved = resolveSchoolSwapSlotForTeacher_(context.schoolSwaps, date, day, period,
+    context.schedules.map(function (item) { return item.row; }), em);
+  var hit = context.schedules.find(function (item) {
+    return item.email === em && item.day === parseInt(resolved.dayOfWeek, 10)
+      && item.period === parseInt(resolved.period, 10) && scheduleActiveOnDate_(item.row, date);
+  });
+  if (!hit) return null;
+  return {
+    occupied: !!(hit.className && hit.subject) || isPatrolScheduleRow_(hit.row),
+    changed: false,
+    isPatrol: isPatrolScheduleRow_(hit.row),
+    className: hit.className,
+    subject: hit.subject,
+    attr: hit.attr,
+    row: hit.row
+  };
+}
+
+function triangleAddEdge_(edges, email, date, period, direction, course, requestId) {
+  var key = triangleCellKey_(email, date, period);
+  if (!edges[key]) edges[key] = [];
+  edges[key].push({
+    direction: direction,
+    className: triangleText_(course && course.className),
+    subject: triangleText_(course && course.subject),
+    requestId: triangleText_(requestId)
+  });
+}
+
+function triangleBuildEdgeIndex_(context, ignoreTriangleId) {
+  var pack = getSemesterRequestsCached_(context.semesterId, true, 0);
+  var rows = pack && pack.rows ? pack.rows : [];
+  var ignored = triangleText_(ignoreTriangleId);
+  rows.forEach(function (row) {
+    var status = String(translateStatusToEn(row && row["狀態"] || row && row.status) || "").toLowerCase();
+    if (status !== "approved") return;
+    var type = String(translateTypeToEn(row && row["異動類型"] || row && row.type) || "").toLowerCase();
+    var rid = triangleText_(row && row["申請單ID"] || row && row.id);
+    var triId = triangleText_(row && row["三角調ID"] || row && row.triangleId);
+    if (type === TRIANGLE_TYPE_) {
+      if (ignored && triId === ignored) return;
+      var triSource = triangleTeacherEmailFromRow_(row, false, context.semesterId, context.directory);
+      var triTarget = triangleTeacherEmailFromRow_(row, true, context.semesterId, context.directory);
+      var triTargetSlot = triangleSlotFromRow_(row, true);
+      var triSourceCourse = triangleCourseFromRow_(row, false);
+      var triTargetCourse = triangleCourseFromRow_(row, true);
+      // 三角調只在目標原課時段建立一組 edge：目標原教師調出，來源教師帶著原課調入。
+      // 三條 leg 合併後，三位教師各自的來源時段自然形成完整閉環。
+      triangleAddEdge_(context.edges, triTarget, triTargetSlot.date, triTargetSlot.period, "out", triTargetCourse, rid);
+      triangleAddEdge_(context.edges, triSource, triTargetSlot.date, triTargetSlot.period, "in", triSourceCourse, rid);
+      return;
+    }
+    var source = triangleTeacherEmailFromRow_(row, false, context.semesterId, context.directory);
+    var target = triangleTeacherEmailFromRow_(row, true, context.semesterId, context.directory);
+    var sourceSlot = triangleSlotFromRow_(row, false);
+    var sourceCourse = triangleCourseFromRow_(row, false);
+    triangleAddEdge_(context.edges, source, sourceSlot.date, sourceSlot.period, "out", sourceCourse, rid);
+    triangleAddEdge_(context.edges, target, sourceSlot.date, sourceSlot.period, "in", sourceCourse, rid);
+    if (type === "exchange") {
+      var targetSlot = triangleSlotFromRow_(row, true);
+      var targetCourse = triangleCourseFromRow_(row, true);
+      triangleAddEdge_(context.edges, target, targetSlot.date, targetSlot.period, "out", targetCourse, rid);
+      triangleAddEdge_(context.edges, source, targetSlot.date, targetSlot.period, "in", targetCourse, rid);
+    }
+  });
+}
+
+function triangleAddPendingSlot_(pending, email, date, period) {
+  var em = triangleText_(email).toLowerCase();
+  var p = trianglePeriod_(period);
+  var d = triangleText_(date).slice(0, 10);
+  if (!em || !d || p === null) return;
+  pending[triangleCellKey_(em, d, p)] = true;
+}
+
+function triangleBuildPendingIndex_(context, ignoreTriangleId) {
+  var pack = getSemesterRequestsCached_(context.semesterId, true, 0);
+  var rows = pack && pack.rows ? pack.rows : [];
+  var ignored = triangleText_(ignoreTriangleId);
+  rows.forEach(function (row) {
+    var status = String(translateStatusToEn(row && row["狀態"] || row && row.status) || "").toLowerCase();
+    if (status !== "pending_teacher" && status !== "pending_admin") return;
+    var type = String(translateTypeToEn(row && row["異動類型"] || row && row.type) || "").toLowerCase();
+    var triId = triangleText_(row && row["三角調ID"] || row && row.triangleId);
+    if (ignored && triId === ignored) return;
+    var source = triangleTeacherEmailFromRow_(row, false, context.semesterId, context.directory);
+    var target = triangleTeacherEmailFromRow_(row, true, context.semesterId, context.directory);
+    var sourceSlot = triangleSlotFromRow_(row, false);
+    if (type === TRIANGLE_TYPE_) {
+      var triangleTargetSlot = triangleSlotFromRow_(row, true);
+      triangleAddPendingSlot_(context.pending, source, sourceSlot.date, sourceSlot.period);
+      triangleAddPendingSlot_(context.pending, source, triangleTargetSlot.date, triangleTargetSlot.period);
+      return;
+    }
+    triangleAddPendingSlot_(context.pending, source, sourceSlot.date, sourceSlot.period);
+    triangleAddPendingSlot_(context.pending, target, sourceSlot.date, sourceSlot.period);
+    var targetSlot = triangleSlotFromRow_(row, true);
+    if (type === "exchange") {
+      triangleAddPendingSlot_(context.pending, source, targetSlot.date, targetSlot.period);
+      triangleAddPendingSlot_(context.pending, target, targetSlot.date, targetSlot.period);
+    }
+  });
+}
+
+function triangleCurrentCell_(context, email, date, day, period) {
+  var key = triangleCellKey_(email, date, period);
+  var edges = context.edges[key] || [];
+  var incoming = edges.find(function (edge) { return edge.direction === "in"; });
+  if (incoming) {
+    return {
+      occupied: true,
+      changed: true,
+      isPatrol: false,
+      className: incoming.className,
+      subject: incoming.subject,
+      attr: ""
+    };
+  }
+  var outgoing = edges.find(function (edge) { return edge.direction === "out"; });
+  if (outgoing) return { occupied: false, changed: true, isPatrol: false, className: "", subject: "", attr: "" };
+  return triangleBaseCell_(context, email, date, day, period);
+}
+
+function triangleCourseUsable_(cell) {
+  return !!(cell && cell.occupied && !cell.isPatrol && cell.className && cell.subject);
+}
+
+function trianglePullOut_(cell) {
+  return !!(cell && String(cell.attr || "").trim() === "抽離");
+}
+
+function triangleSameSlot_(a, b) {
+  return !!(a && b && triangleText_(a.date).slice(0, 10) === triangleText_(b.date).slice(0, 10)
+    && trianglePeriod_(a.period) === trianglePeriod_(b.period));
+}
+
+function triangleValidateDateInSemester_(date, semesterId) {
+  var value = triangleText_(date).slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || !triangleDateDay_(value)) return false;
+  var semester = (getTableData("學期設定") || []).find(function (row) {
+    return String(row["學期代號"] || row.id || "").trim() === String(semesterId || "").trim();
+  });
+  if (semester) {
+    var start = String(semester["開始日期"] || semester.startDate || "").slice(0, 10);
+    var end = String(semester["結束日期"] || semester.endDate || "").slice(0, 10);
+    if ((start && value < start) || (end && value > end)) return false;
+  }
+  return true;
+}
+
+function validateTriangleRequestRows_(rows, semesterId, ignoreTriangleId) {
+  var list = Array.isArray(rows) ? rows : [];
+  var errors = [];
+  var context = triangleScheduleContext_(semesterId);
+  triangleBuildEdgeIndex_(context, ignoreTriangleId);
+  triangleBuildPendingIndex_(context, ignoreTriangleId);
+  var sourceSet = {};
+  var targetSet = {};
+  var legs = [];
+  var pullOutCount = 0;
+  var classNames = [];
+
+  if (list.length !== 3) errors.push("三角調必須正好包含三條交換關係");
+  list.forEach(function (row, index) {
+    var no = index + 1;
+    if (!isTriangleRequest_(row)) {
+      errors.push("第" + no + "列異動類型不是三角調");
+      return;
+    }
+    var source = triangleTeacherEmailFromRow_(row, false, context.semesterId, context.directory);
+    var target = triangleTeacherEmailFromRow_(row, true, context.semesterId, context.directory);
+    var sourceSlot = triangleSlotFromRow_(row, false);
+    var targetSlot = triangleSlotFromRow_(row, true);
+    var sourceCourse = triangleCourseFromRow_(row, false);
+    var targetCourse = triangleCourseFromRow_(row, true);
+    if (!source || !target) errors.push("第" + no + "列缺少來源或目標教師");
+    if (source && target && source === target) errors.push("第" + no + "列來源教師與目標教師不可相同");
+    if (source && sourceSet[source]) errors.push("同一位教師不可提供兩堂原課");
+    if (target && targetSet[target]) errors.push("同一位教師不可接收兩個目標時段");
+    if (source) sourceSet[source] = true;
+    if (target) targetSet[target] = true;
+    if (!triangleValidateDateInSemester_(sourceSlot.date, semesterId) || sourceSlot.period === null) {
+      errors.push("第" + no + "列來源課堂日期／節次無效");
+    }
+    if (!triangleValidateDateInSemester_(targetSlot.date, semesterId) || targetSlot.period === null) {
+      errors.push("第" + no + "列目標課堂日期／節次無效");
+    }
+    if (!source || !target || sourceSlot.period === null || targetSlot.period === null) return;
+    var sourceCell = triangleCurrentCell_(context, source, sourceSlot.date, sourceSlot.day, sourceSlot.period);
+    var targetCell = triangleCurrentCell_(context, target, targetSlot.date, targetSlot.day, targetSlot.period);
+    if (!sourceCell || sourceCell.changed || !triangleCourseUsable_(sourceCell)) {
+      errors.push("第" + no + "列來源課堂必須是尚未異動的有效一般課程");
+    }
+    if (!targetCell || targetCell.changed || !triangleCourseUsable_(targetCell)) {
+      errors.push("第" + no + "列目標課堂必須是尚未異動的有效一般課程");
+    }
+    if (context.pending[triangleCellKey_(source, sourceSlot.date, sourceSlot.period)]
+        || context.pending[triangleCellKey_(target, targetSlot.date, targetSlot.period)]) {
+      errors.push("第" + no + "列課堂已有進行中的異動申請");
+    }
+    if (sourceCell && sourceCell.occupied) {
+      if (sourceCourse.className && sourceCourse.className !== sourceCell.className) errors.push("第" + no + "列來源班級與目前課表不一致");
+      if (sourceCourse.subject && sourceCourse.subject !== sourceCell.subject) errors.push("第" + no + "列來源科目與目前課表不一致");
+      row["班級"] = sourceCell.className;
+      row["科目"] = sourceCell.subject;
+    }
+    if (targetCell && targetCell.occupied) {
+      if (targetCourse.className && targetCourse.className !== targetCell.className) errors.push("第" + no + "列目標班級與目前課表不一致");
+      if (targetCourse.subject && targetCourse.subject !== targetCell.subject) errors.push("第" + no + "列目標科目與目前課表不一致");
+      row["對調目標班級"] = targetCell.className;
+      row["對調目標科目"] = targetCell.subject;
+    }
+    classNames.push(row["班級"] || sourceCourse.className, row["對調目標班級"] || targetCourse.className);
+    if (trianglePullOut_(sourceCell)) pullOutCount++;
+    legs.push({ source: source, target: target, sourceSlot: sourceSlot, targetSlot: targetSlot,
+      sourceCourse: sourceCourse, targetCourse: targetCourse });
+  });
+
+  if (Object.keys(sourceSet).length === 3 && Object.keys(targetSet).length === 3) {
+    var classReference = classNames.find(function (name) { return triangleText_(name) !== ""; }) || "";
+    if (!classReference || classNames.some(function (name) {
+      return triangleText_(name) !== "" && !triangleSameClass_(classReference, name);
+    })) {
+      errors.push("三角調三條原課必須屬於同一班");
+    }
+    Object.keys(sourceSet).forEach(function (key) {
+      if (!targetSet[key]) errors.push("三角調三位教師必須形成閉環");
+    });
+    legs.forEach(function (leg) {
+      var next = legs.find(function (candidate) { return candidate.source === leg.target; });
+      if (!next || !triangleSameSlot_(leg.targetSlot, next.sourceSlot)) {
+        errors.push("目標課堂必須是目標教師提供的原課，且三條關係必須閉環");
+      }
+    });
+  }
+  if (pullOutCount > 0 && pullOutCount < legs.length) {
+    errors.push("抽離課只能三堂全部為抽離課，不能與一般課混調");
+  }
+
+  // 先移除每位教師的來源課，再檢查新增目標時段，允許交換中間暫時衝堂。
+  legs.forEach(function (leg, index) {
+    if (leg.sourceSlot.period === null) return;
+    var key = triangleCellKey_(leg.source, leg.targetSlot.date, leg.targetSlot.period);
+    if (triangleSameSlot_(leg.sourceSlot, leg.targetSlot)) return;
+    if (context.pending[key]) errors.push("第" + (index + 1) + "列新增目標時段已有進行中的異動申請");
+    var finalCell = triangleCurrentCell_(context, leg.source, leg.targetSlot.date, leg.targetSlot.day, leg.targetSlot.period);
+    if (finalCell && finalCell.occupied) errors.push("完整三角交換後仍有教師最終時段衝堂");
+  });
+
+  var unique = [];
+  errors.forEach(function (error) { if (unique.indexOf(error) === -1) unique.push(error); });
+  if (unique.length) throw new Error("三角調資料驗證失敗：" + unique.slice(0, 10).join("；"));
+  return { legs: legs, context: context };
+}
+
+function triangleGroupIdFromRow_(row) {
+  return triangleText_(row && (row["三角調ID"] || row.triangleId || row["批次ID"]));
+}
+
+function getTriangleGroupRows_(semesterId, triangleId) {
+  var id = triangleText_(triangleId);
+  if (!id) return [];
+  return findRowsByColumnValue_("申請單", "三角調ID", id, function (row) {
+    return String(row["學期代號"] || "").trim() === String(semesterId || "").trim()
+      && isTriangleRequest_(row);
+  }).sort(function (a, b) {
+    return (parseInt(a["三角腳次"], 10) || 0) - (parseInt(b["三角腳次"], 10) || 0);
+  });
+}
+
+function triangleAssertGroup_(rows, semesterId, action, ignoreTriangleId) {
+  var list = Array.isArray(rows) ? rows : [];
+  if (list.length !== 3) throw new Error("三角調整組必須完整包含三條申請單，無法" + action + "！");
+  var id = triangleGroupIdFromRow_(list[0]);
+  if (!id || list.some(function (row) { return triangleGroupIdFromRow_(row) !== id; })) {
+    throw new Error("三角調群組資料不完整，無法" + action + "！");
+  }
+  validateTriangleRequestRows_(list, semesterId, ignoreTriangleId || id);
+  return list;
+}
+
+function triangleInputRows_(data, semesterId, teachers, actorEmail, actorName) {
+  var payload = data || {};
+  var rawLegs = payload.legs || payload.requests || (payload.triangle && payload.triangle.legs) || [];
+  if (!Array.isArray(rawLegs) || rawLegs.length !== 3) throw new Error("三角調必須提供正好三條交換關係！");
+  var directory = buildNameKeyDirectory_(teachers || []);
+  var requestedId = triangleText_(payload.triangleId || payload["三角調ID"]);
+  if (requestedId && !/^[A-Za-z0-9_-]{4,80}$/.test(requestedId)) throw new Error("三角調ID格式不正確！");
+  var triangleId = requestedId || ("tri_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8));
+  var serialBase = triangleText_(payload.serial || payload["單號"]) || triangleId;
+  var triangleReason = triangleText_(payload.reason || payload["請假事由"]) || "請假";
+  var triangleLeaveTimeType = triangleText_(payload.leaveTimeType || payload["請假時間類型"]);
+  var triangleLeaveTime = triangleText_(payload.leaveTime || payload["請假時間"]);
+  var triangleNote = triangleText_(payload.note || payload["備註"]);
+  var now = toLocalTimeStr(new Date());
+  var rows = rawLegs.map(function (raw, index) {
+    var sourcePerson = trianglePick_(raw, ["sourceTeacher", "fromTeacher", "requesterName", "申請人姓名"]);
+    var targetPerson = trianglePick_(raw, ["targetTeacher", "toTeacher", "targetTeacherName", "受邀人姓名"]);
+    var sourceEmailInput = trianglePick_(raw, ["sourceTeacherEmail", "requesterEmail", "申請人Email"]);
+    var targetEmailInput = trianglePick_(raw, ["targetTeacherEmail", "受邀人Email"]);
+    var sourceName = resolveNameKeyPair_(trianglePersonValue_(sourcePerson, "name"), trianglePersonValue_(sourceEmailInput, "email"), semesterId, directory, "三角調來源教師", false);
+    var targetName = resolveNameKeyPair_(trianglePersonValue_(targetPerson, "name"), trianglePersonValue_(targetEmailInput, "email"), semesterId, directory, "三角調目標教師", false);
+    var sourceEmail = nameKeyEmailForName_(semesterId, sourceName, directory);
+    var targetEmail = nameKeyEmailForName_(semesterId, targetName, directory);
+    var sourceSlot = raw.sourceSlot || raw.source || raw;
+    var targetSlot = raw.targetSlot || raw.target || raw;
+    var sourceCourse = raw.sourceCourse || raw.course || raw;
+    var targetCourse = raw.targetCourse || raw.targetCourseData || raw.target || {};
+    var sourceDate = trianglePick_(sourceSlot, ["date", "sourceDate", "requestDate", "異動日期"]);
+    var sourceDay = trianglePick_(sourceSlot, ["day", "sourceDay", "dayOfWeek", "異動星期"]);
+    var sourcePeriod = trianglePick_(sourceSlot, ["period", "sourcePeriod", "requestPeriod", "異動節次"]);
+    var targetDate = trianglePick_(targetSlot, ["date", "targetDate", "對調目標日期"]);
+    var targetDay = trianglePick_(targetSlot, ["day", "targetDay", "dayOfWeek", "對調目標星期"]);
+    var targetPeriod = trianglePick_(targetSlot, ["period", "targetPeriod", "對調目標節次"]);
+    var sourceClass = triangleText_(trianglePick_(sourceCourse, ["className", "class", "班級"]));
+    var sourceSubject = triangleText_(trianglePick_(sourceCourse, ["subject", "科目"]));
+    var targetClass = triangleText_(trianglePick_(targetCourse, ["className", "class", "班級"]));
+    var targetSubject = triangleText_(trianglePick_(targetCourse, ["subject", "科目"]));
+    var row = {
+      "學期代號": semesterId,
+      "申請單ID": triangleText_(raw.requestId || raw.id) || (triangleId + "_" + (index + 1)),
+      "單號": serialBase + "-" + (index + 1),
+      "批次ID": triangleId,
+      "狀態": "pending_teacher",
+      "直接核准": "",
+      "紙本流程": "FALSE",
+      "申請人姓名": sourceName,
+      "受邀人姓名": targetName,
+      "申請人Email": sourceEmail,
+      "受邀人Email": targetEmail,
+      "班級": sourceClass,
+      "科目": sourceSubject,
+      "異動日期": triangleText_(sourceDate).slice(0, 10),
+      "異動星期": parseInt(sourceDay, 10) || triangleDateDay_(sourceDate),
+      "異動節次": trianglePeriod_(sourcePeriod),
+      "異動類型": TRIANGLE_TYPE_,
+      "特殊流程": "",
+      "對調目標日期": triangleText_(targetDate).slice(0, 10),
+      "對調目標星期": parseInt(targetDay, 10) || triangleDateDay_(targetDate),
+      "對調目標節次": trianglePeriod_(targetPeriod),
+      "對調目標班級": targetClass,
+      "對調目標科目": targetSubject,
+      "三角調ID": triangleId,
+      "三角腳次": index + 1,
+      "三角同意狀態": TRIANGLE_CONSENT_PENDING_,
+      "三角同意時間": "",
+      "三角組狀態": "pending_teacher",
+      "經費來源": "無",
+      "請假事由": triangleReason,
+      "請假時間類型": triangleLeaveTimeType,
+      "請假時間": triangleLeaveTime,
+      "是否已印": "FALSE",
+      "備註": triangleText_(raw.note || raw["備註"]) || triangleNote,
+      "建立時間": now,
+      "更新時間": now
+    };
+    row.requesterName = sourceName;
+    row.targetTeacherName = targetName;
+    row.requesterEmail = sourceEmail;
+    row.targetTeacherEmail = targetEmail;
+    return row;
+  });
+  var people = {};
+  rows.forEach(function (row) {
+    people[row["申請人Email"]] = true;
+    people[row["受邀人Email"]] = true;
+  });
+  if (!people[triangleText_(actorEmail).toLowerCase()]) {
+    var actorIsAdmin = resolveIsAdmin_(actorEmail, teachers || []);
+    var actorCanProxy = canUserProxySubmit_(actorEmail, teachers || []);
+    if (!actorIsAdmin && !actorCanProxy) throw new Error("三角調發起人必須是三位參與教師，或由已授權行政代送！");
+    rows.forEach(function (row) {
+      row["代申請人姓名"] = actorName || actorEmail;
+      row["代申請人Email"] = actorEmail;
+    });
+  }
+  validateTriangleRequestRows_(rows, semesterId, "");
+  return { triangleId: triangleId, rows: rows };
+}
+
+function triangleGroupRowsForRequest_(requestRow, semesterId, action) {
+  var triangleId = triangleGroupIdFromRow_(requestRow);
+  if (!triangleId) throw new Error("三角調申請單缺少三角調ID，無法" + action + "！");
+  var rows = getTriangleGroupRows_(semesterId, triangleId);
+  return triangleAssertGroup_(rows, semesterId, action, triangleId);
+}
+
+function triangleGroupAllAgreed_(rows) {
+  return (rows || []).length === 3 && rows.every(function (row) {
+    return String(row["三角同意狀態"] || "").trim().toLowerCase() === TRIANGLE_CONSENT_AGREE_;
+  });
+}
+
+function triangleSetGroupStatus_(rows, status) {
+  (rows || []).forEach(function (row) {
+    row["狀態"] = status;
+    row["三角組狀態"] = status;
+  });
+}
+
+function respondTriangleRequest_(requestRow, semesterId, userEmail, response, currentUrl) {
+  var resp = String(response || "").toLowerCase().trim();
+  if (resp !== TRIANGLE_CONSENT_AGREE_ && resp !== TRIANGLE_CONSENT_DECLINE_) {
+    throw new Error("三角調簽核回應格式不正確！");
+  }
+  var rows = triangleGroupRowsForRequest_(requestRow, semesterId, "簽核");
+  var actor = String(userEmail || "").toLowerCase().trim();
+  var own = rows.find(function (row) {
+    return String(row["受邀人Email"] || "").toLowerCase().trim() === actor;
+  });
+  if (!own || String(own["狀態"] || "") !== "pending_teacher") {
+    throw new Error("您無權對此三角調邀請進行操作，或該邀請已處理！");
+  }
+  var now = toLocalTimeStr(new Date());
+  own["三角同意狀態"] = resp;
+  own["三角同意時間"] = now;
+  if (resp === TRIANGLE_CONSENT_DECLINE_) {
+    rows.forEach(function (row) {
+      if (row !== own && String(row["三角同意狀態"] || "") === TRIANGLE_CONSENT_PENDING_) {
+        row["三角同意狀態"] = "declined_by_group";
+        row["三角同意時間"] = now;
+      }
+    });
+    triangleSetGroupStatus_(rows, "rejected");
+  } else if (triangleGroupAllAgreed_(rows)) {
+    triangleSetGroupStatus_(rows, "pending_admin");
+  } else {
+    triangleSetGroupStatus_(rows, "pending_teacher");
+  }
+  saveRows("申請單", rows, "申請單ID");
+  if (resp === TRIANGLE_CONSENT_AGREE_ && triangleGroupAllAgreed_(rows)) {
+    queueMail_("sendTriangleReadyEmail", function () {
+      sendTriangleReadyEmail_(rows, currentUrl);
+    });
+  }
+  invalidateSemesterCaches_(semesterId);
+  return {
+    success: true,
+    triangleId: triangleGroupIdFromRow_(rows[0]),
+    response: resp,
+    groupStatus: String(rows[0]["三角組狀態"] || ""),
+    count: rows.length
+  };
+}
+
+function approveTriangleRequest_(requestRow, semesterId, operatorEmail, currentUrl, note) {
+  var rows = triangleGroupRowsForRequest_(requestRow, semesterId, "核准");
+  var paperFlow = rows.every(function (row) { return isPaperFlowRow_(row); });
+  if (rows.some(function (row) { return String(row["狀態"] || "") !== "pending_admin"; })) {
+    throw new Error("三角調必須等三位教師全部同意後，才能由教學組核准！");
+  }
+  if (!paperFlow && !triangleGroupAllAgreed_(rows)) throw new Error("三角調尚未完成三方同意！");
+  validateTriangleRequestRows_(rows, semesterId, triangleGroupIdFromRow_(rows[0]));
+  triangleSetGroupStatus_(rows, "approved");
+  if (paperFlow) {
+    var paperApprovedAt = toLocalTimeStr(new Date());
+    rows.forEach(function (row) {
+      row["三角同意狀態"] = "paper_agreed";
+      row["三角同意時間"] = paperApprovedAt;
+    });
+  }
+  if (note) rows.forEach(function (row) { row["備註"] = note; });
+  saveRows("申請單", rows, "申請單ID");
+  if (!paperFlow) {
+    queueMail_("sendTriangleApprovedEmail", function () {
+      sendTriangleApprovedEmail_(rows, currentUrl);
+    });
+  }
+  invalidateSemesterCaches_(semesterId);
+  return { success: true, triangleId: triangleGroupIdFromRow_(rows[0]), count: rows.length };
+}
+
+function rejectTriangleRequest_(requestRow, semesterId, operatorEmail, currentUrl, note) {
+  var rows = triangleGroupRowsForRequest_(requestRow, semesterId, "駁回");
+  if (rows.some(function (row) { return String(row["狀態"] || "") !== "pending_admin"; })) {
+    throw new Error("三角調目前不是待行政審核狀態！");
+  }
+  triangleSetGroupStatus_(rows, "admin_rejected");
+  if (note) rows.forEach(function (row) { row["備註"] = note; });
+  saveRows("申請單", rows, "申請單ID");
+  invalidateSemesterCaches_(semesterId);
+  return { success: true, triangleId: triangleGroupIdFromRow_(rows[0]), count: rows.length };
+}
+
+function cancelTriangleRequest_(requestRow, semesterId, actorEmail, nextStatus) {
+  var rows = triangleGroupRowsForRequest_(requestRow, semesterId, "撤回");
+  var actor = String(actorEmail || "").toLowerCase().trim();
+  var allowed = resolveIsAdmin_(actor, getSemesterTeachersCached_(semesterId) || [])
+    || rows.some(function (row) { return String(row["申請人Email"] || "").toLowerCase().trim() === actor; });
+  if (!allowed) throw new Error("您無權撤回此三角調群組！");
+  if (rows.some(function (row) {
+    var status = String(translateStatusToEn(row["狀態"]) || row["狀態"] || "").toLowerCase();
+    return status !== "pending_teacher" && status !== "pending_admin";
+  })) throw new Error("三角調目前狀態無法撤回！");
+  triangleSetGroupStatus_(rows, nextStatus || "cancelled");
+  rows.forEach(function (row) {
+    if (String(row["三角同意狀態"] || "") === TRIANGLE_CONSENT_PENDING_
+        || String(row["三角同意狀態"] || "") === "paper_pending") {
+      row["三角同意狀態"] = "cancelled_by_group";
+      row["三角同意時間"] = toLocalTimeStr(new Date());
+    }
+  });
+  saveRows("申請單", rows, "申請單ID");
+  invalidateSemesterCaches_(semesterId);
+  return { success: true, triangleId: triangleGroupIdFromRow_(rows[0]), count: rows.length };
+}
+
+function deleteApprovedTriangleRequest_(requestRow, semesterId) {
+  var rows = triangleGroupRowsForRequest_(requestRow, semesterId, "撤銷");
+  if (rows.some(function (row) { return String(translateStatusToEn(row["狀態"]) || row["狀態"] || "").toLowerCase() !== "approved"; })) {
+    throw new Error("三角調目前不是已核准狀態，無法撤銷！");
+  }
+  triangleSetGroupStatus_(rows, "cancelled");
+  rows.forEach(function (row) {
+    row["備註"] = String(row["備註"] || "").trim() || "管理員撤銷三角調";
+  });
+  saveRows("申請單", rows, "申請單ID");
+  invalidateSemesterCaches_(semesterId);
+  return { success: true, triangleId: triangleGroupIdFromRow_(rows[0]), count: rows.length };
 }
 
 function persistRequestRowsWithQuota_(rows, operatorEmail) {
@@ -6098,20 +6766,24 @@ function doPost(e) {
        var targetReq = findRowByKey_("申請單", "申請單ID", reqData.requestId, semesterId);
        if (!targetReq) throw new Error("找不到該申請單");
         assertRequestState_(targetReq, "adminApprove");
-        if (isCombinedReturnRequest_(targetReq)) {
-           validateCombinedReturnRequest_(targetReq, semesterId);
-          targetReq["特殊流程"] = SPECIAL_FLOW_COMBINED_RETURN_LABEL_;
-        }
+        if (isTriangleRequest_(targetReq)) {
+          approveTriangleRequest_(targetReq, semesterId, userEmail, currentUrl, reqData.note || "");
+        } else {
+         if (isCombinedReturnRequest_(targetReq)) {
+            validateCombinedReturnRequest_(targetReq, semesterId);
+           targetReq["特殊流程"] = SPECIAL_FLOW_COMBINED_RETURN_LABEL_;
+         }
 
-       targetReq["狀態"] = "approved";
-      if (reqData.note) targetReq["備註"] = reqData.note;
-      saveRows("申請單", [targetReq], "申請單ID");
-       if (!isCombinedReturnRequest_(targetReq)) syncHomeroomRecordForRequest_(targetReq, userEmail);
+        targetReq["狀態"] = "approved";
+       if (reqData.note) targetReq["備註"] = reqData.note;
+       saveRows("申請單", [targetReq], "申請單ID");
+        if (!isCombinedReturnRequest_(targetReq)) syncHomeroomRecordForRequest_(targetReq, userEmail);
        // 紙本流程已由紙本通知，不因之後切回線上模式而補寄系統信。
-       if (!isPaperFlowRow_(targetReq)) {
-         queueMail_("sendAdminApproveEmail", function () { sendAdminApproveEmail_(targetReq, currentUrl); });
-       }
-      invalidateSemesterCaches_(semesterId);
+        if (!isPaperFlowRow_(targetReq)) {
+          queueMail_("sendAdminApproveEmail", function () { sendAdminApproveEmail_(targetReq, currentUrl); });
+        }
+        }
+       invalidateSemesterCaches_(semesterId);
 
     } else if (action === "adminApproveBatch") {
       // 批次核准：只讀目標列、一次 saveRows、再寄信
@@ -6178,6 +6850,9 @@ function doPost(e) {
        var targetReq = findRowByKey_("申請單", "申請單ID", reqData.requestId, semesterId);
        if (!targetReq) throw new Error("找不到該申請單");
        assertRequestState_(targetReq, "adminReject");
+       if (isTriangleRequest_(targetReq)) {
+         rejectTriangleRequest_(targetReq, semesterId, userEmail, currentUrl, reqData.note || "");
+       } else {
        try { restoreMutualQuotaForRequests_(targetReq); } catch (qE) { logError_("restoreMutualQuota_adminReject", qE); throw qE; }
        targetReq["狀態"] = "admin_rejected";
        saveRows("申請單", [targetReq], "申請單ID");
@@ -6185,7 +6860,8 @@ function doPost(e) {
        if (!isPaperFlowRow_(targetReq)) {
          queueMail_("sendAdminRejectEmail", function () { sendAdminRejectEmail_(targetReq, currentUrl); });
        }
-      invalidateSemesterCaches_(semesterId);
+       }
+       invalidateSemesterCaches_(semesterId);
 
     } else if (action === "adminRejectBatch") {
       if (!isAdmin) throw new Error("無管理員權限！");
@@ -6229,28 +6905,46 @@ function doPost(e) {
       if (!isAdmin) throw new Error("無管理員權限！");
       // 若有 requestId，將申請單狀態改回 cancelled；扣額度單還原折抵額度
       var deletedSubRequest = false;
-      if (reqData.requestId && reqData.requestId !== "N/A") {
-         var targetReq = findRowByKey_("申請單", "申請單ID", reqData.requestId, semesterId);
-         if (targetReq) {
-           assertRequestState_(targetReq, "deleteSubstitutionRecord");
-            try { restoreMutualQuotaForRequests_(targetReq); } catch (qE) { logError_("restoreMutualQuota_deleteSub", qE); throw qE; }
-          targetReq["狀態"] = "cancelled";
-          saveRows("申請單", [targetReq], "申請單ID");
-           syncHomeroomRecordForRequest_(targetReq, userEmail);
-           deletedSubRequest = true;
-        }
-      } else if (reqData.id) {
-        var reqIdDel = String(reqData.id).replace(/_[12]$/, "");
-         var targetReqDel = findRowByKey_("申請單", "申請單ID", reqIdDel, semesterId);
-         if (targetReqDel) {
-           assertRequestState_(targetReqDel, "deleteSubstitutionRecord");
-            try { restoreMutualQuotaForRequests_(targetReqDel); } catch (qE) { logError_("restoreMutualQuota_deleteSub", qE); throw qE; }
-          targetReqDel["狀態"] = "cancelled";
-          saveRows("申請單", [targetReqDel], "申請單ID");
-           syncHomeroomRecordForRequest_(targetReqDel, userEmail);
-           deletedSubRequest = true;
-        }
-      }
+       if (reqData.requestId && reqData.requestId !== "N/A") {
+          var targetReq = findRowByKey_("申請單", "申請單ID", reqData.requestId, semesterId);
+          if (targetReq) {
+            assertRequestState_(targetReq, "deleteSubstitutionRecord");
+            if (isTriangleRequest_(targetReq)) {
+              deleteApprovedTriangleRequest_(targetReq, semesterId);
+              deletedSubRequest = true;
+              targetReq = null;
+            }
+            if (!targetReq) {
+              // 三角調已由群組函式一次撤銷，避免落入單列舊流程。
+            } else {
+             try { restoreMutualQuotaForRequests_(targetReq); } catch (qE) { logError_("restoreMutualQuota_deleteSub", qE); throw qE; }
+           targetReq["狀態"] = "cancelled";
+           saveRows("申請單", [targetReq], "申請單ID");
+            syncHomeroomRecordForRequest_(targetReq, userEmail);
+            deletedSubRequest = true;
+            }
+         }
+       } else if (reqData.id) {
+          var reqIdDel = String(reqData.id).replace(/_[12]$/, "");
+          var targetReqDel = findRowByKey_("申請單", "申請單ID", reqIdDel, semesterId);
+          if (targetReqDel) {
+            assertRequestState_(targetReqDel, "deleteSubstitutionRecord");
+            if (isTriangleRequest_(targetReqDel)) {
+              deleteApprovedTriangleRequest_(targetReqDel, semesterId);
+              deletedSubRequest = true;
+              targetReqDel = null;
+            }
+            if (!targetReqDel) {
+              // 三角調已由群組函式一次撤銷，避免落入單列舊流程。
+            } else {
+             try { restoreMutualQuotaForRequests_(targetReqDel); } catch (qE) { logError_("restoreMutualQuota_deleteSub", qE); throw qE; }
+           targetReqDel["狀態"] = "cancelled";
+           saveRows("申請單", [targetReqDel], "申請單ID");
+            syncHomeroomRecordForRequest_(targetReqDel, userEmail);
+            deletedSubRequest = true;
+            }
+         }
+       }
        if (!deletedSubRequest) throw new Error("找不到可撤銷的已核准申請單！");
        invalidateSemesterCaches_(semesterId);
       
@@ -6438,6 +7132,70 @@ function doPost(e) {
       invalidateSemesterCaches_(semesterId);
       
     // 2. 一般教師/受邀教師 Actions (包含基本身分檢驗)
+    } else if (action === "submitTriangleRequest") {
+       assertNotTooFrequent_(userEmail, "submitTriangleRequest");
+       var triangleActorName = currentTeacher
+         ? String(currentTeacher["教師姓名"] || currentTeacher.name || userEmail)
+         : userEmail;
+       var trianglePaperFlow = !isOnlineSubstitutionEnabled_();
+       var triangleBuilt = triangleInputRows_(reqData || {}, semesterId, teachers, userEmail, triangleActorName);
+       var triangleRows = triangleBuilt.rows;
+       if (trianglePaperFlow) {
+         // 紙本流程由三位教師在同一張單據簽名，完成後交教學組核審，不建立線上待簽邀請。
+         triangleRows.forEach(function (row) {
+           row["紙本流程"] = "TRUE";
+           row["狀態"] = "pending_admin";
+           row["三角同意狀態"] = "paper_pending";
+           row["三角組狀態"] = "pending_admin";
+         });
+       }
+       var triangleSeenIds = {};
+       triangleRows.forEach(function (row) {
+         var triangleRequestId = String(row["申請單ID"] || "").trim();
+         if (!triangleRequestId || triangleSeenIds[triangleRequestId]) throw new Error("三角調內含重複的申請單ID！");
+         triangleSeenIds[triangleRequestId] = true;
+       });
+       var triangleExisting = triangleRows.map(function (row) {
+         return assertNewRequestId_(row["申請單ID"], semesterId,
+           row["申請人Email"], row["受邀人Email"], triangleBuilt.triangleId);
+       });
+       if (triangleExisting.some(function (row) { return !!row; })) {
+         if (triangleExisting.every(function (row) { return !!row; })) {
+           var existingTriangleRows = getTriangleGroupRows_(semesterId, triangleBuilt.triangleId);
+           if (existingTriangleRows.length === 3) {
+             return ContentService.createTextOutput(JSON.stringify({
+               success: true,
+               idempotent: true,
+               triangleId: triangleBuilt.triangleId,
+               status: String(existingTriangleRows[0]["三角組狀態"] || existingTriangleRows[0]["狀態"] || ""),
+               count: existingTriangleRows.length,
+               ids: existingTriangleRows.map(function (row) { return row["申請單ID"]; })
+             })).setMimeType(ContentService.MimeType.JSON);
+           }
+         }
+         throw new Error("三角調群組部分申請單ID已存在，為避免半組寫入請重新整理後再試！");
+       }
+       persistRequestRowsWithQuota_(triangleRows, userEmail);
+        var skipTriangleNotify = trianglePaperFlow
+          || reqData.skipNotify === true
+          || reqData.skipNotify === "true";
+       if (!skipTriangleNotify) {
+         queueMail_("sendTriangleInviteEmail", function () {
+           triangleRows.forEach(function (row) { sendTriangleInviteEmail_(row, currentUrl, triangleRows); });
+         });
+       }
+       invalidateSemesterCaches_(semesterId);
+       return ContentService.createTextOutput(JSON.stringify({
+         success: true,
+         triangleId: triangleBuilt.triangleId,
+          status: trianglePaperFlow ? "pending_admin" : "pending_teacher",
+          paperFlow: trianglePaperFlow,
+          physicalSignatureRequired: trianglePaperFlow,
+         count: triangleRows.length,
+         skipNotify: !!skipTriangleNotify,
+         ids: triangleRows.map(function (row) { return row["申請單ID"]; })
+       })).setMimeType(ContentService.MimeType.JSON);
+
     } else if (action === "submitRequest") {
        assertNotTooFrequent_(userEmail, "submitRequest");
         // 發起調代課申請（狀態一律由伺服器決定，忽略前端竄改）
@@ -6837,6 +7595,17 @@ function doPost(e) {
         failed: failed
       })).setMimeType(ContentService.MimeType.JSON);
 
+    } else if (action === "respondTriangleRequest") {
+      var triangleResponseId = String(reqData.requestId || "").trim();
+      var triangleResponseRow = findRowByKey_("申請單", "申請單ID", triangleResponseId, semesterId);
+      if (!triangleResponseRow || !isTriangleRequest_(triangleResponseRow)) throw new Error("找不到該三角調申請單");
+      assertRequestState_(triangleResponseRow, "respondToRequest");
+      var triangleResponseResult = respondTriangleRequest_(
+        triangleResponseRow, semesterId, userEmail, reqData.response, currentUrl
+      );
+      return ContentService.createTextOutput(JSON.stringify(triangleResponseResult))
+        .setMimeType(ContentService.MimeType.JSON);
+
     } else if (action === "respondToRequest") {
       // 同意或拒絕調代課邀請
       var responseOne = String(reqData.response || "").toLowerCase();
@@ -6844,7 +7613,13 @@ function doPost(e) {
       var targetReq = findRowByKey_("申請單", "申請單ID", reqData.requestId, semesterId);
        if (!targetReq) throw new Error("找不到該申請單");
        assertRequestState_(targetReq, "respondToRequest");
-      
+
+       if (isTriangleRequest_(targetReq)) {
+         var triangleResponse = respondTriangleRequest_(targetReq, semesterId, userEmail, responseOne, currentUrl);
+         return ContentService.createTextOutput(JSON.stringify(triangleResponse))
+           .setMimeType(ContentService.MimeType.JSON);
+       }
+
       // 確保操作者是受邀教師
       if (String(targetReq["受邀人Email"] || "").toLowerCase() !== userEmail) {
         throw new Error("您無權對此邀請單進行操作！");
@@ -6908,7 +7683,12 @@ function doPost(e) {
        var targetReq = findRowByKey_("申請單", "申請單ID", reqData.requestId, semesterId);
        if (!targetReq) throw new Error("找不到該申請單");
        assertRequestState_(targetReq, "cancelRequest");
-      
+       if (isTriangleRequest_(targetReq)) {
+         var cancelledTriangle = cancelTriangleRequest_(targetReq, semesterId, userEmail, "cancelled");
+         return ContentService.createTextOutput(JSON.stringify(cancelledTriangle))
+           .setMimeType(ContentService.MimeType.JSON);
+       }
+
       // 僅限本人或管理員撤回
       if (String(targetReq["申請人Email"] || "").toLowerCase() !== userEmail && !isAdmin) {
         throw new Error("您無權撤回他人的申請單！");
@@ -6924,7 +7704,12 @@ function doPost(e) {
        var targetReq = findRowByKey_("申請單", "申請單ID", reqData.requestId, semesterId);
        if (!targetReq) throw new Error("找不到該申請單");
        assertRequestState_(targetReq, "withdrawRequest");
-      
+       if (isTriangleRequest_(targetReq)) {
+         var withdrawnTriangle = cancelTriangleRequest_(targetReq, semesterId, userEmail, "withdrawn");
+         return ContentService.createTextOutput(JSON.stringify(withdrawnTriangle))
+           .setMimeType(ContentService.MimeType.JSON);
+       }
+
       if (String(targetReq["申請人Email"] || "").toLowerCase() !== userEmail && !isAdmin) {
         throw new Error("您無權撤回此申請單！");
       }
@@ -7005,7 +7790,8 @@ function translateStatusToZh(enStatus) {
 function translateTypeToEn(zhType) {
   const map = {
     "代課": "substitution",
-    "對調": "exchange"
+    "對調": "exchange",
+    "三角調": TRIANGLE_TYPE_
   };
   return map[zhType] || zhType;
 }
@@ -7013,7 +7799,8 @@ function translateTypeToEn(zhType) {
 function translateTypeToZh(enType) {
   const map = {
     "substitution": "代課",
-    "exchange": "對調"
+    "exchange": "對調",
+    "triangle": "三角調"
   };
   return map[enType] || enType;
 }
@@ -7252,6 +8039,98 @@ function sendSubInviteEmail_(req, currentUrl) {
     + '<div style="margin-top:10px;"><a href="' + sysUrl + '" style="background-color:#475569;color:#ffffff;padding:10px 24px;text-decoration:none;border-radius:8px;font-weight:bold;display:inline-block;font-size:13px;box-shadow:0 4px 12px rgba(71,85,105,0.15);letter-spacing:1px;">登入系統確認</a></div></div>';
   var htmlBody = _wrapHtmlTemplate_("調代課線上系統 - 線上簽核邀請", "#2563eb", content);
   sendSystemEmail_(to, subject, htmlBody);
+}
+
+function triangleGroupPeople_(rows) {
+  var seen = {};
+  var out = [];
+  (rows || []).forEach(function (row) {
+    [row["申請人姓名"], row["受邀人姓名"]].forEach(function (name) {
+      var key = triangleText_(name);
+      if (key && !seen[key]) {
+        seen[key] = true;
+        out.push(key);
+      }
+    });
+  });
+  return out;
+}
+
+function triangleGroupRecipientEmails_(rows) {
+  var seen = {};
+  var out = [];
+  (rows || []).forEach(function (row) {
+    [row["申請人Email"], row["受邀人Email"]].forEach(function (email) {
+      var key = triangleText_(email).toLowerCase();
+      if (key && key.indexOf("@") >= 0 && !seen[key]) {
+        seen[key] = true;
+        out.push(key);
+      }
+    });
+  });
+  return out;
+}
+
+function sendTriangleInviteEmail_(req, currentUrl, groupRows) {
+  var to = triangleText_(req["受邀人Email"] || req.targetTeacherEmail);
+  if (!to || to.indexOf("@") === -1) return;
+  var serial = req["單號"] || "三角調";
+  var targetName = req["受邀人姓名"] || "老師";
+  var sourceName = req["申請人姓名"] || "教師";
+  var sysUrl = trustedSystemUrl_(currentUrl);
+  var reqId = req["申請單ID"] || req.id;
+  var agreeLink = sysUrl + "?action=respond&id=" + encodeURIComponent(reqId) + "&status=agree";
+  var declineLink = sysUrl + "?action=respond&id=" + encodeURIComponent(reqId) + "&status=decline";
+  var people = triangleGroupPeople_(groupRows || [req]).join("、");
+  var targetSlot = String(req["對調目標日期"] || "") + " 第" + String(req["對調目標節次"] || "") + "節　"
+    + String(req["對調目標班級"] || "") + " " + String(req["對調目標科目"] || "");
+  var receiveSlot = String(req["對調目標日期"] || "") + " 第" + String(req["對調目標節次"] || "") + "節　"
+    + String(req["班級"] || "") + " " + String(req["科目"] || "");
+  var content = '<p style="color:#1e293b;font-size:15px;margin-bottom:8px;">親愛的 <b>' + escapeHtml_(targetName) + '</b> 老師，您好：</p>'
+    + '<p style="color:#475569;margin-top:0;"><b>' + escapeHtml_(sourceName) + '</b> 老師邀請您參與三角調課。這是一組三位教師、三堂原課的整堂循環交換，必須三方都同意後才會送教學組核准。</p>'
+    + '<table style="border-collapse:collapse;width:100%;margin:18px 0;border:1px solid #e2e8f0;">'
+    + '<tr><td style="padding:10px 14px;background:#f1f5f9;font-weight:bold;width:120px;color:#475569;">本組教師</td><td style="padding:10px 14px;color:#1e293b;">' + escapeHtml_(people) + '</td></tr>'
+    + '<tr><td style="padding:10px 14px;background:#f1f5f9;font-weight:bold;color:#475569;">您提供的原課</td><td style="padding:10px 14px;color:#1e293b;">' + escapeHtml_(targetSlot) + '</td></tr>'
+     + '<tr><td style="padding:10px 14px;background:#f1f5f9;font-weight:bold;color:#475569;">您將接手</td><td style="padding:10px 14px;color:#1e293b;">' + escapeHtml_(receiveSlot) + '</td></tr>'
+     + '<tr><td style="padding:10px 14px;background:#f1f5f9;font-weight:bold;color:#475569;">假別／課務類型</td><td style="padding:10px 14px;color:#1e293b;">' + escapeHtml_(req["請假事由"] || "請假") + '</td></tr>'
+    + '<tr><td style="padding:10px 14px;background:#f1f5f9;font-weight:bold;color:#475569;">單號</td><td style="padding:10px 14px;color:#1e293b;">' + escapeHtml_(serial) + '</td></tr>'
+    + '</table>'
+    + '<p style="margin-top:24px;font-weight:bold;color:#1e293b;">請確認您是否同意這組三角調：</p>'
+    + '<div style="margin:20px 0;">'
+    + '<a href="' + agreeLink + '" style="background:#059669;color:#fff;padding:12px 28px;text-decoration:none;border-radius:8px;font-weight:bold;display:inline-block;margin-right:16px;">同意三角調</a>'
+    + '<a href="' + declineLink + '" style="background:#e11d48;color:#fff;padding:12px 28px;text-decoration:none;border-radius:8px;font-weight:bold;display:inline-block;">拒絕整組</a>'
+    + '</div>'
+    + '<div style="font-size:13px;color:#94a3b8;margin-top:20px;border-top:1px dashed #e2e8f0;padding-top:16px;">如按鈕失效，請登入系統於「待辦簽核」處理：<br>'
+    + '<div style="margin-top:10px;"><a href="' + sysUrl + '" style="background:#475569;color:#fff;padding:10px 24px;text-decoration:none;border-radius:8px;font-weight:bold;display:inline-block;">登入系統確認</a></div></div>';
+  sendSystemEmail_(to, "【建成國中線上課表系統】三角調課協議邀請（" + serial + "）", _wrapHtmlTemplate_("三角調課線上簽核邀請", "#2563eb", content));
+}
+
+function sendTriangleGroupStatusEmail_(rows, currentUrl, status) {
+  var recipients = triangleGroupRecipientEmails_(rows);
+  if (!recipients.length) return;
+  var first = rows[0] || {};
+  var id = triangleGroupIdFromRow_(first);
+  var title = status === "approved" ? "三角調已核准生效" : "三方已同意三角調，待教學組核准";
+  var message = status === "approved"
+    ? "這組三角調已由教學組核准，最終課表已更新。"
+    : "三位教師已全部同意，這組三角調已送交教學組審核。";
+  var content = '<p style="color:#1e293b;font-size:15px;">您好：</p>'
+    + '<p style="color:#475569;">' + escapeHtml_(message) + '</p>'
+    + '<p style="color:#475569;">參與教師：' + escapeHtml_(triangleGroupPeople_(rows).join("、")) + '</p>'
+    + '<p style="color:#475569;">三角調ID：' + escapeHtml_(id) + '</p>'
+    + '<div style="margin:24px 0;"><a href="' + trustedSystemUrl_(currentUrl) + '" style="background:#2563eb;color:#fff;padding:12px 28px;text-decoration:none;border-radius:8px;font-weight:bold;display:inline-block;">進入系統查看</a></div>';
+  var html = _wrapHtmlTemplate_("三角調課狀態通知", status === "approved" ? "#059669" : "#d97706", content);
+  recipients.forEach(function (email) {
+    sendSystemEmail_(email, "【建成國中線上課表系統】" + title, html);
+  });
+}
+
+function sendTriangleReadyEmail_(rows, currentUrl) {
+  sendTriangleGroupStatusEmail_(rows, currentUrl, "pending_admin");
+}
+
+function sendTriangleApprovedEmail_(rows, currentUrl) {
+  sendTriangleGroupStatusEmail_(rows, currentUrl, "approved");
 }
 
 /** 批次邀請：一封信列齊全部節次，每節各自同意／拒絕 */

@@ -566,10 +566,12 @@
 
   .compare-form-grid {
     grid-template-columns: 1fr;
-    gap: 0;
+    column-gap: 0;
+    row-gap: 0;
   }
-  .compare-form-note {
-    margin-top: 0;
+  .compare-form-leave-time,
+  .compare-form-exchange-date {
+    grid-column: 1;
   }
 
   /* 表單控件可撐滿；一般按鈕維持內容寬度 */

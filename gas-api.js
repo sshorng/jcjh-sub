@@ -7,7 +7,7 @@ window.GasApi = (function () {
   // 未取得明確網域設定時，前端也採 fail-closed；公開課表仍可免登入使用。
   var DEFAULT_ALLOWED_HD = [];
   var WRITE_ACTIONS = {
-    submitRequest: 1, submitRequestBatch: 1, respondToRequest: 1, respondToBatch: 1,
+    submitRequest: 1, submitRequestBatch: 1, submitTriangleRequest: 1, respondToRequest: 1, respondToBatch: 1, respondTriangleRequest: 1,
     adminApprove: 1, adminReject: 1, adminApproveBatch: 1, adminRejectBatch: 1,
     cancelRequest: 1, withdrawRequest: 1, deleteSubstitutionRecord: 1,
     saveTeacher: 1, deleteTeacher: 1, importTeachersBatch: 1, updateMutualQuotas: 1,
@@ -21,7 +21,7 @@ window.GasApi = (function () {
   };
   /** 只動申請／空堂對齊 → 只清 requests 分鍵，保留 meta／structure 快取 */
   var REQUEST_WRITE_ACTIONS = {
-    submitRequest: 1, submitRequestBatch: 1, respondToRequest: 1, respondToBatch: 1,
+    submitRequest: 1, submitRequestBatch: 1, submitTriangleRequest: 1, respondToRequest: 1, respondToBatch: 1, respondTriangleRequest: 1,
     adminApprove: 1, adminReject: 1, adminApproveBatch: 1, adminRejectBatch: 1,
     cancelRequest: 1, withdrawRequest: 1, deleteSubstitutionRecord: 1,
     saveHistoryEdit: 1, saveHomeroomCoverTeacher: 1, batchMarkPrinted: 1, sendBatchNotices: 1

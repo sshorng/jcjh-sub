@@ -734,12 +734,16 @@ createApp({
           r.requestPeriod != null ? r.requestPeriod : (r.period || ''),
           r.targetDate || '',
           r.targetPeriod != null ? r.targetPeriod : '',
-          r.requesterEmail || '',
+           r.requesterEmail || '',
            r.targetTeacherEmail || '',
+           r.triangleId || '',
+           r.triangleLegIndex != null ? r.triangleLegIndex : '',
            r.specialFlow || '',
            r.className || '',
-          r.subject || '',
-          r.subFee || '',
+           r.subject || '',
+           r.targetClassName || '',
+           r.targetSubject || '',
+           r.subFee || '',
           r.leaveTimeType || '',
           r.leaveTime || '',
           r.printed ? '1' : '0',
@@ -798,7 +802,37 @@ createApp({
       });
 
       approved.forEach(req => {
-        if (req.type === 'substitution' || req.type === '代課') {
+        if (req.type === 'triangle' || req.type === '三角調') {
+          // 三角調每條 leg 只建立「目標原課時段」的一組 edge；三條 leg 合併後才是完整循環。
+          pushSub({
+            // 直接沿用申請單 ID，列印回寫「是否已印」時可對應到後端原列。
+            id: req.id,
+            date: req.targetDate,
+            period: req.targetPeriod,
+            dayOfWeek: req.targetDayOfWeek,
+            serial: req.serial || req['單號'] || '',
+            originalTeacherName: req.targetTeacherName,
+            actualTeacherName: req.requesterName,
+            className: req.className || '',
+            subject: req.subject || '',
+             // 三角調是整堂課跟著來源教師移動，目標欄位只代表接手的時段。
+             formClassName: req.className || '',
+             formSubject: req.subject || '',
+            requestId: req.id,
+            triangleId: req.triangleId || req.batchId || '',
+            triangleSourceDate: req.requestDate,
+            triangleSourcePeriod: req.requestPeriod,
+            triangleSourceDayOfWeek: req.requestPeriodDay,
+            triangleTargetTeacherName: req.targetTeacherName,
+            type: 'triangle',
+            printed: req.printed,
+            subFee: '無',
+            reason: req.reason,
+            leaveTimeType: '',
+            leaveTime: '',
+            note: req.note
+          });
+        } else if (req.type === 'substitution' || req.type === '代課') {
           // 請假節可能本身已是調入課：班科以有效課為準，缺才用申請單
           let leaveDay = req.requestPeriodDay;
           if ((leaveDay == null || leaveDay === '') && req.requestDate) {
@@ -832,7 +866,9 @@ createApp({
             className: leaveCls,
             subject: leaveSubj,
             requestId: req.id,
-            type: 'substitution',
+             type: req.type === 'triangle' ? 'triangle' : 'substitution',
+             triangleId: req.triangleId || '',
+             triangleLegIndex: req.triangleLegIndex,
             printed: req.printed,
             subFee: req.subFee,
             reason: req.reason,
@@ -1607,13 +1643,18 @@ createApp({
     const allPendingRequests = ref([]);
 
     // 智慧媒合與調課
-    const matchMode = ref('substitution'); // 'substitution' 或 'exchange'
+    const matchMode = ref('substitution'); // 'substitution'、'exchange' 或 'triangle'
     const activeCell = ref({ teacherEmail: '', teacherName: '', dayOfWeek: 1, period: 1, classData: null });
     // matchPreview 保留給舊接線／模擬；列表點選改走 plain DOM（見 selectMatchPreview*）
     const matchPreview = ref(null);
     const inputRequestDate = ref('');
     const recommendedTeachers = ref([]);
     const recommendationLoading = ref(false);
+    const trianglePickB = ref('');
+    const trianglePickC = ref('');
+    const triangleReason = ref('');
+    const triangleNote = ref('');
+    const triangleSubmitting = ref(false);
     // 批次調代課（方案 A：多筆申請＋同一 batchId；可同一人全代或每節不同人）
     const batchSelectMode = ref(false);
     const batchSlots = ref([]); // [{ key, teacherEmail, teacherName, dateStr, dayOfWeek, period, className, subject, restriction, subTeacherEmail?, subTeacherName? }]
@@ -1922,7 +1963,7 @@ createApp({
       const rows = [];
       classSubstitutionRows.value.forEach(r => {
         if (String(r.className || '') !== String(cls)) return;
-        const isEx = r.type === 'exchange' || r.type === '對調';
+        const isEx = isExchangeLikeRequest(r);
         // 用 YYYY-MM-DD 或 YYYY/MM/DD 皆可；勿接 T00:00:00 以免部分瀏覽器解析失敗
         let dayNum = 0;
         if (r.date) {
@@ -2044,6 +2085,7 @@ createApp({
 
     // 雙人對比 Modal 與列印
     const showCompareModal = ref(false);
+    const showTriangleTimetablePreview = ref(false);
     const showSuccessModal = ref(false);
     const showLineMessageModal = ref(false);
     const lineMessageTitle = ref('LINE 訊息');
@@ -2112,7 +2154,35 @@ createApp({
       const userName = user.value ? String(getTeacherNameByEmail(user.value.email) || '').toLowerCase() : '';
       const requesterName = req.requesterName ? String(req.requesterName).toLowerCase() : '';
       const targetTeacherName = req.targetTeacherName ? String(req.targetTeacherName).toLowerCase() : '';
-      const isExchange = req.type === 'exchange' || req.type === '對調';
+      const isExchange = isExchangeLikeRequest(req);
+
+      if (isTriangleRequest(req)) {
+        const group = getTriangleGroupRequests(req);
+        const ownName = user.value
+          ? String(getTeacherNameByEmail(user.value.email) || '').toLowerCase()
+          : '';
+        const own = group.find(row => String(row.requesterName || '').toLowerCase() === ownName) || group[0];
+        if (!own || !own.targetDate || own.targetPeriod == null) return null;
+
+        const timeSpan = window.DateUtils.getPeriodTimeSpan(own.targetPeriod);
+        if (!timeSpan) return null;
+        const timeParts = timeSpan.split('-');
+        const datePart = String(own.targetDate).replace(/-/g, '');
+        const startIso = datePart + 'T' + timeParts[0].replace(':', '') + '00';
+        const endIso = datePart + 'T' + timeParts[1].replace(':', '') + '00';
+        const routeLines = group.map(row =>
+          `${row.requesterName || ''}：${row.requestDate || ''}第${row.requestPeriod || ''}節 → ${row.targetDate || ''}第${row.targetPeriod || ''}節`
+        ).join('\n');
+        const slotLabel = `${own.className || ''}${own.subject || ''}`.trim() || '三角調課';
+        return {
+          title: `【三角調入】${slotLabel}`,
+          startIso,
+          endIso,
+          details: `本節請調入另一位教師的課程。\n${routeLines}\n\n參與教師：${group.map(row => row.requesterName || row.targetTeacherName || '').filter(Boolean).join('、')}\n單號：${req.serial || ''}\n（建成國中線上課表系統）`,
+          titleTag: '三角調入'
+        };
+      }
+
       const isLeaveSide = !!(userName && userName === requesterName);
       const isCoverSide = !!(userName && userName === targetTeacherName);
 
@@ -2308,14 +2378,21 @@ createApp({
     };
     const getTargetSubject = (req) => {
       if (!req) return '';
-      if (req.type === 'exchange') {
+      if (isExchangeLikeRequest(req)) {
         const info = getTargetClassAndSubject(req);
         return info.subject || req.targetSubject || '';
       }
       return req.targetSubject || req.subject || '';
     };
     const getTargetClassAndSubject = (req) => {
-      if (!req || req.type !== 'exchange') return { className: '', subject: '' };
+      if (!isExchangeLikeRequest(req)) return { className: '', subject: '' };
+      if (isTriangleRequest(req)) {
+        // 三角調是整堂原課跟著來源教師移動，不使用目標教師原課班科。
+        return {
+          className: String(req.className || '').trim(),
+          subject: String(req.subject || '').trim()
+        };
+      }
       const explicitClass = String(req.targetClassName || '').trim();
       const explicitSubject = String(req.targetSubject || '').trim();
       if (explicitClass || explicitSubject) {
@@ -2356,12 +2433,12 @@ createApp({
     };
 
     const getOriginalTargetSubject = (req) => {
-      if (!req || req.type !== 'exchange') return '';
+      if (!isExchangeLikeRequest(req)) return '';
       return getTargetClassAndSubject(req).subject;
     };
 
     const getOriginalTargetClass = (req) => {
-      if (!req || req.type !== 'exchange') return '';
+      if (!isExchangeLikeRequest(req)) return '';
       return getTargetClassAndSubject(req).className;
     };
 
@@ -2373,6 +2450,33 @@ createApp({
       }
       if (matched) return matched;
       if (!subRecord) return null;
+      if (isTriangleRequest(subRecord)) {
+        return {
+          id: subRecord.requestId || subRecord.id,
+          serial: subRecord.serial || '---',
+          type: 'triangle',
+          requesterEmail: subRecord.actualTeacherEmail || subRecord.actualTeacherName || '',
+          targetTeacherEmail: subRecord.originalTeacherEmail || subRecord.originalTeacherName || '',
+          requesterName: subRecord.actualTeacherName || '',
+          targetTeacherName: subRecord.originalTeacherName || '',
+          requestDate: subRecord.triangleSourceDate || subRecord.date || '',
+          requestPeriod: subRecord.triangleSourcePeriod != null ? subRecord.triangleSourcePeriod : subRecord.period,
+          requestPeriodDay: subRecord.triangleSourceDayOfWeek || null,
+          targetDate: subRecord.date || '',
+          targetPeriod: subRecord.period,
+          targetDayOfWeek: subRecord.dayOfWeek || null,
+          className: subRecord.className || '',
+          subject: subRecord.subject || '',
+          targetClassName: subRecord.className || '',
+          targetSubject: subRecord.subject || '',
+          triangleId: subRecord.triangleId || '',
+          triangleLegIndex: subRecord.triangleLegIndex || null,
+          reason: subRecord.reason || '三角調課',
+          subFee: '無',
+          status: subRecord.status || 'approved',
+          note: subRecord.note || ''
+        };
+      }
 
       let reqDate = subRecord.date;
       let reqPeriod = subRecord.period;
@@ -2388,7 +2492,7 @@ createApp({
       let reqSubject = subRecord.subject;
       let tgtSubject = '';
 
-      if (subRecord.type === 'exchange') {
+        if (isExchangeLikeRequest(subRecord)) {
         const peer = substitutionRecords.value.find(r => r.requestId === reqId && r.id !== subRecord.id);
         if (peer) {
           const isSub1 = String(subRecord.id).endsWith('_1');
@@ -2454,7 +2558,12 @@ createApp({
 
     const printSingleRequest = async (req, formType = 'Notice') => {
       let targetIds = [];
-      if (substitutionRecords.value && substitutionRecords.value.length > 0) {
+      const triangleId = req && (req.triangleId || req.batchId);
+      if (triangleId && isTriangleRequest(req)) {
+        targetIds = substitutionRecords.value
+          .filter(r => r && r.triangleId && String(r.triangleId) === String(triangleId))
+          .map(r => r.id);
+      } else if (substitutionRecords.value && substitutionRecords.value.length > 0) {
         targetIds = substitutionRecords.value
           .filter(r => String(r.requestId) === String(req.id))
           .map(r => r.id);
@@ -2650,7 +2759,7 @@ createApp({
     };
 
     const copyLineMessageForRequest = (req) => {
-      const isExchange = req.type === 'exchange' || req.type === '對調';
+      const isExchange = isExchangeLikeRequest(req);
       const paperFlowRequest = isPaperFlowRequest(req);
       const currentUrl = window.location.origin + window.location.pathname;
 
@@ -2856,6 +2965,14 @@ createApp({
       showDetailModal.value = false;
       showLineMessageModal.value = false;
       showCompareModal.value = false;
+      showTriangleTimetablePreview.value = false;
+      showSuccessModal.value = false;
+    });
+    watch(showTriangleTimetablePreview, (open) => {
+      if (!open) return;
+      showDetailModal.value = false;
+      showLineMessageModal.value = false;
+      showPrintPreviewModal.value = false;
       showSuccessModal.value = false;
     });
     watch(showSuccessModal, (open) => {
@@ -2875,7 +2992,7 @@ createApp({
 
     const isHistoryExchangeType = (record) => {
       const type = String(record && record.type || '').trim().toLowerCase();
-      return type === 'exchange' || type === '對調' || type === '調課';
+      return type === 'exchange' || type === '對調' || type === '調課' || type === 'triangle' || type === '三角調';
     };
     const historyPageSize = ref(20);
 
@@ -4483,9 +4600,18 @@ createApp({
       // 調課 (exchange) 去重：同一 requestId 只留一列
       // 優先保留「請假日」邊（id 以 _2 結尾，或 original＝申請人），避免 _1 目標日當主列造成班科顛倒
       const exchangeBest = {};
+      const triangleBest = {};
       const nonExchange = [];
       filteredRecords.forEach(rec => {
         if (!rec) return;
+        if (isTriangleRequest(rec)) {
+          const triangleId = String(rec.triangleId || rec.requestId || rec.id || '');
+          if (!triangleId || !triangleBest[triangleId]
+              || (parseInt(rec.triangleLegIndex, 10) || 0) < (parseInt(triangleBest[triangleId].triangleLegIndex, 10) || 0)) {
+            triangleBest[triangleId] = rec;
+          }
+          return;
+        }
         if (rec.type !== 'exchange' && rec.type !== '對調') {
           nonExchange.push(rec);
           return;
@@ -4500,7 +4626,9 @@ createApp({
         // 偏好 _2（請假日邊）；否則保留已有
         if (String(rec.id || '').endsWith('_2')) exchangeBest[rid] = rec;
       });
-      const dedupedRecords = nonExchange.concat(Object.keys(exchangeBest).map(k => exchangeBest[k]));
+      const dedupedRecords = nonExchange
+        .concat(Object.keys(exchangeBest).map(k => exchangeBest[k]))
+        .concat(Object.keys(triangleBest).map(k => triangleBest[k]));
 
       const reqById = {};
       (requestsList.value || []).forEach(x => {
@@ -4529,7 +4657,32 @@ createApp({
         let targetClassName = '';
         let targetSubject = '';
 
-        if (rec.type === 'exchange' || rec.type === '對調') {
+         if (isTriangleRequest(rec)) {
+           // 三角調歷史列以一條來源→目標關係代表整組，班科永遠取來源教師的原課。
+           if (matchedReq) {
+             leaveDate = matchedReq.requestDate || leaveDate;
+             leavePeriod = matchedReq.requestPeriod != null ? matchedReq.requestPeriod : leavePeriod;
+             leaveTeacher = matchedReq.requesterName || leaveTeacher;
+             subTeacher = matchedReq.targetTeacherName || subTeacher;
+             targetDate = matchedReq.targetDate || rec.date || targetDate;
+             targetPeriod = matchedReq.targetPeriod != null ? matchedReq.targetPeriod : (rec.period || targetPeriod);
+             leaveClassName = matchedReq.className || rec.className || '';
+             leaveSubject = matchedReq.subject || rec.subject || '';
+             targetClassName = leaveClassName;
+             targetSubject = leaveSubject;
+           } else {
+             leaveDate = rec.triangleSourceDate || rec.date || leaveDate;
+             leavePeriod = rec.triangleSourcePeriod != null ? rec.triangleSourcePeriod : leavePeriod;
+             leaveTeacher = rec.actualTeacherName || leaveTeacher;
+             subTeacher = rec.originalTeacherName || subTeacher;
+             targetDate = rec.date || targetDate;
+             targetPeriod = rec.period != null ? rec.period : targetPeriod;
+             leaveClassName = rec.className || '';
+             leaveSubject = rec.subject || '';
+             targetClassName = leaveClassName;
+             targetSubject = leaveSubject;
+           }
+         } else if (rec.type === 'exchange' || rec.type === '對調') {
           const peers = peerByRequestId[rec.requestId] || [];
           // leaveEdge：原異動日（申請人原位置的課）；targetEdge：目標日（受邀人原位置的課）
           let leaveEdge = peers.find(x => String(x.id || '').endsWith('_2')) || null;
@@ -4890,10 +5043,31 @@ createApp({
       if (!user.value) return [];
        const email = String(getTeacherNameByEmail(user.value.email) || '').toLowerCase();
       const todayStr = getTodayString();
-       const records = substitutionRecords.value.filter(r =>
+       const relatedRecords = substitutionRecords.value.filter(r =>
          (r.originalTeacherName && r.originalTeacherName.toLowerCase() === email) ||
          (r.actualTeacherName && r.actualTeacherName.toLowerCase() === email)
-      );
+       );
+       const triangleGroups = Object.create(null);
+       relatedRecords.forEach(r => {
+         if (!isTriangleRequest(r)) return;
+         const key = String(r.triangleId || r.requestId || r.id || '');
+         if (!key) return;
+         if (!triangleGroups[key]) triangleGroups[key] = [];
+         triangleGroups[key].push(r);
+       });
+       const triangleSummaries = Object.keys(triangleGroups).map(key => {
+         const group = triangleGroups[key];
+         const outgoing = group.find(r => String(r.actualTeacherName || '').toLowerCase() === email);
+         const incoming = group.find(r => String(r.originalTeacherName || '').toLowerCase() === email);
+         const base = outgoing || incoming || group[0];
+         return base ? Object.assign({}, base, {
+           _triangleOutgoing: outgoing || null,
+           _triangleIncoming: incoming || null,
+           triangleId: key,
+           date: (outgoing && outgoing.date) || (incoming && incoming.date) || base.date
+         }) : null;
+       }).filter(Boolean);
+       const records = relatedRecords.filter(r => !isTriangleRequest(r));
       const exchangePeersByRequestId = Object.create(null);
        substitutionRecords.value.forEach(r => {
         if (!r || r.type !== 'exchange' || !r.requestId) return;
@@ -4917,12 +5091,13 @@ createApp({
         }
       });
       
-      records.forEach(r => {
-        if (r.type === 'exchange' && !seenExchange.has(r.requestId)) {
+       records.forEach(r => {
+         if (r.type === 'exchange' && !seenExchange.has(r.requestId)) {
           deduped.push(r);
           seenExchange.add(r.requestId);
-        }
-      });
+         }
+       });
+       triangleSummaries.forEach(r => deduped.push(r));
 
       const fmtClassLine = (dateStr, period, className, subject, verb) => {
         const mmdd = formatDateMMDD(dateStr);
@@ -4970,12 +5145,26 @@ createApp({
       const list = deduped.map(r => {
         const isPast = r.date < todayStr;
          const isRequester = r.originalTeacherName && r.originalTeacherName.toLowerCase() === email;
-        const isSwap = r.type === 'exchange';
+         const isTriangle = isTriangleRequest(r);
+         const isSwap = r.type === 'exchange';
 
         let classLine = '';
         let desc = '';
 
-        if (isSwap) {
+         if (isTriangle) {
+           const outgoing = r._triangleOutgoing || {};
+           const incoming = r._triangleIncoming || {};
+           const sourceDate = outgoing.triangleSourceDate || outgoing.date || r.triangleSourceDate || r.date;
+           const sourcePeriod = outgoing.triangleSourcePeriod != null ? outgoing.triangleSourcePeriod : (outgoing.period != null ? outgoing.period : r.period);
+           const targetDate = outgoing.date || r.date;
+           const targetPeriod = outgoing.period != null ? outgoing.period : r.period;
+           classLine = fmtClassLine(sourceDate, sourcePeriod, outgoing.className || r.className || '', outgoing.subject || r.subject || '', '');
+           const targetText = `${fmtPeerSlot(targetDate, targetPeriod)}第${targetPeriod}節`;
+           const incomingText = incoming
+             ? `原課時段由 ${incoming.actualTeacherName || '其他教師'} 接手 ${incoming.className || ''}${incoming.subject || ''}`
+             : '等待其他教師完成閉環';
+           desc = `△ 三角調：您的原課移至 ${targetText}；${incomingText}`;
+         } else if (isSwap) {
           const peer = (exchangePeersByRequestId[String(r.requestId)] || []).find(x => x.id !== r.id);
           classLine = fmtClassLine(r.date, r.period, r.className, r.subject);
           if (peer) {
@@ -5151,7 +5340,20 @@ createApp({
     });
 
     const filteredExchangeList = computed(() => {
-      const list = recommendedExchangeList.value || [];
+      let list = (recommendedExchangeList.value || []).slice();
+      const q = String(matchSearchQuery.value || '').trim().toLowerCase();
+      if (q) {
+        list = list.filter((r) => [
+          r.teacherName,
+          r.teacherEmail,
+          r.className,
+          r.subject,
+          r.dayOfWeek,
+          r.period,
+          getWeekDayText(r.dayOfWeek),
+          formatPeriodText(r.period)
+        ].map(value => String(value == null ? '' : value).toLowerCase()).join(' ').includes(q));
+      }
       const day = parseInt(exchangeWeekdayFilter.value, 10);
       if (!day) return list;
       return list.filter(r => parseInt(r.dayOfWeek, 10) === day);
@@ -5581,6 +5783,581 @@ createApp({
       return a ? a.weekScheduleGrid.value : {};
     });
 
+    const triangleTeacherKey = (value) => String(value || '').trim().toLowerCase();
+    const triangleSlotKey = (slot) => {
+      if (!slot) return '';
+      return `${String(slot.date || '').slice(0, 10)}|${parseInt(slot.period, 10)}`;
+    };
+    const triangleCellIsUsable = (cell) => !!(cell
+      && String(cell.className || '').trim()
+      && String(cell.subject || '').trim()
+      && !cell.isPending
+      && !cell.isSubstituted
+      && !cell.isSubstitutionDuty
+      && !cell.isClassAway
+      && !cell.isPatrol
+      && cell.attr !== '巡堂');
+
+    /** 以目前週課表列出可作為第二、第三位教師原課的有效課堂。 */
+    const triangleCandidates = computed(() => {
+      const source = activeCell.value || {};
+      const sourceTeacher = triangleTeacherKey(source.teacherEmail || source.teacherName);
+      const sourceDate = String(inputRequestDate.value || '').slice(0, 10);
+      const sourceClass = String(source.classData && source.classData.className || '').trim();
+      const sameClass = (left, right) => {
+        const a = String(left || '').trim();
+        const b = String(right || '').trim();
+        if (!a || !b) return false;
+        if (a === b) return true;
+        if (window.DateUtils && typeof window.DateUtils.classListIncludes === 'function') {
+          return window.DateUtils.classListIncludes(a, b) || window.DateUtils.classListIncludes(b, a);
+        }
+        return false;
+      };
+      if (!sourceTeacher || !sourceDate || !source.classData || !triangleCellIsUsable(source.classData)) return [];
+      const dates = [];
+      (currentWeekDates.value || []).forEach((date) => {
+        if (date && dates.indexOf(date) < 0) dates.push(date);
+      });
+      if (dates.indexOf(sourceDate) < 0) dates.push(sourceDate);
+      const periods = Array.isArray(timetablePeriods) && timetablePeriods.length
+        ? timetablePeriods : [0, 1, 2, 3, 4, 45, 5, 6, 7, 8];
+      const seen = Object.create(null);
+      const result = [];
+      (teachersList.value || []).forEach((teacher) => {
+        if (!teacher) return;
+        const email = teacher.email || teacher.teacherName || teacher.name || '';
+        const teacherName = teacher.teacherName || teacher.name || email;
+        if (!email || triangleTeacherKey(email) === sourceTeacher) return;
+        if (!(allSchedules.value || []).some(schedule =>
+          triangleTeacherKey(schedule.teacherEmail || schedule.teacherName) === triangleTeacherKey(email)
+          && sameClass(schedule.className, sourceClass)
+        )) return;
+        dates.forEach((date, dateIndex) => {
+          const day = dateIndex < 5 ? dateIndex + 1 : (() => {
+            const parsed = new Date(String(date).replace(/-/g, '/'));
+            if (Number.isNaN(parsed.getTime())) return 0;
+            const raw = parsed.getDay();
+            return raw === 0 ? 7 : raw;
+          })();
+          if (!day) return;
+          periods.forEach((period) => {
+            const cell = getScheduleForDate(email, date, period, day);
+            if (!triangleCellIsUsable(cell)) return;
+            if (!sameClass(cell.className, sourceClass)) return;
+            const key = `${triangleTeacherKey(email)}|${date}|${parseInt(period, 10)}`;
+            if (seen[key]) return;
+            seen[key] = true;
+            result.push({
+              key,
+              email,
+              teacherName,
+              date,
+              dayOfWeek: day,
+              period: parseInt(period, 10),
+               className: String(cell.className || '').trim(),
+               subject: String(cell.subject || '').trim(),
+               attr: String(cell.attr || '').trim(),
+               restriction: cell.restriction || '',
+               specialTags: cell.specialTags || cell['特殊標記'] || '',
+               isPullOut: !!(cell.isPullOut || cell.attr === '抽離')
+             });
+          });
+        });
+      });
+      return result.sort((a, b) => String(a.teacherName).localeCompare(String(b.teacherName), 'zh-Hant')
+        || String(a.date).localeCompare(String(b.date))
+        || (a.period - b.period));
+    });
+    const triangleCandidateB = computed(() =>
+      triangleCandidates.value.find((candidate) => candidate.key === trianglePickB.value) || null
+    );
+    const triangleCandidateCList = computed(() => {
+      const b = triangleCandidateB.value;
+      const bTeacher = b ? triangleTeacherKey(b.email) : '';
+      return triangleCandidates.value.filter((candidate) => triangleTeacherKey(candidate.email) !== bTeacher);
+    });
+    const triangleCandidateC = computed(() =>
+      triangleCandidateCList.value.find((candidate) => candidate.key === trianglePickC.value) || null
+    );
+    const triangleCandidateSearch = ref('');
+    const triangleCandidateDisplayCount = ref(18);
+    const triangleSourceParticipant = () => {
+      const source = activeCell.value || {};
+      const classData = source.classData || {};
+      return {
+        email: source.teacherEmail || source.teacherName || '',
+        teacherName: source.teacherName || getTeacherNameByEmail(source.teacherEmail),
+        slot: {
+          date: String(inputRequestDate.value || '').slice(0, 10),
+          day: parseInt(source.dayOfWeek, 10),
+          period: parseInt(source.period, 10)
+        },
+        course: {
+          className: String(classData.className || '').trim(),
+          subject: String(classData.subject || '').trim(),
+           attr: String(classData.attr || '').trim(),
+           restriction: classData.restriction || '',
+           specialTags: classData.specialTags || classData['特殊標記'] || '',
+           isPatrol: !!classData.isPatrol,
+          isPending: !!classData.isPending,
+          isSubstituted: !!classData.isSubstituted
+        }
+      };
+    };
+    const triangleCandidateParticipant = (candidate) => candidate ? {
+        email: candidate.email,
+        teacherName: candidate.teacherName,
+        slot: { date: candidate.date, day: candidate.dayOfWeek, period: candidate.period },
+        course: {
+           className: candidate.className,
+           subject: candidate.subject,
+           attr: candidate.attr,
+           restriction: candidate.restriction || '',
+           specialTags: candidate.specialTags || '',
+           isPullOut: candidate.isPullOut
+        }
+       } : null;
+    const triangleCandidateIsRestricted = (candidate) => !!(candidate && (
+      candidate.restriction === 'restricted'
+      || candidate.restriction === '限制'
+      || hasScheduleSpecialTag(candidate, '綁課')
+    ));
+    const triangleParticipants = computed(() => [
+      triangleSourceParticipant(),
+      triangleCandidateParticipant(triangleCandidateB.value),
+      triangleCandidateParticipant(triangleCandidateC.value)
+    ]);
+    const buildTriangleOccupiedByTeacher = (participants, scheduleGetter) => {
+      const list = (participants || []).filter(Boolean);
+      const occupied = {};
+      const getCell = scheduleGetter || getScheduleForDate;
+      list.forEach((participant) => {
+        const teacherKey = participant.teacherName || participant.email;
+        occupied[teacherKey] = [];
+        list.forEach((other) => {
+          const cell = getCell(
+            participant.email,
+            other.slot.date,
+            other.slot.period,
+            other.slot.day
+          );
+          if (!cell || (!cell.className && !cell.subject)) return;
+          occupied[teacherKey].push({
+            teacher: teacherKey,
+            date: other.slot.date,
+            period: other.slot.period,
+            className: cell.className,
+            subject: cell.subject
+          });
+        });
+      });
+      return occupied;
+    };
+    const triangleCandidateSearchText = (candidate) => [
+      candidate && candidate.teacherName,
+      candidate && candidate.email,
+      candidate && candidate.className,
+      candidate && candidate.subject,
+      candidate && candidate.date,
+      candidate && candidate.dayOfWeek,
+      candidate && candidate.period,
+      candidate && getWeekDayText(candidate.dayOfWeek)
+    ].map(value => String(value == null ? '' : value).toLowerCase()).join(' ');
+    const triangleCandidateOptions = computed(() => {
+      const query = String(triangleCandidateSearch.value || '').trim().toLowerCase();
+      const list = (triangleCandidates.value || []).slice();
+      if (!query) return list;
+      return list.filter(candidate => triangleCandidateSearchText(candidate).includes(query));
+    });
+    const createTriangleScheduleGetter = () => {
+      const cache = Object.create(null);
+      return (email, date, period, day) => {
+        const key = `${String(email || '').toLowerCase()}|${String(date || '').slice(0, 10)}|${parseInt(period, 10)}|${parseInt(day, 10)}`;
+        if (Object.prototype.hasOwnProperty.call(cache, key)) return cache[key];
+        const cell = getScheduleForDate(email, date, period, day);
+        cache[key] = cell;
+        return cell;
+      };
+    };
+    const validateTriangleSelection = (candidateB, candidateC, scheduleGetter) => {
+      const source = triangleSourceParticipant();
+      const b = triangleCandidateParticipant(candidateB);
+      const c = triangleCandidateParticipant(candidateC);
+      if (!source || !b || !c || !window.DomainTriangle || !window.DomainTriangle.buildCycleLegs) {
+        return { ok: false, errors: ['三角調資料尚未選完整'] };
+      }
+      const participants = [source, b, c];
+      const legs = window.DomainTriangle.buildCycleLegs(participants.map((participant) => ({
+        teacher: participant.teacherName,
+        slot: participant.slot,
+        course: participant.course
+      })));
+      return window.DomainTriangle.validateTriangle(
+        { legs },
+        { occupiedByTeacher: buildTriangleOccupiedByTeacher(participants, scheduleGetter) }
+      );
+    };
+    const triangleCandidateCanMoveTo = (candidate, targetSlot, scheduleGetter) => {
+      if (!candidate || !targetSlot) return false;
+      const sourceSlot = candidate.slot || candidate;
+      const destination = targetSlot.slot || targetSlot;
+      if (triangleSlotKey(sourceSlot) === triangleSlotKey(destination)) return true;
+      const getCell = scheduleGetter || getScheduleForDate;
+      const cell = getCell(candidate.email, destination.date, destination.period, destination.day || destination.dayOfWeek);
+      return !cell || (!cell.className && !cell.subject && !cell.isPending && !cell.isSubstituted && !cell.isSubstitutionDuty);
+    };
+    const triangleCandidateSort = (a, b) => {
+      const dayA = parseInt(a && a.dayOfWeek, 10) || 99;
+      const dayB = parseInt(b && b.dayOfWeek, 10) || 99;
+      return dayA - dayB
+        || String(a && a.date || '').localeCompare(String(b && b.date || ''))
+        || ((parseInt(a && a.period, 10) || 0) - (parseInt(b && b.period, 10) || 0))
+        || String(a && a.teacherName || '').localeCompare(String(b && b.teacherName || ''), 'zh-Hant');
+    };
+    const triangleCandidatePriority = (candidate, availableKey) => {
+      if (!candidate || !candidate[availableKey]) return 2;
+      return candidate.triangleCanDirectExchange ? 1 : 0;
+    };
+    const triangleCandidateBPriority = (candidate) =>
+      triangleCandidatePriority(candidate, 'triangleHasC');
+    const triangleDirectExchangeKeys = computed(() => {
+      const keys = Object.create(null);
+      const source = triangleSourceParticipant();
+      const sourceClass = source && source.course ? String(source.course.className || '').trim() : '';
+      if (!source || !source.email || !source.slot.date || !sourceClass
+          || !window.DomainMatch || typeof window.DomainMatch.listExchangeCandidates !== 'function') {
+        return keys;
+      }
+      const directCandidates = window.DomainMatch.listExchangeCandidates({
+        allSchedules: allSchedules.value,
+        className: sourceClass,
+        leaveEmail: source.email,
+        leaveDate: source.slot.date,
+        leavePeriod: source.slot.period,
+        leaveDay: source.slot.day,
+        leaveCell: activeCell.value && activeCell.value.classData
+          ? activeCell.value.classData : source.course,
+        leaveAttr: source.course.attr,
+        weekDates: getExchangeWeekDates(),
+        isSingleWeek,
+        getScheduleForDate,
+        getTeacherNameByEmail,
+        awayClasses: isMutualCover.value ? mutualAwayClasses.value : []
+      });
+      const weekDates = getExchangeWeekDates();
+      (directCandidates || []).forEach(candidate => {
+        const day = parseInt(candidate.dayOfWeek, 10);
+        const date = weekDates[day - 1] || candidate.date || '';
+        const key = `${triangleTeacherKey(candidate.teacherEmail)}|${String(date).slice(0, 10)}|${parseInt(candidate.period, 10)}`;
+        keys[key] = true;
+      });
+      return keys;
+    });
+    const triangleCandidateCOptions = computed(() => {
+      const source = triangleSourceParticipant();
+      const b = triangleCandidateB.value;
+      const sourceTeacher = triangleTeacherKey(source.email || source.teacherName);
+      const getCachedSchedule = createTriangleScheduleGetter();
+      const bTeacher = b ? triangleTeacherKey(b.email) : '';
+      if (!b) return [];
+      return triangleCandidateOptions.value
+        .filter(candidate => triangleTeacherKey(candidate.email) !== sourceTeacher
+          && triangleTeacherKey(candidate.email) !== bTeacher)
+        .map(candidate => {
+          const canComplete = triangleCandidateCanMoveTo(b, candidate, getCachedSchedule)
+            && triangleCandidateCanMoveTo(candidate, source.slot, getCachedSchedule);
+          return Object.assign({}, candidate, {
+            triangleHasB: canComplete,
+            triangleIsRestricted: triangleCandidateIsRestricted(candidate)
+          });
+        })
+        .sort((a, b) => Number(b.triangleHasB) - Number(a.triangleHasB)
+          || triangleCandidateSort(a, b));
+    });
+    const triangleCandidateCReadyCount = computed(() =>
+      triangleCandidateCOptions.value.filter(candidate => candidate.triangleHasB).length
+    );
+    const triangleCandidateBOptions = computed(() => {
+      const source = triangleSourceParticipant();
+      const allCandidates = triangleCandidates.value || [];
+      const getCachedSchedule = createTriangleScheduleGetter();
+      const sourceTeacher = triangleTeacherKey(source.email || source.teacherName);
+      return triangleCandidateOptions.value
+        .filter(candidate => triangleTeacherKey(candidate.email) !== sourceTeacher)
+        .map(candidate => {
+          const canMoveA = triangleCandidateCanMoveTo(source, candidate, getCachedSchedule);
+          const hasC = canMoveA && allCandidates.some(c =>
+            triangleTeacherKey(c.email) !== sourceTeacher
+            && triangleTeacherKey(c.email) !== triangleTeacherKey(candidate.email)
+            && triangleCandidateCanMoveTo(candidate, c, getCachedSchedule)
+            && triangleCandidateCanMoveTo(c, source.slot, getCachedSchedule)
+          );
+          return Object.assign({}, candidate, {
+            triangleHasC: hasC,
+            triangleCanDirectExchange: !!triangleDirectExchangeKeys.value[candidate.key],
+            triangleIsRestricted: triangleCandidateIsRestricted(candidate)
+          });
+        })
+        .sort((a, b) => triangleCandidateBPriority(a) - triangleCandidateBPriority(b)
+          || triangleCandidateSort(a, b));
+    });
+    const triangleCandidateBReadyCount = computed(() =>
+      triangleCandidateBOptions.value.filter(candidate => candidate.triangleHasC).length
+    );
+    const displayedTriangleCOptions = computed(() =>
+      triangleCandidateCOptions.value.slice(0, triangleCandidateDisplayCount.value)
+    );
+    const displayedTriangleBOptions = computed(() =>
+      triangleCandidateBOptions.value.slice(0, triangleCandidateDisplayCount.value)
+    );
+    const selectTriangleCandidateB = (candidate) => {
+      if (!candidate || candidate.triangleHasC === false) return;
+      trianglePickB.value = candidate.key;
+      trianglePickC.value = '';
+      triangleCandidateSearch.value = '';
+    };
+    const selectTriangleCandidateC = (candidate) => {
+      if (!candidate || candidate.triangleHasB === false) return;
+      trianglePickC.value = candidate.key;
+      triangleCandidateSearch.value = '';
+    };
+    const loadMoreTriangleCandidates = () => {
+      const total = triangleCandidateB.value
+        ? triangleCandidateCOptions.value.length
+        : triangleCandidateBOptions.value.length;
+      triangleCandidateDisplayCount.value = Math.min(
+        triangleCandidateDisplayCount.value + 18,
+        total
+      );
+    };
+    watch(triangleCandidateSearch, () => {
+      triangleCandidateDisplayCount.value = 18;
+    });
+    const triangleLegs = computed(() => {
+      const participants = triangleParticipants.value;
+      if (participants.some((participant) => !participant)) return [];
+      if (window.DomainTriangle && window.DomainTriangle.buildCycleLegs) {
+        return window.DomainTriangle.buildCycleLegs(participants.map((participant) => ({
+          teacher: participant.teacherName,
+          slot: participant.slot,
+          course: participant.course
+        })));
+      }
+      return [];
+    });
+    const triangleValidation = computed(() => {
+      if (!trianglePickB.value || !trianglePickC.value) {
+        return { ok: false, errors: ['請選擇另外兩位教師的有效原課'] };
+      }
+      if (!window.DomainTriangle || !window.DomainTriangle.validateTriangle) {
+        return { ok: false, errors: ['三角調模組尚未載入'] };
+      }
+      return validateTriangleSelection(triangleCandidateB.value, triangleCandidateC.value);
+    });
+    const trianglePreviewRows = computed(() => triangleLegs.value.map((leg) => ({
+      index: leg.index,
+      sourceTeacher: leg.sourceTeacher,
+      targetTeacher: leg.targetTeacher,
+      sourceSlot: leg.sourceSlot,
+      targetSlot: leg.targetSlot,
+      sourceCourse: leg.sourceCourse
+    })));
+    const trianglePreviewWeekDates = computed(() => getExchangeWeekDates().map((date, index) => ({
+      date,
+      day: index + 1,
+      weekDay: getWeekDayText(index + 1),
+      shortDate: formatDateMMDD(date)
+    })));
+    const triangleTimetablePreview = computed(() => {
+      const participants = triangleParticipants.value;
+      if (participants.length !== 3 || participants.some(participant => !participant || !participant.email)) return [];
+      const periods = Array.isArray(timetablePeriods) && timetablePeriods.length
+        ? timetablePeriods : [0, 1, 2, 3, 4, 45, 5, 6, 7, 8];
+      const dates = trianglePreviewWeekDates.value;
+      return participants.map((participant, index) => ({
+        role: ['A', 'B', 'C'][index],
+        email: participant.email,
+        teacherName: participant.teacherName,
+        sourceSlot: participant.slot,
+        sourceCourse: participant.course,
+        targetSlot: participants[(index + 1) % participants.length].slot,
+        rows: periods.map(period => ({
+          period,
+          cells: dates.map(dayInfo => {
+            const isMovedFrom = triangleSlotKey(participant.slot) === triangleSlotKey({
+              date: dayInfo.date,
+              period
+            });
+            const isMovedTo = triangleSlotKey(participants[(index + 1) % participants.length].slot) === triangleSlotKey({
+              date: dayInfo.date,
+              period
+            });
+            const rawCell = getScheduleForDate(participant.email, dayInfo.date, period, dayInfo.day);
+            const cell = isMovedTo
+              ? participant.course
+              : (isMovedFrom ? {} : (rawCell || {}));
+            return {
+              date: dayInfo.date,
+              day: dayInfo.day,
+              period,
+              className: String(cell.className || '').trim(),
+              subject: String(cell.subject || '').trim(),
+              attr: String(cell.attr || '').trim(),
+              restriction: cell.restriction || '',
+              specialTags: cell.specialTags || cell['特殊標記'] || '',
+              isPullOut: !!(cell.isPullOut || cell.attr === '抽離'),
+              isRestricted: triangleCandidateIsRestricted(cell),
+              isPending: !!cell.isPending,
+              isSubstituted: !!cell.isSubstituted,
+              isMovedFrom,
+              isMovedTo
+            };
+          })
+        }))
+      }));
+    });
+    const openTriangleTimetablePreview = () => {
+      if (!triangleReady.value) {
+        showToast('請先選定可完成的 B、C，才能預覽三人課表', 'warning');
+        return false;
+      }
+      showTriangleTimetablePreview.value = true;
+      return true;
+    };
+    const triangleReady = computed(() => !!(triangleValidation.value && triangleValidation.value.ok));
+    const resetTriangleDraft = () => {
+      trianglePickB.value = '';
+      trianglePickC.value = '';
+      triangleReason.value = '';
+      triangleNote.value = '';
+      triangleCandidateSearch.value = '';
+      triangleCandidateDisplayCount.value = 18;
+    };
+    const formatTriangleSlot = (slot, course) => {
+      if (!slot) return '—';
+      const day = getWeekDayText(slot.day != null ? slot.day : slot.dayOfWeek);
+      const date = formatDateMMDD(slot.date) || slot.date || '—';
+      const period = formatPeriodText(slot.period);
+      const lesson = [course && course.className, course && course.subject].filter(Boolean).join(' ');
+      return `${date}（${day}）${period}${lesson ? ' · ' + lesson : ''}`;
+    };
+    const buildTriangleLineText = (request, groupRows) => {
+      const row = request || {};
+      const rows = groupRows || [];
+      const participants = rows.map((item) => `${item.requesterName || ''}→${item.targetTeacherName || ''}`).join('、');
+      const lines = rows.map((item, index) => {
+        const source = formatLineSlot(item.requestDate, item.requestPeriodDay, item.requestPeriod, item.className, item.subject);
+         // 三角調是整堂課跟著來源教師走，目標時段仍顯示這條 leg 移入的原課。
+         const target = formatLineSlot(item.targetDate, item.targetDayOfWeek, item.targetPeriod, item.className, item.subject);
+        const agree = `${window.location.origin}${window.location.pathname}?action=respond&id=${encodeURIComponent(item.id)}&status=agree`;
+        const decline = `${window.location.origin}${window.location.pathname}?action=respond&id=${encodeURIComponent(item.id)}&status=decline`;
+        return `${index + 1}. ${item.requesterName || '教師'}：${source} → ${target}\n　✅ 同意：${agree}\n　❌ 拒絕整組：${decline}`;
+      });
+      return `${row.targetTeacherName || '老師'}老師，這是一組三位教師的三角調課，需全部同意後才送教學組核准。\n\n假別／課務類型：${row.reason || '請假'}\n\n參與關係：${participants}\n\n${lines.join('\n\n')}\n\n感謝。`;
+    };
+    const submitTriangleRequest = async () => {
+      if (triangleSubmitting.value) return;
+      const validation = triangleValidation.value;
+      if (!validation || !validation.ok) {
+        showToast((validation && validation.errors && validation.errors[0]) || '請先完成三角調選擇', 'warning');
+        return;
+      }
+      const reason = String(triangleReason.value || '').trim() || '請假';
+      const trianglePaperFlow = !onlineSubstitutionEnabled.value;
+      const participants = triangleParticipants.value;
+      const triangleId = `tri_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const serial = `TRI${Math.floor(1000 + Math.random() * 9000)}`;
+      const legs = validation.legs.map((leg, index) => {
+        const source = participants[index];
+        const target = participants[(index + 1) % participants.length];
+        return Object.assign({}, leg, {
+          sourceTeacherEmail: source.email,
+          targetTeacherEmail: target.email,
+          note: triangleNote.value
+        });
+      });
+      triangleSubmitting.value = true;
+      loading.value = true;
+      loadingMessage.value = '正在送出三角調整組…';
+      try {
+         const result = await callGasApi('submitTriangleRequest', {
+          triangleId,
+           serial,
+           legs,
+           reason,
+           note: triangleNote.value,
+           skipNotify: trianglePaperFlow
+         });
+         const ids = result && Array.isArray(result.ids) ? result.ids : [];
+        const actualTrianglePaperFlow = result && result.paperFlow != null
+          ? !!result.paperFlow
+          : trianglePaperFlow;
+        const triangleStatus = actualTrianglePaperFlow ? 'pending_admin' : 'pending_teacher';
+        const triangleConsentStatus = actualTrianglePaperFlow ? 'paper_pending' : 'pending';
+        const frontRows = legs.map((leg, index) => sheetRequestToFront({
+          '學期代號': currentSemester.value,
+          '申請單ID': ids[index] || `${triangleId}_${index + 1}`,
+          '單號': `${serial}-${index + 1}`,
+          '批次ID': triangleId,
+           '狀態': triangleStatus,
+           '紙本流程': actualTrianglePaperFlow ? 'TRUE' : 'FALSE',
+           paperFlow: actualTrianglePaperFlow,
+          '申請人姓名': leg.sourceTeacher,
+          '受邀人姓名': leg.targetTeacher,
+          '班級': leg.sourceCourse.className,
+          '科目': leg.sourceCourse.subject,
+          '異動日期': leg.sourceSlot.date,
+          '異動星期': leg.sourceSlot.day,
+          '異動節次': leg.sourceSlot.period,
+          '異動類型': 'triangle',
+          '對調目標日期': leg.targetSlot.date,
+          '對調目標星期': leg.targetSlot.day,
+          '對調目標節次': leg.targetSlot.period,
+          '對調目標班級': leg.targetCourse.className,
+          '對調目標科目': leg.targetCourse.subject,
+          '三角調ID': triangleId,
+          '三角腳次': index + 1,
+           '三角同意狀態': triangleConsentStatus,
+           '三角組狀態': triangleStatus,
+          '經費來源': '無',
+          '請假事由': reason,
+          '備註': triangleNote.value
+        }));
+        frontRows.forEach((row) => optimisticUpsertRequest(row));
+        successActionRequests.value = frontRows;
+        softRefreshInBackground({ delay: 2500 });
+        if (actualTrianglePaperFlow) {
+          showMatchModal.value = false;
+          resetTriangleDraft();
+          // openPrintPreview 需要 loading 已解除，才能像一般紙本流程一樣直接開啟列印預覽。
+          loading.value = false;
+          await openPaperPrintDraftForSubmittedRequests(frontRows);
+          showToast('三角調申請已建立，請列印後由三位教師簽名，再交教學組核審。', 'success', 6000);
+          return;
+        }
+        successModalTitle.value = '🎉 三角調申請已送出';
+        successModalMessage.value = `三角調（${serial}）已建立，三位教師都同意後才會送交教學組核准。系統已寄出各自的簽核邀請。`;
+        successFlowMode.value = 'normal';
+        lineBatchParts.value = frontRows.map((row) => ({
+          name: row.targetTeacherName,
+          count: 1,
+          text: buildTriangleLineText(row, frontRows)
+        }));
+        lineCopyText.value = '';
+        hasLineTemplate.value = lineBatchParts.value.length > 0;
+        resetTriangleDraft();
+        showMatchModal.value = false;
+        showSuccessModal.value = true;
+      } catch (error) {
+        console.error('三角調送出失敗：', error);
+        showToast('三角調送出失敗：' + (error && error.message ? error.message : error), 'error');
+      } finally {
+        loading.value = false;
+        triangleSubmitting.value = false;
+      }
+    };
+
     /**
      * 列表選取 = 純 CSS（label 勾 radio + :has(:checked)）。
      * JS 只聽 change，且只做綠格，絕不在按下當幀動列表。
@@ -5783,7 +6560,7 @@ createApp({
         const nodes = document.querySelectorAll(
           '.grid-cell-class[data-tt-email="' + em + '"][data-tt-day="' + day + '"][data-tt-period="' + period + '"]'
         );
-        const isEx = matchMode.value === 'exchange';
+         const isEx = matchMode.value === 'exchange' || matchMode.value === 'triangle';
         for (let i = 0; i < nodes.length; i++) {
           nodes[i].classList.add('is-match-source');
           if (isEx) nodes[i].classList.add('is-match-exchange-source');
@@ -7108,6 +7885,7 @@ createApp({
         const period = getValue(source, ['異動節次', 'requestPeriod', 'period']);
         const printedRaw = getValue(source, ['是否已印', 'printed']);
         const printed = printedRaw === true || String(printedRaw || '').trim().toLowerCase() === 'true' || String(printedRaw || '').trim() === '1' || String(printedRaw || '').trim() === '是';
+        const isTriangle = typeRaw === 'triangle' || typeRaw === '三角調';
         const base = {
           reason: getValue(source, ['請假事由', 'reason'], '請假'),
           subFee: getValue(source, ['經費來源', 'subFee'], '自費代課'),
@@ -7118,7 +7896,39 @@ createApp({
           requestId: requestId,
           serial: serial
         };
-        if (isExchange) {
+        if (isTriangle) {
+           const targetDate = getValue(source, ['對調目標日期', 'targetDate']);
+           const targetDay = getValue(source, ['對調目標星期', 'targetDayOfWeek']);
+           const targetPeriod = getValue(source, ['對調目標節次', 'targetPeriod']);
+           const initiatorName = getValue(source, ['申請人姓名', 'requesterName'], getTeacherNameByEmail(original));
+           const sourceDay = getValue(source, ['異動星期', 'requestPeriodDay']);
+           const sourceClass = getValue(source, ['班級', 'className']);
+           const sourceSubject = getValue(source, ['科目', 'subject']);
+           records.push(Object.assign({}, base, {
+            id: requestId,
+            type: 'triangle',
+            triangleId: getValue(source, ['三角調ID', 'triangleId', '批次ID', 'batchId']),
+            triangleLegIndex: getValue(source, ['三角腳次', 'triangleLegIndex']),
+             originalTeacherEmail: actual,
+             actualTeacherEmail: original,
+             originalTeacherName: getTeacherNameByEmail(actual),
+             actualTeacherName: getTeacherNameByEmail(original),
+             triangleInitiatorEmail: original,
+             triangleInitiatorName: initiatorName,
+             triangleSourceDate: date,
+             triangleSourceDayOfWeek: sourceDay,
+             triangleSourcePeriod: period,
+             triangleTargetDate: targetDate,
+             triangleTargetDayOfWeek: targetDay,
+             triangleTargetPeriod: targetPeriod,
+             date,
+             period,
+             className: sourceClass,
+             subject: sourceSubject,
+            formClassName: sourceClass,
+            formSubject: sourceSubject
+          }));
+        } else if (isExchange) {
           const targetDate = getValue(source, ['對調目標日期', 'targetDate']);
           const targetPeriod = getValue(source, ['對調目標節次', 'targetPeriod']);
           const targetCourse = resolveSubmittedTargetCourse(source, targetDate, targetPeriod);
@@ -7167,6 +7977,49 @@ createApp({
       return records.filter(r => r.originalTeacherEmail && r.actualTeacherEmail && r.date && r.period != null);
     };
 
+    const buildTrianglePaperDraftRecords = () => {
+      const participants = triangleParticipants.value || [];
+      const legs = triangleLegs.value || [];
+      if (participants.length !== 3 || legs.length !== 3 || participants.some(participant => !participant)) return [];
+      const requestId = 'TRI-PREVIEW-' + Date.now();
+      const serial = requestId;
+      return legs.map((leg, index) => {
+        const source = participants[index];
+        const target = participants[(index + 1) % participants.length];
+        return {
+          id: `${requestId}_${index + 1}`,
+          requestId,
+          triangleId: requestId,
+          triangleLegIndex: index + 1,
+          serial,
+          type: 'triangle',
+          reason: triangleReason.value || '請假',
+          subFee: '無',
+          note: triangleNote.value || '',
+          isPaperDraft: true,
+          printed: false,
+          originalTeacherEmail: target.email,
+          originalTeacherName: target.teacherName,
+          actualTeacherEmail: source.email,
+          actualTeacherName: source.teacherName,
+          triangleInitiatorEmail: participants[0].email,
+          triangleInitiatorName: participants[0].teacherName,
+          triangleSourceDate: leg.sourceSlot.date,
+          triangleSourceDayOfWeek: leg.sourceSlot.day,
+          triangleSourcePeriod: leg.sourceSlot.period,
+          triangleTargetDate: leg.targetSlot.date,
+          triangleTargetDayOfWeek: leg.targetSlot.day,
+          triangleTargetPeriod: leg.targetSlot.period,
+          date: leg.sourceSlot.date,
+          period: leg.sourceSlot.period,
+          className: source.course.className,
+          subject: source.course.subject,
+          formClassName: source.course.className,
+          formSubject: source.course.subject
+        };
+      });
+    };
+
     const openPaperPrintDraft = (records, options = {}) => {
       const list = records || buildPaperDraftRecords();
       if (!list.length) {
@@ -7204,6 +8057,20 @@ createApp({
     };
 
     const openPaperPrintDraftFromCompare = () => openPaperPrintDraft(null, { returnTo: 'compare', canPrint: false });
+
+    const openTrianglePaperPreview = () => {
+      if (!triangleReady.value) {
+        showToast('請先選定可完成的 B、C，才能預覽調課單', 'warning');
+        return false;
+      }
+      const records = buildTrianglePaperDraftRecords();
+      if (!records.length) {
+        showToast('目前沒有可預覽的三角調課單', 'warning');
+        return false;
+      }
+      showTriangleTimetablePreview.value = false;
+      return openPaperPrintDraft(records, { canPrint: false, source: 'triangleDraft' });
+    };
 
     const openPaperPrintMutualDrafts = () => {
       const root = 'PAPER-MUTUAL-' + Date.now();
@@ -7309,9 +8176,21 @@ createApp({
       // 巡堂不可調課／代課（點格已擋；此為保險）
       if (activeCell.value && activeCell.value.classData &&
           (activeCell.value.classData.isPatrol || activeCell.value.classData.attr === '巡堂')) {
-        showToast('巡堂節不需系統調代課，請私下安排代巡', 'info');
+        showToast('巡堂節不需系統調代課或三角調，請私下安排代巡', 'info');
         matchMode.value = 'substitution';
         clearMatchPreview();
+        return;
+      }
+      if (mode !== matchMode.value) matchSearchQuery.value = '';
+      if (mode === 'triangle') {
+        const source = activeCell.value || {};
+        if (!source.classData || !triangleCellIsUsable(source.classData)) {
+          showToast('三角調只能從尚未異動的有效一般課程開始', 'warning');
+          return;
+        }
+        matchMode.value = 'triangle';
+        clearMatchPreview();
+        resetTriangleDraft();
         return;
       }
       // 抽離：可調課，但僅限與另一節抽離互調（候選列表已過濾；此處提示）
@@ -7525,6 +8404,22 @@ createApp({
       return note.indexOf('[行政代申請') >= 0;
     };
 
+    const isTriangleRequest = (r) => !!(r && (r.type === 'triangle' || r.type === '三角調' || r.triangleId));
+    const isExchangeLikeRequest = (r) => !!(r && (
+      r.type === 'exchange' || r.type === '對調' || isTriangleRequest(r)
+    ));
+    const getTriangleGroupRequests = (request) => {
+      if (!isTriangleRequest(request)) return request ? [request] : [];
+      const triangleId = String(request.triangleId || request.batchId || '').trim();
+      const rows = (requestsList.value || []).filter((row) => {
+        if (!isTriangleRequest(row)) return false;
+        return triangleId && String(row.triangleId || row.batchId || '').trim() === triangleId;
+      });
+      return (rows.length ? rows : [request]).slice().sort((a, b) =>
+        (parseInt(a.triangleLegIndex, 10) || 0) - (parseInt(b.triangleLegIndex, 10) || 0)
+      );
+    };
+
     const isPaperFlowValue = (value) => {
       if (value === true || value === 1) return true;
       const normalized = String(value == null ? '' : value).trim().toLowerCase();
@@ -7633,9 +8528,9 @@ createApp({
           const stOf = (r) => (window.FieldMap && window.FieldMap.normalizeRequestStatus)
             ? window.FieldMap.normalizeRequestStatus(r && r.status)
             : String((r && r.status) || '').toLowerCase();
-          adminPendingRequests.value = (userRole.value === 'admin')
-            ? sortedAll.filter(r => stOf(r) === 'pending_admin')
-            : [];
+           adminPendingRequests.value = (userRole.value === 'admin')
+             ? collapseTriangleRows(sortedAll.filter(r => stOf(r) === 'pending_admin'))
+             : [];
           allPendingRequests.value = sortedAll.filter(r => {
             const s = stOf(r);
             return s === 'pending_teacher' || s === 'pending_admin';
@@ -7774,6 +8669,22 @@ createApp({
     };
     const sortRequestsDesc = (a, b) => sortListRowsDesc(a, b);
 
+    const collapseTriangleRows = (rows) => {
+      const result = [];
+      const seen = Object.create(null);
+      (rows || []).forEach((row) => {
+        if (!isTriangleRequest(row)) {
+          result.push(row);
+          return;
+        }
+        const key = String(row.triangleId || row.batchId || row.id || '');
+        if (!key || seen[key]) return;
+        seen[key] = true;
+        result.push(row);
+      });
+      return result;
+    };
+
     const recomputeRequestBuckets = () => {
       if (!user.value) return;
       // 模擬身份：一律用目前 user.value.email（被模擬者），勿用 originalUser／JWT
@@ -7790,7 +8701,7 @@ createApp({
         && stOf(r) === 'pending_teacher'
       );
       adminPendingRequests.value = (userRole.value === 'admin')
-        ? all.filter(r => stOf(r) === 'pending_admin')
+        ? collapseTriangleRows(all.filter(r => stOf(r) === 'pending_admin'))
         : [];
       allPendingRequests.value = all.filter(r => {
         const s = stOf(r);
@@ -7845,6 +8756,29 @@ createApp({
 
     const optimisticPatchRequestStatus = (id, status) => {
       return optimisticPatchRequestStatuses([{ id, status }]);
+    };
+
+    const optimisticPatchTriangleGroup = (request, groupStatus, responseStatus) => {
+      if (!request) return false;
+      const triangleId = String(request.triangleId || request.batchId || '').trim();
+      if (!triangleId) return optimisticPatchRequestStatus(request.id, groupStatus);
+      const status = String(groupStatus || '').trim();
+      const next = requestsList.value.map((row) => {
+        if (!row || String(row.triangleId || row.batchId || '').trim() !== triangleId) return row;
+        const patch = {};
+        if (status) {
+          patch.status = status;
+          patch.triangleGroupStatus = status;
+        }
+        if (String(row.id) === String(request.id) && responseStatus) {
+          patch.triangleConsentStatus = responseStatus;
+          patch.triangleConsentAt = new Date().toISOString();
+        }
+        return Object.keys(patch).length ? Object.assign({}, row, patch) : row;
+      });
+      requestsList.value = next;
+      recomputeRequestBuckets();
+      return true;
     };
 
     const optimisticRemoveRequest = (id) => {
@@ -8475,6 +9409,30 @@ createApp({
 
     /** 再異動判斷用：同一申請的 _1／_2 邊不可算成自己的前一筆。 */
     const normalizeRechangeRequestId = (value) => String(value || '').trim().replace(/_(?:class_)?[12]$/, '');
+    /** 只有已核准生效的異動才會成為下一筆的前次異動。 */
+    const isEffectiveChangedDuty = (record) => {
+      if (!record || record.enabled === false || record.isPaperDraft) return false;
+      const recordRequestId = normalizeRechangeRequestId(record.requestId || record.id);
+      let rawStatus = record.status;
+      if (rawStatus == null || String(rawStatus).trim() === '') rawStatus = record['狀態'];
+
+      // 以申請單最新狀態為準，避免已核准後撤回／駁回的舊紀錄仍被算入。
+      if (recordRequestId && typeof requestsList !== 'undefined'
+          && requestsList && Array.isArray(requestsList.value)) {
+        const request = requestsList.value.find(row =>
+          row && normalizeRechangeRequestId(row.id || row.requestId) === recordRequestId
+        );
+        const requestStatus = request && (request.status || request['狀態']);
+        if (requestStatus != null && String(requestStatus).trim() !== '') rawStatus = requestStatus;
+      }
+
+      const status = String(rawStatus == null ? '' : rawStatus).trim().toLowerCase();
+      if (!status) return true; // 舊歷史列沒有狀態欄時，沿用既有有效紀錄。
+      return [
+        'approved', 'active', 'effective', 'approved_active',
+        '核准生效', '已核准', '核准', '已生效', '生效', '有效', '啟用'
+      ].includes(status);
+    };
     const hasOtherChangedDutyAtSlot = (email, dateStr, period, excludeRequestId) => {
       const em = String(email || '').trim().toLowerCase();
       const dk = String(dateStr || '').trim();
@@ -8482,7 +9440,7 @@ createApp({
       const excluded = normalizeRechangeRequestId(excludeRequestId);
       if (!em || !dk || Number.isNaN(p)) return false;
       return (substitutionRecords.value || []).some(s => {
-        if (!s) return false;
+        if (!isEffectiveChangedDuty(s)) return false;
         const rowRequestId = normalizeRechangeRequestId(s.requestId || s.id);
         if (excluded && rowRequestId === excluded) return false;
         if (String(s.date || s.requestDate || '').trim() !== dk) return false;
@@ -8604,7 +9562,7 @@ createApp({
 
     /** 對調目標位置是否為「再異動」；只看目標端，不把標籤放到原始端。 */
     const isHistoryExchangeRechanged = (rec) => {
-      if (!rec || (rec.type !== 'exchange' && rec.type !== '對調')) return false;
+      if (!rec || !isExchangeLikeRequest(rec)) return false;
       const requestId = rec.requestId || rec.id;
       const all = substitutionRecords.value || [];
       const targetEdge = requestId
@@ -8630,7 +9588,7 @@ createApp({
 
     /** 申請單：對調目標節是否再異動（進行中列表用）。 */
     const isRequestExchangeRechanged = (req) => {
-      if (!req || (req.type !== 'exchange' && req.type !== '對調')) return false;
+      if (!req || !isExchangeLikeRequest(req)) return false;
       if (!req.targetTeacherEmail || !req.targetDate) return false;
       return hasOtherChangedDutyAtSlot(req.targetTeacherEmail, req.targetDate, req.targetPeriod, req.id);
     };
@@ -8681,7 +9639,17 @@ createApp({
     };
 
     const formatHistoryExchangeSlot = (rec) => {
-      if (!rec || (rec.type !== 'exchange' && rec.type !== '對調')) return '—';
+      if (!rec || !isExchangeLikeRequest(rec)) return '—';
+      if (isTriangleRequest(rec)) {
+        const dateStr = rec.targetDate || rec.date || '';
+        let dayNum = rec.targetDayOfWeek;
+        if ((dayNum == null || dayNum === '') && dateStr) {
+          const d = new Date(String(dateStr).replace(/-/g, '/'));
+          if (!Number.isNaN(d.getTime())) dayNum = d.getDay() === 0 ? 7 : d.getDay();
+        }
+        const movedCourse = `${rec.className || ''} ${rec.subject || ''}`.trim();
+        return _fmtSlot(dateStr, dayNum != null ? getWeekDayText(dayNum) : '—', rec.targetPeriod || rec.period, movedCourse);
+      }
       let targetDate = rec.targetDate;
       let targetPeriod = rec.targetPeriod;
       let clsName = String(rec.targetClassName || '').trim();
@@ -8793,7 +9761,7 @@ createApp({
       );
     };
     const isExchangeClassRestricted = (req) => {
-      if (!req || req.type !== 'exchange' || !req.targetTeacherEmail || !req.targetPeriod) return false;
+      if (!req || !isExchangeLikeRequest(req) || !req.targetTeacherEmail || !req.targetPeriod) return false;
       let dayNum = req.targetDayOfWeek;
       if ((dayNum == null || dayNum === '') && req.targetDate) {
         const d = new Date(String(req.targetDate).replace(/-/g, '/'));
@@ -8823,7 +9791,7 @@ createApp({
       );
     };
     const isHistoryExchangeRestricted = (rec) => {
-      if (!rec || rec.type !== 'exchange' || !rec.targetDate || rec.targetDate === '—' || rec.targetPeriod == null) {
+      if (!rec || !isExchangeLikeRequest(rec) || !rec.targetDate || rec.targetDate === '—' || rec.targetPeriod == null) {
         return false;
       }
       return resolveRestrictionForHistoryRec(rec, 'exchange');
@@ -8839,8 +9807,21 @@ createApp({
     };
     // 對調課堂：受邀人在目標節的有效班／科（含調入／代課）；勿回退申請人班科
     const formatExchangeClassSlot = (req) => {
-      if (!req || req.type !== 'exchange') return '—';
-      let dayNum = req.targetDayOfWeek;
+       if (!req || !isExchangeLikeRequest(req)) return '—';
+       if (isTriangleRequest(req)) {
+         let dayNum = req.targetDayOfWeek;
+         if ((dayNum == null || dayNum === '') && req.targetDate) {
+           const d = new Date(String(req.targetDate).replace(/-/g, '/'));
+           if (!Number.isNaN(d.getTime())) dayNum = d.getDay() === 0 ? 7 : d.getDay();
+         }
+         const movedCourse = `${req.className || ''} ${req.subject || ''}`.trim();
+         const m = req.targetDate && String(req.targetDate).length >= 10
+           ? String(req.targetDate).slice(5, 10).replace('-', '/')
+           : (req.targetDate || '—');
+         return `${m}(${getWeekDayText(dayNum) || '—'})${formatPeriodText(req.targetPeriod)}`
+           + (movedCourse ? ` · ${movedCourse}` : '');
+       }
+       let dayNum = req.targetDayOfWeek;
       if ((dayNum == null || dayNum === '') && req.targetDate) {
         const d = new Date(String(req.targetDate).replace(/-/g, '/'));
         if (!Number.isNaN(d.getTime())) dayNum = d.getDay() === 0 ? 7 : d.getDay();
@@ -8894,7 +9875,7 @@ createApp({
      */
     const formatQuickTodoTitle = (req, role) => {
       if (!req) return '—';
-      const isEx = req.type === 'exchange' || req.type === '對調';
+      const isEx = isExchangeLikeRequest(req);
       const leaveSlot = formatQuickSlotCompact(
         req.requestDate, req.requestPeriodDay, req.requestPeriod, req.className, req.subject
       );
@@ -8907,16 +9888,16 @@ createApp({
           const d = new Date(String(req.targetDate).replace(/-/g, '/'));
           if (!Number.isNaN(d.getTime())) dayNum = d.getDay() === 0 ? 7 : d.getDay();
         }
-        const cell = resolveExchangeTargetCell(
-          req.targetTeacherEmail, req.targetDate, req.targetPeriod, dayNum
-        );
-        const peerSlot = formatQuickSlotCompact(
-          req.targetDate,
-          dayNum,
-          req.targetPeriod,
-          cell ? cell.className : (req.targetClassName || ''),
-          cell ? cell.subject : (req.targetSubject || '')
-        );
+         const cell = isTriangleRequest(req) ? null : resolveExchangeTargetCell(
+           req.targetTeacherEmail, req.targetDate, req.targetPeriod, dayNum
+         );
+         const peerSlot = formatQuickSlotCompact(
+           req.targetDate,
+           dayNum,
+           req.targetPeriod,
+           cell ? cell.className : (isTriangleRequest(req) ? req.className : (req.targetClassName || '')),
+           cell ? cell.subject : (isTriangleRequest(req) ? req.subject : (req.targetSubject || ''))
+         );
         // sent＝申請人視角；incoming＝受邀人視角；括號內放真實姓名
         const meName = role === 'sent'
           ? (req.requesterName || '我')
@@ -8938,7 +9919,7 @@ createApp({
     const getApproveRiskFlags = (req) => {
       const flags = [];
       if (!req) return flags;
-      const isEx = req.type === 'exchange' || req.type === '對調';
+      const isEx = isExchangeLikeRequest(req);
       const period = parseInt(req.requestPeriod != null ? req.requestPeriod : req.period, 10);
       try {
         if (typeof isLeaveClassRestricted === 'function' && isLeaveClassRestricted(req)) {
@@ -8972,8 +9953,8 @@ createApp({
 
     const formatRequestSummary = (req) => {
       if (!req) return '（無申請資料）';
-      const isEx = req.type === 'exchange' || req.type === '對調';
-      const typeLabel = isEx ? '調課' : '代課';
+       const isEx = isExchangeLikeRequest(req);
+       const typeLabel = isTriangleRequest(req) ? '三角調' : (isEx ? '調課' : '代課');
       const flags = getApproveRiskFlags(req);
       const risks = flags.map(f => f.label);
 
@@ -9028,11 +10009,13 @@ createApp({
       showConfirm,
       loading,
       loadingMessage,
-      getStatusText,
-      getTeacherNameByEmail,
-      restoreMutualQuotaForRows,
-      optimisticPatchRequestStatus,
-      optimisticPatchRequestStatuses,
+       getStatusText,
+       getTeacherNameByEmail,
+       isTriangleRequest,
+       restoreMutualQuotaForRows,
+       optimisticPatchRequestStatus,
+       optimisticPatchRequestStatuses,
+       optimisticPatchTriangleGroup,
       softRefreshInBackground,
       formatRequestSummary,
       formatApproveBatchRiskSummary,
@@ -9283,20 +10266,23 @@ createApp({
         if (cell.pendingType === 'exchange_in') {
           return `${head}\n⏳ 調入申請中\n${cell.pendingText || ''}`;
         }
+        if (cell.pendingType === 'triangle' || cell.pendingType === 'triangle_out' || cell.pendingType === 'triangle_in') {
+          return `${head}\n⏳ 三角調申請中\n${cell.pendingText || '等待三位教師完成同意'}`;
+        }
         return `${head}\n${cell.pendingText || '申請處理中'}`;
       }
       if (cell.isCombinedReturn) {
          return `${head}\n↩ 併班上課\n${cell.subText || ''}`;
       }
       if (cell.isSubstituted) {
-        if (cell.subType === 'exchange') {
+        if (cell.subType === 'exchange' || cell.subType === 'triangle') {
           return `${head}\n⇄ 本節已調出\n${cell.subText || ''}`;
         }
         // 被代課：不一定是請假（公假／活動／課務異動等）
         return `${head}\n➔ 本節已由他人代課\n${cell.subText || ''}`;
       }
       if (cell.isSubstitutionDuty) {
-        if (cell.subType === 'exchange') {
+        if (cell.subType === 'exchange' || cell.subType === 'triangle') {
           return `${head}\n⇄ 本節為調入課\n${cell.subText || ''}`;
         }
         if (cell.isEmptySlotAssign) {
@@ -10230,7 +11216,9 @@ createApp({
        classList, classSchedules, selectedClass, classReadonlyMode, classViewerReadonly, selectClassForView, getClassReadonlyLink, copyClassReadonlyLink,
        searchQuery, selectedSubject, teachersList, allSchedules, schoolSwaps, substitutionRecords, homeroomRecords, requestsList,
       mySentRequests, myPendingRequests, adminPendingRequests, allPendingRequests,
-      matchMode, activeCell, inputRequestDate, recommendedTeachers, recommendationLoading,
+       matchMode, activeCell, inputRequestDate, recommendedTeachers, recommendationLoading,
+       trianglePickB, trianglePickC, triangleNote, triangleSubmitting, triangleCandidates, triangleCandidateB, triangleCandidateCList, triangleCandidateC,
+        triangleParticipants, triangleLegs, trianglePreviewRows, trianglePreviewWeekDates, triangleTimetablePreview, triangleValidation, triangleReady, formatTriangleSlot, openTriangleTimetablePreview, submitTriangleRequest,
       batchSelectMode, batchSlots, showBatchConfirmModal, batchSubTeacher, batchReason, batchSubFee, batchNote,
       isMutualCover, toggleMutualCover, setMutualCover, MUTUAL_COVER_FEE, ACTIVITY_PUBLIC_FEE, QUOTA_DEDUCT_FEE, PERIOD8_FEE,
       mutualAwayClasses, mutualActivityStart, mutualActivityEnd, setMutualActivityThisWeek,
@@ -10248,15 +11236,15 @@ createApp({
       filteredRecommendedTeachers, displayedRecommendedTeachers,
        exchangeTeacherEmail, exchangeTeacherClasses, exchangePeriodId, exchangeTargetDate, exchangeWeekOffset,
        exchangeWeekdayFilter, exchangeWeekdayOptions, setExchangeWeekdayFilter, filteredExchangeList,
-       showCompareModal, showMatchModal, pendingRequestData, combinedReturnCandidates, askFirstLineText, askFirstLineDraft, selectedRecordIds, showDevDropdown, devTeacherQuery, filteredDevTeachers,
-            paperPrintDraft, paperSignatureByTeacher, openPaperPrintDraftFromCompare, openPaperPrintForRequest, openPaperPrintMutualDrafts, printPaperDraft, openPaperDraftPreview,
+       showCompareModal, showTriangleTimetablePreview, showMatchModal, pendingRequestData, combinedReturnCandidates, askFirstLineText, askFirstLineDraft, selectedRecordIds, showDevDropdown, devTeacherQuery, filteredDevTeachers,
+             paperPrintDraft, paperSignatureByTeacher, openPaperPrintDraftFromCompare, openPaperPrintForRequest, openPaperPrintMutualDrafts, openTrianglePaperPreview, printPaperDraft, openPaperDraftPreview,
            showPrintPreviewModal, printPreview, printPreviewImageBusy, openPrintPreview, closePrintPreview, confirmPrintPreview, copyPrintPreviewImage, downloadPrintPreviewImage,
       showDetailModal, consecAlertsA, consecAlertsB, detailRequest, detailSubRecord,
        showLineMessageModal, lineMessageTitle, lineMessageText, openLineMessageEditor, copyEditedLineMessage, sendEditedLineMessage,
        showSuccessModal,
        successModalTitle, successModalMessage, successFlowMode, successActionRequests, lineCopyText, hasLineTemplate, lineBatchParts,
        openSuccessPrintPreview, addSuccessToCalendar,
-      copyLineMessage, sendLineMessage, copyLineBatchPart, sendLineBatchPart, copyLineMessageForRequest, addToGoogleCalendar, downloadIcsCalendar, addEventToCalendar, printSingleRequest, showDetailForRecord, getTargetSubject, getTargetClassAndSubject, getOriginalRequestSubject, getOriginalRequestClass, getOriginalTargetSubject, getOriginalTargetClass,
+       copyLineMessage, sendLineMessage, copyLineBatchPart, sendLineBatchPart, copyLineMessageForRequest, addToGoogleCalendar, downloadIcsCalendar, addEventToCalendar, printSingleRequest, showDetailForRecord, getTargetSubject, getTargetClassAndSubject, getOriginalRequestSubject, getOriginalRequestClass, getOriginalTargetSubject, getOriginalTargetClass, getTriangleGroupRequests,
       adminSubTab,
       showImportTeachersModal, teacherExcelData, teacherExcelHeaders, teacherMappingFields, teacherImportPreview, runTeacherImportPreview, handleTeacherExcelChange, importTeachersBatch,
       isScheduleEditMode, showScheduleEditModal, scheduleForm,
@@ -10296,6 +11284,8 @@ createApp({
        selectedClassDate, selectedClassWeekDates, classWeekNumber, classSubstitutionMap, classChangeSummary, getClassChangeTypeLabel, changeClassWeek, goToClassThisWeek,
        prepCompare, startCombinedReturn, getCompareCellText, getCompareCellClass, executeSubmitRequest, isSubmitting,
        getStatusText, changeMatchMode, respondToRequest, respondToBatch, adminApprove, adminReject, cancelRequest, deleteSubstitutionRecord, loadMoreMatches,
+       isTriangleRequest, isExchangeLikeRequest,
+        triangleCandidateSearch, triangleCandidateDisplayCount, triangleCandidateOptions, triangleCandidateCOptions, triangleCandidateCReadyCount, triangleCandidateBOptions, triangleCandidateBReadyCount, displayedTriangleBOptions, displayedTriangleCOptions, triangleCandidateIsRestricted, selectTriangleCandidateB, selectTriangleCandidateC, loadMoreTriangleCandidates,
         formatRequestSummary, formatLeaveClassSlot, formatExchangeClassSlot, formatQuickTodoTitle, formatHistoryLeaveSlot, formatHistoryExchangeSlot, getRequestRiskTags, getRequestTypeTags, getApproveRiskFlags, formatApproveBatchRiskSummary, isHistoryLeaveRechanged, isHistoryExchangeRechanged, isRequestLeaveRechanged, isRequestExchangeRechanged, getCellPlainStatus, getRequestProgressSteps, isPaperFlowRequest, isLeaveClassRestricted, isExchangeClassRestricted, isHistoryLeaveRestricted, isHistoryExchangeRestricted,
       dashboardScope, dashboardStats,
       selectedAdminPendingIds, isAdminPendingSelected, toggleAdminPendingSelect, toggleSelectAllAdminPending, clearAdminPendingSelection,

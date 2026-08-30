@@ -348,7 +348,7 @@ window.DomainSchedule = (function () {
         }
         var ownOutClass;
         var ownOutSubj;
-        if (firstEdge.type === 'exchange') {
+        if (firstEdge.type === 'exchange' || firstEdge.type === 'triangle') {
           ownOutClass = String(
             (baseOut && baseOut.className)
             || (priorDuty && priorDuty.className)
@@ -377,13 +377,31 @@ window.DomainSchedule = (function () {
           ).trim();
         }
         var subText = '';
-        if (firstEdge.type === 'exchange') {
-          var otherSub = allSubs.find(function (x) {
-            return x.requestId === firstEdge.requestId
-              && (x.date !== firstEdge.date || String(x.period) !== String(firstEdge.period) || x.id !== firstEdge.id);
-          });
-          var dest = otherSub ? formatShortDateAndPeriod(otherSub.date, otherSub.period, h.getWeekDayText) : '他處';
-          subText = '⇄ 調至 ' + dest + ' ' + h.getTeacherNameByEmail(firstEdge.actualTeacherEmail);
+        if (firstEdge.type === 'exchange' || firstEdge.type === 'triangle') {
+          if (firstEdge.type === 'triangle') {
+            var triangleMove = allSubs.find(function (x) {
+              return x && x.type === 'triangle'
+                && x.triangleId && x.triangleId === firstEdge.triangleId
+                && x.actualTeacherEmail
+                && String(x.actualTeacherEmail).toLowerCase() === emailLower
+                && String(x.triangleSourceDate || '') === String(dateStr || '')
+                && parseInt(x.triangleSourcePeriod, 10) === parseInt(period, 10);
+            });
+            var triangleDestination = triangleMove
+              ? formatShortDateAndPeriod(triangleMove.date, triangleMove.period, h.getWeekDayText)
+              : '下一個目標時段';
+            subText = '△ 三角調至 ' + triangleDestination
+              + (triangleMove && triangleMove.triangleTargetTeacherName
+                ? ' ' + h.getTeacherNameByEmail(triangleMove.triangleTargetTeacherName)
+                : '');
+          } else {
+            var otherSub = allSubs.find(function (x) {
+              return x.requestId === firstEdge.requestId
+                && (x.date !== firstEdge.date || String(x.period) !== String(firstEdge.period) || x.id !== firstEdge.id);
+            });
+            var dest = otherSub ? formatShortDateAndPeriod(otherSub.date, otherSub.period, h.getWeekDayText) : '他處';
+            subText = '⇄ 調至 ' + dest + ' ' + h.getTeacherNameByEmail(firstEdge.actualTeacherEmail);
+          }
         } else if (firstEdge.subFee === '扣額度' || firstEdge.subFee === '互代不結') {
           subText = '🔁 互代: ' + h.getTeacherNameByEmail(firstEdge.actualTeacherEmail);
         } else {
@@ -456,7 +474,7 @@ window.DomainSchedule = (function () {
         // 調入主標＝實際授課教師帶到新時段的原課班科（edge 由交換轉換器寫入）。
         // 對調後網頁課表以教師／班級／科目整組換時段為準。
         // 代課：edge 存被代的那堂
-        var isExIn = incomingEdge.type === 'exchange';
+        var isExIn = incomingEdge.type === 'exchange' || incomingEdge.type === 'triangle';
         var finalClassIn = String(incomingEdge.className || (baseIn && baseIn.className) || '').trim();
         var finalSubjIn = String(incomingEdge.subject || (baseIn && baseIn.subject) || '').trim();
         // 對調 edge 缺班科：回到原位置所有者在目前日期／節次的基礎課。
@@ -471,12 +489,22 @@ window.DomainSchedule = (function () {
         if (finalClassIn || finalSubjIn || baseIn || incomingEdge) {
           var subTextIn = '';
           if (isExIn) {
-            var otherIn = allSubs.find(function (x) {
-              return x.requestId === incomingEdge.requestId
-                && (x.date !== incomingEdge.date || String(x.period) !== String(incomingEdge.period) || x.id !== incomingEdge.id);
-            });
-            var src = otherIn ? formatShortDateAndPeriod(otherIn.date, otherIn.period, h.getWeekDayText) : '他處';
-            subTextIn = '⇄ 調自 ' + src + ' ' + h.getTeacherNameByEmail(incomingEdge.originalTeacherEmail);
+            if (incomingEdge.type === 'triangle') {
+              var triangleSource = formatShortDateAndPeriod(
+                incomingEdge.triangleSourceDate,
+                incomingEdge.triangleSourcePeriod,
+                h.getWeekDayText
+              );
+              subTextIn = '△ 三角調自 ' + triangleSource + ' '
+                + h.getTeacherNameByEmail(incomingEdge.actualTeacherEmail);
+            } else {
+              var otherIn = allSubs.find(function (x) {
+                return x.requestId === incomingEdge.requestId
+                  && (x.date !== incomingEdge.date || String(x.period) !== String(incomingEdge.period) || x.id !== incomingEdge.id);
+              });
+              var src = otherIn ? formatShortDateAndPeriod(otherIn.date, otherIn.period, h.getWeekDayText) : '他處';
+              subTextIn = '⇄ 調自 ' + src + ' ' + h.getTeacherNameByEmail(incomingEdge.originalTeacherEmail);
+            }
           } else if (incomingEdge.subFee === '扣額度' || incomingEdge.subFee === '互代不結') {
             subTextIn = '🔁 互代: ' + h.getTeacherNameByEmail(incomingEdge.originalTeacherEmail);
           } else {
@@ -552,14 +580,30 @@ window.DomainSchedule = (function () {
       if (!em || !dateStr) return null;
       var key = em + '|' + dateStr + '|' + parseInt(period, 10);
       if (!map[key]) {
-        map[key] = { outReq: null, exchangeOutB: null, subIn: null, exchangeInA: null, exchangeInB: null };
+          map[key] = {
+            outReq: null,
+            exchangeOutB: null,
+            subIn: null,
+            exchangeInA: null,
+            exchangeInB: null,
+            triangleOut: null,
+            triangleIn: null
+          };
       }
       return map[key];
     }
     (pendingRequests || []).forEach(function (r) {
       if (!r) return;
-      var type = r.type;
-      var bOut = bucket(r.requesterEmail, r.requestDate, r.requestPeriod);
+       var type = r.type;
+       if (type === 'triangle' || type === '三角調') {
+         var triangleOut = bucket(r.requesterEmail, r.requestDate, r.requestPeriod);
+         if (triangleOut && !triangleOut.triangleOut) triangleOut.triangleOut = r;
+         // 來源教師會帶著自己的課到目標原課時段；目標教師的調出由其下一條 leg 表示。
+         var triangleIn = bucket(r.requesterEmail, r.targetDate, r.targetPeriod);
+         if (triangleIn && !triangleIn.triangleIn) triangleIn.triangleIn = r;
+         return;
+       }
+       var bOut = bucket(r.requesterEmail, r.requestDate, r.requestPeriod);
       if (bOut && !bOut.outReq) bOut.outReq = r;
       if (type === 'exchange') {
         var bOutB = bucket(r.targetTeacherEmail, r.targetDate, r.targetPeriod);
@@ -568,7 +612,7 @@ window.DomainSchedule = (function () {
         if (bInA && !bInA.exchangeInA) bInA.exchangeInA = r;
         var bInB = bucket(r.targetTeacherEmail, r.requestDate, r.requestPeriod);
         if (bInB && !bInB.exchangeInB) bInB.exchangeInB = r;
-      } else if (type === 'substitution') {
+      } else if (type === 'substitution' || type === 'triangle') {
         var bSub = bucket(r.targetTeacherEmail, r.requestDate, r.requestPeriod);
         if (bSub && !bSub.subIn) bSub.subIn = r;
       }
@@ -654,7 +698,7 @@ window.DomainSchedule = (function () {
     function findSubIn() {
       if (bucket) return bucket.subIn;
       return list.find(function (r) {
-        return r.type === 'substitution' &&
+        return (r.type === 'substitution' || r.type === 'triangle') &&
           r.targetTeacherEmail && r.targetTeacherEmail.toLowerCase() === emailLower &&
           r.requestDate === dateStr &&
           parseInt(r.requestPeriod) === parseInt(period);
@@ -679,6 +723,59 @@ window.DomainSchedule = (function () {
       });
     }
 
+    function findTriangleOut() {
+      return bucket ? bucket.triangleOut : list.find(function (r) {
+        return (r.type === 'triangle' || r.type === '三角調')
+          && r.requesterEmail && r.requesterEmail.toLowerCase() === emailLower
+          && r.requestDate === dateStr
+          && parseInt(r.requestPeriod) === parseInt(period);
+      });
+    }
+
+    function findTriangleIn() {
+      return bucket ? bucket.triangleIn : list.find(function (r) {
+        return (r.type === 'triangle' || r.type === '三角調')
+          && r.requesterEmail && r.requesterEmail.toLowerCase() === emailLower
+          && r.targetDate === dateStr
+          && parseInt(r.targetPeriod) === parseInt(period);
+      });
+    }
+
+    // 三角調同時包含調出與調入兩個角色，優先顯示整組待簽核狀態。
+    var triangleOut = findTriangleOut();
+    var triangleIn = findTriangleIn();
+    if (triangleOut || triangleIn) {
+      var triangleRecord = triangleOut || triangleIn;
+      var triangleText = '△ 三角調整中（需三位教師全部同意）';
+      if (triangleOut && triangleIn) {
+        return Object.assign({}, cell || {}, {
+          isPending: true,
+          pendingType: 'triangle',
+          pendingText: triangleText,
+          pendingRecord: triangleRecord,
+          triangleIncomingRecord: triangleIn
+        });
+      }
+      if (triangleOut) {
+        return Object.assign({}, cell || {}, {
+          isPending: true,
+          pendingType: 'triangle_out',
+          pendingText: triangleText,
+          pendingRecord: triangleOut
+        });
+      }
+      return Object.assign({}, cell || {}, {
+        className: triangleIn.className || (cell && cell.className) || '',
+        subject: triangleIn.subject || (cell && cell.subject) || '',
+        teacherEmail: teacherEmail,
+        isPending: true,
+        isSubstituted: true,
+        pendingType: 'triangle_in',
+        pendingText: triangleText,
+        pendingRecord: triangleIn
+      });
+    }
+
     // 1. 請假人／調出
     if (cell && !cell.isSubstituted) {
       var pReq = findOutReq();
@@ -691,7 +788,7 @@ window.DomainSchedule = (function () {
             pendingRecord: pReq
           });
         }
-        if (pReq.type === 'exchange') {
+        if (pReq.type === 'exchange' || pReq.type === 'triangle') {
           return Object.assign({}, cell, {
             isPending: true,
             pendingType: 'exchange_out',

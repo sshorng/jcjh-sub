@@ -342,6 +342,15 @@ window.FieldMap = (function () {
     return map[s] || s;
   }
 
+  function normalizeRequestType(raw) {
+    const value = String(raw == null ? '' : raw).trim();
+    const lower = value.toLowerCase();
+    if (lower === 'triangle' || value === '三角調') return 'triangle';
+    if (lower === 'exchange' || value === '對調') return 'exchange';
+    if (lower === 'substitution' || value === '代課') return 'substitution';
+    return value;
+  }
+
   function mapRequest(r) {
     const targetDay = pick(r, ['對調目標星期', 'targetDayOfWeek']);
     const targetPeriod = pick(r, ['對調目標節次', 'targetPeriod']);
@@ -365,7 +374,7 @@ window.FieldMap = (function () {
       requestDate: asDateStr(pick(r, ['異動日期', 'requestDate'])),
       requestPeriodDay: asInt(pick(r, ['異動星期', 'requestPeriodDay']), null),
       requestPeriod: asInt(pick(r, ['異動節次', 'requestPeriod']), null),
-      type: pick(r, ['異動類型', 'type']),
+      type: normalizeRequestType(pick(r, ['異動類型', 'type'])),
       specialFlow: normalizeSpecialFlow(pick(r, ['特殊流程', 'specialFlow'])),
       targetDate: asDateStr(pick(r, ['對調目標日期', 'targetDate'])),
       targetDayOfWeek: targetDay === undefined || targetDay === null || targetDay === '' ? null : asInt(targetDay, null),
@@ -380,6 +389,11 @@ window.FieldMap = (function () {
       printed: asBool(pick(r, ['是否已印', 'printed'])),
       createdAt: asTimestamp(createdAtRaw),
       updatedAt: asTimestamp(updatedAtRaw),
+      triangleId: String(pick(r, ['三角調ID', 'triangleId']) || ''),
+      triangleLegIndex: asInt(pick(r, ['三角腳次', 'triangleLegIndex']), null),
+      triangleConsentStatus: String(pick(r, ['三角同意狀態', 'triangleConsentStatus']) || ''),
+      triangleConsentAt: asTimestamp(pick(r, ['三角同意時間', 'triangleConsentAt'])),
+      triangleGroupStatus: normalizeRequestStatus(pick(r, ['三角組狀態', 'triangleGroupStatus']) || ''),
       // 舊資料仍以備註標記相容；新資料使用獨立欄位，不污染備註。
       directApprove: (function () {
         if (asBool(directApproveRaw)) return true;

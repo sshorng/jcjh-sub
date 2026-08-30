@@ -1730,20 +1730,21 @@ body {
 
 .compare-form-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 1fr);
-  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  column-gap: 16px;
+  row-gap: 0;
   align-items: start;
 }
-.compare-form-main,
+.compare-form-grid > .form-group,
 .compare-form-note {
   min-width: 0;
 }
-.compare-form-main .form-group,
-.compare-form-note {
+.compare-form-grid > .form-group {
   margin-bottom: 16px;
 }
-.compare-form-note {
-  margin-bottom: 0;
+.compare-form-leave-time,
+.compare-form-exchange-date {
+  grid-column: 1 / -1;
 }
 
 /* 班級課表：多堂並陳 */

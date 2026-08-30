@@ -11,6 +11,28 @@ const source = fs.readFileSync(path.join(root, 'code.gs'), 'utf8');
 
 new vm.Script(source, { filename: 'code.gs' });
 assert.match(source, /jobTitle: String\(t\["職務"\] \|\| t\.jobTitle \|\| ""\)\.trim\(\)/, 'match candidates should include teacher job title');
+const triangleInputStart = source.indexOf('function triangleInputRows_');
+const triangleInputEnd = source.indexOf('function triangleGroupRowsForRequest_', triangleInputStart);
+assert.ok(triangleInputStart >= 0 && triangleInputEnd > triangleInputStart, 'triangle input builder must remain discoverable');
+const triangleInputSource = source.slice(triangleInputStart, triangleInputEnd);
+assert.match(triangleInputSource, /payload\.reason \|\| payload\["請假事由"\].*\|\| "請假"/, 'triangle requests should use the entered reason and default to leave');
+assert.match(triangleInputSource, /"請假事由": triangleReason/, 'triangle rows should persist the selected reason');
+assert.match(triangleInputSource, /"備註": triangleText_\(raw\.note \|\| raw\["備註"\]\) \|\| triangleNote/, 'triangle rows should persist the entered reason note');
+const triangleSubmitStart = source.indexOf('action === "submitTriangleRequest"');
+const triangleSubmitEnd = source.indexOf('} else if (action === "submitRequest")', triangleSubmitStart);
+assert.ok(triangleSubmitStart >= 0 && triangleSubmitEnd > triangleSubmitStart, 'triangle submit action must remain discoverable');
+const triangleSubmitSource = source.slice(triangleSubmitStart, triangleSubmitEnd);
+assert.doesNotMatch(triangleSubmitSource, /紙本模式暫不提供/, 'paper mode must support triangle submissions');
+assert.match(triangleSubmitSource, /var trianglePaperFlow = !isOnlineSubstitutionEnabled_\(\)/, 'triangle paper flow must follow the system mode');
+assert.match(triangleSubmitSource, /row\["三角同意狀態"\] = "paper_pending"/, 'paper triangle rows must wait for physical signatures');
+assert.match(triangleSubmitSource, /status: trianglePaperFlow \? "pending_admin" : "pending_teacher"/, 'paper triangle rows must go to admin review');
+assert.match(triangleSubmitSource, /physicalSignatureRequired: trianglePaperFlow/, 'paper triangle response must identify physical signatures');
+const triangleApproveStart = source.indexOf('function approveTriangleRequest_');
+const triangleApproveEnd = source.indexOf('function rejectTriangleRequest_', triangleApproveStart);
+assert.ok(triangleApproveStart >= 0 && triangleApproveEnd > triangleApproveStart, 'triangle approval helper must remain discoverable');
+const triangleApproveSource = source.slice(triangleApproveStart, triangleApproveEnd);
+assert.match(triangleApproveSource, /var paperFlow = rows\.every\(function \(row\) \{ return isPaperFlowRow_\(row\); \}\)/, 'paper triangle approval must be recognized');
+assert.match(triangleApproveSource, /if \(!paperFlow && !triangleGroupAllAgreed_\(rows\)\)/, 'online triangle approval must still require all digital consents');
 
 const flowStart = source.indexOf('var SPECIAL_FLOW_COMBINED_RETURN_');
 const flowEnd = source.indexOf('// ----------------- 姓名鍵資料契約 -----------------', flowStart);

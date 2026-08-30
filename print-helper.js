@@ -101,6 +101,14 @@ function getPrintAudienceLabels(group, ctx) {
     }));
   };
   const classes = uniquePrintValues((rows || []).map(row => row.cls || row.className));
+  if (group && group.isTriangle) {
+    return [
+      '教學組留存（請簽名）',
+      '三角調教師：' + names('original').join('、'),
+      '實際授課教師：' + names('actual').join('、'),
+      '班級：' + classes.join('、')
+    ];
+  }
   if (group && group.isExchange) {
     const requesterKey = String(group.requesterEmail || '').trim().toLowerCase();
     const requesterRecord = (rows || []).find(row => /_2$/.test(String(row && row.id || ''))) || rows[0] || {};
@@ -312,6 +320,7 @@ function getPrintSlotRows(group) {
 function resolvePrintProcessingType(group, rows) {
   const explicit = String(group && (group.processingType || group.processType) || '').trim().toLowerCase();
   const type = explicit || String((group && group.records && group.records[0] && group.records[0].type) || '').trim().toLowerCase();
+  if ((group && group.isTriangle) || type === 'triangle' || type === '三角調') return '調課';
   if (type === 'exchange' || type === '對調' || type === '調課' || /調課/.test(explicit)) return '調課';
   if (type === 'makeup' || type === '補課' || /補課/.test(explicit)) return '補課';
   if ((rows || []).some(row => /補課/.test(String(row && row.reason || '')))) return '補課';
@@ -366,6 +375,10 @@ function getOfficialGridLayout() {
     colIndex += count;
   });
   return { dayCenters, dayHalfWidths };
+}
+
+function getOfficialArrowMarkerHtml(markerId) {
+  return `<defs><marker id="${markerId}" markerWidth="2.4" markerHeight="2.4" refX="2.4" refY="1.2" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M 0 0 L 2.4 1.2 L 0 2.4" fill="none" stroke="#111827" stroke-width=".25" stroke-linejoin="round"></path></marker></defs>`;
 }
 
 function getExchangeArrowSvg(group, rows, weekDates) {
@@ -428,7 +441,69 @@ function getExchangeArrowSvg(group, rows, weekDates) {
   const endEdge = edgePoint(end, start, endpointInset);
   const markerId = `exchange-arrow-${String(group.requestId || 'route').replace(/[^a-zA-Z0-9_-]+/g, '_')}`;
   const number = value => Number(value.toFixed(2));
-  return `<svg xmlns="http://www.w3.org/2000/svg" class="official-exchange-overlay" aria-hidden="true" viewBox="0 0 100 ${OFFICIAL_GRID_HEIGHT_MM}" preserveAspectRatio="none"><defs><marker id="${markerId}" markerWidth="2.4" markerHeight="2.4" refX="2.4" refY="1.2" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M 0 0 L 2.4 1.2 L 0 2.4" fill="none" stroke="#111827" stroke-width=".25" stroke-linejoin="round"></path></marker></defs><line class="official-exchange-arrow-line" x1="${number(startEdge.x)}" y1="${number(startEdge.y)}" x2="${number(endEdge.x)}" y2="${number(endEdge.y)}" marker-start="url(#${markerId})" marker-end="url(#${markerId})"></line></svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" class="official-exchange-overlay" aria-hidden="true" viewBox="0 0 100 ${OFFICIAL_GRID_HEIGHT_MM}" preserveAspectRatio="none">${getOfficialArrowMarkerHtml(markerId)}<line class="official-exchange-arrow-line" x1="${number(startEdge.x)}" y1="${number(startEdge.y)}" x2="${number(endEdge.x)}" y2="${number(endEdge.y)}" marker-start="url(#${markerId})" marker-end="url(#${markerId})"></line></svg>`;
+}
+
+function getTriangleArrowSvg(group, rows, weekDates) {
+  if (!group || !group.isTriangle) return '';
+  const dateLists = Array.isArray(weekDates && weekDates[0])
+    ? weekDates
+    : (weekDates || []).map(value => value ? [value] : []);
+  const layout = getOfficialGridLayout();
+  const findDayIndex = value => {
+    const date = getPrintDateParts(value);
+    if (!date) return -1;
+    return dateLists.findIndex(values => (values || []).some(candidate => {
+      const parsed = getPrintDateParts(candidate);
+      return parsed && parsed.key === date.key;
+    }));
+  };
+  const toPoint = (date, period) => {
+    const dayIndex = findDayIndex(date);
+    const periodValue = parseInt(period, 10);
+    if (dayIndex < 0 || periodValue < 1 || periodValue > 8) return null;
+    return {
+      x: layout.dayCenters[dayIndex],
+      y: (periodValue - 1) * OFFICIAL_GRID_PERIOD_MM + OFFICIAL_GRID_PERIOD_MM / 2,
+      halfWidth: layout.dayHalfWidths[dayIndex],
+      halfHeight: OFFICIAL_GRID_PERIOD_MM / 2
+    };
+  };
+  const edgeDistanceFor = (from, to) => {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const scaleX = dx ? from.halfWidth / Math.abs(dx) : Infinity;
+    const scaleY = dy ? from.halfHeight / Math.abs(dy) : Infinity;
+    const length = Math.hypot(dx, dy) || 1;
+    return { dx, dy, length, edgeDistance: Math.min(scaleX, scaleY) * length };
+  };
+  const edgePoint = (from, to, inset) => {
+    const vector = edgeDistanceFor(from, to);
+    const distance = Math.max(0, vector.edgeDistance - inset);
+    return {
+      x: from.x + (vector.dx / vector.length) * distance,
+      y: from.y + (vector.dy / vector.length) * distance
+    };
+  };
+  const number = value => Number(value.toFixed(2));
+  const markerId = `triangle-arrow-${String(group.requestId || 'route').replace(/[^a-zA-Z0-9_-]+/g, '_')}`;
+  const lines = [];
+  (rows || []).forEach(row => {
+    const source = toPoint(row.sourceDate || row.date, row.sourcePeriod != null ? row.sourcePeriod : row.period);
+    const target = toPoint(row.targetDate || row.triangleTargetDate,
+      row.targetPeriod != null ? row.targetPeriod : row.triangleTargetPeriod);
+    if (!source || !target || (source.x === target.x && source.y === target.y)) return;
+    const centerDistance = Math.hypot(target.x - source.x, target.y - source.y) || 1;
+    const sourceBoundary = edgeDistanceFor(source, target).edgeDistance;
+    const targetBoundary = edgeDistanceFor(target, source).edgeDistance;
+    const boundaryGap = Math.max(0, centerDistance - sourceBoundary - targetBoundary);
+    const inset = 0.35 + Math.max(0, (5.6 - boundaryGap) / 2);
+    const start = edgePoint(source, target, inset);
+    const end = edgePoint(target, source, inset);
+    lines.push(`<line class="official-exchange-arrow-line" x1="${number(start.x)}" y1="${number(start.y)}" x2="${number(end.x)}" y2="${number(end.y)}" marker-end="url(#${markerId})"></line>`);
+  });
+  if (!lines.length) return '';
+  return `<svg xmlns="http://www.w3.org/2000/svg" class="official-exchange-overlay" aria-hidden="true" viewBox="0 0 100 ${OFFICIAL_GRID_HEIGHT_MM}" preserveAspectRatio="none">${getOfficialArrowMarkerHtml(markerId)}${lines.join('')}</svg>`;
 }
 
 function generateFormHtml(g, currentType, ctx) {
@@ -441,6 +516,7 @@ function generateFormHtml(g, currentType, ctx) {
     : function () { return ''; };
   const rows = getPrintSlotRows(g);
   const sourceRecords = (g && g.records && g.records.length) ? g.records : rows;
+  const isTriangle = !!(g && g.isTriangle);
   const serials = uniquePrintValues([
     ...((g && g.serials) || []),
     ...(sourceRecords || []).map(resolvePrintSerial),
@@ -456,9 +532,11 @@ function generateFormHtml(g, currentType, ctx) {
       : sourceRecords[0]);
   const applicantKey = String((g && g.requesterEmail) || getPrintTeacherKey(applicantRecord, 'original') || '').trim();
   const rawApplicantName = String((g && g.requesterName) || '').trim();
-  const applicantName = cleanPrintTeacherName(
-    rawApplicantName && !/@/.test(rawApplicantName) ? rawApplicantName : getName(applicantKey)
-  );
+  const applicantName = isTriangle
+    ? cleanPrintTeacherName(rawApplicantName || getName(applicantKey) || applicantKey || '三角調課')
+    : cleanPrintTeacherName(
+      rawApplicantName && !/@/.test(rawApplicantName) ? rawApplicantName : getName(applicantKey)
+    );
   const applicantJob = String((g && g.jobTitle) || getJobTitle(applicantKey) || '').trim() || '教師';
   const processingType = resolvePrintProcessingType(g || {}, rows);
   const reasons = uniquePrintValues([
@@ -467,16 +545,23 @@ function generateFormHtml(g, currentType, ctx) {
     g && g.reason
   ]);
   const isCombinedReturn = [...sourceRecords, ...rows].some(isPrintCombinedReturnRecord);
-  const reason = isCombinedReturn ? '請假' : (reasons[0] || '');
-  const isLeave = isCombinedReturn || (reasons.length ? reasons.every(isPrintLeaveLikeReason) : true);
+  const reason = isCombinedReturn ? '請假' : (reasons[0] || '請假');
+  const isLeave = isCombinedReturn || (reasons.length
+    ? reasons.every(isPrintLeaveLikeReason)
+    : true);
   const notes = uniquePrintValues([
     g && g.note,
     ...(sourceRecords || []).map(record => record && record.note)
   ]);
   const administrativeNote = notes.join('；');
   const dateSourceRecords = rows.length ? rows : sourceRecords;
-  const rangeRecords = g && g.isExchange
-    ? dateSourceRecords.filter(record => getPrintTeacherKey(record, 'original').toLowerCase() === applicantKey.toLowerCase())
+  const rangeRecords = g && (g.isExchange || g.isTriangle)
+    ? dateSourceRecords.filter(record => {
+      const teacherKey = g.isTriangle
+        ? getPrintTeacherKey(record, 'actual')
+        : getPrintTeacherKey(record, 'original');
+      return teacherKey.toLowerCase() === applicantKey.toLowerCase();
+    })
     : dateSourceRecords;
   const dateRecords = (rangeRecords.length ? rangeRecords : sourceRecords).filter(record => getPrintDateParts(record.date));
   const dates = dateRecords.map(record => getPrintDateParts(record.date).key).sort();
@@ -533,7 +618,9 @@ function generateFormHtml(g, currentType, ctx) {
     : uniquePrintValues([reason === '請假' ? '' : reason, administrativeNote]).join('；') || '課務調整';
   const reasonLine = `假別：${isLeave ? escapePrintHtml(reason || '請假') : ''}`;
   const instructions = '1.請於填寫線上假單時填妥課務安排情形，紙本送教務處備查。2.請先確認班級特教學生課務，有特教生抽離請通知特教組。3.代課以同科教師為原則，並先行將課務交代該代課老師。4.補課請自覓時間，於二週內完成。';
-  const exchangeArrowSvg = getExchangeArrowSvg(g, rows, dateLists);
+  const exchangeArrowSvg = isTriangle
+    ? getTriangleArrowSvg(g, rows, dateLists)
+    : getExchangeArrowSvg(g, rows, dateLists);
 
   return `
     <div class="substitute-form official-substitution-form${reprintClass}">
@@ -576,12 +663,20 @@ function generateFormHtml(g, currentType, ctx) {
 /** 申請單 ID：requestId 優先，否則剝掉 _1/_2 */
 function resolvePrintRequestId(r) {
   if (!r) return '';
+  if (r.triangleId != null && String(r.triangleId).trim() !== '') return String(r.triangleId).trim();
   if (r.requestId != null && String(r.requestId).trim() !== '') return String(r.requestId).trim();
   return String(r.id || '').replace(/_[12]$/, '');
 }
 
+function isPrintTriangleRec(r) {
+  if (!r) return false;
+  const type = String(r.type || '').trim().toLowerCase();
+  return type === 'triangle' || type === '三角調' || !!String(r.triangleId || '').trim();
+}
+
 function isPrintExchangeRec(r) {
   if (!r) return false;
+  if (isPrintTriangleRec(r)) return false;
   const t = String(r.type || '');
   if (t === 'exchange' || t === '對調') return true;
   // 後備：id 為 xxx_1 / xxx_2 且有對調特徵
@@ -593,6 +688,7 @@ function normalizePrintMergeKey(value) {
 }
 
 function getPrintRecordTypeKey(record) {
+  if (isPrintTriangleRec(record)) return 'triangle';
   if (isPrintExchangeRec(record)) return 'exchange';
   const type = String(record && record.type || '').trim().toLowerCase();
   const reason = String(record && record.reason || '').trim();
@@ -605,6 +701,7 @@ function getPrintMergeKey(record, ctx) {
   const requestId = resolvePrintRequestId(record);
   const rowId = String(record && record.id || '').trim();
   if (type === 'exchange') return `exchange:${requestId || rowId}`;
+  if (type === 'triangle') return `triangle:${requestId || rowId}`;
 
   const week = getPrintWeekKey(record && record.date);
   const combinedReturn = isPrintCombinedReturnRecord(record);
@@ -649,11 +746,13 @@ function buildPrintGroups(recordsToPrint, allSubs, ctx) {
 
   records.forEach(function (record) {
     const exchange = isPrintExchangeRec(record);
+    const triangle = isPrintTriangleRec(record);
     const requestId = resolvePrintRequestId(record);
     const key = getPrintMergeKey(record, ctx);
     if (!groups[key]) {
       groups[key] = {
         isExchange: exchange,
+        isTriangle: triangle,
         requestId: requestId || record.id,
         serials: [],
         leaveEmails: [],
@@ -674,7 +773,14 @@ function buildPrintGroups(recordsToPrint, allSubs, ctx) {
 
   const groupList = Object.values(groups);
   groupList.forEach(function (group) {
-    if (group.isExchange && group.records.length === 1) {
+    if (group.isTriangle) {
+      const triangleId = String(group.requestId || '');
+      (allSubs || []).filter(function (candidate) {
+        return candidate && resolvePrintRequestId(candidate) === triangleId;
+      }).forEach(function (candidate) {
+        addRecord(group, candidate);
+      });
+    } else if (group.isExchange && group.records.length === 1) {
       const current = group.records[0];
       const requestId = String(group.requestId || '');
       const base = String(current.id || '').replace(/_[12]$/, '');
@@ -688,8 +794,12 @@ function buildPrintGroups(recordsToPrint, allSubs, ctx) {
       if (peer) addRecord(group, peer);
     }
 
-    group.records.sort((a, b) => String(a.date || '').localeCompare(String(b.date || ''))
-      || (parseInt(a.period, 10) || 0) - (parseInt(b.period, 10) || 0));
+    group.records.sort((a, b) => group.isTriangle
+      ? ((parseInt(a.triangleLegIndex, 10) || 0) - (parseInt(b.triangleLegIndex, 10) || 0))
+        || String(a.date || '').localeCompare(String(b.date || ''))
+        || (parseInt(a.period, 10) || 0) - (parseInt(b.period, 10) || 0)
+      : String(a.date || '').localeCompare(String(b.date || ''))
+        || (parseInt(a.period, 10) || 0) - (parseInt(b.period, 10) || 0));
     group.reasons = uniquePrintValues(group.reasons);
     group.reason = group.reasons[0] || '請假';
     group.leaveEmail = group.leaveEmails[0] || '';
@@ -698,17 +808,32 @@ function buildPrintGroups(recordsToPrint, allSubs, ctx) {
     const applicant = group.isExchange
       ? (group.records.find(record => /_2$/.test(String(record.id || ''))) || group.records[0])
       : group.records[0];
-    group.requesterEmail = getPrintTeacherKey(applicant, 'original');
-    group.requesterName = applicant && applicant.originalTeacherName || '';
+    const triangleInitiator = group.isTriangle
+      ? (group.records.find(record => String(record.triangleInitiatorEmail || '').trim())
+        || group.records.find(record => parseInt(record.triangleLegIndex, 10) === 1)
+        || group.records[0])
+      : null;
+    group.requesterEmail = group.isTriangle
+      ? String((triangleInitiator && (triangleInitiator.triangleInitiatorEmail || triangleInitiator.actualTeacherEmail)) || '').trim()
+      : getPrintTeacherKey(applicant, 'original');
+    group.requesterName = group.isTriangle
+      ? cleanPrintTeacherName((triangleInitiator && (triangleInitiator.triangleInitiatorName || triangleInitiator.actualTeacherName)) || '')
+      : (applicant && applicant.originalTeacherName || '');
     group.periods = group.records.map(function (record) {
       return {
-        date: record.date,
-        num: parseInt(record.period, 10),
-        cls: record.formClassName || record.className,
-        sub: record.formSubject || record.subject,
+        date: group.isTriangle ? (record.triangleSourceDate || record.sourceDate || record.date) : record.date,
+        num: parseInt(group.isTriangle
+          ? (record.triangleSourcePeriod != null ? record.triangleSourcePeriod : record.period)
+          : record.period, 10),
+        cls: group.isTriangle ? record.className : (record.formClassName || record.className),
+        sub: group.isTriangle ? record.subject : (record.formSubject || record.subject),
         actualTeacherEmail: getPrintTeacherKey(record, 'actual'),
         actualTeacherName: record.actualTeacherName || '',
-         leaveEmail: getPrintTeacherKey(record, 'original'),
+        sourceDate: record.triangleSourceDate || record.sourceDate || record.date,
+        sourcePeriod: record.triangleSourcePeriod != null ? record.triangleSourcePeriod : record.period,
+        targetDate: record.triangleTargetDate || record.targetDate || '',
+        targetPeriod: record.triangleTargetPeriod != null ? record.triangleTargetPeriod : (record.targetPeriod != null ? record.targetPeriod : ''),
+        leaveEmail: getPrintTeacherKey(record, 'original'),
          reason: record.reason || group.reason,
          leaveTimeType: record.leaveTimeType || '',
          leaveTime: record.leaveTime || '',

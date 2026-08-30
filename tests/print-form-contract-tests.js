@@ -34,7 +34,8 @@ vm.runInContext(printHelperSource, context, {
 
 const names = {
   'owner@school.example': '陳小華',
-  'invitee@school.example': '王小明'
+  'invitee@school.example': '王小明',
+  'third@school.example': '林小美'
 };
 const fixtureContext = {
   getTeacherNameByEmail: email => names[String(email || '').toLowerCase()] || String(email || ''),
@@ -143,7 +144,8 @@ assert.match(styleSource, /\.official-serial-mark \{[^}]*right: 4\.78mm;[^}]*bot
 assert.match(appSource, /data:image\/svg\+xml;charset=utf-8,['"] \+ encodeURIComponent\(svg\)/);
 assert.doesNotMatch(appSource, /createObjectURL\(svgBlob\)/);
 assert.match(printHelperSource, /const signatureSide = 'actual';/);
-assert.match(indexSource, /print-helper\.js\?v=20260829-paper3/);
+assert.match(printHelperSource, /function getOfficialArrowMarkerHtml\(markerId\)/);
+assert.match(indexSource, /print-helper\.js\?v=20260829-paper4/);
 assert.match(indexSource, /<title>建成國中線上課表系統<\/title>/);
 assert.match(indexSource, /application-name" content="JCJH Timetable"/);
 assert.equal((indexSource.match(/class="mini-grid-date"/g) || []).length, 12, '對照頁一般與左右兩張跨週課表都應顯示日期');
@@ -164,6 +166,16 @@ assert.ok(exchangeHistorySlotStart >= 0 && exchangeHistorySlotEnd > exchangeHist
 assert.match(indexSource.slice(exchangeHistorySlotStart, exchangeHistorySlotEnd), /isHistoryExchangeRechanged\(rec\)/);
 assert.equal((indexSource.match(/isRequestLeaveRechanged\(req\)/g) || []).length, 3, 'all request lists must mark the original endpoint independently');
 assert.equal((indexSource.match(/isRequestExchangeRechanged\(req\)/g) || []).length, 3, 'all request lists must mark the target endpoint independently');
+const triangleUiStart = indexSource.indexOf("matchMode === 'triangle'");
+const triangleUiEnd = indexSource.indexOf('<!-- 調課模式列表 -->', triangleUiStart);
+assert.ok(triangleUiStart >= 0 && triangleUiEnd > triangleUiStart, 'triangle UI block must remain discoverable');
+const triangleUiSource = indexSource.slice(triangleUiStart, triangleUiEnd);
+assert.match(triangleUiSource, /v-model="triangleReason"/);
+assert.match(triangleUiSource, /leaveReasonOptions/);
+assert.match(triangleUiSource, /未填寫時預設請假/);
+assert.match(triangleUiSource, /事由/);
+assert.match(indexSource, /紙本模式：請確認三位教師都已在調課單簽名/);
+assert.doesNotMatch(triangleUiSource, /#7c3aed|#6d28d9|#5b21b6|#faf5ff|#ddd6fe|#f5f3ff/);
 assert.match(indexSource, /getApproveRiskFlags\(req\)\.filter\(f => \(f\.level === 'warn' \|\| f\.level === 'danger'\) && f\.key !== 'chain'\)/);
 assert.match(appSource, /const returnTo = showDetailModal\.value \? 'detail' : '';/);
 assert.match(styleSource, /\.hist-actions \{[^}]*flex-wrap:\s*nowrap/);
@@ -331,6 +343,46 @@ const differentModeGroups = context.window.buildPrintGroups([
   Object.assign({}, substitution.records[0], { id: 'request-5', requestId: 'request-5', date: '2026-09-08', reason: '課務調整' })
 ], []);
 assert.equal(differentModeGroups.length, 2, 'leave and course-adjustment rows must remain separate');
+
+const triangleRecords = [
+  { id: 'TRI-1-1', triangleId: 'TRI-1', triangleLegIndex: 1, triangleInitiatorEmail: 'owner@school.example', triangleInitiatorName: '陳小華', type: 'triangle', serial: 'TRI-1', originalTeacherEmail: 'invitee@school.example', originalTeacherName: '王小明', actualTeacherEmail: 'owner@school.example', actualTeacherName: '陳小華', date: '2026-09-07', period: 1, triangleSourceDate: '2026-09-07', triangleSourcePeriod: 1, triangleTargetDate: '2026-09-08', triangleTargetPeriod: 2, className: '801', subject: '國文', reason: '課務調整' },
+  { id: 'TRI-1-2', triangleId: 'TRI-1', triangleLegIndex: 2, triangleInitiatorEmail: 'owner@school.example', triangleInitiatorName: '陳小華', type: 'triangle', serial: 'TRI-1', originalTeacherEmail: 'third@school.example', originalTeacherName: '林小美', actualTeacherEmail: 'invitee@school.example', actualTeacherName: '王小明', date: '2026-09-08', period: 2, triangleSourceDate: '2026-09-08', triangleSourcePeriod: 2, triangleTargetDate: '2026-09-09', triangleTargetPeriod: 3, className: '802', subject: '英文', reason: '課務調整' },
+  { id: 'TRI-1-3', triangleId: 'TRI-1', triangleLegIndex: 3, triangleInitiatorEmail: 'owner@school.example', triangleInitiatorName: '陳小華', type: 'triangle', serial: 'TRI-1', originalTeacherEmail: 'owner@school.example', originalTeacherName: '陳小華', actualTeacherEmail: 'third@school.example', actualTeacherName: '林小美', date: '2026-09-09', period: 3, triangleSourceDate: '2026-09-09', triangleSourcePeriod: 3, triangleTargetDate: '2026-09-07', triangleTargetPeriod: 1, className: '803', subject: '數學', reason: '課務調整' }
+];
+const triangleGroups = context.window.buildPrintGroups([triangleRecords[0]], triangleRecords);
+assert.equal(triangleGroups.length, 1, '同一 triangleId 應合併成一張三角調課單');
+assert.equal(triangleGroups[0].isTriangle, true);
+assert.equal(triangleGroups[0].records.length, 3);
+assert.equal(triangleGroups[0].periods.length, 3);
+const triangleOutput = context.window.generateFormHtml(triangleGroups[0], 'NoticeClass', fixtureContext);
+assert.match(triangleOutput, /陳小華老師/);
+assert.match(triangleOutput, /■調課/);
+assert.match(triangleOutput, /■僅課務申請\(非請假\)/);
+assert.doesNotMatch(triangleOutput, /■請假/);
+assert.match(triangleOutput, /801/);
+assert.match(triangleOutput, /英文/);
+assert.match(triangleOutput, /class="official-exchange-overlay"/);
+assert.equal((triangleOutput.match(/class="official-exchange-arrow-line"/g) || []).length, 3);
+assert.match(triangleOutput, /orient="auto-start-reverse"/);
+assert.match(triangleOutput, /fill="none" stroke="#111827" stroke-width="\.25"/);
+assert.equal(context.window.getPrintAudienceLabels(triangleGroups[0], fixtureContext).slice(1, 3).join('\n'), '三角調教師：王小明、林小美、陳小華\n實際授課教師：陳小華、王小明、林小美');
+
+const triangleLeaveRecords = triangleRecords.map(record => Object.assign({}, record, { reason: '公假' }));
+const triangleLeaveGroup = context.window.buildPrintGroups([triangleLeaveRecords[0]], triangleLeaveRecords)[0];
+const triangleLeaveOutput = context.window.generateFormHtml(triangleLeaveGroup, 'NoticeClass', fixtureContext);
+assert.match(triangleLeaveOutput, /■請假/);
+assert.match(triangleLeaveOutput, /□僅課務申請\(非請假\)/);
+assert.match(triangleLeaveOutput, /假別：公假/);
+assert.doesNotMatch(triangleLeaveOutput, /原因：公假/);
+assert.match(triangleLeaveOutput, /自115年9月7日/);
+
+const triangleDefaultRecords = triangleRecords.map(record => Object.assign({}, record, { reason: '' }));
+const triangleDefaultGroup = context.window.buildPrintGroups([triangleDefaultRecords[0]], triangleDefaultRecords)[0];
+const triangleDefaultOutput = context.window.generateFormHtml(triangleDefaultGroup, 'NoticeClass', fixtureContext);
+assert.match(triangleDefaultOutput, /■請假/);
+assert.match(triangleDefaultOutput, /□僅課務申請\(非請假\)/);
+assert.match(triangleDefaultOutput, /假別：請假/);
+assert.doesNotMatch(triangleDefaultOutput, /■僅課務申請\(非請假\)/);
 
 const merged = context.window.buildPrintGroups([
   substitution.records[0],

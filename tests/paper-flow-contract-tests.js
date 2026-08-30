@@ -1115,9 +1115,9 @@ function runRechangeLabelTest() {
   const end = source.indexOf('const formatHistoryLeaveSlot =', start);
   assert.ok(start >= 0 && end > start, 'rechange detector block must remain discoverable');
   const context = {
-    substitutionRecords: ref([{
-       id: 'exchange-1_2',
-       requestId: 'exchange-1',
+     substitutionRecords: ref([{
+        id: 'exchange-1_2',
+        requestId: 'exchange-1',
        date: '2026-09-04',
        period: 2,
        originalTeacherEmail: '申請人',
@@ -1129,15 +1129,24 @@ function runRechangeLabelTest() {
        date: '2026-09-02',
        period: 5,
        originalTeacherEmail: '受邀人',
-       actualTeacherEmail: '申請人',
-       className: '904'
+        actualTeacherEmail: '申請人',
+        className: '904'
+      }]),
+     requestsList: ref([{
+       id: 'admin-rejected-prior',
+       status: 'admin_rejected'
      }]),
     String,
     Number,
     Array,
     Math,
     parseInt,
-    isNaN
+     isNaN,
+     isExchangeLikeRequest: req => {
+       const type = String(req && req.type || '').trim().toLowerCase();
+       return type === 'exchange' || type === '對調' || type === 'triangle'
+         || type === '三角調' || !!(req && req.triangleId);
+     }
   };
   vm.createContext(context);
   const detector = vm.runInContext(`(() => {
@@ -1167,10 +1176,29 @@ function runRechangeLabelTest() {
   };
   assert.equal(detector.isRequestLeaveRechanged(request), false, 'current source edge must not be marked rechanged');
   assert.equal(detector.isRequestExchangeRechanged(request), false, 'current target edge must not be marked rechanged');
-  assert.equal(detector.isHistoryLeaveRechanged(history), false, 'current history source edge must not be marked rechanged');
-  assert.equal(detector.isHistoryExchangeRechanged(history), false, 'current history target edge must not be marked rechanged');
-  context.substitutionRecords.value.push({
-    requestId: 'exchange-0',
+   assert.equal(detector.isHistoryLeaveRechanged(history), false, 'current history source edge must not be marked rechanged');
+   assert.equal(detector.isHistoryExchangeRechanged(history), false, 'current history target edge must not be marked rechanged');
+   context.substitutionRecords.value.push({
+     requestId: 'admin-rejected-prior',
+     status: 'approved',
+     date: '2026-09-04',
+     period: 2,
+     originalTeacherEmail: '申請人',
+     actualTeacherEmail: '其他教師',
+     className: '701'
+   }, {
+     requestId: 'withdrawn-prior',
+     status: 'withdrawn',
+     date: '2026-09-02',
+     period: 5,
+     originalTeacherEmail: '受邀人',
+     actualTeacherEmail: '其他教師',
+     className: '702'
+   });
+   assert.equal(detector.isRequestLeaveRechanged(request), false, 'an admin-rejected prior change must not mark the source endpoint');
+   assert.equal(detector.isRequestExchangeRechanged(request), false, 'a withdrawn prior change must not mark the target endpoint');
+   context.substitutionRecords.value.push({
+     requestId: 'exchange-0',
     date: '2026-09-04',
     period: 2,
     originalTeacherEmail: '申請人',

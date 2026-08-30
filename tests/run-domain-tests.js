@@ -16,6 +16,7 @@ const FILES = [
   'domain-match.js',
   'domain-school-swap.js',
   'domain-schedule.js',
+  'domain-triangle.js',
   'domain-class-away.js',
   'domain-activity-cover.js',
   'domain-billing.js',

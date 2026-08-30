@@ -13,12 +13,18 @@ window.UiApproval = (function () {
     var loadingMessage = deps.loadingMessage;
     var getStatusText = deps.getStatusText;
     var getTeacherNameByEmail = deps.getTeacherNameByEmail || function (value) { return value || ''; };
+    var isTriangleRequest = deps.isTriangleRequest || function (request) {
+      return !!(request && (request.type === 'triangle' || request.type === '三角調' || request.triangleId));
+    };
     var restoreMutualQuotaForRows = deps.restoreMutualQuotaForRows || function () {};
     var optimisticPatchRequestStatus = deps.optimisticPatchRequestStatus;
     var optimisticPatchRequestStatuses = deps.optimisticPatchRequestStatuses || function (updates) {
       (updates || []).forEach(function (u) {
         if (u) optimisticPatchRequestStatus(u.id, u.status);
       });
+    };
+    var optimisticPatchTriangleGroup = deps.optimisticPatchTriangleGroup || function (request, status) {
+      if (request) optimisticPatchRequestStatus(request.id, status);
     };
     var softRefreshInBackground = deps.softRefreshInBackground || function () {};
     var formatRequestSummary = deps.formatRequestSummary || function () { return ''; };
@@ -67,8 +73,9 @@ window.UiApproval = (function () {
     function readAdminCheckedIds() {
       var ids = [];
       try {
-        document.querySelectorAll('.admin-select-cb:checked').forEach(function (el) {
-          var id = el.getAttribute('data-req-id') || el.value;
+      document.querySelectorAll('.admin-select-cb:checked').forEach(function (el) {
+        if (el.disabled) return;
+        var id = el.getAttribute('data-req-id') || el.value;
           if (id) ids.push(id);
         });
       } catch (e) { /* ignore */ }
@@ -100,6 +107,7 @@ window.UiApproval = (function () {
       }
       try {
         document.querySelectorAll('.admin-select-cb').forEach(function (el) {
+          if (el.disabled) return;
           el.checked = on;
         });
         var allBox = document.querySelector('.admin-select-all');
@@ -187,15 +195,32 @@ window.UiApproval = (function () {
             );
           } else {
             var status = respStatus === 'agree' ? 'agree' : 'decline';
-            await callGasApi('respondToRequest', { requestId: id, response: status });
-            showToast(
-              respStatus === 'agree'
-                ? '🎉 您已成功【同意】此調代課邀請，目前已送交教學組核准出單。'
-                : '已拒絕此項調代課邀請。',
-              'success'
-            );
-            optimisticPatchRequestStatus(id, respStatus === 'agree' ? 'pending_admin' : 'rejected');
-            if (respStatus !== 'agree') restoreMutualQuotaForRows(req);
+         var responseResult = await callGasApi(
+           isTriangleRequest(req) ? 'respondTriangleRequest' : 'respondToRequest',
+           { requestId: id, response: status }
+         );
+         if (isTriangleRequest(req)) {
+           var triangleStatus = (responseResult && responseResult.groupStatus)
+             || (status === 'agree' ? 'pending_teacher' : 'rejected');
+           optimisticPatchTriangleGroup(req, triangleStatus, status);
+           showToast(
+             status === 'agree'
+               ? (triangleStatus === 'pending_admin'
+                 ? '🎉 三位教師已全部同意，三角調已送交教學組核准。'
+                 : '🎉 您已同意三角調，等待其他教師完成同意。')
+               : '已拒絕此組三角調，整組不會生效。',
+             'success'
+           );
+         } else {
+           showToast(
+             respStatus === 'agree'
+               ? '🎉 您已成功【同意】此調代課邀請，目前已送交教學組核准出單。'
+               : '已拒絕此項調代課邀請。',
+             'success'
+           );
+           optimisticPatchRequestStatus(id, respStatus === 'agree' ? 'pending_admin' : 'rejected');
+         }
+         if (respStatus !== 'agree') restoreMutualQuotaForRows(req);
             softRefreshInBackground({ delay: 2800 });
           }
         } catch (e) {
@@ -227,15 +252,32 @@ window.UiApproval = (function () {
           return;
         }
         var status = respStatus === 'agree' ? 'agree' : 'decline';
-        await callGasApi('respondToRequest', { requestId: id, response: status });
-        showToast(
-          respStatus === 'agree'
-            ? '🎉 您已成功【同意】此調代課邀請，目前已送交教學組核准出單。'
-            : '已拒絕此項調代課邀請。',
-          'success'
-        );
-        optimisticPatchRequestStatus(id, respStatus === 'agree' ? 'pending_admin' : 'rejected');
-        if (respStatus !== 'agree') restoreMutualQuotaForRows(req);
+         var responseResult = await callGasApi(
+           isTriangleRequest(req) ? 'respondTriangleRequest' : 'respondToRequest',
+           { requestId: id, response: status }
+         );
+         if (isTriangleRequest(req)) {
+           var triangleStatus = (responseResult && responseResult.groupStatus)
+             || (status === 'agree' ? 'pending_teacher' : 'rejected');
+           optimisticPatchTriangleGroup(req, triangleStatus, status);
+           showToast(
+             status === 'agree'
+               ? (triangleStatus === 'pending_admin'
+                 ? '🎉 三位教師已全部同意，三角調已送交教學組核准。'
+                 : '🎉 您已同意三角調，等待其他教師完成同意。')
+               : '已拒絕此組三角調，整組不會生效。',
+             'success'
+           );
+         } else {
+           showToast(
+             respStatus === 'agree'
+               ? '🎉 您已成功【同意】此調代課邀請，目前已送交教學組核准出單。'
+               : '已拒絕此項調代課邀請。',
+             'success'
+           );
+           optimisticPatchRequestStatus(id, respStatus === 'agree' ? 'pending_admin' : 'rejected');
+         }
+         if (respStatus !== 'agree') restoreMutualQuotaForRows(req);
         // 畫面已更新；延後輕量對齊即可
         softRefreshInBackground({ delay: 2800 });
       } catch (e) {
@@ -313,11 +355,13 @@ window.UiApproval = (function () {
         loadingMessage.value = '核准生效並寫入臨時異動中...';
       }
       try {
-        var isExchange = req.type === 'exchange';
-        var finalNote = approveNote || req.note || '';
-        await callGasApi('adminApprove', { requestId: id, note: finalNote });
-        if (!silent) showToast('核准成功，異動已寫入課表！', 'success');
-        optimisticPatchRequestStatus(id, 'approved');
+         var isTriangle = isTriangleRequest(req);
+         var isExchange = req.type === 'exchange';
+         var finalNote = approveNote || req.note || '';
+         await callGasApi('adminApprove', { requestId: id, note: finalNote });
+         if (!silent) showToast('核准成功，異動已寫入課表！', 'success');
+         if (isTriangle) optimisticPatchTriangleGroup(req, 'approved');
+         else optimisticPatchRequestStatus(id, 'approved');
         if (opts.collectPrintIds) {
           if (isExchange) {
             opts.collectPrintIds.push(id + '_1');
@@ -358,10 +402,12 @@ window.UiApproval = (function () {
       }
       if (!silent) loading.value = true;
       try {
-        await callGasApi('adminReject', { requestId: id });
-        showToast('已駁回此申請單。', 'info');
-        restoreMutualQuotaForRows(req);
-        optimisticPatchRequestStatus(id, 'admin_rejected');
+         var isTriangle = isTriangleRequest(req);
+         await callGasApi('adminReject', { requestId: id });
+         showToast('已駁回此申請單。', 'info');
+         restoreMutualQuotaForRows(req);
+         if (isTriangle) optimisticPatchTriangleGroup(req, 'admin_rejected');
+         else optimisticPatchRequestStatus(id, 'admin_rejected');
         if (!opts.skipSoftRefresh) softRefreshInBackground({ delay: 2800 });
       } catch (e) {
         console.error(e);
@@ -532,7 +578,8 @@ window.UiApproval = (function () {
         await callGasApi('cancelRequest', { requestId: id });
         showToast('已成功撤回！', 'success');
         if (reqBefore) restoreMutualQuotaForRows(reqBefore);
-        optimisticPatchRequestStatus(id, 'cancelled');
+         if (isTriangleRequest(reqBefore)) optimisticPatchTriangleGroup(reqBefore, 'cancelled');
+         else optimisticPatchRequestStatus(id, 'cancelled');
         showDetailModal.value = false;
         if (detailRequest.value && detailRequest.value.id === id) {
           detailRequest.value = null;
@@ -557,7 +604,8 @@ window.UiApproval = (function () {
         await callGasApi('deleteSubstitutionRecord', { id: subId, requestId: requestId });
         showToast('已成功撤銷，課表已恢復原狀！', 'success');
         if (reqBefore) restoreMutualQuotaForRows(reqBefore);
-        optimisticPatchRequestStatus(reqId, 'cancelled');
+         if (isTriangleRequest(reqBefore)) optimisticPatchTriangleGroup(reqBefore, 'cancelled');
+         else optimisticPatchRequestStatus(reqId, 'cancelled');
         softRefreshInBackground({ delay: 2000, requestsOnly: true });
       } catch (e) {
         console.error('撤銷失敗：', e);

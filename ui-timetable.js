@@ -222,17 +222,19 @@ window.UiTimetable = (function () {
     function cellClassFromCell(cell, draftOn, batchOn, awayOn) {
       var batchCls = batchOn ? ' is-batch-selected' : '';
       if (!cell) return 'is-empty' + batchCls;
-      if (cell.isPending) {
-        if (cell.pendingType === 'substitution_out') return 'is-pending-sub-out' + batchCls;
-        if (cell.pendingType === 'substitution_in') return 'is-pending-sub-in' + batchCls;
-        if (cell.pendingType === 'exchange_out') return 'is-pending-exc-out' + batchCls;
-        if (cell.pendingType === 'exchange_in') return 'is-pending-exc-in' + batchCls;
-      }
-      if (cell.isSubstituted) {
-        return (cell.subType === 'exchange' ? 'is-exchange-out' : 'is-substituted-out') + batchCls;
-      }
-      if (cell.isSubstitutionDuty) {
-        var baseCls = cell.subType === 'exchange' ? 'is-exchange-in' : 'is-substituted-in';
+       if (cell.isPending) {
+         if (cell.pendingType === 'substitution_out') return 'is-pending-sub-out' + batchCls;
+         if (cell.pendingType === 'substitution_in') return 'is-pending-sub-in' + batchCls;
+         if (cell.pendingType === 'exchange_out') return 'is-pending-exc-out' + batchCls;
+         if (cell.pendingType === 'exchange_in') return 'is-pending-exc-in' + batchCls;
+         if (cell.pendingType === 'triangle' || cell.pendingType === 'triangle_out') return 'is-pending-exc-out' + batchCls;
+         if (cell.pendingType === 'triangle_in') return 'is-pending-exc-in' + batchCls;
+       }
+       if (cell.isSubstituted) {
+         return ((cell.subType === 'exchange' || cell.subType === 'triangle') ? 'is-exchange-out' : 'is-substituted-out') + batchCls;
+       }
+       if (cell.isSubstitutionDuty) {
+         var baseCls = (cell.subType === 'exchange' || cell.subType === 'triangle') ? 'is-exchange-in' : 'is-substituted-in';
         if (awayOn || cell.isClassAway) {
           baseCls += ' is-away-vacant';
         }
