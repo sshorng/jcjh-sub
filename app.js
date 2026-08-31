@@ -2605,7 +2605,7 @@ createApp({
       const dateText = formatDateMMDD(date) || date || '';
       const dayText = getWeekDayText(day);
       const periodText = formatPeriodText(period);
-      const lesson = [className, subject].filter(value => String(value || '').trim()).join(' ');
+      const lesson = [className, subject].filter(value => String(value || '').trim()).join('');
       return `${dateText}${dayText ? `（週${dayText}）` : ''} ${periodText}${lesson ? `｜${lesson}` : ''}`.trim();
     };
 
@@ -2675,8 +2675,8 @@ createApp({
         date,
         day,
         period,
-        className: source.handledClassName || source.dutyClassName || source.className || '',
-        subject: source.handledSubject || source.dutySubject || source.subject || ''
+        className: source.handledClassName || source.dutyClassName || source.className || source.cls || source['班級'] || '',
+        subject: source.handledSubject || source.dutySubject || source.subject || source['科目'] || ''
       };
     };
 
@@ -8430,6 +8430,9 @@ createApp({
     const isPaperFlowRequest = (request) => {
       if (!request) return false;
       if (isPaperFlowValue(request.paperFlow)) return true;
+      // 紙本模式下，非代申請的待行政單仍應使用紙本通知格式。
+      if (notificationsSuppressed.value && request.status === 'pending_admin'
+          && !isProxySubmitRequest(request)) return true;
       if (request.paperFlowSpecified === true) return false;
       if (Object.prototype.hasOwnProperty.call(request, '紙本流程')) {
         return isPaperFlowValue(request['紙本流程']);

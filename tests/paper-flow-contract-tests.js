@@ -341,7 +341,7 @@ function loadLineTemplates() {
     const getOriginalTargetClass = row => row.targetClassName || '';
     const getOriginalTargetSubject = row => row.targetSubject || '';
     ${block}
-    return { buildLineInviteText, buildAskFirstLineText, buildLineBatchInviteText };
+    return { buildLineInviteText, buildAskFirstLineText, buildLineBatchInviteText, getLineHandledSlot };
   })()`, {
     window: { location: { origin: 'https://school.example', pathname: '/index.html' } },
     String, encodeURIComponent
@@ -358,7 +358,7 @@ function runLineTemplateTest() {
     declineLink: 'https://school.example/?decline'
   });
   assert.match(single, /小明老師，想問您是否可以協助代課：/);
-  assert.match(single, /09\/04（週五） 第1節｜904 國文（陳小華老師）/);
+  assert.match(single, /09\/04（週五） 第1節｜904國文（陳小華老師）/);
   assert.match(single, /✅ 可以/);
   assert.doesNotMatch(single, /詳細如下|非常感謝/);
 
@@ -368,7 +368,7 @@ function runLineTemplateTest() {
      classA: '904', subjectA: '國文'
   });
   assert.match(ask, /小明老師，想問您是否可以協助代課：/);
-  assert.match(ask, /09\/04（週五） 第1節｜904 國文（陳小華老師）/);
+  assert.match(ask, /09\/04（週五） 第1節｜904國文（陳小華老師）/);
   assert.match(ask, /如果可以，我再拿代課單給您，感謝/);
   assert.doesNotMatch(ask, /再麻煩您確認一下喔/);
 
@@ -387,8 +387,8 @@ function runLineTemplateTest() {
   assert.equal(askExchange, [
     '小明老師，想問您是否方便和我調課，',
     '',
-    '09/01（週二） 第2節｜707 數學<->',
-    '09/04（週五） 第5節｜707 健康教育',
+    '09/01（週二） 第2節｜707數學<->',
+    '09/04（週五） 第5節｜707健康教育',
     '',
     '如果可以，我再拿調課單給您，感謝🙏🏻'
   ].join('\n'));
@@ -412,8 +412,8 @@ function runLineTemplateTest() {
   assert.equal(onlineExchange, [
     '小明老師，想問您是否方便和月亭老師調課，',
     '',
-    '09/01（週二） 第2節｜707 數學<->',
-    '09/04（週五） 第5節｜707 健康教育',
+    '09/01（週二） 第2節｜707數學<->',
+    '09/04（週五） 第5節｜707健康教育',
     '',
     '感謝🙏🏻'
   ].join('\n'));
@@ -427,7 +427,7 @@ function runLineTemplateTest() {
     ]
   });
   assert.match(batch, /小明老師，想問您是否可以幫忙協助以下代課：/);
-  assert.match(batch, /904 國文（陳小華老師）/);
+  assert.match(batch, /904國文（陳小華老師）/);
   assert.match(batch, /全部可以/);
   assert.match(batch, /感謝/);
   assert.doesNotMatch(batch, /經費來源|調代課系統訊息/);
@@ -437,7 +437,7 @@ function runLineTemplateTest() {
     dateA: '2026-09-04', dayA: 5, periodA: 1, classA: '904', subjectA: '國文', reason: '事假'
   });
   assert.match(paper, /小明老師，想問您是否可以協助代課：/);
-  assert.match(paper, /09\/04（週五） 第1節｜904 國文（陳小華老師）/);
+  assert.match(paper, /09\/04（週五） 第1節｜904國文（陳小華老師）/);
   assert.match(paper, /如果可以，我再拿代課單給您，感謝/);
   assert.doesNotMatch(paper, /假別：|紙本調代課通知|簽名後交回教學組|https?:\/\/|action=/);
 
@@ -448,9 +448,33 @@ function runLineTemplateTest() {
       { date: '2026-09-04', day: 5, period: 2, className: '905', subject: '國文' }
     ]
   });
-  assert.match(paperBatch, /1\. 09\/04（週五） 第1節｜904 國文（陳小華老師）/);
-  assert.match(paperBatch, /2\. 09\/04（週五） 第2節｜905 國文（陳小華老師）/);
+  assert.match(paperBatch, /1\. 09\/04（週五） 第1節｜904國文（陳小華老師）/);
+  assert.match(paperBatch, /2\. 09\/04（週五） 第2節｜905國文（陳小華老師）/);
   assert.match(paperBatch, /如果可以，我再拿代課單給您，感謝/);
+
+  const pendingSlot = templates.getLineHandledSlot({
+    date: '2026-09-07', dayOfWeek: 1, period: 2, cls: '906', subject: '自然'
+  });
+  assert.equal(pendingSlot.className, '906', '送出前草稿應讀取 cls 班級欄位');
+  const pendingAsk = templates.buildAskFirstLineText({
+    targetName: '王小明老師', requesterName: '陳小華老師',
+    dateA: pendingSlot.date, dayA: pendingSlot.day, periodA: pendingSlot.period,
+    classA: pendingSlot.className, subjectA: pendingSlot.subject
+  });
+  assert.match(pendingAsk, /09\/07（週一） 第2節｜906自然（陳小華老師）/);
+}
+
+function loadPaperFlowClassifier() {
+  const source = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
+  const start = source.indexOf('const isPaperFlowValue =');
+  const end = source.indexOf('/** 目前 UI 身分 Email', start);
+  assert.ok(start >= 0 && end > start, 'paper flow classifier must remain discoverable');
+  return vm.runInNewContext(`(() => {
+    const notificationsSuppressed = { value: true };
+    const isProxySubmitRequest = request => !!(request && request.isProxySubmit);
+    ${source.slice(start, end)}
+    return { isPaperFlowRequest };
+  })()`, { Object, String });
 }
 
 function runProgressTest() {
@@ -527,6 +551,14 @@ function runFieldMapTest() {
   });
   assert.equal(exchangeFields.targetClassName, '704');
   assert.equal(exchangeFields.targetSubject, '國文');
+
+  const classifier = loadPaperFlowClassifier();
+  assert.equal(classifier.isPaperFlowRequest({
+    status: 'pending_admin', paperFlow: false, paperFlowSpecified: true
+  }), true, '紙本模式的非代申請待核准單應使用紙本訊息');
+  assert.equal(classifier.isPaperFlowRequest({
+    status: 'pending_admin', paperFlow: false, paperFlowSpecified: true, isProxySubmit: true
+  }), false, '代申請仍保留線上待行政流程');
 }
 
 function runRequestListSortTest() {
@@ -561,7 +593,14 @@ function runApplicationFormContractTest() {
   assert.match(html, /@click="addSuccessToCalendar"/);
   assert.match(html, /@click="closeSuccessGoRecords"/);
   const appSource = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
+  const activitySource = fs.readFileSync(path.join(root, 'ui-activity.js'), 'utf8');
   const onboardingSource = fs.readFileSync(path.join(root, 'onboarding-tour.js'), 'utf8');
+  const batchPanelStart = activitySource.indexOf('window.UiBatchPanel =');
+  assert.ok(batchPanelStart >= 0, 'batch panel module must remain discoverable');
+  const batchPanelSource = activitySource.slice(batchPanelStart);
+  assert.match(batchPanelSource, /var successActionRequests = deps\.successActionRequests/);
+  assert.match(batchPanelSource, /showSuccessModal, successActionRequests, showCompareModal/);
+  assert.match(appSource, /successActionRequests: successActionRequests/);
    assert.match(appSource, /returnTo === 'compare'\) showCompareModal\.value = true/);
    assert.match(html, /getClassChangeTypeLabel\(item\.type\)/, 'class change badges should use compact labels');
    assert.match(html, /isHomeroomTeacher\(t, activeCell\.classData && activeCell\.classData\.className\)/, 'substitution candidates should show class-specific homeroom status');

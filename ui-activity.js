@@ -1540,6 +1540,7 @@ window.UiBatchPanel = (function () {
     var lineBatchParts = deps.lineBatchParts;
     var lineCopyText = deps.lineCopyText;
     var showSuccessModal = deps.showSuccessModal;
+    var successActionRequests = deps.successActionRequests;
     var buildLineBatchInviteText = deps.buildLineBatchInviteText;
 
     function batchSlotKey(email, dateStr, period) {
