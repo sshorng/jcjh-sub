@@ -143,6 +143,8 @@ assert.match(context.window.getPrintPreviewCss(), /official-serial-mark \{[^}]*r
 assert.match(styleSource, /\.official-serial-mark \{[^}]*right: 4\.78mm;[^}]*bottom: -4\.5mm[^}]*text-align: right/);
 assert.match(appSource, /data:image\/svg\+xml;charset=utf-8,['"] \+ encodeURIComponent\(svg\)/);
 assert.doesNotMatch(appSource, /createObjectURL\(svgBlob\)/);
+assert.match(appSource, /const classKey = \(record\) => String\(record && \(record\.className \|\| record\.formClassName \|\| ''\)/, 'single-request batch printing should retain the selected class');
+assert.match(appSource, /!seedClassKey \|\| classKey\(record\) === seedClassKey/, 'single-request batch printing should not pull another class');
 assert.match(printHelperSource, /const signatureSide = 'actual';/);
 assert.match(printHelperSource, /function getOfficialArrowMarkerHtml\(markerId\)/);
 assert.match(indexSource, /print-helper\.js\?v=20260831-batch1/);
@@ -314,11 +316,11 @@ const batchRecords = [
   }),
   Object.assign({}, substitution.records[0], {
     id: 'batch-row-2', requestId: 'batch-row-2', batchId: 'batch-1', serial: 'BATCH-2',
-    date: '2026-09-02', period: 2, className: '802'
+    date: '2026-09-02', period: 2, className: '801', subject: '健康教育'
   })
 ];
 const batchGroups = context.window.buildPrintGroups(batchRecords, [], fixtureContext);
-assert.equal(batchGroups.length, 1, 'same batch and teacher pair must merge across classes');
+assert.equal(batchGroups.length, 1, 'same batch and class must merge across periods');
 assert.equal(batchGroups[0].periods.length, 2);
 const batchPreview = context.window.buildPrintPreview(Object.assign({}, fixtureContext, {
   selectedRecordIds: { value: batchRecords.map(record => record.id) },
@@ -326,7 +328,13 @@ const batchPreview = context.window.buildPrintPreview(Object.assign({}, fixtureC
 }), { records: batchRecords, allSubs: batchRecords });
 assert.equal(batchPreview.formCount, 1, 'same batch and teacher pair should preview as one form');
 assert.match(batchPreview.documentHtml, /801/);
-assert.match(batchPreview.documentHtml, /802/);
+assert.match(batchPreview.documentHtml, /健康教育/);
+
+const batchDifferentClassGroups = context.window.buildPrintGroups([
+  batchRecords[0],
+  Object.assign({}, batchRecords[1], { id: 'batch-row-2-different-class', requestId: 'batch-row-2-different-class', className: '802' })
+], [], fixtureContext);
+assert.equal(batchDifferentClassGroups.length, 2, 'same batch with different classes must remain separate');
 
 const batchDifferentTargetGroups = context.window.buildPrintGroups([
   batchRecords[0],
