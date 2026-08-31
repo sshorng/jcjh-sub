@@ -5810,20 +5810,14 @@ createApp({
     // 併班上課只能指定同節、同併班課堂中的其他任課教師。
     const findCombinedReturnCandidates = (cell) => {
       const source = cell || {};
-      const classData = source.classData || {};
       const sourceTeacherKey = String(getTeacherNameByEmail(source.teacherEmail || source.teacherName) || source.teacherEmail || source.teacherName || '')
         .trim().toLowerCase();
       const sourceDay = parseInt(source.dayOfWeek, 10);
       const sourcePeriod = parseInt(source.period, 10);
       const sourceDate = String(inputRequestDate.value || (currentWeekDates.value[sourceDay - 1] || '')).slice(0, 10);
-      const sourceClasses = parseScheduleClasses(classData.className);
-      if (!sourceTeacherKey || !sourceClasses.length
+      if (!sourceTeacherKey
           || !Number.isFinite(sourceDay) || !Number.isFinite(sourcePeriod)) return [];
 
-      const classOverlaps = (candidateClass) => {
-        const candidateClasses = parseScheduleClasses(candidateClass);
-        return candidateClasses.some(candidate => sourceClasses.includes(candidate));
-      };
       const availableByTeacher = Object.create(null);
       const candidatesByTeacher = Object.create(null);
       (allSchedules.value || []).forEach(schedule => {
@@ -5837,7 +5831,8 @@ createApp({
         const scheduleClass = String(schedule.className || '').trim();
         const scheduleTags = getScheduleSpecialTags(schedule);
         const isCombined = isCombinedClass(scheduleClass) || scheduleTags.includes('併班');
-        if (!isCombined || !classOverlaps(scheduleClass)) return;
+        // 音樂班等特殊班級的名稱不會與八、九年級班名重疊，不能用班名交集判斷。
+        if (!isCombined) return;
         if (schedule.isPatrol || schedule.attr === '巡堂' || schedule.attr === '抽離'
             || scheduleTags.includes('抽離')) return;
         if (sourceDate && window.DomainSchedule && typeof window.DomainSchedule.isActiveOnDate === 'function'

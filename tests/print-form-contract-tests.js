@@ -151,9 +151,10 @@ assert.ok(combinedCandidateStart >= 0 && combinedCandidateEnd > combinedCandidat
 const combinedCandidateContext = {
   window: { DomainSchedule: { isActiveOnDate: () => true } },
   allSchedules: { value: [
-    { teacherEmail: 'owner@school.example', teacherName: '陳小華', dayOfWeek: 1, period: 2, className: '801、802', subject: '國文', specialTags: '併班' },
+    { teacherEmail: 'owner@school.example', teacherName: '陳小華', dayOfWeek: 1, period: 2, className: '音樂班', subject: '音樂', specialTags: '併班' },
     { teacherEmail: 'invitee@school.example', teacherName: '王小明', dayOfWeek: 1, period: 2, className: '801、802', subject: '英文', specialTags: '併班' },
-    { teacherEmail: 'unrelated@school.example', teacherName: '林小美', dayOfWeek: 1, period: 2, className: '803、804', subject: '數學', specialTags: '併班' },
+    { teacherEmail: 'unrelated@school.example', teacherName: '林小美', dayOfWeek: 1, period: 2, className: '901、902', subject: '數學', specialTags: '併班' },
+    { teacherEmail: 'plain@school.example', teacherName: '李小美', dayOfWeek: 1, period: 2, className: '801', subject: '自然' },
     { teacherEmail: 'busy@school.example', teacherName: '張小美', dayOfWeek: 1, period: 2, className: '801、802', subject: '自然', specialTags: '併班' }
   ] },
   inputRequestDate: { value: '2026-09-07' },
@@ -167,12 +168,14 @@ const combinedCandidateContext = {
     'owner@school.example': { email: 'owner@school.example', name: '陳小華' },
     'invitee@school.example': { email: 'invitee@school.example', name: '王小明' },
     'unrelated@school.example': { email: 'unrelated@school.example', name: '林小美' },
+    'plain@school.example': { email: 'plain@school.example', name: '李小美' },
     'busy@school.example': { email: 'busy@school.example', name: '張小美' }
   })[String(email)] || null,
   getTeacherNameByEmail: email => ({
     'owner@school.example': '陳小華',
     'invitee@school.example': '王小明',
     'unrelated@school.example': '林小美',
+    'plain@school.example': '李小美',
     'busy@school.example': '張小美'
   })[String(email)] || String(email || ''),
   Object,
@@ -190,9 +193,9 @@ const combinedCandidates = findCombinedReturnCandidates({
   teacherEmail: 'owner@school.example',
   dayOfWeek: 1,
   period: 2,
-  classData: { className: '801、802' }
+  classData: { className: '音樂班' }
 });
-assert.equal(combinedCandidates.map(candidate => candidate.email).join(','), 'invitee@school.example', '併班代課候選人應排除不同班級與已有待辦者');
+assert.equal(combinedCandidates.map(candidate => candidate.email).sort().join(','), 'invitee@school.example,unrelated@school.example', '併班代課候選人應依同節併班課列入，不應要求班名重疊');
 assert.match(indexSource, /app\.js\?v=20260831-combined1/);
 assert.doesNotMatch(preview.documentHtml, /<script\b/i, '列印預覽 srcdoc 不應注入腳本');
 assert.doesNotMatch(appSource, /seedClassKey/, 'single-request batch printing should include the same recipient across classes');
