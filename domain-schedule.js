@@ -142,6 +142,63 @@ window.DomainSchedule = (function () {
     return list.filter(function (row) { return isActiveOnDate(row, dateStr); });
   }
 
+  function identityKeys(value) {
+    var values = value && typeof value === 'object'
+      ? [value.email, value.loginEmail, value.teacherEmail, value.teacherName, value.name,
+        value['教師Email'], value['教師姓名']]
+      : [value];
+    var seen = {};
+    return values.map(function (item) {
+      return String(item == null ? '' : item).trim().toLowerCase();
+    }).filter(function (item) {
+      if (!item || seen[item]) return false;
+      seen[item] = true;
+      return true;
+    });
+  }
+
+  function hasCommonIdentity(left, right) {
+    var rightSet = {};
+    (right || []).forEach(function (item) { rightSet[item] = true; });
+    return (left || []).some(function (item) { return !!rightSet[item]; });
+  }
+
+  function hasScheduleTag(row, tag) {
+    var raw = row && (row.specialTags || row['特殊標記'] || '');
+    if (Array.isArray(raw)) return raw.indexOf(tag) >= 0;
+    return String(raw).split(/[、,，;；/／|｜\s]+/).map(function (item) {
+      return item.trim();
+    }).indexOf(tag) >= 0;
+  }
+
+  /**
+   * 排課系統教師課表的正式排課節數：不含巡堂、預排與第 8 節，且同一教師同一時段只算一節。
+   * 有啟用日期時，只計入指定週內至少一天有效的課表版本。
+   */
+  function countTeacherFormalScheduleHours(teacher, schedules, dates) {
+    var teacherIdentity = identityKeys(teacher);
+    var weekDates = Array.isArray(dates) ? dates : [];
+    var slots = {};
+    (schedules || []).forEach(function (row) {
+      if (!row || !hasCommonIdentity(teacherIdentity, identityKeys(row))) return;
+      if (isPatrolCell(row) || row.isPreplanned || String(row.attr || '').trim() === '預排'
+          || hasScheduleTag(row, '預排')) return;
+
+      var period = parseInt(row.period != null ? row.period : row['節次'], 10);
+      var day = parseInt(row.dayOfWeek != null ? row.dayOfWeek : row['星期'], 10);
+      if (!Number.isFinite(period) || !Number.isFinite(day) || day < 1 || day > 5) return;
+      // 與排課系統一致：第 8 節是課輔，不列入正式鐘點。
+      if (period === 8 || !(period === 0 || period === 45 || (period >= 1 && period <= 7))) return;
+
+      var activeThisWeek = !weekDates.length || weekDates.some(function (dateStr, index) {
+        return index + 1 === day && isActiveOnDate(row, dateStr);
+      });
+      if (!activeThisWeek) return;
+      slots[day + '|' + period] = true;
+    });
+    return Object.keys(slots).length;
+  }
+
   function scheduleRangesOverlap(a, b) {
     var aFrom = scheduleActiveFrom(a) || '0000-01-01';
     var aTo = scheduleActiveTo(a) || '9999-12-31';
@@ -924,6 +981,7 @@ window.DomainSchedule = (function () {
     scheduleActiveTo: scheduleActiveTo,
     isActiveOnDate: isActiveOnDate,
     filterActiveRows: filterActiveRows,
+    countTeacherFormalScheduleHours: countTeacherFormalScheduleHours,
     scheduleRangesOverlap: scheduleRangesOverlap,
     isCombinedReturnRequest: isCombinedReturnRequest,
     PATROL_INCOMING_TIP: PATROL_INCOMING_TIP,

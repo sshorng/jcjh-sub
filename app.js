@@ -8380,6 +8380,39 @@ createApp({
       return t ? (t.subject || t['授課科目'] || t['任課科目'] || '') : '';
     };
 
+    // 與排課系統教師課表一致：基本鐘點取教師設定，超鐘點取本週正式排課差額。
+    const teacherTimetableHours = computed(() => {
+      const map = Object.create(null);
+      (displayTimetableTeachers.value || []).forEach(teacher => {
+        const basicHours = teacher.baseHours === 0 || teacher.baseHours === '0'
+          ? 0
+          : (parseInt(teacher.baseHours, 10) || 16);
+        const scheduledHours = window.DomainSchedule && typeof window.DomainSchedule.countTeacherFormalScheduleHours === 'function'
+          ? window.DomainSchedule.countTeacherFormalScheduleHours(teacher, allSchedules.value, currentWeekDates.value)
+          : 0;
+        const summary = {
+          basicHours,
+          overtimeHours: Math.max(0, scheduledHours - basicHours)
+        };
+        [teacher.email, teacher.loginEmail, teacher.teacherEmail, teacher.teacherName, teacher.name]
+          .filter(Boolean)
+          .forEach(key => {
+            map[String(key).trim().toLowerCase()] = summary;
+          });
+      });
+      return map;
+    });
+    const getTeacherTimetableHours = (teacher) => {
+      const map = teacherTimetableHours.value || {};
+      const keys = [teacher && teacher.email, teacher && teacher.loginEmail, teacher && teacher.teacherName, teacher && teacher.name]
+        .filter(Boolean)
+        .map(key => String(key).trim().toLowerCase());
+      for (const key of keys) {
+        if (map[key]) return map[key];
+      }
+      return { basicHours: 0, overtimeHours: 0 };
+    };
+
     const getTeacherJobTitleByEmail = (email) => {
       if (!email) return '';
       const t = lookupTeacher(email);
@@ -11416,7 +11449,7 @@ createApp({
       exportActivityCoverWord,
       invigilationExportTitle, exportInvigilationWorkbook,
       devSwitchUser, restoreAdmin,
-       getTeacherNameByEmail, getTeacherSubjectByEmail, getRealTeacherName, startSecondSub,
+       getTeacherNameByEmail, getTeacherSubjectByEmail, getTeacherTimetableHours, getRealTeacherName, startSecondSub,
         getTeacherJobTitleByEmail, isHomeroomTeacher,
       getSubjectStyle, getClassBadgeStyle,
       changeHistoryPage, openHistoryEditModal, saveHistoryEdit, onHistoryEditDateChange, changePendingPage,

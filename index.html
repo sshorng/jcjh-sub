@@ -606,12 +606,13 @@
                     :key="teacher.email"
                     :id="'tt-teacher-' + String(teacher.email).replace(/[^a-zA-Z0-9_-]/g, '_')"
                     class="tt-teacher-block"
-                    v-memo="[(weekScheduleGrid[teacher.email] || null), isScheduleEditMode, isMobile, isMutualCover, batchSelectMode]"
+                    v-memo="[(weekScheduleGrid[teacher.email] || null), getTeacherTimetableHours(teacher), isScheduleEditMode, isMobile, isMutualCover, batchSelectMode]"
                   >
                     <h4 class="tt-teacher-head">
                       <span aria-hidden="true">👤</span>
                       <span class="tt-teacher-name">{{ teacher.name }} 老師</span>
                       <span class="badge badge-subj" :class="teacher.role === 'admin' ? 'tag-red' : (teacher.role === 'staff' ? 'tag-amber' : 'tag-blue')">{{ teacher.subject }}科</span>
+                      <span class="tt-teacher-hours">（基本鐘點 {{ getTeacherTimetableHours(teacher).basicHours }} 節／超鐘點 {{ getTeacherTimetableHours(teacher).overtimeHours }} 節）</span>
                     </h4>
                     
                     <div class="timetable-grid" :class="{ 'edit-mode': isScheduleEditMode }">
@@ -703,6 +704,23 @@
                     </div>
                   </div>
                   </div><!-- /.tt-teacher-list -->
+                  <!-- 全校／多師：底部分頁列，方便看完一頁後直接換頁 -->
+                  <div v-if="ttNeedPager" class="tt-pager-bar tt-pager-bar-bottom">
+                    <span style="font-size:0.8rem;color:var(--text-secondary);">
+                       顯示 {{ (ttPage - 1) * ttPageSize + 1 }}～{{ Math.min(ttPage * ttPageSize, displayTimetableTeachers.length) }}
+                      ／共 {{ displayTimetableTeachers.length }} 位
+                    </span>
+                    <select class="form-control" style="width:auto;padding:4px 8px;font-size:0.78rem;" v-model.number="ttPageSize" title="每頁人數">
+                      <option :value="8">每頁 8 人</option>
+                      <option :value="10">每頁 10 人</option>
+                      <option :value="12">每頁 12 人</option>
+                      <option :value="20">每頁 20 人</option>
+                    </select>
+                    <button type="button" class="btn btn-secondary btn-sm-75" :disabled="ttPage <= 1" @click="changeTtPage(ttPage - 1)">上一頁</button>
+                    <span style="font-size:0.78rem;font-weight:600;">{{ ttPage }} / {{ ttTotalPages }}</span>
+                    <button type="button" class="btn btn-secondary btn-sm-75" :disabled="ttPage >= ttTotalPages" @click="changeTtPage(ttPage + 1)">下一頁</button>
+                    <span style="font-size:0.72rem;color:var(--text-muted);margin-left:auto;">提示：可用上方搜尋姓名，不必一次開全校</span>
+                  </div>
                 </div>
               </div>
               </div><!-- /data-tour=week-and-grid -->

@@ -366,6 +366,12 @@
     white-space: nowrap;
     max-width: 100%;
   }
+  .tt-teacher-hours {
+    flex-basis: 100%;
+    margin-left: 0;
+    font-size: 0.74rem;
+    white-space: normal;
+  }
   /* 6 欄：節次 + 五天，全部 minmax(0,1fr) 絕不撐破 */
   .timetable-grid {
     display: grid !important;

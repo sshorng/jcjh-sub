@@ -5038,6 +5038,19 @@ td.table-empty {
   font-weight: 700;
 }
 
+.tt-teacher-hours {
+  margin-left: auto;
+  color: var(--tt-ink-2);
+  font-size: 0.78rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.tt-pager-bar-bottom {
+  margin-top: 12px;
+  margin-bottom: 0;
+}
+
 .tt-pager-bar,
 .week-picker-bar {
   gap: 8px;

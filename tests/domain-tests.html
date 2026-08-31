@@ -515,6 +515,20 @@
          });
          assert('巡堂不計週鐘點', bill[0] && bill[0].weeklyPeriods === 1, 'weekly=' + (bill[0] && bill[0].weeklyPeriods));
 
+          var timetableHours = window.DomainSchedule.countTeacherFormalScheduleHours(
+            { name: 'hours@x' },
+            [
+              { teacherEmail: 'hours@x', dayOfWeek: 1, period: 1, attr: '一般' },
+              { teacherEmail: 'hours@x', dayOfWeek: 1, period: 1, attr: '一般' },
+              { teacherEmail: 'hours@x', dayOfWeek: 2, period: 8, attr: '課輔' },
+              { teacherEmail: 'hours@x', dayOfWeek: 3, period: 2, attr: '巡堂' },
+              { teacherEmail: 'hours@x', dayOfWeek: 4, period: 3, attr: '一般', specialTags: '預排' },
+              { teacherEmail: 'hours@x', dayOfWeek: 5, period: 4, attr: '一般' }
+            ],
+            ['2026-08-31', '2026-09-01', '2026-09-02', '2026-09-03', '2026-09-04']
+          );
+          assert('教師課表正式鐘點排除巡堂／預排／第8並去重', timetableHours === 2, 'hours=' + timetableHours);
+
          function billingCase(period, attr, fee) {
            return window.DomainBilling.buildMonthlyReportRows({
              teachers: [{ email: 'bill@x', name: 'Billing', baseHours: 0 }],
