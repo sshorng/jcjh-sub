@@ -129,7 +129,9 @@ const preview = context.window.buildPrintPreview(Object.assign({}, fixtureContex
   selectedRecordIds: { value: ['request-1'] },
   substitutionRecords: { value: substitution.records }
 }), { records: substitution.records, allSubs: substitution.records });
-assert.equal(preview.formCount, 1, 'preview should render one merged form in a single column');
+assert.equal(preview.formCount, 2, 'preview should render teacher and class recipient forms');
+assert.equal(preview.staffFormCount, 1);
+assert.equal(preview.classCopyCount, 1);
 assert.equal(preview.pageCount, 2);
 assert.equal(preview.copyCount, 4);
 assert.match(preview.documentHtml, /print-preview-stack/);
@@ -143,11 +145,11 @@ assert.match(context.window.getPrintPreviewCss(), /official-serial-mark \{[^}]*r
 assert.match(styleSource, /\.official-serial-mark \{[^}]*right: 4\.78mm;[^}]*bottom: -4\.5mm[^}]*text-align: right/);
 assert.match(appSource, /data:image\/svg\+xml;charset=utf-8,['"] \+ encodeURIComponent\(svg\)/);
 assert.doesNotMatch(appSource, /createObjectURL\(svgBlob\)/);
-assert.match(appSource, /const classKey = \(record\) => String\(record && \(record\.className \|\| record\.formClassName \|\| ''\)/, 'single-request batch printing should retain the selected class');
-assert.match(appSource, /!seedClassKey \|\| classKey\(record\) === seedClassKey/, 'single-request batch printing should not pull another class');
+assert.doesNotMatch(appSource, /seedClassKey/, 'single-request batch printing should include the same recipient across classes');
+assert.match(appSource, /teacherKey\(record, 'actual'\) === targetKey/, 'single-request batch printing should group by recipient teacher');
 assert.match(printHelperSource, /const signatureSide = 'actual';/);
 assert.match(printHelperSource, /function getOfficialArrowMarkerHtml\(markerId\)/);
-assert.match(indexSource, /print-helper\.js\?v=20260831-batch1/);
+assert.match(indexSource, /print-helper\.js\?v=20260831-batch2/);
 assert.match(indexSource, /<title>建成國中線上課表系統<\/title>/);
 assert.match(indexSource, /application-name" content="JCJH Timetable"/);
 assert.equal((indexSource.match(/class="mini-grid-date"/g) || []).length, 12, '對照頁一般與左右兩張跨週課表都應顯示日期');
@@ -278,7 +280,7 @@ const crossWeekPreview = context.window.buildPrintPreview(Object.assign({}, fixt
   selectedRecordIds: { value: crossWeekExchange.records.map(record => record.id) },
   substitutionRecords: { value: crossWeekExchange.records }
 }), { records: crossWeekExchange.records, allSubs: crossWeekExchange.records });
-assert.equal(crossWeekPreview.formCount, 1, '跨週調課的兩個端點應合併為一張調代課單');
+assert.equal(crossWeekPreview.formCount, 2, '跨週調課應預覽教師與班級兩種收件版本');
 const crossWeekOutput = context.window.generateFormHtml(
   context.window.buildPrintGroups(crossWeekExchange.records, [])[0],
   'NoticeClass',
@@ -326,7 +328,9 @@ const batchPreview = context.window.buildPrintPreview(Object.assign({}, fixtureC
   selectedRecordIds: { value: batchRecords.map(record => record.id) },
   substitutionRecords: { value: batchRecords }
 }), { records: batchRecords, allSubs: batchRecords });
-assert.equal(batchPreview.formCount, 1, 'same batch and teacher pair should preview as one form');
+assert.equal(batchPreview.formCount, 2, 'same batch and teacher pair should preview teacher and class forms');
+assert.equal(batchPreview.staffFormCount, 1);
+assert.equal(batchPreview.classCopyCount, 1);
 assert.match(batchPreview.documentHtml, /801/);
 assert.match(batchPreview.documentHtml, /健康教育/);
 
@@ -335,6 +339,39 @@ const batchDifferentClassGroups = context.window.buildPrintGroups([
   Object.assign({}, batchRecords[1], { id: 'batch-row-2-different-class', requestId: 'batch-row-2-different-class', className: '802' })
 ], [], fixtureContext);
 assert.equal(batchDifferentClassGroups.length, 2, 'same batch with different classes must remain separate');
+
+const audienceBatchRecords = [
+  batchRecords[0],
+  Object.assign({}, batchRecords[1], {
+    id: 'batch-row-2-audience', requestId: 'batch-row-2-audience', className: '802'
+  })
+];
+const audienceForms = context.window.buildPrintForms(audienceBatchRecords, [], fixtureContext);
+assert.equal(audienceForms.length, 3, 'teacher preview plus one preview per class');
+assert.equal(audienceForms.staffFormCount, 1, 'same recipient teachers should share one merged form');
+assert.equal(audienceForms.classCopyCount, 2, 'each class should receive its own copy');
+assert.equal(audienceForms.copyCount, 5, 'three staff copies plus one copy per class');
+assert.equal(audienceForms.pageCount, 3, 'five recipient copies should use three A4 pages');
+assert.match(audienceForms[0], /801/);
+assert.match(audienceForms[0], /802/);
+assert.ok(audienceForms.slice(1).some(form => /班級：801/.test(form)));
+assert.ok(audienceForms.slice(1).some(form => /班級：802/.test(form)));
+const audiencePacked = context.window.packPrintForms(audienceForms);
+assert.equal((audiencePacked.match(/\bofficial-audience-label(?=\s|")/g) || []).length, 5);
+assert.equal((audiencePacked.match(/class="print-page"/g) || []).length, 3);
+assert.match(audiencePacked, /教學組留存（請簽名）/);
+assert.match(audiencePacked, /請假教師：陳小華/);
+assert.match(audiencePacked, /代課\/調課教師：王小明/);
+assert.match(audiencePacked, /班級：801/);
+assert.match(audiencePacked, /班級：802/);
+const audiencePreview = context.window.buildPrintPreview(Object.assign({}, fixtureContext, {
+  selectedRecordIds: { value: audienceBatchRecords.map(record => record.id) },
+  substitutionRecords: { value: audienceBatchRecords }
+}), { records: audienceBatchRecords, allSubs: audienceBatchRecords });
+assert.equal(audiencePreview.staffFormCount, 1);
+assert.equal(audiencePreview.classCopyCount, 2);
+assert.equal(audiencePreview.pageCount, 3);
+assert.equal(audiencePreview.copyCount, 5);
 
 const batchDifferentTargetGroups = context.window.buildPrintGroups([
   batchRecords[0],
@@ -367,7 +404,7 @@ const combinedBatchPreview = context.window.buildPrintPreview(Object.assign({}, 
   selectedRecordIds: { value: combinedBatchRecords.map(record => record.id) },
   substitutionRecords: { value: combinedBatchRecords }
 }), { records: combinedBatchRecords, allSubs: combinedBatchRecords });
-assert.equal(combinedBatchPreview.formCount, 1, '批次列印的兩筆併班上課資料應只產生一張表單');
+assert.equal(combinedBatchPreview.formCount, 2, '批次列印應預覽教師與班級兩種收件版本');
 
 const differentRequesterGroups = context.window.buildPrintGroups([
   substitution.records[0],

@@ -3035,7 +3035,7 @@
             <div>
               <h3>👁️ 調代課單列印預覽</h3>
               <div v-if="printPreview" class="print-preview-meta">
-                共 {{ printPreview.recordCount }} 筆，合併後 {{ printPreview.formCount }} 張單欄表單；正式列印每份為 A4 橫式 2 頁，共 4 張分送單據。
+                 共 {{ printPreview.recordCount }} 筆；教學組／教師合併為 {{ printPreview.staffFormCount }} 組，班級分送 {{ printPreview.classCopyCount }} 張；正式列印 {{ printPreview.pageCount }} 頁，共 {{ printPreview.copyCount }} 張分送單據。
               </div>
             </div>
             <button class="btn-close" @click="closePrintPreview(true)">&times;</button>
@@ -4306,7 +4306,7 @@
       };
       window.ensurePrintHelper = function () {
         if (typeof window.generateFormHtml === 'function') return Promise.resolve();
-           if (!_printP) _printP = loadScript('print-helper.js?v=20260831-batch1');
+            if (!_printP) _printP = loadScript('print-helper.js?v=20260831-batch2');
         return _printP;
       };
       window.ensureExportSchoolTimetable = function () {

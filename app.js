@@ -2579,7 +2579,6 @@ createApp({
       const seedRecord = (substitutionRecords.value || []).find(record => targetIds.includes(record.id));
       const batchId = String((req && req.batchId) || (seedRecord && (seedRecord.batchId || seedRecord['批次ID'])) || '').trim().toLowerCase();
       if (batchId && seedRecord) {
-        const classKey = (record) => String(record && (record.className || record.formClassName || '') || '').trim().toLowerCase();
         const teacherKey = (record, side) => {
           const email = side === 'original'
             ? (record.originalTeacherEmail || record.requesterEmail || '')
@@ -2591,14 +2590,12 @@ createApp({
         };
         const applicantKey = teacherKey(seedRecord, 'original');
         const targetKey = teacherKey(seedRecord, 'actual');
-        const seedClassKey = classKey(seedRecord);
         if (applicantKey && targetKey) {
           targetIds = (substitutionRecords.value || []).filter(record =>
             String(record && (record.batchId || record['批次ID']) || '').trim().toLowerCase() === batchId
             && String(record && record.type || '') === String(seedRecord.type || '')
             && teacherKey(record, 'original') === applicantKey
             && teacherKey(record, 'actual') === targetKey
-            && (!seedClassKey || classKey(record) === seedClassKey)
           ).map(record => record.id);
         }
       }

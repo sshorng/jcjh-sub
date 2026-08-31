@@ -870,11 +870,167 @@ function splitPrintGroupByWeek(group) {
     clone.weekRows = buckets[key].slice();
     clone.anchorDate = clone.weekRows[0] && clone.weekRows[0].date;
     return clone;
+    });
+}
+
+function getPrintAudienceMergeKey(group, ctx) {
+  const records = group && Array.isArray(group.records) ? group.records : [];
+  const rows = getPrintSlotRows(group);
+  const seed = records[0] || rows[0] || {};
+  if (!seed) return '';
+
+  // 對調與三角調課本身就是完整路線單，不跨單據重新組合。
+  if (group && (group.isExchange || group.isTriangle)) {
+    return `audience-special:${group.isExchange ? 'exchange' : 'triangle'}:${group.requestId || resolvePrintSerial(seed)}`;
+  }
+
+  const week = getPrintWeekKey((rows[0] && rows[0].date) || seed.date);
+  const type = getPrintRecordTypeKey(seed);
+  const batchId = getPrintBatchId(seed);
+  const combinedReturn = records.some(isPrintCombinedReturnRecord);
+  const actualTeacher = getPrintMergeTeacherKey(seed, 'actual', ctx) || (combinedReturn ? 'combined-return' : '');
+  const originalTeacher = getPrintMergeTeacherKey(seed, 'original', ctx);
+  const leaveMode = isPrintLeaveLikeReason(seed.reason || (group && group.reason)) ? 'leave' : 'course';
+  if (!week || !actualTeacher || !originalTeacher) {
+    return `audience-single:${group && (group.requestId || group.batchId) || resolvePrintSerial(seed) || seed.id || ''}`;
+  }
+
+  // 教學組與教師收到的內容可跨班合併，班級副本則由成員群組各自列印。
+  return `audience-merge:${JSON.stringify([batchId, week, type, actualTeacher, originalTeacher, leaveMode])}`;
+}
+
+function mergePrintAudienceGroups(groups, ctx) {
+  const buckets = Object.create(null);
+  const order = [];
+  (groups || []).forEach(function (group) {
+    const key = getPrintAudienceMergeKey(group, ctx) || `audience-single:${order.length}`;
+    if (!buckets[key]) {
+      buckets[key] = [];
+      order.push(key);
+    }
+    buckets[key].push(group);
+  });
+
+  const rowKey = function (row) {
+    return [
+      row && (row.id || row.serial || ''),
+      row && row.date || '',
+      row && (row.num != null ? row.num : row.period) || '',
+      row && (row.cls || row.className) || '',
+      row && (row.sub || row.subject) || '',
+      row && (row.actualTeacherEmail || row.actualTeacherName) || '',
+      row && (row.originalTeacherEmail || row.originalTeacherName) || ''
+    ].map(value => String(value)).join('|');
+  };
+  const sortRows = function (a, b) {
+    return String(a && a.date || '').localeCompare(String(b && b.date || ''))
+      || ((parseInt(a && (a.num != null ? a.num : a.period), 10) || 0)
+        - (parseInt(b && (b.num != null ? b.num : b.period), 10) || 0))
+      || String(a && (a.cls || a.className) || '').localeCompare(String(b && (b.cls || b.className) || ''));
+  };
+
+  return order.map(function (key) {
+    const members = buckets[key];
+    const base = Object.assign({}, members[0]);
+    const records = [];
+    const recordKeys = Object.create(null);
+    const periods = [];
+    const periodKeys = Object.create(null);
+    const rows = [];
+    const rowKeys = Object.create(null);
+    const serials = [];
+    const leaveEmails = [];
+    const subEmails = [];
+    const dates = [];
+    const reasons = [];
+    let hasWeekRows = false;
+    const addValue = function (list, value) {
+      const text = String(value == null ? '' : value).trim();
+      if (text && !list.includes(text)) list.push(text);
+    };
+
+    members.forEach(function (member) {
+      if (member && member.weekRows) hasWeekRows = true;
+      (member.records || []).forEach(function (record) {
+        const recordKey = String(record && record.id || '') || JSON.stringify(record || {});
+        if (!recordKeys[recordKey]) {
+          recordKeys[recordKey] = true;
+          records.push(record);
+        }
+      });
+      (member.periods || []).forEach(function (period) {
+        const keyForPeriod = rowKey(period);
+        if (!periodKeys[keyForPeriod]) {
+          periodKeys[keyForPeriod] = true;
+          periods.push(period);
+        }
+      });
+      getPrintSlotRows(member).forEach(function (row) {
+        const keyForRow = rowKey(row);
+        if (!rowKeys[keyForRow]) {
+          rowKeys[keyForRow] = true;
+          rows.push(row);
+        }
+      });
+      (member.serials || []).forEach(value => addValue(serials, value));
+      (member.leaveEmails || []).forEach(value => addValue(leaveEmails, value));
+      (member.subEmails || []).forEach(value => addValue(subEmails, value));
+      (member.dates || []).forEach(value => addValue(dates, value));
+      (member.reasons || []).forEach(value => addValue(reasons, value));
+      addValue(reasons, member.reason);
+      if (!base.note && member.note) base.note = member.note;
+      if (!base.subFee && member.subFee) base.subFee = member.subFee;
+      if (member.isReprint) base.isReprint = true;
+      if (member.isPaperDraft) base.isPaperDraft = true;
+      base.signatureByTeacher = Object.assign({}, base.signatureByTeacher || {}, member.signatureByTeacher || {});
+    });
+
+    records.sort((a, b) => String(a && a.date || '').localeCompare(String(b && b.date || ''))
+      || ((parseInt(a && a.period, 10) || 0) - (parseInt(b && b.period, 10) || 0)));
+    periods.sort(sortRows);
+    rows.sort(sortRows);
+    base.records = records;
+    base.periods = periods;
+    if (hasWeekRows) {
+      base.weekRows = rows;
+      base.anchorDate = rows[0] && rows[0].date;
+    } else {
+      delete base.weekRows;
+    }
+    base.serials = uniquePrintValues(serials);
+    base.leaveEmails = uniquePrintValues(leaveEmails);
+    base.subEmails = uniquePrintValues(subEmails);
+    base.subEmailsAll = base.subEmails.slice();
+    base.dates = uniquePrintValues(dates);
+    base.reasons = uniquePrintValues(reasons);
+    base.reason = base.reasons[0] || '請假';
+    base.leaveEmail = base.leaveEmails[0] || '';
+    base.subEmail = base.subEmails[0] || '';
+    base.compactSerials = compactSerials(base.serials);
+    return { group: base, members };
   });
 }
 
 function packPrintForms(forms) {
   const list = Array.isArray(forms) ? forms : [];
+  const recipientCopies = Array.isArray(list.printCopies) ? list.printCopies : null;
+  if (recipientCopies) {
+    const emptyCopy = '<div class="substitute-form official-form-empty" aria-hidden="true"></div>';
+    const pages = [];
+    for (let index = 0; index < recipientCopies.length; index += 2) {
+      const left = recipientCopies[index] || emptyCopy;
+      const right = recipientCopies[index + 1] || emptyCopy;
+      pages.push(`
+        <div class="print-page">
+          ${left}
+          <div class="cut-line"></div>
+          ${right}
+        </div>
+      `);
+    }
+    return pages.join('');
+  }
+
   const labelSets = Array.isArray(list.audienceLabelSets) ? list.audienceLabelSets : [];
   const defaultLabels = ['教學組留存（請簽名）', '請假教師：', '代課/調課教師：', '班級：'];
   return list.map(function (form, index) {
@@ -920,19 +1076,47 @@ function getSelectedPrintRecords(ctx) {
 
 function buildPrintForms(recordsToPrint, allSubs, ctx) {
   const groupList = buildPrintGroups(recordsToPrint, allSubs, ctx);
+  const weekGroups = [];
+  groupList.forEach(function (group) {
+    const groups = group.isExchange || group.isTriangle ? [group] : splitPrintGroupByWeek(group);
+    groups.forEach(groupByWeek => weekGroups.push(groupByWeek));
+  });
+  const audienceBundles = mergePrintAudienceGroups(weekGroups, ctx);
   const forms = [];
   const audienceLabelSets = [];
-  groupList.forEach(function (group) {
-    const weekGroups = group.isExchange ? [group] : splitPrintGroupByWeek(group);
-    weekGroups.forEach(function (weekGroup) {
-      const form = generateFormHtml(weekGroup, 'Official', ctx);
-      if (!form) return;
-      const labels = getPrintAudienceLabels(weekGroup, ctx);
-      forms.push(withPrintAudienceLabel(form, labels[0]));
-      audienceLabelSets.push(labels);
+  const printCopies = [];
+  let staffFormCount = 0;
+  let classCopyCount = 0;
+
+  audienceBundles.forEach(function (bundle) {
+    const staffForm = generateFormHtml(bundle.group, 'Official', ctx);
+    if (!staffForm) return;
+    const staffLabels = getPrintAudienceLabels(bundle.group, ctx);
+    forms.push(withPrintAudienceLabel(staffForm, staffLabels[0]));
+    audienceLabelSets.push(staffLabels);
+    printCopies.push(withPrintAudienceLabel(staffForm, staffLabels[0]));
+    printCopies.push(withPrintAudienceLabel(staffForm, staffLabels[1]));
+    printCopies.push(withPrintAudienceLabel(staffForm, staffLabels[2]));
+    staffFormCount += 1;
+
+    bundle.members.forEach(function (member) {
+      const classForm = generateFormHtml(member, 'Official', ctx);
+      if (!classForm) return;
+      const classLabels = getPrintAudienceLabels(member, ctx);
+      const classLabel = classLabels[3] || staffLabels[3];
+      forms.push(withPrintAudienceLabel(classForm, classLabel));
+      audienceLabelSets.push(classLabels);
+      printCopies.push(withPrintAudienceLabel(classForm, classLabel));
+      classCopyCount += 1;
     });
   });
+
   forms.audienceLabelSets = audienceLabelSets;
+  forms.printCopies = printCopies;
+  forms.staffFormCount = staffFormCount;
+  forms.classCopyCount = classCopyCount;
+  forms.copyCount = printCopies.length;
+  forms.pageCount = Math.ceil(printCopies.length / 2);
   return forms;
 }
 
@@ -1002,11 +1186,14 @@ function buildPrintPreview(ctx, options) {
     : ((ctx.substitutionRecords && Array.isArray(ctx.substitutionRecords.value)) ? ctx.substitutionRecords.value : recordsToPrint);
   const forms = buildPrintForms(recordsToPrint, allSubs, ctx);
   if (!forms.length) return null;
+  const copyCount = forms.copyCount != null ? forms.copyCount : forms.length * 4;
   return {
     recordCount: recordsToPrint.length,
     formCount: forms.length,
-    pageCount: forms.length * 2,
-    copyCount: forms.length * 4,
+    staffFormCount: forms.staffFormCount != null ? forms.staffFormCount : forms.length,
+    classCopyCount: forms.classCopyCount != null ? forms.classCopyCount : forms.length,
+    pageCount: forms.pageCount != null ? forms.pageCount : Math.ceil(copyCount / 2),
+    copyCount,
     records: recordsToPrint.slice(),
     recordIds: recordsToPrint.map(record => record && record.id != null ? String(record.id) : '').filter(Boolean),
     formsHtml: forms.join(''),
@@ -1318,6 +1505,7 @@ window.printSelectedForms = printSelectedForms;
 window.buildExchangeRouteHtml = buildExchangeRouteHtml;
 window.getPrintAudienceLabels = getPrintAudienceLabels;
 window.buildPrintGroups = buildPrintGroups;
+window.buildPrintForms = buildPrintForms;
 window.splitPrintGroupByWeek = splitPrintGroupByWeek;
 window.packPrintForms = packPrintForms;
 window.getPrintPreviewCss = getPrintPreviewCss;
