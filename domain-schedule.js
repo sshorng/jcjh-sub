@@ -377,7 +377,10 @@ window.DomainSchedule = (function () {
           ).trim();
         }
         var subText = '';
-        if (firstEdge.type === 'exchange' || firstEdge.type === 'triangle') {
+        var combinedReturnOut = isCombinedReturnRequest(firstEdge);
+        if (combinedReturnOut) {
+          subText = '↩ 併班上課：' + h.getTeacherNameByEmail(firstEdge.actualTeacherEmail);
+        } else if (firstEdge.type === 'exchange' || firstEdge.type === 'triangle') {
           if (firstEdge.type === 'triangle') {
             var triangleMove = allSubs.find(function (x) {
               return x && x.type === 'triangle'
@@ -419,6 +422,7 @@ window.DomainSchedule = (function () {
             className: ownOutClass || outBase.className || '',
             subject: ownOutSubj || outBase.subject || '',
             isSubstituted: true,
+            isCombinedReturn: combinedReturnOut,
             subType: firstEdge.type,
             isMutualCover: firstEdge.subFee === '扣額度' || firstEdge.subFee === '互代不結',
             subText: subText,
@@ -487,8 +491,11 @@ window.DomainSchedule = (function () {
         finalClassIn = String(finalClassIn || '').trim();
         finalSubjIn = String(finalSubjIn || '').trim();
         if (finalClassIn || finalSubjIn || baseIn || incomingEdge) {
-          var subTextIn = '';
-          if (isExIn) {
+           var subTextIn = '';
+           var combinedReturnIn = isCombinedReturnRequest(incomingEdge);
+           if (combinedReturnIn) {
+             subTextIn = '↩ 併班上課：' + h.getTeacherNameByEmail(incomingEdge.originalTeacherEmail);
+           } else if (isExIn) {
             if (incomingEdge.type === 'triangle') {
               var triangleSource = formatShortDateAndPeriod(
                 incomingEdge.triangleSourceDate,
@@ -514,9 +521,10 @@ window.DomainSchedule = (function () {
             className: finalClassIn,
             subject: finalSubjIn,
             teacherEmail: teacherEmail,
-            isSubstitutionDuty: true,
-            subType: incomingEdge.type,
-            isElastic: false,
+             isSubstitutionDuty: true,
+             subType: incomingEdge.type,
+             isCombinedReturn: combinedReturnIn,
+             isElastic: false,
             isMutualCover: incomingEdge.subFee === '扣額度' || incomingEdge.subFee === '互代不結',
             subText: subTextIn,
             subRecord: incomingEdge,
@@ -783,8 +791,10 @@ window.DomainSchedule = (function () {
         if (isCombinedReturnRequest(pReq)) {
           return Object.assign({}, cell, {
             isPending: true,
+            isSubstituted: true,
+            isCombinedReturn: true,
             pendingType: 'combined_return_out',
-           pendingText: '↩ 待核 併班上課',
+            pendingText: '↩ 待核 併班上課',
             pendingRecord: pReq
           });
         }

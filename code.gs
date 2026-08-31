@@ -277,6 +277,24 @@ function isCombinedReturnFee_(fee) {
   return value === "公費代課" || value === "自費代課" || value === "第8節代課";
 }
 
+function isCombinedReturnPublicReason_(reason) {
+  var value = String(reason == null ? "" : reason).trim();
+  return value.indexOf("公假") >= 0
+    || value.indexOf("公差") >= 0
+    || value.indexOf("婚假") >= 0
+    || value.indexOf("喪假") >= 0
+    || value.indexOf("產前") >= 0
+    || value.indexOf("分娩") >= 0
+    || value.indexOf("身心調適") >= 0;
+}
+
+function combinedReturnExpectedFee_(row) {
+  var period = parseInt(row && (row["異動節次"] != null ? row["異動節次"] : row.requestPeriod), 10);
+  if (period === 8) return "第8節代課";
+  var reason = row && (row["請假事由"] != null ? row["請假事由"] : row.reason);
+  return isCombinedReturnPublicReason_(reason) ? "公費代課" : "自費代課";
+}
+
 function combinedReturnClassTokens_(value) {
   return String(value == null ? "" : value).trim().split(/[,，、\/／;；|｜&＆+＋\s]+/)
     .map(function (item) { return String(item || "").trim(); })
@@ -365,9 +383,15 @@ function validateCombinedReturnRequest_(row, semesterId) {
       || (targetName && requesterName && nameKeyNorm_(targetName) === nameKeyNorm_(requesterName))) {
     throw new Error("合班回原班的請假教師與代課教師不可相同！");
   }
+  var reason = String(row["請假事由"] || row.reason || "").trim();
+  if (!reason || reason === SPECIAL_FLOW_COMBINED_RETURN_LABEL_ || reason === "併班上課"
+      || reason === "課務調整" || reason === "空堂排班") {
+    throw new Error("合班回原班請選擇實際的請假假別！");
+  }
   var fee = String(row["經費來源"] || row.subFee || "").trim();
-  if (!isCombinedReturnFee_(fee)) {
-    throw new Error("合班回原班請選擇公費代課、自費代課或第8節代課！");
+  var expectedFee = combinedReturnExpectedFee_(row);
+  if (!isCombinedReturnFee_(fee) || fee !== expectedFee) {
+    throw new Error("合班回原班請依假別使用" + expectedFee + "！");
   }
   var period = parseInt(row["異動節次"] != null ? row["異動節次"] : row.requestPeriod, 10);
   if (period === 8 && fee !== "第8節代課") {
@@ -7000,7 +7024,9 @@ function doPost(e) {
       targetReq["異動星期"] = reqDow;
       targetReq["異動節次"] = reqPeriod;
       targetReq["異動類型"] = isEx ? "exchange" : "substitution";
-       targetReq["請假事由"] = combinedReturnEdit ? "合班回原班" : (reqData.reason != null ? reqData.reason : (targetReq["請假事由"] || ""));
+        targetReq["請假事由"] = combinedReturnEdit
+          ? (reqData.reason != null ? reqData.reason : (targetReq["請假事由"] || ""))
+          : (reqData.reason != null ? reqData.reason : (targetReq["請假事由"] || ""));
        targetReq["請假時間類型"] = combinedReturnEdit ? "" : (reqData.leaveTimeType != null ? reqData.leaveTimeType : (targetReq["請假時間類型"] || ""));
        targetReq["請假時間"] = combinedReturnEdit ? "" : (reqData.leaveTime != null ? reqData.leaveTime : (targetReq["請假時間"] || ""));
       targetReq["備註"] = reqData.note != null ? reqData.note : (targetReq["備註"] || "");
@@ -7029,13 +7055,14 @@ function doPost(e) {
            targetReq["經費來源"] = String(reqData.subFee);
          }
        }
-       if (combinedReturnEdit) {
-         targetReq["異動類型"] = "substitution";
-         targetReq["特殊流程"] = SPECIAL_FLOW_COMBINED_RETURN_LABEL_;
-         targetReq["直接核准"] = "";
-         targetReq["紙本流程"] = "FALSE";
-          validateCombinedReturnRequest_(targetReq, semesterId);
-       }
+        if (combinedReturnEdit) {
+          targetReq["異動類型"] = "substitution";
+          targetReq["特殊流程"] = SPECIAL_FLOW_COMBINED_RETURN_LABEL_;
+          targetReq["直接核准"] = "";
+          targetReq["紙本流程"] = "FALSE";
+          targetReq["經費來源"] = combinedReturnExpectedFee_(targetReq);
+           validateCombinedReturnRequest_(targetReq, semesterId);
+        }
 
        saveRows("申請單", [targetReq], "申請單ID");
       syncHomeroomRecordForRequest_(targetReq, userEmail);
@@ -7209,7 +7236,7 @@ function doPost(e) {
         if (!findSemesterTeacher_(semesterId, targetEmailOne)) throw new Error("受邀人不在目前學期教師名單！");
         if (leaveEmailOne === targetEmailOne) throw new Error("申請人與受邀人不可為同一人！");
         if (combinedReturnOne) {
-          reqData.request["經費來源"] = String(reqData.request["經費來源"] || "").trim();
+          reqData.request["經費來源"] = combinedReturnExpectedFee_(reqData.request);
           reqData.request.specialFlow = SPECIAL_FLOW_COMBINED_RETURN_;
           reqData.request.courseAdjustmentOnly = false;
           reqData.request["僅課務調整"] = "";
@@ -7985,7 +8012,8 @@ function _buildReqTable_(req) {
     ["請假教師", req.requesterName || req["申請人姓名"]],
     ["代課教師", targetTeacher || ""],
     ["特殊流程", "合班回原班"],
-    ["經費鐘點", req.subFee || req["經費來源"] || "自費代課"],
+    ["假別", req.reason || req["請假事由"] || "請假"],
+    ["被代教師扣減類別", req.subFee || req["經費來源"] || "自費代課"],
     ["課堂", leaveDateText + " " + leaveTimeText]
   ] : [
     ["請假教師", req.requesterName || req["申請人姓名"]],

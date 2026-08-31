@@ -369,6 +369,16 @@ window.DomainBilling = (function () {
 
     // 當日第8 異動：key = date|class → record（優先代課／調入）
     var subByDateClass = {};
+    function classTokens(value) {
+      return String(value == null ? '' : value).trim().split(/[,，、\/／;；|｜\s]+/)
+        .map(function (item) { return item.trim(); })
+        .filter(Boolean);
+    }
+    function classNamesOverlap(left, right) {
+      var rightSet = {};
+      classTokens(right).forEach(function (item) { rightSet[item] = true; });
+      return classTokens(left).some(function (item) { return !!rightSet[item]; });
+    }
     (substitutionRecords || []).forEach(function (r) {
       var rDate = recordDate(r);
       if (!r || !rDate) return;
@@ -426,8 +436,35 @@ window.DomainBilling = (function () {
 
         var subKey = dateStr + '|' + className;
         var sub = subByDateClass[subKey];
+        if (!sub) {
+          sub = (substitutionRecords || []).find(function (r) {
+            return isCombinedReturnRecord(r)
+              && isActiveSubstitutionRecord(r)
+              && recordDate(r) === dateStr
+              && recordPeriod(r) === 8
+              && emailKey(r.originalTeacherEmail) === em
+              && classNamesOverlap(r.className, className);
+          }) || null;
+        }
         var actualEmail = email;
         var source = 'own';
+        if (sub && isCombinedReturnRecord(sub)
+            && emailKey(sub.originalTeacherEmail) === em) {
+          details.push({
+            date: dateStr,
+            period: 8,
+            className: className,
+            subject: sub.subject || base.subject || '輔導',
+            originalEmail: email,
+            originalName: getTeacherNameByEmail(email),
+            actualEmail: '',
+            actualName: '',
+            source: 'combined_return',
+            fee: 0,
+            note: '合班上課／不計代課費'
+          });
+          return;
+        }
         if (sub && sub.actualTeacherEmail) {
           // 調出／代出：原任不拿；實際任課人拿
           if (emailKey(sub.originalTeacherEmail) === em && emailKey(sub.actualTeacherEmail) !== em) {
@@ -483,7 +520,7 @@ window.DomainBilling = (function () {
     details.forEach(function (row) {
       if (!row.actualEmail || !row.fee) {
         // 保留 away 明細供對帳，但不計入 byEmail
-        if (row.source === 'away') uniq.push(row);
+        if (row.source === 'away' || row.source === 'combined_return') uniq.push(row);
         return;
       }
       var k = row.date + '|' + row.className + '|' + emailKey(row.actualEmail);

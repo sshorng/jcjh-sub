@@ -249,7 +249,11 @@ window.UiSubmitHelpers = (function () {
       var periodNum = parseInt(tk0.period, 10)
         || (activeCell.value ? parseInt(activeCell.value.period, 10) : 0);
       if (combinedReturn) {
-        finalFeeType = periodNum === 8 ? PERIOD8_FEE : (pending.subFee || '自費代課');
+        finalFeeType = periodNum === 8
+          ? PERIOD8_FEE
+          : (typeof defaultSubFeeForReason === 'function'
+            ? defaultSubFeeForReason(pending.reason)
+            : (pending.subFee || '自費代課'));
       } else if (periodNum === 8) {
         finalFeeType = PERIOD8_FEE;
       } else if (isMutualCover.value) {

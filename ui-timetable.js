@@ -223,6 +223,7 @@ window.UiTimetable = (function () {
       var batchCls = batchOn ? ' is-batch-selected' : '';
       if (!cell) return 'is-empty' + batchCls;
        if (cell.isPending) {
+         if (cell.pendingType === 'combined_return_out') return 'is-pending-sub-out is-pending-combined-return-out' + batchCls;
          if (cell.pendingType === 'substitution_out') return 'is-pending-sub-out' + batchCls;
          if (cell.pendingType === 'substitution_in') return 'is-pending-sub-in' + batchCls;
          if (cell.pendingType === 'exchange_out') return 'is-pending-exc-out' + batchCls;

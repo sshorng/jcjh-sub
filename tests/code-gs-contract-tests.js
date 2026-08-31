@@ -76,6 +76,7 @@ const validCombined = {
   '受邀人姓名': '受邀人',
   '受邀人Email': 'invitee@school.example',
   '異動節次': 1,
+  '請假事由': '公假',
   '經費來源': '公費代課'
 };
 assert.doesNotThrow(() => flowContext.validateCombinedReturnRequest_(validCombined));
@@ -83,9 +84,17 @@ assert.doesNotThrow(() => flowContext.validateCombinedReturnRequest_(Object.assi
   '異動節次': 8,
   '經費來源': '第8節代課'
 })));
+assert.equal(flowContext.combinedReturnExpectedFee_(validCombined), '公費代課');
+assert.equal(flowContext.combinedReturnExpectedFee_(Object.assign({}, validCombined, {
+  '請假事由': '事假'
+})), '自費代課');
 assert.throws(() => flowContext.validateCombinedReturnRequest_(Object.assign({}, validCombined, {
-  '異動節次': 8
-})), /第8節合班回原班必須使用第8節代課/);
+  '經費來源': '自費代課'
+})), /依假別使用公費代課/);
+assert.throws(() => flowContext.validateCombinedReturnRequest_(Object.assign({}, validCombined, {
+  '請假事由': '合班回原班',
+  '經費來源': '自費代課'
+})), /選擇實際的請假假別/);
 assert.throws(() => flowContext.validateCombinedReturnRequest_(Object.assign({}, validCombined, {
   '受邀人姓名': '',
   '受邀人Email': ''

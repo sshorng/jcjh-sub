@@ -1460,11 +1460,9 @@ window.UiAdmin = (function () {
         return;
       }
       if (isCombinedReturnHistory(form)) {
-        if (parseInt(form.requestPeriod, 10) === 8) {
-          form.subFee = '第8節代課';
-        } else if (form.subFee !== '公費代課' && form.subFee !== '自費代課') {
-          form.subFee = '自費代課';
-        }
+        form.subFee = typeof getHistoryEditDefaultSubFee === 'function'
+          ? getHistoryEditDefaultSubFee(form.reason, form.requestPeriod)
+          : (parseInt(form.requestPeriod, 10) === 8 ? '第8節代課' : (form.subFee || '自費代課'));
         return;
       }
       if (typeof getHistoryEditDefaultSubFee !== 'function') return;
@@ -1546,10 +1544,10 @@ window.UiAdmin = (function () {
         targetDate: tgtDate,
         targetDayOfWeek: src.targetDayOfWeek || dayOfWeekFromDateStr(tgtDate),
          targetPeriod: readHistoryPeriod(src.targetPeriod, rec.targetPeriod),
-        reason: combinedReturn ? '合班回原班' : reason,
+         reason: reason,
         leaveTimeType: combinedReturn ? '' : (src.leaveTimeType || rec.leaveTimeType || ''),
         leaveTime: combinedReturn ? '' : (src.leaveTime || rec.leaveTime || ''),
-        subFee: isEx ? '無' : (existingSubFee || '自費代課'),
+         subFee: isEx ? '無' : (combinedReturn ? existingSubFee : (existingSubFee || '自費代課')),
         note: src.note || rec.note || '',
         printed: !!(src.printed != null ? src.printed : rec.printed)
       };
@@ -1576,8 +1574,12 @@ window.UiAdmin = (function () {
       }
        if (!form.requesterEmail || !form.targetTeacherEmail) {
          showToast(combinedReturn ? '請選擇請假教師與同節併班代課教師' : '請選擇請假教師與代課／對調教師', 'warning');
-        return;
-      }
+         return;
+       }
+       if (combinedReturn && (!form.reason || form.reason === '合班回原班' || form.reason === '併班上課')) {
+         showToast('合班回原班請選擇實際的請假假別', 'warning');
+         return;
+       }
       if (!form.requestDate || form.requestPeriod == null || form.requestPeriod === '') {
         showToast('請填寫請假日期與節次', 'warning');
         return;
@@ -1608,7 +1610,7 @@ window.UiAdmin = (function () {
           targetDate: isEx ? (form.targetDate || '') : '',
           targetDayOfWeek: isEx ? (form.targetDayOfWeek || dayOfWeekFromDateStr(form.targetDate)) : '',
           targetPeriod: isEx ? (parseInt(form.targetPeriod, 10) || 1) : '',
-          reason: combinedReturn ? '合班回原班' : (form.reason || ''),
+           reason: form.reason || '',
           leaveTimeType: isEx || combinedReturn ? '' : (form.leaveTimeType || ''),
           leaveTime: isEx || combinedReturn ? '' : (form.leaveTime || ''),
           subFee: isEx ? '無' : (form.subFee || '自費代課'),

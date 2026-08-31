@@ -545,7 +545,8 @@ function generateFormHtml(g, currentType, ctx) {
     g && g.reason
   ]);
   const isCombinedReturn = [...sourceRecords, ...rows].some(isPrintCombinedReturnRecord);
-  const reason = isCombinedReturn ? '請假' : (reasons[0] || '請假');
+  const combinedReason = reasons.find(value => !['合班回原班', '併班上課'].includes(String(value || '').trim())) || '';
+  const reason = isCombinedReturn ? (combinedReason || '請假') : (reasons[0] || '請假');
   const isLeave = isCombinedReturn || (reasons.length
     ? reasons.every(isPrintLeaveLikeReason)
     : true);

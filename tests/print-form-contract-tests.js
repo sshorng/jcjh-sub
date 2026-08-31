@@ -196,13 +196,13 @@ const combinedCandidates = findCombinedReturnCandidates({
   classData: { className: '音樂班' }
 });
 assert.equal(combinedCandidates.map(candidate => candidate.email).sort().join(','), 'invitee@school.example,unrelated@school.example', '併班代課候選人應依同節併班課列入，不應要求班名重疊');
-assert.match(indexSource, /app\.js\?v=20260831-combined1/);
+assert.match(indexSource, /app\.js\?v=20260831-combined3/);
 assert.doesNotMatch(preview.documentHtml, /<script\b/i, '列印預覽 srcdoc 不應注入腳本');
 assert.doesNotMatch(appSource, /seedClassKey/, 'single-request batch printing should include the same recipient across classes');
 assert.match(appSource, /teacherKey\(record, 'actual'\) === targetKey/, 'single-request batch printing should group by recipient teacher');
 assert.match(printHelperSource, /const signatureSide = 'actual';/);
 assert.match(printHelperSource, /function getOfficialArrowMarkerHtml\(markerId\)/);
-assert.match(indexSource, /print-helper\.js\?v=20260831-combined1/);
+assert.match(indexSource, /print-helper\.js\?v=20260831-combined3/);
 assert.match(indexSource, /<title>建成國中線上課表系統<\/title>/);
 assert.match(indexSource, /application-name" content="JCJH Timetable"/);
 assert.equal((indexSource.match(/class="mini-grid-date"/g) || []).length, 12, '對照頁一般與左右兩張跨週課表都應顯示日期');
@@ -233,6 +233,10 @@ assert.match(triangleUiSource, /未填寫時預設請假/);
 assert.match(triangleUiSource, /事由/);
 assert.match(indexSource, /紙本模式：請確認三位教師都已在調課單簽名/);
 assert.doesNotMatch(triangleUiSource, /#7c3aed|#6d28d9|#5b21b6|#faf5ff|#ddd6fe|#f5f3ff/);
+assert.match(indexSource, /併班任課教師不支領代課費；請假教師仍依所選假別計算鐘點扣減/);
+assert.match(indexSource, /v-model="pendingRequestData\.reason" :disabled="pendingRequestData\.courseAdjustmentOnly"/);
+assert.doesNotMatch(indexSource, /<option v-if="pendingRequestData\.specialFlow === 'combined_return'" value="合班回原班">/);
+assert.match(indexSource, /被代教師扣減類別/);
 assert.match(indexSource, /getApproveRiskFlags\(req\)\.filter\(f => \(f\.level === 'warn' \|\| f\.level === 'danger'\) && f\.key !== 'chain'\)/);
 assert.match(appSource, /const returnTo = showDetailModal\.value \? 'detail' : '';/);
 assert.match(styleSource, /\.hist-actions \{[^}]*flex-wrap:\s*nowrap/);
@@ -261,6 +265,13 @@ assert.match(combinedReturnOutput, /■請假/);
 assert.match(combinedReturnOutput, /□僅課務申請\(非請假\)/);
 assert.match(combinedReturnOutput, /假別：請假/);
 assert.doesNotMatch(combinedReturnOutput, /假別：合班回原班/);
+const combinedPublicReturnOutput = context.window.generateFormHtml(Object.assign({}, substitution, {
+  records: [Object.assign({}, substitution.records[0], {
+    specialFlow: 'combined_return',
+    reason: '公假'
+  })]
+}), 'NoticeTeacher', fixtureContext);
+assert.match(combinedPublicReturnOutput, /假別：公假/);
 
 const exchange = {
   isExchange: true,

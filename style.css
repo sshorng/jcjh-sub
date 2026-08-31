@@ -853,11 +853,18 @@ body {
 .grid-cell-class.is-pending-sub-out,
 .grid-cell-class.is-pending-sub-in,
 .grid-cell-class.is-pending-exc-out,
-.grid-cell-class.is-pending-exc-in {
+.grid-cell-class.is-pending-exc-in,
+.grid-cell-class.is-pending-combined-return-out {
   background: #fffbeb !important;
   border: 1.5px dashed #f59e0b !important;
   border-left: 3.5px solid #f59e0b !important;
   animation: pending-pulse-orange 2s ease-in-out infinite;
+}
+
+.grid-cell-class.is-pending-combined-return-out .cell-subject,
+.grid-cell-class.is-pending-combined-return-out .cell-class-name {
+  text-decoration: line-through !important;
+  color: #a16207 !important;
 }
 
 @keyframes pending-pulse-orange {

@@ -165,6 +165,7 @@ function makeRequest(overrides = {}) {
     '異動星期': 1,
     '異動節次': 1,
     '異動類型': 'substitution',
+    '請假事由': '事假',
     '經費來源': '自費代課'
   }, overrides);
 }
@@ -289,6 +290,7 @@ const combinedReturnRequest = invoke({
       '受邀人Email': INVITEE_EMAIL,
       '受邀人姓名': '受邀人',
       '特殊流程': 'combined_return',
+      '請假事由': '公假',
       '經費來源': '公費代課',
       '班級': '701、702'
     })
@@ -299,6 +301,7 @@ assert.strictEqual(persistedRows[0]['狀態'], 'pending_admin');
 assert.strictEqual(persistedRows[0]['受邀人Email'], INVITEE_EMAIL);
 assert.strictEqual(persistedRows[0]['受邀人姓名'], '受邀人');
 assert.strictEqual(persistedRows[0]['特殊流程'], '合班回原班');
+assert.strictEqual(persistedRows[0]['經費來源'], '公費代課');
 
 const combinedReturnTeacher = invoke({
   email: TEACHER_EMAIL,
@@ -307,8 +310,9 @@ const combinedReturnTeacher = invoke({
     request: makeRequest({
       '申請單ID': 'req-combined-teacher',
        '受邀人Email': INVITEE_EMAIL,
-       '受邀人姓名': '受邀人',
+   '受邀人姓名': '受邀人',
       '特殊流程': 'combined_return',
+      '請假事由': '事假',
       '經費來源': '自費代課'
     })
   }
@@ -337,9 +341,10 @@ requestRow = Object.assign({}, requestRow, {
   '狀態': 'pending_admin',
   '紙本流程': 'FALSE',
   '受邀人Email': INVITEE_EMAIL,
-  '受邀人姓名': '受邀人',
-  '特殊流程': '合班回原班',
-  '經費來源': '公費代課',
+   '受邀人姓名': '受邀人',
+   '特殊流程': '合班回原班',
+   '請假事由': '公假',
+   '經費來源': '公費代課',
   '異動類型': 'substitution',
   '申請人姓名': '申請人',
   '班級': '701、702',
@@ -356,6 +361,7 @@ const paperApproval = invoke({
 });
 assert.strictEqual(paperApproval.success, true);
 assert.strictEqual(requestRow['狀態'], 'approved');
+assert.strictEqual(requestRow['經費來源'], '公費代課');
 assert.strictEqual(queuedMailLabels.includes('sendAdminApproveEmail'), true);
 
 const teacherProxy = invoke({

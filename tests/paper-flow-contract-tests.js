@@ -654,7 +654,7 @@ function runApplicationFormContractTest() {
   assert.match(appSource, /successActionRequests/);
    assert.match(appSource, /mode: notificationsSuppressed\.value \? 'paper' : 'online'/, 'onboarding should follow the global paper mode');
    assert.match(appSource, /openExchangeModeDemo: \(\) => openExchangeModeDemoForTour\(\)/, 'tour should demonstrate exchange mode');
-    assert.match(appSource, /ONBOARDING_SCRIPT = 'onboarding-tour\.js\?v=20260831-combined1'/, 'onboarding cache must refresh with the exchange tour');
+   assert.match(appSource, /ONBOARDING_SCRIPT = 'onboarding-tour\.js\?v=20260831-combined3'/, 'onboarding cache must refresh with the exchange tour');
      assert.match(appSource, /openPaperPrintDemo: \(\) => openPaperPrintDemoForTour\(\)/, 'paper tour should open a print preview demo');
      assert.match(appSource, /openExchangeModeDemo: \(\) => openExchangeModeDemoForTour\(\)/, 'tour should demonstrate exchange mode');
     assert.match(appSource, /source: 'paperTour'/, 'paper tour preview must use an isolated source');
@@ -761,7 +761,9 @@ async function runCombinedHistoryEditContractTest() {
     teachersList,
     allSchedules: ref([]),
     leaveReasonOptions: ['公假', '事假', '其他'],
-    getHistoryEditDefaultSubFee: () => '自費代課',
+   getHistoryEditDefaultSubFee: (reason, period) => Number(period) === 8
+     ? '第8節代課'
+     : (reason === '公假' ? '公費代課' : '自費代課'),
     historyEditForm,
     showHistoryEditModal,
     requestsList: ref([{
@@ -775,7 +777,7 @@ async function runCombinedHistoryEditContractTest() {
       requestPeriod: 1,
       className: '701、702',
       subject: '國文',
-      reason: '合班回原班',
+       reason: '公假',
       subFee: '公費代課'
     }])
   });
@@ -793,17 +795,17 @@ async function runCombinedHistoryEditContractTest() {
   });
   assert.equal(historyEditForm.value.specialFlow, 'combined_return');
    assert.equal(historyEditForm.value.targetTeacherEmail, '受邀人');
-  assert.equal(historyEditForm.value.reason, '合班回原班');
+   assert.equal(historyEditForm.value.reason, '公假');
   historyEditForm.value.requestPeriod = 8;
   api.onHistoryEditPeriodChange();
-  assert.equal(historyEditForm.value.subFee, '第8節代課');
+   assert.equal(historyEditForm.value.subFee, '第8節代課');
   await api.saveHistoryEdit();
   assert.equal(sent.action, 'saveHistoryEdit');
    assert.equal(sent.payload.targetTeacherEmail, '受邀人');
    assert.equal(sent.payload.targetTeacherName, '受邀人');
   assert.equal(sent.payload.specialFlow, 'combined_return');
   assert.equal(sent.payload.requestPeriod, 8);
-  assert.equal(sent.payload.reason, '合班回原班');
+   assert.equal(sent.payload.reason, '公假');
 }
 
 function singleDeps() {
@@ -915,7 +917,7 @@ async function runSingleTest() {
     subTeacher: 'invitee@school.example',
     subFee: '公費代課',
     courseAdjustmentOnly: false,
-    reason: '合班回原班'
+     reason: '事假'
   });
   const combinedBuilt = api.buildSubmitPayload(combinedDeps, 'req-combined', 'SUB5679');
   assert.equal(combinedBuilt.newRequest['狀態'], 'pending_admin');
@@ -924,6 +926,7 @@ async function runSingleTest() {
   assert.equal(combinedBuilt.newRequest['紙本流程'], 'FALSE');
   assert.equal(combinedBuilt.newRequest.directApprove, false);
   assert.equal(combinedBuilt.newRequest.courseAdjustmentOnly, false);
+   assert.equal(combinedBuilt.newRequest['經費來源'], '自費代課');
   Object.assign(combinedDeps, {
     showToast: () => {},
     showConfirm: async () => true,

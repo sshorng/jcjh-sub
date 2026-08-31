@@ -1177,7 +1177,7 @@ createApp({
 
     // 新手引導 UI（簡潔版：置中卡牌，無 spotlight，手機友善）
     // ── 新手 Spotlight 導覽（懶載入 onboarding-tour.js）──
-    const ONBOARDING_SCRIPT = 'onboarding-tour.js?v=20260831-combined1';
+     const ONBOARDING_SCRIPT = 'onboarding-tour.js?v=20260831-combined3';
     const ONBOARDING_PAPER_STORAGE_KEY = 'jcjh_onboarding_paper_v1';
     /** 導覽用虛擬「收到的邀請」（不寫入後端） */
     const tourDemoInvite = ref(null);
@@ -5456,7 +5456,7 @@ createApp({
         subject: classData.subject || '',
         date: dateStr,
         timeKey: timeKey,
-        reason: '合班回原班',
+        reason: '',
         courseAdjustmentOnly: false,
         leaveReasonBeforeCourseAdjustment: '',
         subFee: parseInt(cell.period, 10) === 8 ? PERIOD8_FEE : '',
@@ -7860,7 +7860,11 @@ createApp({
       const common = {
         type: p.mode || 'substitution',
         reason: p.reason || '請假',
-        subFee: p.subFee || '無',
+        subFee: combinedReturn
+          ? (typeof defaultSubFeeForReason === 'function'
+            ? defaultSubFeeForReason(p.reason)
+            : (p.subFee || '自費代課'))
+          : (p.subFee || '無'),
         note: p.note || '',
         printed: false,
         isPaperDraft: true,
@@ -7985,8 +7989,9 @@ createApp({
         const printedRaw = getValue(source, ['是否已印', 'printed']);
         const printed = printedRaw === true || String(printedRaw || '').trim().toLowerCase() === 'true' || String(printedRaw || '').trim() === '1' || String(printedRaw || '').trim() === '是';
         const isTriangle = typeRaw === 'triangle' || typeRaw === '三角調';
+        const reasonValue = getValue(source, ['請假事由', 'reason'], '請假');
         const base = {
-          reason: getValue(source, ['請假事由', 'reason'], '請假'),
+          reason: reasonValue,
           subFee: getValue(source, ['經費來源', 'subFee'], '自費代課'),
           note: getValue(source, ['備註', 'note']),
           printed: printed,
@@ -7996,6 +8001,12 @@ createApp({
           serial: serial,
           batchId: getValue(source, ['批次ID', 'batchId'])
         };
+        if (combinedReturn) {
+          const isPublicReason = /公假|公差|婚假|喪假|產前|分娩|身心調適/.test(String(reasonValue || '').trim());
+          base.subFee = Number(period) === 8
+            ? '第8節代課'
+            : (isPublicReason ? '公費代課' : '自費代課');
+        }
         if (isTriangle) {
            const targetDate = getValue(source, ['對調目標日期', 'targetDate']);
            const targetDay = getValue(source, ['對調目標星期', 'targetDayOfWeek']);
@@ -9066,11 +9077,11 @@ createApp({
       const out = [];
       (rows || []).forEach((req) => {
         if (!req || String(req.status || req['狀態'] || '').toLowerCase() !== 'approved') return;
-           const base = {
-             requestId: req.id || req['申請單ID'] || '',
-             serial: req.serial || req['單號'] || '',
-             reason: req.reason || req['請假事由'] || '',
-          subFee: req.subFee || req['經費來源'] || '',
+          const base = {
+            requestId: req.id || req['申請單ID'] || '',
+            serial: req.serial || req['單號'] || '',
+            reason: req.reason || req['請假事由'] || '',
+            subFee: req.subFee || req['經費來源'] || '',
           note: req.note || req['備註'] || '',
           printed: req.printed === true || req.printed === 'TRUE'
         };
