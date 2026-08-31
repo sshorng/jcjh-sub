@@ -6456,8 +6456,8 @@ function doPost(e) {
             && scheduleRowId_(row) === previousId;
         });
         if (!previousRow) throw new Error("找不到要結束的舊課表版本！");
-        if (scheduleSlotKey_(previousRow) !== scheduleSlotKey_(reqData)) {
-          throw new Error("課表新版本必須與舊版本維持相同教師、星期、節次與班級！");
+        if (scheduleSlotGroupKey_(previousRow) !== scheduleSlotGroupKey_(reqData)) {
+          throw new Error("課表新版本必須與舊版本維持相同教師、星期、節次與單／雙週設定，班級與科目可變更！");
         }
         var newActiveFrom = scheduleActiveFrom_(reqData, true);
         var previousActiveFrom = scheduleActiveFrom_(previousRow, false);

@@ -131,7 +131,7 @@ assert.equal(api.importPreview.value.skipped, 0);
   api.openScheduleEditModal('wang@example.edu.tw', 1, 2);
   api.pickScheduleAttr('old-version');
   api.pickScheduleAttr('__new__');
-  api.scheduleForm.value.className = '701';
+  api.scheduleForm.value.className = '702';
   api.scheduleForm.value.subject = '數學';
   api.scheduleForm.value.activeFrom = '2026-08-01';
   await api.saveScheduleCell();
@@ -139,6 +139,8 @@ assert.equal(api.importPreview.value.skipped, 0);
   assert.equal(savedSchedulePayload['前課表ID'], 'old-version');
   assert.notEqual(savedSchedulePayload['課表ID'], 'old-version');
   assert.equal(savedSchedulePayload['啟用起日'], '2026-08-01');
+  assert.equal(savedSchedulePayload['班級'], '702');
+  assert.equal(savedSchedulePayload['科目'], '數學');
 
   api.teacherExcelData.value = [{ '教師姓名': '行政教師', '教師Email': 'staff@example.edu.tw', '職務': '行政' }];
   api.teacherMappingFields.value = {

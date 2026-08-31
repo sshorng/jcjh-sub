@@ -10,6 +10,32 @@ const root = path.resolve(__dirname, '..');
 const source = fs.readFileSync(path.join(root, 'code.gs'), 'utf8');
 
 new vm.Script(source, { filename: 'code.gs' });
+const scheduleKeyStart = source.indexOf('function scheduleSlotKey_');
+const scheduleKeyEnd = source.indexOf('function scheduleClassTokens_', scheduleKeyStart);
+assert.ok(scheduleKeyStart >= 0 && scheduleKeyEnd > scheduleKeyStart, 'schedule version key helpers must remain discoverable');
+const scheduleKeyContext = { String, parseInt };
+vm.createContext(scheduleKeyContext);
+vm.runInContext(source.slice(scheduleKeyStart, scheduleKeyEnd), scheduleKeyContext, { filename: 'code.gs.schedule-keys' });
+const oldScheduleVersion = {
+  '教師姓名': '王老師', '星期': 1, '節次': 2, '班級': '902', '科目': '體育', '課堂屬性': '一般'
+};
+const changedScheduleVersion = Object.assign({}, oldScheduleVersion, { '班級': '903', '科目': '自然' });
+assert.equal(
+  scheduleKeyContext.scheduleSlotGroupKey_(oldScheduleVersion),
+  scheduleKeyContext.scheduleSlotGroupKey_(changedScheduleVersion),
+  '課表新版本應允許變更班級與科目'
+);
+assert.notEqual(
+  scheduleKeyContext.scheduleSlotGroupKey_(oldScheduleVersion),
+  scheduleKeyContext.scheduleSlotGroupKey_(Object.assign({}, oldScheduleVersion, { '教師姓名': '李老師' })),
+  '課表新版本仍須維持相同教師'
+);
+const saveScheduleStart = source.indexOf('} else if (action === "saveScheduleCell")');
+const saveScheduleEnd = source.indexOf('} else if (action === "clearScheduleCell")', saveScheduleStart);
+assert.ok(saveScheduleStart >= 0 && saveScheduleEnd > saveScheduleStart, 'save schedule action must remain discoverable');
+const saveScheduleSource = source.slice(saveScheduleStart, saveScheduleEnd);
+assert.match(saveScheduleSource, /scheduleSlotGroupKey_\(previousRow\) !== scheduleSlotGroupKey_\(reqData\)/, 'new schedule versions should compare stable slot groups');
+assert.doesNotMatch(saveScheduleSource, /scheduleSlotKey_\(previousRow\) !== scheduleSlotKey_\(reqData\)/, 'new schedule versions must not require the old class');
 assert.match(source, /jobTitle: String\(t\["職務"\] \|\| t\.jobTitle \|\| ""\)\.trim\(\)/, 'match candidates should include teacher job title');
 const triangleInputStart = source.indexOf('function triangleInputRows_');
 const triangleInputEnd = source.indexOf('function triangleGroupRowsForRequest_', triangleInputStart);
