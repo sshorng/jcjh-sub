@@ -694,6 +694,23 @@ window.UiSubmitHelpers = (function () {
     return null;
   }
 
+  /** 批次模擬可瀏覽的週次：依選定節次日期去重並按時間排序。 */
+  function getBatchCompareWeeks(slots) {
+    var dateUtils = window.DateUtils;
+    if (!dateUtils || typeof dateUtils.getWeekDatesFrom !== 'function') return [];
+    var weekMap = Object.create(null);
+    (slots || []).forEach(function (slot) {
+      var dateStr = String(slot && (slot.dateStr || slot.date) || '').slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return;
+      var dates = dateUtils.getWeekDatesFrom(dateStr);
+      if (!Array.isArray(dates) || dates.length !== 5 || !dates[0]) return;
+      weekMap[dates[0]] = dates;
+    });
+    return Object.keys(weekMap).sort().map(function (startDate) {
+      return weekMap[startDate];
+    });
+  }
+
   function getCompareWeekDates(deps, who, view) {
     var source = view === 'source'
       ? deps.compareWeekDatesA
@@ -1108,6 +1125,7 @@ window.UiSubmitHelpers = (function () {
     getConsecutiveStatus: getConsecutiveStatus,
     isCompareEmptySlot: isCompareEmptySlot,
     prepCompare: prepCompare,
+    getBatchCompareWeeks: getBatchCompareWeeks,
     getCompareCellText: getCompareCellText,
     getCompareCellClass: getCompareCellClass,
     executeSubmitRequest: executeSubmitRequest

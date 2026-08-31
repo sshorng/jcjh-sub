@@ -1057,12 +1057,26 @@ function packPrintForms(forms) {
 function getSelectedPrintRecords(ctx) {
   try {
     if (typeof document !== 'undefined') {
-      const ids = [];
+      const checkedIds = [];
+      const renderedIds = [];
       document.querySelectorAll('.hist-select-cb:checked').forEach((el) => {
         const id = el.getAttribute('data-rec-id') || el.value;
-        if (id) ids.push(id);
+        if (id) checkedIds.push(String(id));
       });
-      if (ids.length && ctx.selectedRecordIds) ctx.selectedRecordIds.value = ids;
+      document.querySelectorAll('.hist-select-cb').forEach((el) => {
+        const id = el.getAttribute('data-rec-id') || el.value;
+        if (id) renderedIds.push(String(id));
+      });
+      if (ctx.selectedRecordIds) {
+        const renderedSet = new Set(renderedIds);
+        const ids = (ctx.selectedRecordIds.value || [])
+          .map((id) => String(id))
+          .filter((id) => !renderedSet.has(id));
+        checkedIds.forEach((id) => {
+          if (!ids.includes(id)) ids.push(id);
+        });
+        ctx.selectedRecordIds.value = ids;
+      }
     }
   } catch (eSync) { /* ignore */ }
 
@@ -1165,8 +1179,9 @@ function getPrintPreviewCss() {
     .official-row-label { text-align: center; font-weight: 400; white-space: nowrap; }
     .official-subject-row { height: 8.11mm; }
     .official-class-row { height: 4.99mm; }
-    .official-slot-value { text-align: center; font-size: 9pt; white-space: nowrap; }
-    .official-class-value { font-size: 8.5pt; }
+     .official-slot-value { text-align: center; font-size: 9pt; white-space: nowrap; }
+     .official-subject-row .official-slot-value { white-space: normal; overflow-wrap: anywhere; word-break: break-all; }
+     .official-class-value { font-size: 8.5pt; }
     .official-instruction-row { min-height: 8.11mm; height: auto; }
     .official-instruction-row td { text-align: justify; font-size: 8.5pt; line-height: 1.15; padding-top: .6mm; padding-bottom: .6mm; }
   `;
@@ -1430,8 +1445,9 @@ async function printSelectedForms(formType, ctx) {
           .official-row-label { text-align: center; font-weight: 400; white-space: nowrap; }
           .official-subject-row { height: 8.11mm; }
           .official-class-row { height: 4.99mm; }
-          .official-slot-value { text-align: center; font-size: 9pt; white-space: nowrap; }
-          .official-class-value { font-size: 8.5pt; }
+           .official-slot-value { text-align: center; font-size: 9pt; white-space: nowrap; }
+           .official-subject-row .official-slot-value { white-space: normal; overflow-wrap: anywhere; word-break: break-all; }
+           .official-class-value { font-size: 8.5pt; }
           .official-instruction-row { min-height: 8.11mm; height: auto; }
           .official-instruction-row td { text-align: justify; font-size: 8.5pt; line-height: 1.15; padding-top: 0.6mm; padding-bottom: 0.6mm; }
         </style>

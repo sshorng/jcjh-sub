@@ -67,7 +67,9 @@ window.UiApproval = (function () {
         var el = document.querySelector('.admin-select-cb[data-req-id="' + String(id) + '"]');
         if (el) return !!el.checked;
       } catch (e) { /* ignore */ }
-      return selectedAdminPendingIds.value.indexOf(id) >= 0;
+      return selectedAdminPendingIds.value.some(function (selectedId) {
+        return String(selectedId) === String(id);
+      });
     }
 
     function readAdminCheckedIds() {
@@ -83,7 +85,30 @@ window.UiApproval = (function () {
     }
 
     function syncAdminSelectionFromDom() {
-      selectedAdminPendingIds.value = readAdminCheckedIds();
+      var checkedIds = readAdminCheckedIds();
+      var renderedIds = [];
+      try {
+        document.querySelectorAll('.admin-select-cb').forEach(function (el) {
+          var id = el.getAttribute('data-req-id') || el.value;
+          if (id) renderedIds.push(String(id));
+        });
+      } catch (e) { /* ignore */ }
+      var renderedSet = new Set(renderedIds);
+      var next = [];
+      // 收合批次的子列不在 DOM，保留它們原本的選取狀態。
+      (selectedAdminPendingIds.value || []).forEach(function (id) {
+        if (!renderedSet.has(String(id)) && next.indexOf(String(id)) < 0) next.push(String(id));
+      });
+      checkedIds.forEach(function (id) {
+        if (next.indexOf(String(id)) < 0) next.push(String(id));
+      });
+      selectedAdminPendingIds.value = next;
+      var selected = new Set(next);
+      var pageIds = getAdminPendingPageSelectableIds();
+      var pageSelected = pageIds.length > 0 && pageIds.every(function (id) { return selected.has(String(id)); });
+      try {
+        document.querySelectorAll('.admin-select-all').forEach(function (el) { el.checked = pageSelected; });
+      } catch (eHeader) { /* ignore */ }
     }
 
     function toggleAdminPendingSelect(id) {
@@ -95,29 +120,80 @@ window.UiApproval = (function () {
       syncAdminSelectionFromDom();
     }
 
-    function toggleSelectAllAdminPending(evt) {
-      var on = true;
-      if (evt && evt.target) on = !!evt.target.checked;
-      else {
-        // 無 event：依目前是否全勾反轉
-        var boxes = document.querySelectorAll('.admin-select-cb');
-        var allOn = boxes.length > 0;
-        boxes.forEach(function (el) { if (!el.checked) allOn = false; });
-        on = !allOn;
-      }
+    function getAdminPendingPageSelectableIds() {
+      var ids = [];
+      var seen = Object.create(null);
+      var rows = paginatedAdminPending && Array.isArray(paginatedAdminPending.value)
+        ? paginatedAdminPending.value
+        : [];
+      var add = function (row) {
+        if (!row || row.type === 'triangle' || row.id == null) return;
+        var id = String(row.id);
+        if (!seen[id]) {
+          seen[id] = true;
+          ids.push(id);
+        }
+      };
+      rows.forEach(function (row) {
+        if (row && row.displayKind === 'batch') {
+          (row.items || []).forEach(add);
+        } else {
+          add(row);
+        }
+      });
+      return ids;
+    }
+
+    function setAdminPendingSelection(ids, on) {
+      var selected = new Set((selectedAdminPendingIds.value || []).map(function (id) { return String(id); }));
+      (ids || []).forEach(function (id) {
+        var key = String(id);
+        if (on) selected.add(key);
+        else selected.delete(key);
+      });
+      selectedAdminPendingIds.value = Array.from(selected);
+      var idSet = new Set((ids || []).map(function (id) { return String(id); }));
       try {
         document.querySelectorAll('.admin-select-cb').forEach(function (el) {
-          if (el.disabled) return;
-          el.checked = on;
+          var id = el.getAttribute('data-req-id') || el.value;
+          if (!el.disabled && idSet.has(String(id))) el.checked = on;
         });
-        var allBox = document.querySelector('.admin-select-all');
-        if (allBox) allBox.checked = on;
+        var pageIds = getAdminPendingPageSelectableIds();
+        var pageSelected = pageIds.length > 0 && pageIds.every(function (id) { return selected.has(String(id)); });
+        document.querySelectorAll('.admin-select-all').forEach(function (el) {
+          el.checked = pageSelected;
+        });
       } catch (e) { /* ignore */ }
-      if (typeof requestAnimationFrame === 'function') {
-        requestAnimationFrame(syncAdminSelectionFromDom);
-      } else {
-        syncAdminSelectionFromDom();
+    }
+
+    function toggleSelectAllAdminPending(evt) {
+      var ids = getAdminPendingPageSelectableIds();
+      if (!ids.length) {
+        if (evt && evt.target) evt.target.checked = false;
+        return;
       }
+      var selected = new Set((selectedAdminPendingIds.value || []).map(function (id) { return String(id); }));
+      var allOn = ids.every(function (id) { return selected.has(String(id)); });
+      var isCheckboxEvent = !!(evt && evt.target && evt.target.type === 'checkbox');
+      var on = isCheckboxEvent ? !!evt.target.checked : !allOn;
+      setAdminPendingSelection(ids, on);
+    }
+
+    function isAdminBatchGroupSelected(group) {
+      var ids = (group && group.items || []).filter(function (row) {
+        return row && row.type !== 'triangle' && row.id != null;
+      }).map(function (row) { return String(row.id); });
+      if (!ids.length) return false;
+      var selected = new Set((selectedAdminPendingIds.value || []).map(function (id) { return String(id); }));
+      return ids.every(function (id) { return selected.has(id); });
+    }
+
+    function toggleAdminBatchGroupSelection(group, evt) {
+      var ids = (group && group.items || []).filter(function (row) {
+        return row && row.type !== 'triangle' && row.id != null;
+      }).map(function (row) { return String(row.id); });
+      if (!ids.length) return;
+      setAdminPendingSelection(ids, !!(evt && evt.target && evt.target.checked));
     }
 
     function clearAdminPendingSelection() {
@@ -623,6 +699,8 @@ window.UiApproval = (function () {
       isAdminPendingSelected: isAdminPendingSelected,
       toggleAdminPendingSelect: toggleAdminPendingSelect,
       toggleSelectAllAdminPending: toggleSelectAllAdminPending,
+      isAdminBatchGroupSelected: isAdminBatchGroupSelected,
+      toggleAdminBatchGroupSelection: toggleAdminBatchGroupSelection,
       clearAdminPendingSelection: clearAdminPendingSelection,
       checkUrlCallback: checkUrlCallback,
       respondToRequest: respondToRequest,

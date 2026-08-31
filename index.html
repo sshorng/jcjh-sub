@@ -655,10 +655,10 @@
                                     </span>
                                    <span v-if="isCombinedClass(slot.cell.className) || hasScheduleSpecialTag(slot.cell, '併班')" class="cell-badge tag-combined" title="併班">併班</span>
                                   </div>
-                                  <div class="cell-subject">
-                                    {{ slot.cell.subject }}<span v-if="slot.cell.attr === '超鐘點'" title="超鐘點">（超）</span>
-                                    <span v-if="slot.isAwayLabel" class="away-class-badge">班外出</span>
-                                  </div>
+                                   <div class="cell-subject" :class="{ 'cell-subject-away': slot.isAwayLabel }">
+                                     {{ slot.cell.subject }}<span v-if="slot.cell.attr === '超鐘點'" title="超鐘點">（超）</span>
+                                     <span v-if="slot.isAwayLabel" class="away-class-badge">{{ getClassAwayEventName(slot.cell.className, currentWeekDates[day-1]) || '空堂事件' }}</span>
+                                   </div>
                                   <div v-if="slot.draft" class="cell-sub-text mutual-draft-label">
                                     暫定：{{ slot.draftSubName }}
                                     <span class="opacity-85">（{{ slot.draftFeeShort }}）</span>
@@ -963,10 +963,13 @@
           <!-- 0. 待教學組核准的單據 (僅限管理員，置頂) -->
           <div class="card" v-if="isAdmin" data-tour="pending-admin">
             <div class="card-title" style="flex-wrap: wrap; gap: 8px;">
-               <span>📝 待核准發放（共 {{ pendingSearchQuery ? (paginatedAdminPending.length + '／篩選') : adminPendingRequests.length + ' 筆' }}）</span>
+                <span>📝 待核准發放（共 {{ pendingSearchQuery ? (filteredAdminPendingRequests.length + '／篩選') : (adminPendingRequests.length + ' 筆') }}）</span>
               <div class="batch-bar" v-if="adminPendingRequests.length > 0">
                 <button type="button" class="btn btn-secondary pad-6-10-78"  @click="toggleSelectAllAdminPending">
-                  {{ paginatedAdminPending.length && paginatedAdminPending.every(r => isAdminPendingSelected(r.id)) ? '取消本頁全選' : '本頁全選' }}
+                  {{ isAdminPendingPageFullySelected() ? '取消本頁全選' : '本頁全選' }}
+                </button>
+                <button type="button" class="btn btn-secondary btn-sm-78" :disabled="!selectedAdminPendingIds.length" @click="openBatchPendingPrintPreview">
+                  🖨️ 批次預覽列印 ({{ selectedAdminPendingIds.length }})
                 </button>
                 <button type="button" class="btn btn-success btn-sm-78" :disabled="!selectedAdminPendingIds.length" @click="batchAdminApprove">
                   ✔ 批次核准 ({{ selectedAdminPendingIds.length }})
@@ -1001,63 +1004,102 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="req in paginatedAdminPending" :key="req.id" class="cursor-pointer" @click="detailRequest = req; detailSubRecord = null; showDetailModal = true">
-                    <td>
-                      <div class="flex-row-gap-6">
-                        <input type="checkbox" class="admin-select-cb chk-sm" :value="req.id" :data-req-id="req.id" :disabled="req.type === 'triangle'" :title="req.type === 'triangle' ? '三角調請使用單筆整組核准或駁回' : ''" @click.stop>
-                        <strong>{{ req.serial || '---' }}</strong>
-                      </div>
-                      <div v-if="req.note" class="req-note-cell" :title="req.note">{{ req.note }}</div>
-                    </td>
-                    <td>{{ formatRequestApplicationDate(req) }}</td>
-                    <td>
-                      <div class="flex-wrap-gap">
-                          <span class="status-badge tag-blue" v-if="req.type === 'triangle'">三角調</span>
-                          <span class="status-badge tag-blue" v-else-if="req.type === 'exchange'">調課</span>
+                  <template v-for="row in paginatedAdminPending" :key="row.displayKey">
+                    <tr v-if="row.displayKind === 'batch'" class="batch-group-row batch-group-data-row" @click="toggleBatchGroup('admin', row.batchId)">
+                      <td>
+                        <div class="batch-group-first-cell">
+                          <input
+                            type="checkbox"
+                            class="batch-group-checkbox chk-sm"
+                            :checked="isAdminBatchGroupSelected(row)"
+                            :aria-label="'選取批次 ' + row.batchId + ' 的全部申請'"
+                            title="選取此批次全部申請"
+                            @click.stop
+                            @change.stop="toggleAdminBatchGroupSelection(row, $event)"
+                          >
+                          <button type="button" class="batch-group-expand" :aria-expanded="isBatchGroupExpanded('admin', row.batchId)" @click.stop="toggleBatchGroup('admin', row.batchId)">
+                            <span class="batch-group-chevron" :class="{ 'is-open': isBatchGroupExpanded('admin', row.batchId) }" aria-hidden="true">›</span>
+                            <strong>{{ row.items[0].serial || '批次申請' }}</strong>
+                          </button>
+                        </div>
+                        <div class="batch-group-inline-meta">批次申請 · {{ row.items.length }} 筆</div>
+                      </td>
+                      <td>{{ formatRequestApplicationDate(row.items[0]) }}</td>
+                      <td>
+                        <div class="flex-wrap-gap">
+                          <span class="status-badge tag-blue" v-if="row.items[0].type === 'triangle'">三角調</span>
+                          <span class="status-badge tag-blue" v-else-if="row.items[0].type === 'exchange'">調課</span>
                           <span class="status-badge tag-red" v-else>代課</span>
-                         <span v-for="tag in getRequestTypeTags(req)" :key="tag.key" class="risk-tag" :class="'risk-'+tag.key">{{ tag.label }}</span>
-                        <span
-                           v-for="rf in getApproveRiskFlags(req).filter(f => (f.level === 'warn' || f.level === 'danger') && f.key !== 'chain')"
-                          :key="'arf-'+rf.key"
-                          class="risk-tag"
-                          :class="rf.level === 'danger' ? 'risk-danger' : 'risk-warn'"
-                        >{{ rf.label }}</span>
-                      </div>
-                    </td>
-                    <td>
-                      {{ req.requesterName }}
-                      <div v-if="req.isProxySubmit || (req.note && req.note.indexOf('[行政代申請') >= 0)" class="req-note-cell no-checkbox" style="color:#b45309;">
-                        代申請{{ req.proxyByName ? '：' + req.proxyByName : '' }}
-                      </div>
-                    </td>
-                    <td>{{ req.targetTeacherName }}</td>
-                    <td>
-                      <span class="hist-slot-inline">
-                        {{ formatLeaveClassSlot(req) }}
-                        <span v-if="isLeaveClassRestricted(req)" class="status-badge tag-restricted">綁課</span>
-                        <span v-if="isRequestLeaveRechanged(req)" class="risk-tag risk-chain">再異動</span>
-                      </span>
-                    </td>
-                    <td>
-                      <span class="hist-slot-inline">
-                        {{ formatExchangeClassSlot(req) }}
-                        <span v-if="isExchangeClassRestricted(req)" class="status-badge tag-restricted">綁課</span>
-                        <span v-if="isRequestExchangeRechanged(req)" class="risk-tag risk-chain">再異動</span>
-                      </span>
-                    </td>
-                    <td>
-                      <span class="status-badge w-fit-fs-75" :class="'status-' + (req.status ? req.status.toLowerCase() : 'pending_admin')">
-                        {{ getStatusText(req.status) }}
-                      </span>
-                    </td>
-                    <td @click.stop>
-                      <div class="action-buttons action-buttons-row">
-                         <button v-if="req.type !== 'triangle' || isPaperFlowRequest(req)" class="btn btn-secondary btn-md-nowrap" title="列印通知" aria-label="列印通知" @click="openPaperPrintForRequest(req)">🖨️</button>
-                        <button class="btn btn-success btn-md-nowrap" title="核准並出單" aria-label="核准並出單" @click="adminApprove(req.id)">✓</button>
-                        <button class="btn btn-danger btn-md-nowrap" title="退回申請" aria-label="退回申請" @click="adminReject(req.id)">❌</button>
-                      </div>
-                    </td>
-                  </tr>
+                          <span class="status-badge tag-gray fs-65">批次 {{ row.items.length }} 筆</span>
+                        </div>
+                      </td>
+                      <td>{{ row.items[0].requesterName }}</td>
+                      <td>{{ row.items[0].targetTeacherName }}</td>
+                      <td><span class="hist-slot-inline">{{ getBatchGroupSlotSummary(row, formatLeaveClassSlot) }}</span></td>
+                      <td><span class="hist-slot-inline">{{ getBatchGroupSlotSummary(row, formatExchangeClassSlot) }}</span></td>
+                      <td><span class="status-badge w-fit-fs-75" :class="getBatchGroupStatusClass(row)">{{ getBatchGroupStatusText(row) }}</span></td>
+                      <td>
+                        <button type="button" class="btn btn-secondary btn-md-nowrap batch-group-action-button" @click.stop="toggleBatchGroup('admin', row.batchId)">{{ isBatchGroupExpanded('admin', row.batchId) ? '收合' : '展開' }}</button>
+                      </td>
+                    </tr>
+                    <tr v-else :class="['cursor-pointer', { 'batch-child-row': row.batchGroupKey }]" @click="detailRequest = row; detailSubRecord = null; showDetailModal = true">
+                      <td>
+                        <div class="flex-row-gap-6">
+                          <input type="checkbox" class="admin-select-cb chk-sm" :value="row.id" :data-req-id="row.id" :checked="isAdminPendingSelected(row.id)" :disabled="row.type === 'triangle'" :title="row.type === 'triangle' ? '三角調請使用單筆整組核准或駁回' : ''" @click.stop>
+                          <strong>{{ row.serial || '---' }}</strong>
+                        </div>
+                        <div v-if="row.note" class="req-note-cell" :title="row.note">{{ row.note }}</div>
+                      </td>
+                      <td>{{ formatRequestApplicationDate(row) }}</td>
+                      <td>
+                        <div class="flex-wrap-gap">
+                            <span class="status-badge tag-blue" v-if="row.type === 'triangle'">三角調</span>
+                            <span class="status-badge tag-blue" v-else-if="row.type === 'exchange'">調課</span>
+                            <span class="status-badge tag-red" v-else>代課</span>
+                           <span v-for="tag in getRequestTypeTags(row)" :key="tag.key" class="risk-tag" :class="'risk-'+tag.key">{{ tag.label }}</span>
+                          <span
+                             v-for="rf in getApproveRiskFlags(row).filter(f => (f.level === 'warn' || f.level === 'danger') && f.key !== 'chain')"
+                            :key="'arf-'+rf.key"
+                            class="risk-tag"
+                            :class="rf.level === 'danger' ? 'risk-danger' : 'risk-warn'"
+                          >{{ rf.label }}</span>
+                        </div>
+                      </td>
+                      <td>
+                        {{ row.requesterName }}
+                        <div v-if="row.isProxySubmit || (row.note && row.note.indexOf('[行政代申請') >= 0)" class="req-note-cell no-checkbox" style="color:#b45309;">
+                          代申請{{ row.proxyByName ? '：' + row.proxyByName : '' }}
+                        </div>
+                      </td>
+                      <td>{{ row.targetTeacherName }}</td>
+                      <td>
+                        <span class="hist-slot-inline">
+                          {{ formatLeaveClassSlot(row) }}
+                          <span v-if="isLeaveClassRestricted(row)" class="status-badge tag-restricted">綁課</span>
+                          <span v-if="isRequestLeaveRechanged(row)" class="risk-tag risk-chain">再異動</span>
+                        </span>
+                      </td>
+                      <td>
+                        <span class="hist-slot-inline">
+                          {{ formatExchangeClassSlot(row) }}
+                          <span v-if="isExchangeClassRestricted(row)" class="status-badge tag-restricted">綁課</span>
+                          <span v-if="isRequestExchangeRechanged(row)" class="risk-tag risk-chain">再異動</span>
+                        </span>
+                      </td>
+                      <td>
+                        <span class="status-badge w-fit-fs-75" :class="'status-' + (row.status ? row.status.toLowerCase() : 'pending_admin')">
+                          {{ getStatusText(row.status) }}
+                        </span>
+                      </td>
+                      <td @click.stop>
+                        <div class="action-buttons action-buttons-row">
+                           <button v-if="row.type !== 'triangle' || isPaperFlowRequest(row)" class="btn btn-secondary btn-md-nowrap" title="列印通知" aria-label="列印通知" @click="openPaperPrintForRequest(row)">🖨️</button>
+                          <button class="btn btn-success btn-md-nowrap" title="核准並出單" aria-label="核准並出單" @click="adminApprove(row.id)">✓</button>
+                          <button class="btn btn-danger btn-md-nowrap" title="退回申請" aria-label="退回申請" @click="adminReject(row.id)">❌</button>
+                        </div>
+                      </td>
+                    </tr>
+                  </template>
                   <tr v-if="paginatedAdminPending.length === 0">
                     <td colspan="9" class="empty-table-cell">沒有待核准的單據。</td>
                   </tr>
@@ -1214,83 +1256,113 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="req in paginatedMySent" :key="req.id" class="cursor-pointer" @click="detailRequest = req; detailSubRecord = null; showDetailModal = true">
-                    <td>
-                      <strong>{{ req.serial || '---' }}</strong>
-                      <div v-if="req.note" class="req-note-cell no-checkbox" :title="req.note">{{ req.note }}</div>
-                    </td>
-                    <td>{{ formatRequestApplicationDate(req) }}</td>
-                    <td>
-                      <div class="flex-wrap-gap">
-                           <span class="status-badge tag-blue" v-if="req.type === 'triangle'">三角調</span>
-                          <span class="status-badge tag-blue" v-else-if="req.type === 'exchange'">調課</span>
+                  <template v-for="row in paginatedMySent" :key="row.displayKey">
+                    <tr v-if="row.displayKind === 'batch'" class="batch-group-row batch-group-data-row" @click="toggleBatchGroup('sent', row.batchId)">
+                      <td>
+                        <div class="batch-group-first-cell">
+                          <button type="button" class="batch-group-expand" :aria-expanded="isBatchGroupExpanded('sent', row.batchId)" @click.stop="toggleBatchGroup('sent', row.batchId)">
+                            <span class="batch-group-chevron" :class="{ 'is-open': isBatchGroupExpanded('sent', row.batchId) }" aria-hidden="true">›</span>
+                            <strong>{{ row.items[0].serial || '批次申請' }}</strong>
+                          </button>
+                        </div>
+                        <div class="batch-group-inline-meta">批次申請 · {{ row.items.length }} 筆</div>
+                      </td>
+                      <td>{{ formatRequestApplicationDate(row.items[0]) }}</td>
+                      <td>
+                        <div class="flex-wrap-gap">
+                          <span class="status-badge tag-blue" v-if="row.items[0].type === 'triangle'">三角調</span>
+                          <span class="status-badge tag-blue" v-else-if="row.items[0].type === 'exchange'">調課</span>
                           <span class="status-badge tag-red" v-else>代課</span>
-                          <span v-if="req.batchId && req.type !== 'triangle'" class="status-badge tag-gray fs-65" title="同批次">批次</span>
-                          <span v-if="req.type === 'triangle'" class="status-badge tag-gray fs-65" title="三位教師全部同意後才送行政">整組</span>
-                        <span v-for="tag in getRequestTypeTags(req)" :key="tag.key" class="risk-tag badge-micro" :class="'risk-'+tag.key">{{ tag.label }}</span>
-                      </div>
-                    </td>
-                    <td>
-                      {{ req.requesterName }}
-                      <span
-                        v-if="!(req.isProxySubmit || req.proxyByEmail || (req.note && req.note.indexOf('[行政代申請') >= 0))"
-                        class="text-xs-muted"
-                       >（您）</span>
-                      <div
-                        v-if="req.isProxySubmit || req.proxyByEmail || (req.note && req.note.indexOf('[行政代申請') >= 0)"
-                        class="req-note-cell no-checkbox"
-                        style="color:#b45309;"
-                      >代申請{{ req.proxyByName ? '：' + req.proxyByName : (user && user.displayName ? '：' + user.displayName : '') }}</div>
-                    </td>
-                    <td>{{ req.targetTeacherName }}</td>
-                    <td>
-                      <span class="hist-slot-inline">
-                        {{ formatLeaveClassSlot(req) }}
-                        <span v-if="isLeaveClassRestricted(req)" class="status-badge tag-restricted">綁課</span>
-                        <span v-if="isRequestLeaveRechanged(req)" class="risk-tag risk-chain">再異動</span>
-                      </span>
-                    </td>
-                    <td>
-                      <span class="hist-slot-inline">
-                        {{ formatExchangeClassSlot(req) }}
-                        <span v-if="isExchangeClassRestricted(req)" class="status-badge tag-restricted">綁課</span>
-                        <span v-if="isRequestExchangeRechanged(req)" class="risk-tag risk-chain">再異動</span>
-                      </span>
-                    </td>
-                    <td>
-                      <span class="status-badge w-fit-fs-75" :class="'status-' + (req.status ? req.status.toLowerCase() : 'pending_teacher')">
-                        {{ getStatusText(req.status) }}
-                      </span>
-                    </td>
-                    <td class="td-actions" @click.stop>
-                      <div class="req-action-stack">
-                        <button
-                          type="button"
-                          class="btn btn-secondary btn-req-action"
-                          @click="detailRequest = req; detailSubRecord = null; showDetailModal = true"
-                         >詳情</button>
-                        <button
-                          type="button"
-                          class="btn btn-secondary btn-req-action"
-                          @click="openPaperPrintForRequest(req)"
-                        >🖨️ 列印</button>
-                        <button
-                           v-if="req.status === 'pending_teacher' || isPaperFlowRequest(req)"
-                          type="button"
-                          class="btn btn-success btn-req-action"
-                          style="background: #22c55e; border-color: #16a34a;"
-                          @click="copyLineMessageForRequest(req)"
-                        >LINE</button>
-                        <button 
-                          v-if="req.status === 'pending_teacher' || req.status === 'pending_admin'"
-                          type="button"
-                          class="btn btn-secondary btn-req-action"
-                          style="color: var(--color-danger); border-color: rgba(239, 68, 68, 0.2);"
-                          @click="cancelRequest(req.id)"
-                        >撤回</button>
-                      </div>
-                    </td>
-                  </tr>
+                          <span class="status-badge tag-gray fs-65">批次 {{ row.items.length }} 筆</span>
+                        </div>
+                      </td>
+                      <td>{{ row.items[0].requesterName }}</td>
+                      <td>{{ row.items[0].targetTeacherName }}</td>
+                      <td><span class="hist-slot-inline">{{ getBatchGroupSlotSummary(row, formatLeaveClassSlot) }}</span></td>
+                      <td><span class="hist-slot-inline">{{ getBatchGroupSlotSummary(row, formatExchangeClassSlot) }}</span></td>
+                      <td><span class="status-badge w-fit-fs-75" :class="getBatchGroupStatusClass(row)">{{ getBatchGroupStatusText(row) }}</span></td>
+                      <td>
+                        <button type="button" class="btn btn-secondary btn-md-nowrap batch-group-action-button" @click.stop="toggleBatchGroup('sent', row.batchId)">{{ isBatchGroupExpanded('sent', row.batchId) ? '收合' : '展開' }}</button>
+                      </td>
+                    </tr>
+                    <tr v-else :class="['cursor-pointer', { 'batch-child-row': row.batchGroupKey }]" @click="detailRequest = row; detailSubRecord = null; showDetailModal = true">
+                      <td>
+                        <strong>{{ row.serial || '---' }}</strong>
+                        <div v-if="row.note" class="req-note-cell no-checkbox" :title="row.note">{{ row.note }}</div>
+                      </td>
+                      <td>{{ formatRequestApplicationDate(row) }}</td>
+                      <td>
+                        <div class="flex-wrap-gap">
+                             <span class="status-badge tag-blue" v-if="row.type === 'triangle'">三角調</span>
+                            <span class="status-badge tag-blue" v-else-if="row.type === 'exchange'">調課</span>
+                            <span class="status-badge tag-red" v-else>代課</span>
+                            <span v-if="row.batchId && row.type !== 'triangle'" class="status-badge tag-gray fs-65" title="同批次">批次</span>
+                            <span v-if="row.type === 'triangle'" class="status-badge tag-gray fs-65" title="三位教師全部同意後才送行政">整組</span>
+                          <span v-for="tag in getRequestTypeTags(row)" :key="tag.key" class="risk-tag badge-micro" :class="'risk-'+tag.key">{{ tag.label }}</span>
+                        </div>
+                      </td>
+                      <td>
+                        {{ row.requesterName }}
+                        <span
+                          v-if="!(row.isProxySubmit || row.proxyByEmail || (row.note && row.note.indexOf('[行政代申請') >= 0))"
+                          class="text-xs-muted"
+                         >（您）</span>
+                        <div
+                          v-if="row.isProxySubmit || row.proxyByEmail || (row.note && row.note.indexOf('[行政代申請') >= 0)"
+                          class="req-note-cell no-checkbox"
+                          style="color:#b45309;"
+                        >代申請{{ row.proxyByName ? '：' + row.proxyByName : (user && user.displayName ? '：' + user.displayName : '') }}</div>
+                      </td>
+                      <td>{{ row.targetTeacherName }}</td>
+                      <td>
+                        <span class="hist-slot-inline">
+                          {{ formatLeaveClassSlot(row) }}
+                          <span v-if="isLeaveClassRestricted(row)" class="status-badge tag-restricted">綁課</span>
+                          <span v-if="isRequestLeaveRechanged(row)" class="risk-tag risk-chain">再異動</span>
+                        </span>
+                      </td>
+                      <td>
+                        <span class="hist-slot-inline">
+                           {{ formatExchangeClassSlot(row) }}
+                           <span v-if="isExchangeClassRestricted(row)" class="status-badge tag-restricted">綁課</span>
+                           <span v-if="isRequestExchangeRechanged(row)" class="risk-tag risk-chain">再異動</span>
+                        </span>
+                      </td>
+                      <td>
+                        <span class="status-badge w-fit-fs-75" :class="'status-' + (row.status ? row.status.toLowerCase() : 'pending_teacher')">
+                          {{ getStatusText(row.status) }}
+                        </span>
+                      </td>
+                      <td class="td-actions" @click.stop>
+                        <div class="req-action-stack">
+                          <button
+                            type="button"
+                            class="btn btn-secondary btn-req-action"
+                            @click="detailRequest = row; detailSubRecord = null; showDetailModal = true"
+                           >詳情</button>
+                          <button
+                            type="button"
+                            class="btn btn-secondary btn-req-action"
+                            @click="openPaperPrintForRequest(row)"
+                          >🖨️ 列印</button>
+                          <button
+                             v-if="row.status === 'pending_teacher' || isPaperFlowRequest(row)"
+                            type="button"
+                            class="btn btn-success btn-req-action"
+                            style="background: #22c55e; border-color: #16a34a;"
+                            @click="copyLineMessageForRequest(row)"
+                          >LINE</button>
+                          <button
+                            v-if="row.status === 'pending_teacher' || row.status === 'pending_admin'"
+                            type="button"
+                            class="btn btn-secondary btn-req-action"
+                            style="color: var(--color-danger); border-color: rgba(239, 68, 68, 0.2);"
+                            @click="cancelRequest(row.id)"
+                          >撤回</button>
+                        </div>
+                      </td>
+                    </tr>
+                  </template>
                   <tr v-if="paginatedMySent.length === 0">
                     <td colspan="9" class="empty-table-cell">沒有發起的申請紀錄。</td>
                   </tr>
@@ -1405,56 +1477,99 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="rec in paginatedHistoryRecords" :key="rec.id" class="cursor-pointer" @click="showDetailForRecord(rec.id, rec.requestId)">
-                    <td class="hist-td-serial">
-                      <div class="hist-serial-row">
-                        <input type="checkbox" class="hist-select-cb chk-14-shrink" :value="rec.id" :data-rec-id="rec.id" @click.stop>
-                        <strong class="hist-serial-text" :title="rec.serial">{{ rec.serial }}</strong>
-                      </div>
-                      <div v-if="rec.note" class="req-note-cell" :title="rec.note">{{ rec.note }}</div>
-                    </td>
-                    <td>{{ rec.createdDate }}</td>
-                    <td>
-                      <div class="flex-wrap-gap">
-                        <span class="status-badge tag-blue" v-if="isHistoryExchangeType(rec)">調課</span>
-                        <span class="status-badge tag-red" v-else>代課</span>
-                         <span v-for="tag in getRequestTypeTags(rec)" :key="tag.key" class="risk-tag risk-tag-xs" :class="'risk-'+tag.key">{{ tag.label }}</span>
-                      </div>
-                    </td>
-                    <td>{{ rec.requesterName }}</td>
-                    <td>{{ rec.targetTeacherName }}</td>
-                    <td>
-                      <span class="hist-slot-inline">
-                        {{ formatHistoryLeaveSlot(rec) }}
-                        <span v-if="isHistoryLeaveRestricted(rec)" class="status-badge tag-restricted">綁課</span>
-                          <span v-if="isHistoryLeaveRechanged(rec)" class="risk-tag risk-chain">再異動</span>
-                      </span>
-                    </td>
-                    <td>
-                      <span class="hist-slot-inline">
-                         {{ formatHistoryExchangeSlot(rec) }}
-                         <span v-if="isHistoryExchangeRestricted(rec)" class="status-badge tag-restricted">綁課</span>
-                         <span v-if="isHistoryExchangeRechanged(rec)" class="risk-tag risk-chain">再異動</span>
-                      </span>
-                    </td>
-                    <td>
-                      <div style="display: flex; flex-direction: column; gap: 4px; align-items: flex-start;">
-                        <span class="status-badge" :class="'status-' + (rec.status ? rec.status.toLowerCase() : 'approved')">
-                          {{ getStatusText(rec.status || 'approved') }}
-                        </span>
-                        <span class="badge-print" :class="rec.printed ? 'badge-printed' : 'badge-unprinted'">
-                          {{ rec.printed ? '已列印' : '未列印' }}
-                        </span>
-                      </div>
-                    </td>
-                      <td v-if="isAdmin" @click.stop>
-                        <div class="hist-actions">
-                           <button type="button" class="btn btn-secondary" title="列印此筆通知單" aria-label="列印此筆通知單" @click="printSingleRequest({ id: rec.requestId || rec.id }, 'Notice')">🖨️</button>
-                          <button type="button" class="btn btn-secondary" @click="openHistoryEditModal(rec)">編輯</button>
-                          <button type="button" class="btn btn-secondary" style="color: var(--color-danger); border-color: rgba(220, 38, 38, 0.18);" @click="deleteSubstitutionRecord(rec.id, rec.requestId)">撤銷</button>
+                  <template v-for="row in paginatedHistoryRecords" :key="row.displayKey">
+                    <tr v-if="row.displayKind === 'batch'" class="batch-group-row batch-group-data-row" @click="toggleBatchGroup('history', row.batchId)">
+                      <td>
+                        <div class="batch-group-first-cell">
+                          <input
+                            type="checkbox"
+                            class="batch-group-checkbox chk-14-shrink"
+                            :checked="isHistoryBatchGroupSelected(row)"
+                            :aria-label="'選取批次 ' + row.batchId + ' 的全部紀錄'"
+                            title="選取此批次全部紀錄"
+                            @click.stop
+                            @change.stop="toggleHistoryBatchGroupSelection(row, $event)"
+                          >
+                          <button type="button" class="batch-group-expand" :aria-expanded="isBatchGroupExpanded('history', row.batchId)" @click.stop="toggleBatchGroup('history', row.batchId)">
+                            <span class="batch-group-chevron" :class="{ 'is-open': isBatchGroupExpanded('history', row.batchId) }" aria-hidden="true">›</span>
+                            <strong>{{ row.items[0].serial || '批次申請' }}</strong>
+                          </button>
                         </div>
-                    </td>
-                  </tr>
+                        <div class="batch-group-inline-meta">批次申請 · {{ row.items.length }} 筆</div>
+                      </td>
+                      <td>{{ row.items[0].createdDate }}</td>
+                      <td>
+                        <div class="flex-wrap-gap">
+                          <span class="status-badge tag-blue" v-if="isHistoryExchangeType(row.items[0])">調課</span>
+                          <span class="status-badge tag-red" v-else>代課</span>
+                          <span class="status-badge tag-gray fs-65">批次 {{ row.items.length }} 筆</span>
+                        </div>
+                      </td>
+                      <td>{{ row.items[0].requesterName }}</td>
+                      <td>{{ row.items[0].targetTeacherName }}</td>
+                      <td><span class="hist-slot-inline">{{ getBatchGroupSlotSummary(row, formatHistoryLeaveSlot) }}</span></td>
+                      <td><span class="hist-slot-inline">{{ getBatchGroupSlotSummary(row, formatHistoryExchangeSlot) }}</span></td>
+                      <td>
+                        <div style="display: flex; flex-direction: column; gap: 4px; align-items: flex-start;">
+                          <span class="status-badge" :class="getBatchGroupStatusClass(row)">{{ getBatchGroupStatusText(row) }}</span>
+                          <span class="badge-print badge-unprinted">批次</span>
+                        </div>
+                      </td>
+                      <td v-if="isAdmin">
+                        <button type="button" class="btn btn-secondary btn-md-nowrap batch-group-action-button" @click.stop="toggleBatchGroup('history', row.batchId)">{{ isBatchGroupExpanded('history', row.batchId) ? '收合' : '展開' }}</button>
+                      </td>
+                    </tr>
+                    <tr v-else :class="['cursor-pointer', { 'batch-child-row': row.batchGroupKey }]" @click="showDetailForRecord(row.id, row.requestId)">
+                      <td class="hist-td-serial">
+                        <div class="hist-serial-row">
+                          <input type="checkbox" class="hist-select-cb chk-14-shrink" :value="row.id" :data-rec-id="row.id" :checked="isHistoryRecordSelected(row.id)" @click.stop>
+                          <strong class="hist-serial-text" :title="row.serial">{{ row.serial }}</strong>
+                        </div>
+                        <div v-if="row.note" class="req-note-cell" :title="row.note">{{ row.note }}</div>
+                      </td>
+                      <td>{{ row.createdDate }}</td>
+                      <td>
+                        <div class="flex-wrap-gap">
+                          <span class="status-badge tag-blue" v-if="isHistoryExchangeType(row)">調課</span>
+                          <span class="status-badge tag-red" v-else>代課</span>
+                           <span v-for="tag in getRequestTypeTags(row)" :key="tag.key" class="risk-tag risk-tag-xs" :class="'risk-'+tag.key">{{ tag.label }}</span>
+                        </div>
+                      </td>
+                      <td>{{ row.requesterName }}</td>
+                      <td>{{ row.targetTeacherName }}</td>
+                      <td>
+                        <span class="hist-slot-inline">
+                          {{ formatHistoryLeaveSlot(row) }}
+                          <span v-if="isHistoryLeaveRestricted(row)" class="status-badge tag-restricted">綁課</span>
+                            <span v-if="isHistoryLeaveRechanged(row)" class="risk-tag risk-chain">再異動</span>
+                        </span>
+                      </td>
+                      <td>
+                        <span class="hist-slot-inline">
+                           {{ formatHistoryExchangeSlot(row) }}
+                           <span v-if="isHistoryExchangeRestricted(row)" class="status-badge tag-restricted">綁課</span>
+                           <span v-if="isHistoryExchangeRechanged(row)" class="risk-tag risk-chain">再異動</span>
+                        </span>
+                      </td>
+                      <td>
+                        <div style="display: flex; flex-direction: column; gap: 4px; align-items: flex-start;">
+                          <span class="status-badge" :class="'status-' + (row.status ? row.status.toLowerCase() : 'approved')">
+                            {{ getStatusText(row.status || 'approved') }}
+                          </span>
+                          <span class="badge-print" :class="row.printed ? 'badge-printed' : 'badge-unprinted'">
+                            {{ row.printed ? '已列印' : '未列印' }}
+                          </span>
+                        </div>
+                      </td>
+                        <td v-if="isAdmin" @click.stop>
+                          <div class="hist-actions">
+                             <button type="button" class="btn btn-secondary" title="列印此筆通知單" aria-label="列印此筆通知單" @click="printSingleRequest({ id: row.requestId || row.id }, 'Notice')">🖨️</button>
+                            <button type="button" class="btn btn-secondary" @click="openHistoryEditModal(row)">編輯</button>
+                            <button type="button" class="btn btn-secondary" style="color: var(--color-danger); border-color: rgba(220, 38, 38, 0.18);" @click="deleteSubstitutionRecord(row.id, row.requestId)">撤銷</button>
+                          </div>
+                      </td>
+                    </tr>
+                  </template>
                   <tr v-if="dateFilteredHistoryRecords.length === 0">
                     <td :colspan="isAdmin ? 9 : 8" class="table-empty">
                       <span class="empty-state-title">沒有符合條件的紀錄</span>
@@ -2734,7 +2849,15 @@
             <!-- 課表模擬對比（手機可收合） -->
              <details class="compare-grids-details" open>
                <summary class="compare-grids-summary">📅 雙方課表對照（點可收合）</summary>
-             <template v-if="isCrossWeekExchange">
+              <div v-if="pendingRequestData.isBatch && batchCompareWeekTotal > 1" class="batch-compare-week-nav" role="group" aria-label="批次模擬週次切換">
+                <button type="button" class="batch-compare-week-nav-btn" :disabled="batchCompareWeekIndex <= 0" @click="shiftBatchCompareWeek(-1)">‹ 上一週</button>
+                <div class="batch-compare-week-nav-main">
+                  <strong>批次模擬第 {{ batchCompareWeekIndex + 1 }}／{{ batchCompareWeekTotal }} 週</strong>
+                  <span>{{ formatDateMMDD(compareWeekDatesA[0]) }}～{{ formatDateMMDD(compareWeekDatesA[4]) }} · 本週 {{ batchCompareWeekSlotCount }} 節</span>
+                </div>
+                <button type="button" class="batch-compare-week-nav-btn" :disabled="batchCompareWeekIndex >= batchCompareWeekTotal - 1" @click="shiftBatchCompareWeek(1)">下一週 ›</button>
+              </div>
+              <template v-if="isCrossWeekExchange">
                <div class="exchange-cross-week-summary">
                  <strong>跨週調課</strong>
                  <span>{{ getExchangeEndpointText('source') }}</span>
@@ -2795,7 +2918,7 @@
               <!-- 左：申請教師當週課表 (A) -->
               <div>
                 <div class="mini-grid-title">
-                   👤 <strong>{{ getTeacherNameByEmail(pendingRequestData.leaveTeacher) }}</strong> 老師課表（請假／申請人，{{ formatDateMMDD(compareWeekDatesA[0]) }}～{{ formatDateMMDD(compareWeekDatesA[4]) }}）
+                    👤 <strong>{{ getTeacherNameByEmail(pendingRequestData.leaveTeacher) }}</strong> 老師課表（請假／申請人<span v-if="!pendingRequestData.isBatch">，{{ formatDateMMDD(compareWeekDatesA[0]) }}～{{ formatDateMMDD(compareWeekDatesA[4]) }}</span>）
                 </div>
                 <div class="mini-grid">
                   <div class="mini-grid-cell mini-grid-header">節</div>
@@ -2829,7 +2952,7 @@
                     ↩ <strong>{{ getTeacherNameByEmail(resolveCompareBEmail()) || '尚未指定' }}</strong> 老師當週課表（合班代課）
                  </div>
                  <div v-else class="mini-grid-title">
-                    👤 <strong>{{ getTeacherNameByEmail(resolveCompareBEmail()) || '（尚未指定）' }}</strong> 老師課表（代課／受邀人，{{ formatDateMMDD(compareWeekDatesB[0]) }}～{{ formatDateMMDD(compareWeekDatesB[4]) }}）
+                     👤 <strong>{{ getTeacherNameByEmail(resolveCompareBEmail()) || '（尚未指定）' }}</strong> 老師課表（代課／受邀人<span v-if="!pendingRequestData.isBatch">，{{ formatDateMMDD(compareWeekDatesB[0]) }}～{{ formatDateMMDD(compareWeekDatesB[4]) }}</span>）
                  </div>
                 <!-- 每節不同人：切換檢視各受邀人課表 -->
                 <div v-if="pendingRequestData.isBatch && pendingRequestData.isPerSlot && batchCompareSubGroups.length > 1" class="batch-slot-chips mb-8-block">

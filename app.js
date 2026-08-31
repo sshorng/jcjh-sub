@@ -1028,12 +1028,36 @@ createApp({
     const isClassAwayOnDate = (className, dateStr) => {
       if (!className || !window.DomainClassAway) return false;
       const d = dateStr || getTodayString();
-      const useClassViewEvents = classReadonlyMode.value
-        || (activeTab.value === 'class' && userRole.value === 'teacher');
-      const events = useClassViewEvents ? classViewClassAwayEvents.value : classAwayEvents.value;
+      const events = getClassAwayEventsForView();
       return window.DomainClassAway.isClassAwayOnDate(
         className, d, events, semesterEndDate.value
       );
+    };
+    const getClassAwayEventsForView = () => {
+      const useClassViewEvents = classReadonlyMode.value
+        || (activeTab.value === 'class' && userRole.value === 'teacher');
+      return useClassViewEvents ? classViewClassAwayEvents.value : classAwayEvents.value;
+    };
+    const getClassAwayEventName = (className, dateStr) => {
+      if (!className || !window.DomainClassAway) return '';
+      const parseClasses = typeof window.DomainClassAway.parseClassList === 'function'
+        ? window.DomainClassAway.parseClassList
+        : value => String(value || '').split(/[,，、/／\s]+/).map(item => item.trim()).filter(Boolean);
+      const classNames = parseClasses(className);
+      if (!classNames.length || typeof window.DomainClassAway.eventsActiveOnDate !== 'function') return '';
+      const activeEvents = window.DomainClassAway.eventsActiveOnDate(
+        dateStr || getTodayString(), getClassAwayEventsForView(), semesterEndDate.value
+      );
+      const names = [];
+      activeEvents.forEach(event => {
+        const eventClasses = typeof window.DomainClassAway.eventClasses === 'function'
+          ? window.DomainClassAway.eventClasses(event)
+          : parseClasses(event && (event.classes || event.classList || event['班級清單']));
+        if (!classNames.some(classValue => eventClasses.includes(classValue))) return;
+        const name = String(event && (event.name || event['事件名稱']) || '').trim();
+        if (name && !names.includes(name)) names.push(name);
+      });
+      return names.join('、');
     };
     // 空堂契約：畫面 is-away-class 淡化；邏輯 isClassAway（媒合／衝堂／模擬／匯出當空堂）
     // 已廢止 shouldHideClass（勿再回傳 false 的殭屍函式）
@@ -3660,12 +3684,50 @@ createApp({
       }
       return currentWeekDates.value || [];
     };
+    const getBatchCompareSlots = () => {
+      const pending = pendingRequestData.value || {};
+      if (!pending.isBatch) return [];
+      if (Array.isArray(batchSlots.value) && batchSlots.value.length) return batchSlots.value;
+      return Array.isArray(pending.batchSlots) ? pending.batchSlots : [];
+    };
+    const batchCompareWeeks = computed(() => {
+      if (!(pendingRequestData.value || {}).isBatch) return [];
+      if (window.UiSubmitHelpers && typeof window.UiSubmitHelpers.getBatchCompareWeeks === 'function') {
+        return window.UiSubmitHelpers.getBatchCompareWeeks(getBatchCompareSlots());
+      }
+      return [];
+    });
+    const batchCompareWeekIndex = ref(0);
+    const batchCompareWeekTotal = computed(() => batchCompareWeeks.value.length);
+    const batchCompareWeekDates = computed(() => {
+      const weeks = batchCompareWeeks.value;
+      const index = Math.max(0, Math.min(batchCompareWeekIndex.value, weeks.length - 1));
+      if (weeks[index]) return weeks[index];
+      const pending = pendingRequestData.value || {};
+      return getWeekDatesForCompare(pending.date || inputRequestDate.value);
+    });
+    const batchCompareWeekSlotCount = computed(() => {
+      const dates = new Set(batchCompareWeekDates.value || []);
+      return getBatchCompareSlots().filter(slot => {
+        const dateStr = String(slot && (slot.dateStr || slot.date) || '').slice(0, 10);
+        return dates.has(dateStr);
+      }).length;
+    });
+    const shiftBatchCompareWeek = (delta) => {
+      const total = batchCompareWeekTotal.value;
+      if (total <= 1) return;
+      const current = parseInt(batchCompareWeekIndex.value, 10) || 0;
+      const amount = parseInt(delta, 10) || 0;
+      batchCompareWeekIndex.value = Math.max(0, Math.min(total - 1, current + amount));
+    };
     const compareWeekDatesA = computed(() => {
       const pending = pendingRequestData.value || {};
+      if (pending.isBatch) return batchCompareWeekDates.value;
       return getWeekDatesForCompare(pending.date || inputRequestDate.value);
     });
     const compareWeekDatesB = computed(() => {
       const pending = pendingRequestData.value || {};
+      if (pending.isBatch) return batchCompareWeekDates.value;
       const date = pending.mode === 'exchange' && pending.dateB
         ? pending.dateB
         : (pending.date || inputRequestDate.value);
@@ -3689,6 +3751,19 @@ createApp({
         compareWeekSelectionA.value = 'source';
         compareWeekSelectionB.value = 'target';
       }
+      if (pending && pending.isBatch) batchCompareWeekIndex.value = 0;
+    });
+    watch(batchSlots, () => {
+      if (!(pendingRequestData.value || {}).isBatch) return;
+      const total = batchCompareWeekTotal.value;
+      if (!total) {
+        batchCompareWeekIndex.value = 0;
+        return;
+      }
+      batchCompareWeekIndex.value = Math.max(
+        0,
+        Math.min(total - 1, parseInt(batchCompareWeekIndex.value, 10) || 0)
+      );
     });
     const isCrossWeekExchange = computed(() => {
       const pending = pendingRequestData.value || {};
@@ -4845,11 +4920,109 @@ createApp({
       });
     });
 
-    const historyTotalPages = computed(() => Math.max(1, Math.ceil(dateFilteredHistoryRecords.value.length / historyPageSize.value)));
+    // 批次申請：以批次為單位分頁，批次標題預設收合；展開後仍保留每筆操作。
+    const batchGroupExpanded = ref({});
+    const getBatchGroupStateKey = (scope, batchId) =>
+      String(scope || '') + '|' + String(batchId || '').trim().toLowerCase();
+    const isBatchGroupExpanded = (scope, batchId) =>
+      !!batchGroupExpanded.value[getBatchGroupStateKey(scope, batchId)];
+    const toggleBatchGroup = (scope, batchId) => {
+      const key = getBatchGroupStateKey(scope, batchId);
+      const next = Object.assign({}, batchGroupExpanded.value);
+      if (next[key]) delete next[key];
+      else next[key] = true;
+      batchGroupExpanded.value = next;
+    };
+    const isCollapsibleBatchRecord = (record) => {
+      if (!record || !String(record.batchId || '').trim()) return false;
+      const type = String(record.type || '').trim().toLowerCase();
+      // 三角調有自己的整組流程，不與一般批次代課混在一起。
+      return type !== 'triangle' && type !== '三角調' && !String(record.triangleId || '').trim();
+    };
+    const makeBatchItemRow = (record, displayKey, batchGroupKey) => Object.assign({}, record || {}, {
+      displayKind: 'item',
+      displayKey,
+      batchGroupKey: batchGroupKey || ''
+    });
+    const buildBatchDisplayGroups = (records, scope) => {
+      const entries = [];
+      const groups = new Map();
+      (records || []).forEach((record, index) => {
+        if (!record) return;
+        if (!isCollapsibleBatchRecord(record)) {
+          entries.push(makeBatchItemRow(record, `${scope}:item:${record.id || index}`));
+          return;
+        }
+        const batchId = String(record.batchId).trim();
+        const groupLookupKey = batchId.toLowerCase();
+        let group = groups.get(groupLookupKey);
+        if (!group) {
+          group = {
+            displayKind: 'batch',
+            displayKey: `${scope}:batch:${groupLookupKey}`,
+            batchId,
+            items: []
+          };
+          groups.set(groupLookupKey, group);
+          entries.push(group);
+        }
+        group.items.push(record);
+      });
+      // 篩選後只剩一筆時，直接維持單筆列，避免製造空洞的批次標題。
+      return entries.map(entry => {
+        if (entry.displayKind === 'batch' && entry.items.length < 2) {
+          const item = entry.items[0];
+          return makeBatchItemRow(item, `${scope}:item:${item && item.id ? item.id : entry.displayKey}`);
+        }
+        return entry;
+      });
+    };
+    const flattenBatchDisplayGroups = (entries, scope) => {
+      const rows = [];
+      (entries || []).forEach(entry => {
+        rows.push(entry);
+        if (entry.displayKind !== 'batch' || !isBatchGroupExpanded(scope, entry.batchId)) return;
+        entry.items.forEach((record, index) => {
+          rows.push(makeBatchItemRow(
+            record,
+            `${entry.displayKey}:item:${record && record.id ? record.id : index}`,
+            entry.displayKey
+          ));
+        });
+      });
+      return rows;
+    };
+    const getBatchGroupSlotSummary = (group, formatter) => {
+      const values = [...new Set((group && group.items ? group.items : []).map(item => {
+        try { return String(typeof formatter === 'function' ? formatter(item) : '').trim(); } catch (e) { return ''; }
+      }).filter(value => value && value !== '—' && value !== '---'))];
+      if (!values.length) return '—';
+      if (values.length === 1) return values[0];
+      return `${values[0]} 等 ${group.items.length} 筆`;
+    };
+    const getBatchGroupStatusValues = (group) => [...new Set((group && group.items ? group.items : [])
+      .map(item => String(item && item.status || '').trim().toLowerCase()).filter(Boolean))];
+    const getBatchGroupStatusText = (group) => {
+      const statuses = getBatchGroupStatusValues(group);
+      if (!statuses.length) return '批次';
+      return statuses.length === 1 ? getStatusText(statuses[0]) : '多種狀態';
+    };
+    const getBatchGroupStatusClass = (group) => {
+      const statuses = getBatchGroupStatusValues(group);
+      return statuses.length === 1 ? `status-${statuses[0]}` : 'tag-gray';
+    };
+
+    const historyBatchGroups = computed(() =>
+      buildBatchDisplayGroups(dateFilteredHistoryRecords.value, 'history')
+    );
+    const historyTotalPages = computed(() => Math.max(1, Math.ceil(historyBatchGroups.value.length / historyPageSize.value)));
 
     const paginatedHistoryRecords = computed(() => {
       const start = (historyPage.value - 1) * historyPageSize.value;
-      return dateFilteredHistoryRecords.value.slice(start, start + historyPageSize.value);
+      return flattenBatchDisplayGroups(
+        historyBatchGroups.value.slice(start, start + historyPageSize.value),
+        'history'
+      );
     });
 
     // 待辦分頁＋搜尋
@@ -4888,18 +5061,24 @@ createApp({
       const s = (pendingMyPendingPage.value - 1) * pendingPageSize;
       return filteredMyPendingRequests.value.slice(s, s + pendingPageSize);
     });
+    const sentBatchGroups = computed(() =>
+      buildBatchDisplayGroups(filteredMySentRequests.value, 'sent')
+    );
+    const adminPendingBatchGroups = computed(() =>
+      buildBatchDisplayGroups(filteredAdminPendingRequests.value, 'admin')
+    );
     const paginatedMySent = computed(() => {
       const s = (pendingMySentPage.value - 1) * pendingPageSize;
-      return filteredMySentRequests.value.slice(s, s + pendingPageSize);
+      return flattenBatchDisplayGroups(sentBatchGroups.value.slice(s, s + pendingPageSize), 'sent');
     });
     const paginatedAdminPending = computed(() => {
       const s = (pendingAdminPage.value - 1) * pendingPageSize;
-      return filteredAdminPendingRequests.value.slice(s, s + pendingPageSize);
+      return flattenBatchDisplayGroups(adminPendingBatchGroups.value.slice(s, s + pendingPageSize), 'admin');
     });
 
     const pendingMyPendingTotal = computed(() => Math.max(1, Math.ceil(filteredMyPendingRequests.value.length / pendingPageSize)));
-    const pendingMySentTotal = computed(() => Math.max(1, Math.ceil(filteredMySentRequests.value.length / pendingPageSize)));
-    const pendingAdminTotal = computed(() => Math.max(1, Math.ceil(filteredAdminPendingRequests.value.length / pendingPageSize)));
+    const pendingMySentTotal = computed(() => Math.max(1, Math.ceil(sentBatchGroups.value.length / pendingPageSize)));
+    const pendingAdminTotal = computed(() => Math.max(1, Math.ceil(adminPendingBatchGroups.value.length / pendingPageSize)));
 
     watch(pendingSearchQuery, () => {
       pendingMyPendingPage.value = 1;
@@ -10143,6 +10322,7 @@ createApp({
     const {
       selectedAdminPendingIds, lastBatchPrintIds, showBatchPrintPrompt,
       findRequestById, isAdminPendingSelected, toggleAdminPendingSelect,
+      isAdminBatchGroupSelected, toggleAdminBatchGroupSelection,
       toggleSelectAllAdminPending, clearAdminPendingSelection,
       checkUrlCallback, respondToRequest, respondToBatch,
       adminApprove, adminReject, batchAdminApprove, batchAdminReject,
@@ -10183,6 +10363,36 @@ createApp({
       detailRequest,
       detailSubRecord
     });
+
+    const openBatchPendingPrintPreview = () => {
+      const ids = (selectedAdminPendingIds.value || []).map(id => String(id));
+      if (!ids.length) {
+        showToast('請先勾選要預覽列印的申請單', 'warning');
+        return false;
+      }
+      const requests = (adminPendingRequests.value || []).filter(request =>
+        request && ids.includes(String(request.id))
+      );
+      if (!requests.length) {
+        showToast('找不到已勾選的待核准申請單', 'warning');
+        return false;
+      }
+      return openPaperPrintDraftForSubmittedRequests(requests);
+    };
+
+    const isAdminPendingPageFullySelected = () => {
+      const ids = [];
+      (paginatedAdminPending.value || []).forEach(row => {
+        if (row && row.displayKind === 'batch') {
+          (row.items || []).forEach(item => {
+            if (item && item.type !== 'triangle' && item.id != null) ids.push(item.id);
+          });
+        } else if (row && row.displayKind === 'item' && row.type !== 'triangle' && row.id != null) {
+          ids.push(row.id);
+        }
+      });
+      return ids.length > 0 && ids.every(id => isAdminPendingSelected(id));
+    };
 
 
     const getRequestProgressSteps = (req) => {
@@ -10475,22 +10685,94 @@ createApp({
       } catch (e) { /* ignore */ }
       return ids;
     };
+    const getHistoryPageSelectableIds = () => {
+      const ids = [];
+      const seen = new Set();
+      const add = (id) => {
+        if (id == null || String(id) === '') return;
+        const key = String(id);
+        if (seen.has(key)) return;
+        seen.add(key);
+        ids.push(key);
+      };
+      (paginatedHistoryRecords.value || []).forEach(row => {
+        if (row && row.displayKind === 'batch') {
+          (row.items || []).forEach(item => add(item && item.id));
+        } else if (row && row.displayKind === 'item') {
+          add(row.id);
+        }
+      });
+      return ids;
+    };
+    const setHistorySelection = (ids, on) => {
+      const selected = new Set((selectedRecordIds.value || []).map(id => String(id)));
+      (ids || []).forEach(id => {
+        const key = String(id);
+        if (on) selected.add(key);
+        else selected.delete(key);
+      });
+      selectedRecordIds.value = Array.from(selected);
+      const idSet = new Set((ids || []).map(id => String(id)));
+      try {
+        document.querySelectorAll('.hist-select-cb').forEach(el => {
+          const id = el.getAttribute('data-rec-id') || el.value;
+          if (idSet.has(String(id))) el.checked = on;
+        });
+        const pageIds = getHistoryPageSelectableIds();
+        const pageSelected = pageIds.length > 0 && pageIds.every(id => selected.has(String(id)));
+        document.querySelectorAll('.hist-select-all').forEach(el => {
+          el.checked = pageSelected;
+        });
+      } catch (e) { /* ignore */ }
+    };
+    const isHistoryRecordSelected = (id) =>
+      (selectedRecordIds.value || []).some(selectedId => String(selectedId) === String(id));
+    const isHistoryBatchGroupSelected = (group) => {
+      const ids = (group && group.items || []).map(item => item && item.id).filter(id => id != null).map(String);
+      if (!ids.length) return false;
+      const selected = new Set((selectedRecordIds.value || []).map(id => String(id)));
+      return ids.every(id => selected.has(id));
+    };
+    const toggleHistoryBatchGroupSelection = (group, event) => {
+      const ids = (group && group.items || []).map(item => item && item.id).filter(id => id != null).map(String);
+      if (ids.length) setHistorySelection(ids, !!(event && event.target && event.target.checked));
+    };
     const syncHistorySelectionFromDom = () => {
-      selectedRecordIds.value = readHistoryCheckedIds();
+      const checkedIds = readHistoryCheckedIds();
+      const renderedIds = [];
+      try {
+        document.querySelectorAll('.hist-select-cb').forEach(el => {
+          const id = el.getAttribute('data-rec-id') || el.value;
+          if (id) renderedIds.push(String(id));
+        });
+      } catch (e) { /* ignore */ }
+      const renderedSet = new Set(renderedIds);
+      const next = [];
+      // 收合批次的子列不在 DOM，保留它們原本的選取狀態。
+      (selectedRecordIds.value || []).forEach(id => {
+        if (!renderedSet.has(String(id)) && !next.includes(String(id))) next.push(String(id));
+      });
+      checkedIds.forEach(id => {
+        if (!next.includes(String(id))) next.push(String(id));
+      });
+      selectedRecordIds.value = next;
+      const selected = new Set(next);
+      const pageIds = getHistoryPageSelectableIds();
+      const pageSelected = pageIds.length > 0 && pageIds.every(id => selected.has(String(id)));
+      try {
+        document.querySelectorAll('.hist-select-all').forEach(el => { el.checked = pageSelected; });
+      } catch (eHeader) { /* ignore */ }
     };
     const toggleSelectAllRecords = (e) => {
-      const on = !!(e && e.target && e.target.checked);
-      try {
-        document.querySelectorAll('.hist-select-cb').forEach((el) => {
-          el.checked = on;
-        });
-      } catch (err) { /* ignore */ }
-      // 延後寫 ref：列印／按鈕用；勾選當幀不重繪
-      if (typeof requestAnimationFrame === 'function') {
-        requestAnimationFrame(syncHistorySelectionFromDom);
-      } else {
-        setTimeout(syncHistorySelectionFromDom, 0);
+      const ids = getHistoryPageSelectableIds();
+      if (!ids.length) {
+        if (e && e.target) e.target.checked = false;
+        return;
       }
+      const selected = new Set((selectedRecordIds.value || []).map(id => String(id)));
+      const allOn = ids.every(id => selected.has(String(id)));
+      const on = e && e.target ? !!e.target.checked : !allOn;
+      setHistorySelection(ids, on);
     };
     // 單勾：原生 checkbox 已亮；延後同步 ref
     if (typeof document !== 'undefined') {
@@ -11066,10 +11348,11 @@ createApp({
       substitutionRecords.value = [];
       homeroomRecords.value = [];
       homeroomAssignSelections.value = {};
-      mySentRequests.value = [];
-      myPendingRequests.value = [];
-      adminPendingRequests.value = [];
-      showMatchModal.value = false;
+       mySentRequests.value = [];
+       myPendingRequests.value = [];
+       adminPendingRequests.value = [];
+       batchGroupExpanded.value = {};
+       showMatchModal.value = false;
        showPrintPreviewModal.value = false;
       printPreview.value = null;
       printPreviewImageBusy.value = false;
@@ -11359,7 +11642,7 @@ createApp({
       loadHistoryMonth, setHistoryFilterMode, setHistoryTypeFilter, ensureHistoryMonthLoaded, loadFullSemesterHistory, reloadWindowedHistory,
       selectedMobileDay, isMobile, checkMobile, initMobileDay,
       currentSemester, availableSemesters, currentSemesterName, semestersList, showSemesterModal, semesterModalMode, semesterForm,
-       currentWeekDates, compareWeekDatesA, compareWeekDatesB, compareWeekSelectionA, compareWeekSelectionB, compareDisplayDatesA, compareDisplayDatesB, setCompareWeekSelection, isCrossWeekExchange, getExchangeEndpointText, selectedWeekDate, currentWeekNumber,
+       currentWeekDates, compareWeekDatesA, compareWeekDatesB, compareWeekSelectionA, compareWeekSelectionB, compareDisplayDatesA, compareDisplayDatesB, setCompareWeekSelection, batchCompareWeekIndex, batchCompareWeekTotal, batchCompareWeekSlotCount, shiftBatchCompareWeek, isCrossWeekExchange, getExchangeEndpointText, selectedWeekDate, currentWeekNumber,
        classList, classSchedules, selectedClass, classReadonlyMode, classViewerReadonly, selectClassForView, getClassReadonlyLink, copyClassReadonlyLink,
        searchQuery, selectedSubject, teachersList, allSchedules, schoolSwaps, substitutionRecords, homeroomRecords, requestsList,
       mySentRequests, myPendingRequests, adminPendingRequests, allPendingRequests,
@@ -11414,13 +11697,14 @@ createApp({
       showManualHomeroomModal, homeroomStatusFilter, manualHomeroomForm, openManualHomeroomModal, onManualHomeroomLeaveTeacherChange, currentMonthHomeroomRecords, currentMonthHomeroomFeeTotal, currentMonthHomeroomAssignedCount, currentMonthHomeroomPendingCount, saveManualHomeroomRecord, deleteHomeroomRecord,
       matchPreview,
        exchangeTeachersList, myTeacherProfile, isRequestValid, isHistoryExchangeType, filteredHistoryRecords, formatRequestApplicationDate,
-      dateFilteredHistoryRecords, paginatedHistoryRecords, historyTotalPages,
-      historyFilterMode, historyTypeFilter, historyFilterDate, historySearchQuery, historyPage, historyPageSize,
-       pendingSearchQuery, getLeaveTimeDefaults, getLeaveTimePresetRange, setLeaveTimePreset, updatePendingLeaveTime, toggleCourseAdjustmentOnly,
+       dateFilteredHistoryRecords, paginatedHistoryRecords, historyTotalPages,
+       historyFilterMode, historyTypeFilter, historyFilterDate, historySearchQuery, historyPage, historyPageSize,
+        pendingSearchQuery, getLeaveTimeDefaults, getLeaveTimePresetRange, setLeaveTimePreset, updatePendingLeaveTime, toggleCourseAdjustmentOnly,
       showHistoryEditModal, historyEditForm, leaveReasonOptions, onLeaveReasonChange, defaultSubFeeForReason,
-      pendingMyPendingPage, pendingMySentPage, pendingAdminPage,
-      paginatedMyPending, paginatedMySent, paginatedAdminPending,
-      pendingMyPendingTotal, pendingMySentTotal, pendingAdminTotal,
+       pendingMyPendingPage, pendingMySentPage, pendingAdminPage,
+       paginatedMyPending, paginatedMySent, paginatedAdminPending,
+       pendingMyPendingTotal, pendingMySentTotal, pendingAdminTotal, filteredAdminPendingRequests,
+       isBatchGroupExpanded, toggleBatchGroup, getBatchGroupSlotSummary, getBatchGroupStatusText, getBatchGroupStatusClass, isAdminPendingPageFullySelected,
       reportMonthOptions, personalChanges, recommendedExchangeList, displayedExchangeList,
       loginWithGoogle, logout, gsiButtonReady, gsiButtonError, gsiLoggingIn, reloadGsiLoginButton,
       changeWeek,       getPeriodTimeSpan, getWeekDayText, formatDateMMDD,
@@ -11435,12 +11719,13 @@ createApp({
         triangleCandidateSearch, triangleCandidateDisplayCount, triangleCandidateOptions, triangleCandidateCOptions, triangleCandidateCReadyCount, triangleCandidateBOptions, triangleCandidateBReadyCount, displayedTriangleBOptions, displayedTriangleCOptions, triangleCandidateIsRestricted, selectTriangleCandidateB, selectTriangleCandidateC, loadMoreTriangleCandidates,
         formatRequestSummary, formatLeaveClassSlot, formatExchangeClassSlot, formatQuickTodoTitle, formatHistoryLeaveSlot, formatHistoryExchangeSlot, getRequestRiskTags, getRequestTypeTags, getApproveRiskFlags, formatApproveBatchRiskSummary, isHistoryLeaveRechanged, isHistoryExchangeRechanged, isRequestLeaveRechanged, isRequestExchangeRechanged, getCellPlainStatus, getRequestProgressSteps, isPaperFlowRequest, isLeaveClassRestricted, isExchangeClassRestricted, isHistoryLeaveRestricted, isHistoryExchangeRestricted,
       dashboardScope, dashboardStats,
-      selectedAdminPendingIds, isAdminPendingSelected, toggleAdminPendingSelect, toggleSelectAllAdminPending, clearAdminPendingSelection,
-      batchAdminApprove, batchAdminReject, lastBatchPrintIds, showBatchPrintPrompt, printLastBatchNotices, dismissBatchPrintPrompt,
+       selectedAdminPendingIds, isAdminPendingSelected, toggleAdminPendingSelect, toggleSelectAllAdminPending, clearAdminPendingSelection,
+       isAdminBatchGroupSelected, toggleAdminBatchGroupSelection,
+        batchAdminApprove, batchAdminReject, openBatchPendingPrintPreview, lastBatchPrintIds, showBatchPrintPrompt, printLastBatchNotices, dismissBatchPrintPrompt,
        closeSuccessGoPending, closeSuccessGoRecords, closeSuccessStayTimetable, closeSuccessCopyLine,
       openScheduleEditModal, saveScheduleCell, clearScheduleCell, updateTeacherBaseHours, pickScheduleAttr,
       openAddTeacherModal, openEditTeacherModal, saveTeacher, deleteTeacher,
-       handleFileChange, getMappingLabel, importSchedules, migrateNameKeySchema, toggleSelectAllRecords, loadTeacherClassesForExchange,
+        handleFileChange, getMappingLabel, importSchedules, migrateNameKeySchema, toggleSelectAllRecords, isHistoryRecordSelected, isHistoryBatchGroupSelected, toggleHistoryBatchGroupSelection, loadTeacherClassesForExchange,
       printSelectedForms, sendSelectedBatchNotices, calculateMonthlyReport, exportReportToExcel, exportSubFeeToExcel,
       schoolExportStart, schoolExportEnd, schoolExportIncludeWeekend, schoolExportOnlyChanged,
       schoolExportSelectedEmails, schoolExportTeacherFilter, filteredSchoolExportTeachers,
@@ -11459,7 +11744,7 @@ createApp({
       // 單/雙週課輔課
       isSingleWeek, semesterStartDate,
        // 空堂事件
-       classAwayEvents, semesterEndDate, activeAwayBanner, isClassAwayOnDate,
+        classAwayEvents, semesterEndDate, activeAwayBanner, isClassAwayOnDate, getClassAwayEventName,
        showClassAwayModal, classAwayModalMode, classAwayForm,
        openAddClassAwayModal, openEditClassAwayModal, toggleClassAwayFormClass,
        isClassAwayFormClassSelected, selectClassAwayGrade, saveClassAwayEvent, deleteClassAwayEvent,

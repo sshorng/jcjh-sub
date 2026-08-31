@@ -122,6 +122,17 @@ assert.equal(UiSubmitHelpers.getCompareCellClass(compareDeps, 'A', 2, 8, 'target
 assert.equal(UiSubmitHelpers.getCompareCellText(compareDeps, 'A', 2, 8, 'target'), '702 換入');
 assert.equal(UiSubmitHelpers.getCompareCellClass(compareDeps, 'B', 2, 8, 'target'), 'mini-cell-out');
 
+const batchWeeks = UiSubmitHelpers.getBatchCompareWeeks([
+  { dateStr: '2026-09-21' },
+  { dateStr: '2026-09-08' },
+  { dateStr: '2026-09-15' },
+  { dateStr: '2026-09-22' }
+]);
+assert.deepEqual(batchWeeks.map(week => week[0]), [
+  '2026-09-07', '2026-09-14', '2026-09-21'
+], '批次跨三週時應依週一排序並合併重複週次');
+assert.equal(batchWeeks.every(week => week.length === 5), true, '每個批次瀏覽週應包含週一至週五');
+
 runDateAwareValidationTest()
   .then(() => console.log('exchange week contract tests PASS'))
   .catch(error => {
