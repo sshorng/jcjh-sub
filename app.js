@@ -1177,7 +1177,7 @@ createApp({
 
     // 新手引導 UI（簡潔版：置中卡牌，無 spotlight，手機友善）
     // ── 新手 Spotlight 導覽（懶載入 onboarding-tour.js）──
-    const ONBOARDING_SCRIPT = 'onboarding-tour.js?v=20260829-paper3';
+    const ONBOARDING_SCRIPT = 'onboarding-tour.js?v=20260831-combined1';
     const ONBOARDING_PAPER_STORAGE_KEY = 'jcjh_onboarding_paper_v1';
     /** 導覽用虛擬「收到的邀請」（不寫入後端） */
     const tourDemoInvite = ref(null);
@@ -5806,6 +5806,81 @@ createApp({
       return a ? a.getScheduleForDate(teacherEmail, dateStr, period, dayOfWeek) : null;
     };
     const clearScheduleCache = () => { const a = getTimetableApi(); if (a) a.clearScheduleCache(); };
+
+    // 併班上課只能指定同節、同併班課堂中的其他任課教師。
+    const findCombinedReturnCandidates = (cell) => {
+      const source = cell || {};
+      const classData = source.classData || {};
+      const sourceTeacherKey = String(getTeacherNameByEmail(source.teacherEmail || source.teacherName) || source.teacherEmail || source.teacherName || '')
+        .trim().toLowerCase();
+      const sourceDay = parseInt(source.dayOfWeek, 10);
+      const sourcePeriod = parseInt(source.period, 10);
+      const sourceDate = String(inputRequestDate.value || (currentWeekDates.value[sourceDay - 1] || '')).slice(0, 10);
+      const sourceClasses = parseScheduleClasses(classData.className);
+      if (!sourceTeacherKey || !sourceClasses.length
+          || !Number.isFinite(sourceDay) || !Number.isFinite(sourcePeriod)) return [];
+
+      const classOverlaps = (candidateClass) => {
+        const candidateClasses = parseScheduleClasses(candidateClass);
+        return candidateClasses.some(candidate => sourceClasses.includes(candidate));
+      };
+      const availableByTeacher = Object.create(null);
+      const candidatesByTeacher = Object.create(null);
+      (allSchedules.value || []).forEach(schedule => {
+        if (!schedule) return;
+        const rawTeacher = String(schedule.teacherEmail || schedule.teacherName || '').trim();
+        const teacherKey = String(getTeacherNameByEmail(rawTeacher) || rawTeacher).trim().toLowerCase();
+        if (!teacherKey || teacherKey === sourceTeacherKey) return;
+        if (parseInt(schedule.dayOfWeek, 10) !== sourceDay
+            || parseInt(schedule.period, 10) !== sourcePeriod) return;
+
+        const scheduleClass = String(schedule.className || '').trim();
+        const scheduleTags = getScheduleSpecialTags(schedule);
+        const isCombined = isCombinedClass(scheduleClass) || scheduleTags.includes('併班');
+        if (!isCombined || !classOverlaps(scheduleClass)) return;
+        if (schedule.isPatrol || schedule.attr === '巡堂' || schedule.attr === '抽離'
+            || scheduleTags.includes('抽離')) return;
+        if (sourceDate && window.DomainSchedule && typeof window.DomainSchedule.isActiveOnDate === 'function'
+            && !window.DomainSchedule.isActiveOnDate(schedule, sourceDate)) return;
+        if (sourceDate && schedule.attr === '單週' && !isSingleWeek(sourceDate)) return;
+        if (sourceDate && schedule.attr === '雙週' && isSingleWeek(sourceDate)) return;
+
+        if (availableByTeacher[teacherKey] === undefined) {
+          const current = typeof getScheduleForDate === 'function'
+            ? getScheduleForDate(rawTeacher, sourceDate, sourcePeriod, sourceDay)
+            : null;
+          availableByTeacher[teacherKey] = !current
+            || (!current.isPending && !current.isSubstituted && !current.isSubstitutionDuty);
+        }
+        if (!availableByTeacher[teacherKey]) return;
+
+        const rosterTeacher = lookupTeacher(rawTeacher);
+        const candidate = candidatesByTeacher[teacherKey] || {
+          email: (rosterTeacher && (rosterTeacher.email || rosterTeacher.teacherName || rosterTeacher.name)) || rawTeacher,
+          name: (rosterTeacher && (rosterTeacher.name || rosterTeacher.teacherName))
+            || getTeacherNameByEmail(rawTeacher) || rawTeacher,
+          classNames: [],
+          subjects: []
+        };
+        if (scheduleClass && !candidate.classNames.includes(scheduleClass)) candidate.classNames.push(scheduleClass);
+        const subject = String(schedule.subject || '').trim();
+        if (subject && !candidate.subjects.includes(subject)) candidate.subjects.push(subject);
+        candidatesByTeacher[teacherKey] = candidate;
+      });
+
+      return Object.keys(candidatesByTeacher).map(key => {
+        const candidate = candidatesByTeacher[key];
+        return Object.assign({}, candidate, {
+          teacherName: candidate.name,
+          className: candidate.classNames.join('、'),
+          subject: candidate.subjects.join('、'),
+          dayOfWeek: sourceDay,
+          period: sourcePeriod
+        });
+      }).sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'zh-Hant')
+        || String(a.email || '').localeCompare(String(b.email || '')));
+    };
+
     const weekScheduleGrid = computed(() => {
       const a = getTimetableApi();
       return a ? a.weekScheduleGrid.value : {};

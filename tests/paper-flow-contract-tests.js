@@ -654,7 +654,7 @@ function runApplicationFormContractTest() {
   assert.match(appSource, /successActionRequests/);
    assert.match(appSource, /mode: notificationsSuppressed\.value \? 'paper' : 'online'/, 'onboarding should follow the global paper mode');
    assert.match(appSource, /openExchangeModeDemo: \(\) => openExchangeModeDemoForTour\(\)/, 'tour should demonstrate exchange mode');
-    assert.match(appSource, /ONBOARDING_SCRIPT = 'onboarding-tour\.js\?v=20260829-paper3'/, 'onboarding cache must refresh with the exchange tour');
+    assert.match(appSource, /ONBOARDING_SCRIPT = 'onboarding-tour\.js\?v=20260831-combined1'/, 'onboarding cache must refresh with the exchange tour');
      assert.match(appSource, /openPaperPrintDemo: \(\) => openPaperPrintDemoForTour\(\)/, 'paper tour should open a print preview demo');
      assert.match(appSource, /openExchangeModeDemo: \(\) => openExchangeModeDemoForTour\(\)/, 'tour should demonstrate exchange mode');
     assert.match(appSource, /source: 'paperTour'/, 'paper tour preview must use an isolated source');

@@ -145,11 +145,61 @@ assert.match(context.window.getPrintPreviewCss(), /official-serial-mark \{[^}]*r
 assert.match(styleSource, /\.official-serial-mark \{[^}]*right: 4\.78mm;[^}]*bottom: -4\.5mm[^}]*text-align: right/);
 assert.match(appSource, /data:image\/svg\+xml;charset=utf-8,['"] \+ encodeURIComponent\(svg\)/);
 assert.doesNotMatch(appSource, /createObjectURL\(svgBlob\)/);
+const combinedCandidateStart = appSource.indexOf('const findCombinedReturnCandidates =');
+const combinedCandidateEnd = appSource.indexOf('const weekScheduleGrid = computed', combinedCandidateStart);
+assert.ok(combinedCandidateStart >= 0 && combinedCandidateEnd > combinedCandidateStart, 'combined-return candidate finder must remain discoverable');
+const combinedCandidateContext = {
+  window: { DomainSchedule: { isActiveOnDate: () => true } },
+  allSchedules: { value: [
+    { teacherEmail: 'owner@school.example', teacherName: '陳小華', dayOfWeek: 1, period: 2, className: '801、802', subject: '國文', specialTags: '併班' },
+    { teacherEmail: 'invitee@school.example', teacherName: '王小明', dayOfWeek: 1, period: 2, className: '801、802', subject: '英文', specialTags: '併班' },
+    { teacherEmail: 'unrelated@school.example', teacherName: '林小美', dayOfWeek: 1, period: 2, className: '803、804', subject: '數學', specialTags: '併班' },
+    { teacherEmail: 'busy@school.example', teacherName: '張小美', dayOfWeek: 1, period: 2, className: '801、802', subject: '自然', specialTags: '併班' }
+  ] },
+  inputRequestDate: { value: '2026-09-07' },
+  currentWeekDates: { value: ['2026-09-07', '2026-09-08', '2026-09-09', '2026-09-10', '2026-09-11'] },
+  parseScheduleClasses: raw => String(raw || '').split(/[、,，/／|｜\s]+/).filter(Boolean),
+  getScheduleSpecialTags: schedule => String(schedule.specialTags || '').split('、').filter(Boolean),
+  isCombinedClass: raw => String(raw || '').split(/[、,，/／|｜\s]+/).filter(Boolean).length > 1,
+  isSingleWeek: () => true,
+  getScheduleForDate: email => String(email) === 'busy@school.example' ? { isPending: true } : null,
+  lookupTeacher: email => ({
+    'owner@school.example': { email: 'owner@school.example', name: '陳小華' },
+    'invitee@school.example': { email: 'invitee@school.example', name: '王小明' },
+    'unrelated@school.example': { email: 'unrelated@school.example', name: '林小美' },
+    'busy@school.example': { email: 'busy@school.example', name: '張小美' }
+  })[String(email)] || null,
+  getTeacherNameByEmail: email => ({
+    'owner@school.example': '陳小華',
+    'invitee@school.example': '王小明',
+    'unrelated@school.example': '林小美',
+    'busy@school.example': '張小美'
+  })[String(email)] || String(email || ''),
+  Object,
+  Array,
+  String,
+  Number,
+  parseInt
+};
+vm.createContext(combinedCandidateContext);
+const findCombinedReturnCandidates = vm.runInContext(`(() => {
+  ${appSource.slice(combinedCandidateStart, combinedCandidateEnd)}
+  return findCombinedReturnCandidates;
+})()`, combinedCandidateContext);
+const combinedCandidates = findCombinedReturnCandidates({
+  teacherEmail: 'owner@school.example',
+  dayOfWeek: 1,
+  period: 2,
+  classData: { className: '801、802' }
+});
+assert.equal(combinedCandidates.map(candidate => candidate.email).join(','), 'invitee@school.example', '併班代課候選人應排除不同班級與已有待辦者');
+assert.match(indexSource, /app\.js\?v=20260831-combined1/);
+assert.doesNotMatch(preview.documentHtml, /<script\b/i, '列印預覽 srcdoc 不應注入腳本');
 assert.doesNotMatch(appSource, /seedClassKey/, 'single-request batch printing should include the same recipient across classes');
 assert.match(appSource, /teacherKey\(record, 'actual'\) === targetKey/, 'single-request batch printing should group by recipient teacher');
 assert.match(printHelperSource, /const signatureSide = 'actual';/);
 assert.match(printHelperSource, /function getOfficialArrowMarkerHtml\(markerId\)/);
-assert.match(indexSource, /print-helper\.js\?v=20260831-batch2/);
+assert.match(indexSource, /print-helper\.js\?v=20260831-combined1/);
 assert.match(indexSource, /<title>建成國中線上課表系統<\/title>/);
 assert.match(indexSource, /application-name" content="JCJH Timetable"/);
 assert.equal((indexSource.match(/class="mini-grid-date"/g) || []).length, 12, '對照頁一般與左右兩張跨週課表都應顯示日期');
