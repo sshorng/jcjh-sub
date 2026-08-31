@@ -182,6 +182,7 @@ function runSubmittedExchangePaperRecordMappingTest() {
   const records = loadSubmittedPaperRecordBuilder()([{
     id: 'submitted-1',
     type: 'exchange',
+    batchId: 'paper-batch-1',
     requesterName: '申請人',
     targetTeacherName: '受邀人',
     requestDate: '2026-09-01',
@@ -195,9 +196,11 @@ function runSubmittedExchangePaperRecordMappingTest() {
   const sourceDateRecord = records.find(record => record.id.endsWith('_2'));
    assert.equal(targetDateRecord.className, '704');
    assert.equal(targetDateRecord.subject, '國文');
+   assert.equal(targetDateRecord.batchId, 'paper-batch-1');
    assert.equal(targetDateRecord.actualTeacherName, '申請人');
    assert.equal(sourceDateRecord.className, '703');
    assert.equal(sourceDateRecord.subject, '數學');
+   assert.equal(sourceDateRecord.batchId, 'paper-batch-1');
    assert.equal(sourceDateRecord.actualTeacherName, '受邀人');
 }
 
@@ -257,6 +260,26 @@ function runApprovedCombinedReturnMappingTest() {
   assert.equal(records[0].actualTeacherEmail, '受邀人');
 }
 
+function runApprovedBatchRecordMappingTest() {
+  const convert = loadApprovedExchangeConverter();
+  const records = convert([
+    {
+      id: 'approved-batch-1', status: 'approved', type: 'substitution', batchId: 'batch-7',
+      requesterEmail: 'owner@example.com', requesterName: '申請人',
+      targetTeacherEmail: 'invitee@example.com', targetTeacherName: '受邀人',
+      requestDate: '2026-09-01', requestPeriod: 1, className: '701', subject: '國文'
+    },
+    {
+      id: 'approved-batch-2', status: 'approved', type: 'substitution', batchId: 'batch-7',
+      requesterEmail: 'owner@example.com', requesterName: '申請人',
+      targetTeacherEmail: 'invitee@example.com', targetTeacherName: '受邀人',
+      requestDate: '2026-09-02', requestPeriod: 2, className: '702', subject: '國文'
+    }
+  ]);
+  assert.equal(records[0].batchId, 'batch-7');
+  assert.equal(records[1].batchId, 'batch-7');
+}
+
 function runPublicClassExchangeMappingTest() {
   const map = loadPublicClassRequestMapper();
   const records = map([{
@@ -295,6 +318,7 @@ function runNoSyntheticStudySubjectTest() {
 runSubmittedExchangePaperRecordMappingTest();
 runApprovedExchangeRecordMappingTest();
 runApprovedCombinedReturnMappingTest();
+runApprovedBatchRecordMappingTest();
 runPublicClassExchangeMappingTest();
 runNoSyntheticStudySubjectTest();
 

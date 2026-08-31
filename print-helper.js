@@ -687,6 +687,10 @@ function normalizePrintMergeKey(value) {
   return String(value == null ? '' : value).trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
+function getPrintBatchId(record) {
+  return normalizePrintMergeKey(record && (record.batchId || record['批次ID']));
+}
+
 function getPrintRecordTypeKey(record) {
   if (isPrintTriangleRec(record)) return 'triangle';
   if (isPrintExchangeRec(record)) return 'exchange';
@@ -704,6 +708,7 @@ function getPrintMergeKey(record, ctx) {
   if (type === 'triangle') return `triangle:${requestId || rowId}`;
 
   const week = getPrintWeekKey(record && record.date);
+  const batchId = getPrintBatchId(record);
   const combinedReturn = isPrintCombinedReturnRecord(record);
   // 舊有併班資料可能沒有代課教師欄位，但同一批次仍應可合併。
   const actualTeacher = getPrintMergeTeacherKey(record, 'actual', ctx) || (combinedReturn ? 'combined-return' : '');
@@ -714,12 +719,15 @@ function getPrintMergeKey(record, ctx) {
   }
 
   const leaveMode = isPrintLeaveLikeReason(record && record.reason) ? 'leave' : 'course';
+  // 批次可跨班級合併，但仍須鎖定同一批次與同一對教師。
+  if (batchId) return `batch-merge:${JSON.stringify([batchId, week, type, actualTeacher, originalTeacher, leaveMode])}`;
   return `merge:${JSON.stringify([week, type, actualTeacher, className, originalTeacher, leaveMode])}`;
 }
 
 /**
  * 一般代課／補課可跨申請單合併；調課仍以完整雙向申請單為單位。
- * 合併條件：同週、同處理方式、同代課教師、同班級、同請假教師、同請假模式。
+ * 批次合併條件：同批次、同週、同處理方式、同代課教師、同請假教師、同請假模式。
+ * 非批次資料另保留同班級限制，避免舊資料被過度合併。
  */
 function buildPrintGroups(recordsToPrint, allSubs, ctx) {
   const groups = Object.create(null);
@@ -754,6 +762,7 @@ function buildPrintGroups(recordsToPrint, allSubs, ctx) {
         isExchange: exchange,
         isTriangle: triangle,
         requestId: requestId || record.id,
+        batchId: getPrintBatchId(record),
         serials: [],
         leaveEmails: [],
         subEmails: [],

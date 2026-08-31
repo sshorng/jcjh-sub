@@ -730,6 +730,7 @@ createApp({
         parts.push([
           r.id || '',
           r.type || '',
+          r.batchId || '',
           r.requestDate || r.date || '',
           r.requestPeriod != null ? r.requestPeriod : (r.period || ''),
           r.targetDate || '',
@@ -819,6 +820,7 @@ createApp({
              formClassName: req.className || '',
              formSubject: req.subject || '',
             requestId: req.id,
+            batchId: req.batchId || '',
             triangleId: req.triangleId || req.batchId || '',
             triangleSourceDate: req.requestDate,
             triangleSourcePeriod: req.requestPeriod,
@@ -866,6 +868,7 @@ createApp({
             className: leaveCls,
             subject: leaveSubj,
             requestId: req.id,
+            batchId: req.batchId || '',
              type: req.type === 'triangle' ? 'triangle' : 'substitution',
              triangleId: req.triangleId || '',
              triangleLegIndex: req.triangleLegIndex,
@@ -947,6 +950,7 @@ createApp({
             formClassName: targetCls,
             formSubject: targetSubj,
             requestId: req.id,
+            batchId: req.batchId || '',
             type: 'exchange',
             printed: req.printed,
             subFee: '無',
@@ -970,6 +974,7 @@ createApp({
             formClassName: leaveCls,
             formSubject: leaveSubj,
             requestId: req.id,
+            batchId: req.batchId || '',
             type: 'exchange',
             printed: req.printed,
             subFee: '無',
@@ -2570,6 +2575,29 @@ createApp({
       }
       if (targetIds.length === 0 && detailSubRecord.value) {
         targetIds = [detailSubRecord.value.id];
+      }
+      const seedRecord = (substitutionRecords.value || []).find(record => targetIds.includes(record.id));
+      const batchId = String((req && req.batchId) || (seedRecord && (seedRecord.batchId || seedRecord['批次ID'])) || '').trim().toLowerCase();
+      if (batchId && seedRecord) {
+        const teacherKey = (record, side) => {
+          const email = side === 'original'
+            ? (record.originalTeacherEmail || record.requesterEmail || '')
+            : (record.actualTeacherEmail || record.targetTeacherEmail || '');
+          const name = side === 'original'
+            ? (record.originalTeacherName || record.requesterName || '')
+            : (record.actualTeacherName || record.targetTeacherName || '');
+          return String((email && getTeacherNameByEmail(email)) || name || email || '').trim().toLowerCase();
+        };
+        const applicantKey = teacherKey(seedRecord, 'original');
+        const targetKey = teacherKey(seedRecord, 'actual');
+        if (applicantKey && targetKey) {
+          targetIds = (substitutionRecords.value || []).filter(record =>
+            String(record && (record.batchId || record['批次ID']) || '').trim().toLowerCase() === batchId
+            && String(record && record.type || '') === String(seedRecord.type || '')
+            && teacherKey(record, 'original') === applicantKey
+            && teacherKey(record, 'actual') === targetKey
+          ).map(record => record.id);
+        }
       }
       if (targetIds.length === 0) {
         showToast("⚠️ 找不到該筆核准的代課明細，無法執行列印。", "error");
@@ -7767,6 +7795,7 @@ createApp({
         printed: false,
         isPaperDraft: true,
         requestId: root,
+        batchId: p.isBatch ? (meta.batchId || p.submitBatchId || root) : '',
         paperFlow: !!meta.submitted
       };
       if (p.isBatch) {
@@ -7894,7 +7923,8 @@ createApp({
           isPaperDraft: true,
           paperFlow: true,
           requestId: requestId,
-          serial: serial
+          serial: serial,
+          batchId: getValue(source, ['批次ID', 'batchId'])
         };
         if (isTriangle) {
            const targetDate = getValue(source, ['對調目標日期', 'targetDate']);

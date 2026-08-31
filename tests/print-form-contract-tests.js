@@ -145,7 +145,7 @@ assert.match(appSource, /data:image\/svg\+xml;charset=utf-8,['"] \+ encodeURICom
 assert.doesNotMatch(appSource, /createObjectURL\(svgBlob\)/);
 assert.match(printHelperSource, /const signatureSide = 'actual';/);
 assert.match(printHelperSource, /function getOfficialArrowMarkerHtml\(markerId\)/);
-assert.match(indexSource, /print-helper\.js\?v=20260829-paper4/);
+assert.match(indexSource, /print-helper\.js\?v=20260831-batch1/);
 assert.match(indexSource, /<title>建成國中線上課表系統<\/title>/);
 assert.match(indexSource, /application-name" content="JCJH Timetable"/);
 assert.equal((indexSource.match(/class="mini-grid-date"/g) || []).length, 12, '對照頁一般與左右兩張跨週課表都應顯示日期');
@@ -306,6 +306,41 @@ const sameWeekGroups = context.window.buildPrintGroups([
 ], []);
 assert.equal(sameWeekGroups.length, 1, 'same teacher/class/requester in one week must merge across request IDs');
 assert.equal(sameWeekGroups[0].periods.length, 2);
+
+const batchRecords = [
+  Object.assign({}, substitution.records[0], {
+    id: 'batch-row-1', requestId: 'batch-row-1', batchId: 'batch-1', serial: 'BATCH-1',
+    date: '2026-09-01', period: 1, className: '801'
+  }),
+  Object.assign({}, substitution.records[0], {
+    id: 'batch-row-2', requestId: 'batch-row-2', batchId: 'batch-1', serial: 'BATCH-2',
+    date: '2026-09-02', period: 2, className: '802'
+  })
+];
+const batchGroups = context.window.buildPrintGroups(batchRecords, [], fixtureContext);
+assert.equal(batchGroups.length, 1, 'same batch and teacher pair must merge across classes');
+assert.equal(batchGroups[0].periods.length, 2);
+const batchPreview = context.window.buildPrintPreview(Object.assign({}, fixtureContext, {
+  selectedRecordIds: { value: batchRecords.map(record => record.id) },
+  substitutionRecords: { value: batchRecords }
+}), { records: batchRecords, allSubs: batchRecords });
+assert.equal(batchPreview.formCount, 1, 'same batch and teacher pair should preview as one form');
+assert.match(batchPreview.documentHtml, /801/);
+assert.match(batchPreview.documentHtml, /802/);
+
+const batchDifferentTargetGroups = context.window.buildPrintGroups([
+  batchRecords[0],
+  Object.assign({}, batchRecords[1], {
+    id: 'batch-row-3', requestId: 'batch-row-3', actualTeacherEmail: 'third@school.example', actualTeacherName: '林小美'
+  })
+], [], fixtureContext);
+assert.equal(batchDifferentTargetGroups.length, 2, 'different batch invitees must remain separate');
+
+const differentBatchGroups = context.window.buildPrintGroups([
+  batchRecords[0],
+  Object.assign({}, batchRecords[1], { id: 'batch-row-4', requestId: 'batch-row-4', batchId: 'batch-2', className: '803' })
+], [], fixtureContext);
+assert.equal(differentBatchGroups.length, 2, 'different batch applications must remain separate');
 
 const combinedBatchRecords = [
   Object.assign({}, substitution.records[0], {
