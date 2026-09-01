@@ -908,20 +908,50 @@ function getPrintAudienceMergeKey(group, ctx) {
     return `audience-single:${group && (group.requestId || group.batchId) || resolvePrintSerial(seed) || seed.id || ''}`;
   }
 
-  // 教學組與教師收到的內容可跨班合併，班級副本則由成員群組各自列印。
+  // 教學組與教師收到的內容可跨班合併；班級副本另依班級與週次合併。
   return `audience-merge:${JSON.stringify([batchId, week, type, actualTeacher, originalTeacher, leaveMode])}`;
 }
 
-function mergePrintAudienceGroups(groups, ctx) {
+function getPrintClassAudienceMergeKey(group, ctx) {
+  const records = group && Array.isArray(group.records) ? group.records : [];
+  const rows = getPrintSlotRows(group);
+  const seed = records[0] || rows[0] || {};
+  if (!seed) return '';
+
+  // 對調與三角調課保留完整路線，不與一般班級通知單合併。
+  if (group && (group.isExchange || group.isTriangle)) {
+    return `audience-class-special:${group.isExchange ? 'exchange' : 'triangle'}:${group.requestId || resolvePrintSerial(seed)}`;
+  }
+
+  const classes = uniquePrintValues([
+    ...rows.map(row => row && (row.cls || row.className)),
+    seed.formClassName || seed.className
+  ]);
+  const week = getPrintWeekKey((rows[0] && rows[0].date) || seed.date);
+  const type = getPrintRecordTypeKey(seed);
+  const originalTeacher = getPrintMergeTeacherKey(seed, 'original', ctx);
+  const leaveMode = isPrintLeaveLikeReason(seed.reason || (group && group.reason)) ? 'leave' : 'course';
+  if (!week || classes.length !== 1 || !originalTeacher) {
+    return `audience-class-single:${group && (group.requestId || group.batchId) || resolvePrintSerial(seed) || seed.id || ''}`;
+  }
+
+  return `audience-class-merge:${JSON.stringify([week, type, originalTeacher, normalizePrintMergeKey(classes[0]), leaveMode])}`;
+}
+
+function mergePrintAudienceGroups(groups, ctx, audience) {
   const buckets = Object.create(null);
   const order = [];
   (groups || []).forEach(function (group) {
-    const key = getPrintAudienceMergeKey(group, ctx) || `audience-single:${order.length}`;
-    if (!buckets[key]) {
-      buckets[key] = [];
-      order.push(key);
+    const key = audience === 'class'
+      ? getPrintClassAudienceMergeKey(group, ctx)
+      : getPrintAudienceMergeKey(group, ctx);
+    const fallbackKey = audience === 'class' ? 'audience-class-single' : 'audience-single';
+    const resolvedKey = key || `${fallbackKey}:${order.length}`;
+    if (!buckets[resolvedKey]) {
+      buckets[resolvedKey] = [];
+      order.push(resolvedKey);
     }
-    buckets[key].push(group);
+    buckets[resolvedKey].push(group);
   });
 
   const rowKey = function (row) {
@@ -1112,6 +1142,7 @@ function buildPrintForms(recordsToPrint, allSubs, ctx) {
   const forms = [];
   const audienceLabelSets = [];
   const printCopies = [];
+  const classGroups = [];
   let staffFormCount = 0;
   let classCopyCount = 0;
 
@@ -1126,16 +1157,19 @@ function buildPrintForms(recordsToPrint, allSubs, ctx) {
     printCopies.push(withPrintAudienceLabel(staffForm, staffLabels[2]));
     staffFormCount += 1;
 
-    bundle.members.forEach(function (member) {
-      const classForm = generateFormHtml(member, 'NoticeClass', ctx);
-      if (!classForm) return;
-      const classLabels = getPrintAudienceLabels(member, ctx);
-      const classLabel = classLabels[3] || staffLabels[3];
-      forms.push(withPrintAudienceLabel(classForm, classLabel));
-      audienceLabelSets.push(classLabels);
-      printCopies.push(withPrintAudienceLabel(classForm, classLabel));
-      classCopyCount += 1;
-    });
+    bundle.members.forEach(member => classGroups.push(member));
+  });
+
+  const classBundles = mergePrintAudienceGroups(classGroups, ctx, 'class');
+  classBundles.forEach(function (bundle) {
+    const classForm = generateFormHtml(bundle.group, 'NoticeClass', ctx);
+    if (!classForm) return;
+    const classLabels = getPrintAudienceLabels(bundle.group, ctx);
+    const classLabel = classLabels[3] || '班級：';
+    forms.push(withPrintAudienceLabel(classForm, classLabel));
+    audienceLabelSets.push(classLabels);
+    printCopies.push(withPrintAudienceLabel(classForm, classLabel));
+    classCopyCount += 1;
   });
 
   forms.audienceLabelSets = audienceLabelSets;
