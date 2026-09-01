@@ -517,22 +517,23 @@
     (records || []).filter(function (record) {
       return isSelfPaidRecord(record) || isPublicOvertimeRecord(record);
     }).slice().sort(function (a, b) {
-      return String(a.date || '').localeCompare(String(b.date || ''));
+      return String(a.date || '').localeCompare(String(b.date || ''))
+        || deductionReasonLabel(a, '').localeCompare(deductionReasonLabel(b, ''));
     }).forEach(function (record) {
       var fallback = isSelfPaidRecord(record) ? '\u81ea\u4ed8' : '\u516c\u5047';
       var label = deductionReasonLabel(record, fallback);
-      if (!groups[label]) {
-        groups[label] = { label: label, dates: [], count: 0 };
-        order.push(label);
-      }
-      var group = groups[label];
       var date = shortDate(record.date);
-      if (date && group.dates.indexOf(date) < 0) group.dates.push(date);
+      var key = label + '|' + date;
+      if (!groups[key]) {
+        groups[key] = { label: label, date: date, count: 0 };
+        order.push(key);
+      }
+      var group = groups[key];
       group.count += periodCount(record, false);
     });
-    return order.map(function (label) {
-      var group = groups[label];
-      return group.dates.join('\u3001') + group.label + '\u6263' + displayCount(group.count) + '\u7bc0';
+    return order.map(function (key) {
+      var group = groups[key];
+      return group.date + group.label + '\u6263' + displayCount(group.count) + '\u7bc0';
     }).filter(Boolean);
   }
   function legacySelfSubNoteParts(value) {
@@ -750,7 +751,8 @@
     };
     if (allocation && Array.isArray(allocation.classNames)) {
       allocation.classNames.forEach(addClasses);
-    } else {
+    }
+    if (!classes.length) {
       (opts.allSchedules || []).filter(function (schedule) {
          return sameTeacher(schedule, source)
           && isWeeklyPeriod(schedule.period)

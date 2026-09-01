@@ -35,6 +35,24 @@ const publicOvertime = build([{
 assert.equal(publicOvertime.sheets.overtime[0].deduction, 1);
 assert.equal(publicOvertime.sheets.overtime[0].actualHours, 0);
 
+const fallbackClassNote = build([], 2, schedules);
+assert.equal(fallbackClassNote.overtimePlans[0].rows[0].note, '1*1(701、702、703班)', 'legacy/default overtime rows must include class names in notes');
+
+const multiDateLeave = build([
+  {
+    date: '2026-07-01', period: 1, className: '701', type: 'substitution',
+    originalTeacherEmail: 'bill@x', actualTeacherEmail: 'cover@x', subFee: '自費代課', reason: '事假', status: 'approved'
+  },
+  {
+    date: '2026-07-08', period: 2, className: '702', type: 'substitution',
+    originalTeacherEmail: 'bill@x', actualTeacherEmail: 'cover@x', subFee: '自費代課', reason: '事假', status: 'approved'
+  }
+], 2, schedules);
+const multiDateNote = multiDateLeave.overtimePlans[0].rows[0].note;
+assert.ok(multiDateNote.includes('7/1事假扣1節'), 'leave deduction note must include the first date separately');
+assert.ok(multiDateNote.includes('7/8事假扣1節'), 'leave deduction note must include the second date separately');
+assert.equal(multiDateNote.includes('7/1、7/8事假'), false, 'leave deduction note must not combine multiple dates');
+
 const publicSpecial = build([
   {
     date: '2026-07-13', period: 0, className: '702', type: 'substitution',
