@@ -146,7 +146,7 @@ assert.ok(configuredA && configuredB, 'slot sources must create one overtime gro
 assert.deepEqual(configuredA.rows[0], {
   expensePlan: '計畫A', serial: 1, title: '教師', name: 'Billing', weeklyOvertime: 1,
   schedule: '一1', weeks: 1, grossHours: 1, deduction: 1, actualHours: 0,
-  rate: 455, amount: 0, reduceNote: '', note: '1、1*1(一1)\n2、7/13公假扣1節'
+  rate: 455, amount: 0, reduceNote: '', note: '1、1*1(701班)\n2、7/13公假扣1節'
 });
 assert.equal(configuredB.rows[0].expensePlan, '計畫B');
 assert.equal(configuredB.rows[0].grossHours, 1);

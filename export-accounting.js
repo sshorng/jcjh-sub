@@ -732,32 +732,40 @@
       });
   }
 
-  function overtimeClassNote(opts, source, weeks, period) {
-    var weekly = Number(source && source.weeklyOvertime) || 0;
+  function overtimeClassNote(opts, source, weeks, period, allocation) {
+    var weekly = allocation
+      ? (Number(allocation.weeklyHours) || (weeks ? (Number(allocation.rawHours) || 0) / weeks : 0))
+      : (Number(source && source.weeklyOvertime) || 0);
     var weekCount = Number(weeks) || 0;
     if (!weekly || !weekCount) return '';
 
     var seen = {};
     var classes = [];
-    (opts.allSchedules || []).filter(function (schedule) {
-       return sameTeacher(schedule, source)
-        && isWeeklyPeriod(schedule.period)
-        && isOvertimeSchedule(schedule)
-        && scheduleActiveInPeriod(schedule, period);
-    }).forEach(function (schedule) {
-      accountingClassParts(schedule.className).forEach(function (className) {
+    var addClasses = function (value) {
+      accountingClassParts(value).forEach(function (className) {
         if (seen[className]) return;
         seen[className] = true;
         classes.push(className);
       });
-    });
+    };
+    if (allocation && Array.isArray(allocation.classNames)) {
+      allocation.classNames.forEach(addClasses);
+    } else {
+      (opts.allSchedules || []).filter(function (schedule) {
+         return sameTeacher(schedule, source)
+          && isWeeklyPeriod(schedule.period)
+          && isOvertimeSchedule(schedule)
+          && scheduleActiveInPeriod(schedule, period);
+      }).forEach(function (schedule) {
+        addClasses(schedule.className || schedule['班級']);
+      });
+    }
 
     classes.sort(function (a, b) {
       return a.localeCompare(b, 'zh-Hant', { numeric: true });
     });
-    return classes.length
-      ? weekly + '*' + weekCount + '(' + classes.join('、') + '班)'
-      : '';
+    if (!classes.length) return allocation ? displayCount(weekly) + '*' + weekCount : '';
+    return displayCount(weekly) + '*' + weekCount + '(' + classes.join('、') + '班)';
   }
   function fallbackReportRow(teacher, allSchedules, period) {
     var email = teacherEmail(teacher && teacher.email);
@@ -1029,9 +1037,7 @@
         var schedule = allocation && allocation.schedule
           ? String(allocation.schedule)
           : scheduleText(sourceRow, opts.allSchedules, true, period);
-        var overtimeNotes = [allocation && schedule
-          ? (weeklyOvertime ? displayCount(weeklyOvertime) + '*' + weeks + '(' + schedule + ')' : schedule)
-          : overtimeClassNote(opts, sourceRow, weeks, period)]
+        var overtimeNotes = [overtimeClassNote(opts, sourceRow, weeks, period, allocation)]
           .concat(leaveNoteParts(chargedRecordsForSource, publicUsed));
         var notes = config.key === 'overtime'
           ? joinAccountingNotes(overtimeNotes)

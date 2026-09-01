@@ -348,7 +348,8 @@ window.DomainBilling = (function () {
           source: name,
           rawHours: 0,
           weekCounts: [],
-          slots: []
+          slots: [],
+          classNames: []
         };
         buckets.push(bucketMap[name]);
       }
@@ -364,6 +365,8 @@ window.DomainBilling = (function () {
       if (schedule) {
         var text = overtimeScheduleSlotText(schedule);
         if (bucket.slots.indexOf(text) < 0) bucket.slots.push(text);
+        var className = String(schedule.className || schedule['班級'] || '').trim();
+        if (className && bucket.classNames.indexOf(className) < 0) bucket.classNames.push(className);
       }
     }
 
@@ -414,7 +417,7 @@ window.DomainBilling = (function () {
     function ensureFallbackBucket() {
       var fallback = buckets.find(function (bucket) { return bucket.source === DEFAULT_EXPENSE_SOURCE; });
       if (fallback) return fallback;
-      fallback = { source: DEFAULT_EXPENSE_SOURCE, rawHours: 0, weeklyHours: 0, schedule: '', slots: [], weekCounts: [], reduceHours: 0, grossHours: 0, deduction: 0, actualHours: 0 };
+      fallback = { source: DEFAULT_EXPENSE_SOURCE, rawHours: 0, weeklyHours: 0, schedule: '', slots: [], classNames: [], weekCounts: [], reduceHours: 0, grossHours: 0, deduction: 0, actualHours: 0 };
       buckets.push(fallback);
       return fallback;
     }
