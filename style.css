@@ -2981,6 +2981,11 @@ td.table-empty {
   .official-signature-name {
     font-size: 9pt;
   }
+  .official-signature-hint {
+    color: #9ca3af;
+    font-size: 8pt;
+    margin-left: 2px;
+  }
   .official-schedule-header {
     height: 8.11mm;
     text-align: center;

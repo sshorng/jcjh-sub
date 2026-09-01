@@ -88,7 +88,8 @@ assert.match(output, /生活科技/);
 assert.match(output, /802/);
 assert.match(output, /單號：SUB-1/);
 assert.match(output, /class="official-signature-cell"/);
-assert.doesNotMatch(output, /official-signature-name/);
+assert.match(output, /class="official-signature-name">王小明/);
+assert.doesNotMatch(output, /official-signature-hint/);
 assert.doesNotMatch(output, /official-signature-cell[^>]*rowspan/);
 assert.equal((output.match(/class="official-signature-cell"/g) || []).length, 16);
 assert.equal((output.match(/class="official-date-cell"/g) || []).length, 1);
@@ -100,7 +101,7 @@ assert.equal((packed.match(/copy me/g) || []).length, 4, 'each original form mus
 assert.equal((packed.match(/class="print-page"/g) || []).length, 2, 'each original form must print as two A4 pages');
 const labeledForms = ['<div class="official-substitution-form">labeled form</div>'];
 labeledForms.audienceLabelSets = [[
-  '教學組留存（請簽名）',
+  '教學組留存',
   '請假教師：陳小華',
   '代課/調課教師：王小明',
   '班級：802'
@@ -108,13 +109,13 @@ labeledForms.audienceLabelSets = [[
 const labeledPacked = context.window.packPrintForms(labeledForms);
 assert.equal((labeledPacked.match(/\bofficial-audience-label(?=\s|")/g) || []).length, 4);
 assert.match(labeledPacked, /official-audience-label official-audience-label-retain/);
-assert.match(labeledPacked, /教學組留存（請簽名）/);
+assert.match(labeledPacked, /教學組留存/);
 assert.match(labeledPacked, /請假教師：陳小華/);
 assert.match(labeledPacked, /代課\/調課教師：王小明/);
 assert.match(labeledPacked, /班級：802/);
 const defaultPacked = context.window.packPrintForms(['<div class="official-substitution-form">default labels</div>']);
 const defaultLabelOrder = [
-  '教學組留存（請簽名）',
+  '教學組留存',
   '請假教師：',
   '代課/調課教師：',
   '班級：'
@@ -135,17 +136,21 @@ assert.equal(preview.classCopyCount, 1);
 assert.equal(preview.pageCount, 2);
 assert.equal(preview.copyCount, 4);
 assert.match(preview.documentHtml, /print-preview-stack/);
-assert.match(preview.documentHtml, /教學組留存（請簽名）/);
+assert.match(preview.documentHtml, /教學組留存/);
 const classLeaveOutput = context.window.generateFormHtml(substitution, 'NoticeClass', fixtureContext);
 assert.match(classLeaveOutput, /假別：請假/);
 assert.doesNotMatch(classLeaveOutput, /假別：事假/);
 assert.doesNotMatch(classLeaveOutput, /原因：/);
 assert.match(classLeaveOutput, /class="official-signature-name">王小明/);
-assert.doesNotMatch(output, /class="official-signature-name">王小明/);
+const retainOutput = context.window.generateFormHtml(substitution, 'Official', fixtureContext);
+assert.match(retainOutput, /class="official-signature-hint">請簽名/);
+assert.doesNotMatch(retainOutput, /class="official-signature-name">王小明/);
 assert.match(context.window.getPrintPreviewCss(), /official-audience-label \{[^}]*top: -5\.8mm[^}]*left: 0[^}]*padding: \.8mm 2mm[^}]*border: none[^}]*background: #e5e7eb[^}]*font-size: 10pt/);
 assert.match(context.window.getPrintPreviewCss(), /official-audience-label-retain \{[^}]*border: none; background: #e5e7eb;/);
+assert.match(context.window.getPrintPreviewCss(), /official-signature-hint \{[^}]*color: #9ca3af/);
 assert.match(styleSource, /\.official-audience-label \{[^}]*top: -5\.8mm[^}]*padding: \.8mm 2mm[^}]*border: none[^}]*background: #e5e7eb[^}]*font-size: 10pt/);
 assert.match(styleSource, /\.official-audience-label-retain \{[^}]*border: none;[^}]*background: #e5e7eb;/);
+assert.match(styleSource, /\.official-signature-hint \{[^}]*color: #9ca3af/);
 assert.match(context.window.getPrintPreviewCss(), /\.official-subject-row \.official-slot-value \{[^}]*white-space: normal;[^}]*overflow-wrap: anywhere;[^}]*word-break: break-all;/);
 assert.match(styleSource, /\.official-subject-row \.official-slot-value \{[^}]*white-space: normal;[^}]*overflow-wrap: anywhere;[^}]*word-break: break-all;/);
 assert.match(indexSource, /title="列印此筆通知單"[^>]*@click="printSingleRequest\(\{ id: (?:rec|row)\.requestId \|\| (?:rec|row)\.id \}, 'Notice'\)"/);
@@ -311,7 +316,7 @@ const exchange = {
 };
 const exchangeOutput = context.window.generateFormHtml(exchange, 'NoticeClass', fixtureContext);
 assert.equal(context.window.getPrintAudienceLabels(exchange, fixtureContext).join('\n'), [
-  '教學組留存（請簽名）',
+  '教學組留存',
   '請假教師：陳小華',
   '代課/調課教師：王小明',
   '班級：802、803'
@@ -445,6 +450,7 @@ assert.equal(audienceForms.copyCount, 5, 'three staff copies plus one copy per c
 assert.equal(audienceForms.pageCount, 3, 'five recipient copies should use three A4 pages');
 assert.match(audienceForms[0], /假別：事假/);
 assert.doesNotMatch(audienceForms[0], /class="official-signature-name">王小明/);
+assert.match(audienceForms[0], /class="official-signature-hint">請簽名/);
 assert.ok(audienceForms.slice(1).every(form => /假別：請假/.test(form)
   && !/假別：事假/.test(form)
   && !/原因：/.test(form)), '班級副本不得列出實際假別與原因');
@@ -456,12 +462,13 @@ assert.ok(audienceForms.slice(1).some(form => /班級：802/.test(form)));
 const audiencePacked = context.window.packPrintForms(audienceForms);
 assert.equal((audiencePacked.match(/\bofficial-audience-label(?=\s|")/g) || []).length, 5);
 assert.equal((audiencePacked.match(/class="print-page"/g) || []).length, 3);
-assert.match(audiencePacked, /教學組留存（請簽名）/);
+assert.match(audiencePacked, /教學組留存/);
 assert.match(audiencePacked, /請假教師：陳小華/);
 assert.match(audiencePacked, /代課\/調課教師：王小明/);
 assert.match(audiencePacked, /班級：801/);
 assert.match(audiencePacked, /班級：802/);
 assert.doesNotMatch(audienceForms.printCopies[0], /class="official-signature-name">王小明/);
+assert.match(audienceForms.printCopies[0], /class="official-signature-hint">請簽名/);
 assert.match(audienceForms.printCopies[1], /class="official-signature-name">王小明/);
 assert.match(audienceForms.printCopies[2], /class="official-signature-name">王小明/);
 const adminAudienceForms = context.window.buildPrintForms(audienceBatchRecords, [], Object.assign({}, fixtureContext, { isAdmin: true }));

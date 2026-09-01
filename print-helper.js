@@ -111,7 +111,7 @@ function getPrintAudienceLabels(group, ctx) {
   const classes = uniquePrintValues((rows || []).map(row => row.cls || row.className));
   if (group && group.isTriangle) {
     return [
-      '教學組留存（請簽名）',
+      '教學組留存',
       '三角調教師：' + names('original').join('、'),
       '實際授課教師：' + names('actual').join('、'),
       '班級：' + classes.join('、')
@@ -139,14 +139,14 @@ function getPrintAudienceLabels(group, ctx) {
       || getPrintTeacherKey(targetRecord, 'original')
     );
     return [
-      '教學組留存（請簽名）',
+      '教學組留存',
       '請假教師：' + requesterName,
       '代課/調課教師：' + targetName,
       '班級：' + classes.join('、')
     ];
   }
   return [
-    '教學組留存（請簽名）',
+    '教學組留存',
     '請假教師：' + names('original').join('、'),
     '代課/調課教師：' + names('actual').join('、'),
     '班級：' + classes.join('、')
@@ -155,7 +155,7 @@ function getPrintAudienceLabels(group, ctx) {
 
 function withPrintAudienceLabel(form, label) {
   const source = String(form || '').replace(/<div class="[^"]*\bofficial-audience-label\b[^"]*">[\s\S]*?<\/div>\s*/g, '');
-  const retainClass = String(label || '').trim() === '教學組留存（請簽名）'
+  const retainClass = String(label || '').trim() === '教學組留存'
     ? ' official-audience-label-retain'
     : '';
   const labelHtml = `<div class="official-audience-label${retainClass}">${escapePrintHtml(label || '')}</div>`;
@@ -516,6 +516,14 @@ function getTriangleArrowSvg(group, rows, weekDates) {
 function generateFormHtml(g, currentType, ctx) {
   ctx = ctx || {};
   const isClassNotice = String(currentType || '').trim().toLowerCase() === 'noticeclass';
+  const currentTypeKey = String(currentType || '').trim().toLowerCase();
+  const isAdmin = ctx.isAdmin === true || !!(ctx.isAdmin && ctx.isAdmin.value === true);
+  const showTeacherName = isClassNotice
+    || currentTypeKey === 'admin'
+    || currentTypeKey === 'officialteacher'
+    || currentTypeKey === 'noticeteacher'
+    || (currentTypeKey === 'official' && isAdmin);
+  const showSignatureHint = currentTypeKey === 'official' && !isAdmin;
   const getName = typeof ctx.getTeacherNameByEmail === 'function'
     ? ctx.getTeacherNameByEmail
     : function (value) { return String(value || ''); };
@@ -610,15 +618,11 @@ function generateFormHtml(g, currentType, ctx) {
       return `<td colspan="${dayCols[index]}" class="official-slot-value official-class-value">${escapePrintHtml(value)}</td>`;
     }).join('');
     const label = ['', '第一節', '第二節', '第三節', '第四節', '第五節', '第六節', '第七節', '第八節'][period];
-    const periodSignature = getPrintSignatureText(
-      g || {},
-      periodRows,
-      ctx,
-      getName,
-      isClassNotice
-        || ['admin', 'officialteacher'].includes(String(currentType || '').trim().toLowerCase())
-    );
-    const signatureCell = `<td colspan="2" class="official-signature-cell">${periodSignature ? `<span class="official-signature-name">${escapePrintHtml(periodSignature)}</span>` : ''}</td>`;
+    const periodSignature = getPrintSignatureText(g || {}, periodRows, ctx, getName, showTeacherName);
+    const signatureHint = showSignatureHint && periodRows.length
+      ? '<span class="official-signature-hint">請簽名</span>'
+      : '';
+    const signatureCell = `<td colspan="2" class="official-signature-cell">${periodSignature ? `<span class="official-signature-name">${escapePrintHtml(periodSignature)}</span>` : ''}${signatureHint}</td>`;
     return `
       <tr class="official-subject-row">
         <td colspan="3" class="official-row-label">${label}</td>${subjectCells}${signatureCell}
@@ -1081,7 +1085,7 @@ function packPrintForms(forms) {
   }
 
   const labelSets = Array.isArray(list.audienceLabelSets) ? list.audienceLabelSets : [];
-  const defaultLabels = ['教學組留存（請簽名）', '請假教師：', '代課/調課教師：', '班級：'];
+  const defaultLabels = ['教學組留存', '請假教師：', '代課/調課教師：', '班級：'];
   return list.map(function (form, index) {
     const labels = Array.isArray(labelSets[index]) && labelSets[index].length >= 4
       ? labelSets[index]
@@ -1228,6 +1232,7 @@ function getPrintPreviewCss() {
     .official-signature-header { text-align: center; font-size: 9pt; }
     .official-signature-cell { text-align: center; font-size: 10pt; line-height: 1.25; }
     .official-signature-name { font-size: 9pt; }
+    .official-signature-hint { color: #9ca3af; font-size: 8pt; margin-left: 2px; }
     .official-schedule-header { height: 8.11mm; text-align: center; }
     .official-day-header { font-weight: 400; }
     .official-day-date { font-size: 8.5pt; }
@@ -1494,6 +1499,7 @@ async function printSelectedForms(formType, ctx) {
           .official-signature-header { text-align: center; font-size: 9pt; }
           .official-signature-cell { text-align: center; font-size: 10pt; line-height: 1.25; }
           .official-signature-name { font-size: 9pt; }
+          .official-signature-hint { color: #9ca3af; font-size: 8pt; margin-left: 2px; }
           .official-schedule-header { height: 8.11mm; text-align: center; }
           .official-day-header { font-weight: 400; }
           .official-day-date { font-size: 8.5pt; }
