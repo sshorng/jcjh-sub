@@ -81,6 +81,14 @@ function uniquePrintValues(values) {
   });
 }
 
+function stripPrintAdministrativeProxyNote(value) {
+  return String(value == null ? '' : value)
+    .replace(/\[行政代申請[^\]]*\]/g, '')
+    .replace(/行政代申請[：:][^；;\r\n]*/g, '')
+    .replace(/^[；;\s]+|[；;\s]+$/g, '')
+    .trim();
+}
+
 function resolvePrintSerial(record) {
   if (!record) return '';
   const explicit = record.serial || record['單號'] || record.requestSerial || '';
@@ -508,6 +516,7 @@ function getTriangleArrowSvg(group, rows, weekDates) {
 
 function generateFormHtml(g, currentType, ctx) {
   ctx = ctx || {};
+  const isClassNotice = String(currentType || '').trim().toLowerCase() === 'noticeclass';
   const getName = typeof ctx.getTeacherNameByEmail === 'function'
     ? ctx.getTeacherNameByEmail
     : function (value) { return String(value || ''); };
@@ -554,7 +563,7 @@ function generateFormHtml(g, currentType, ctx) {
     g && g.note,
     ...(sourceRecords || []).map(record => record && record.note)
   ]);
-  const administrativeNote = notes.join('；');
+  const administrativeNote = uniquePrintValues(notes.map(stripPrintAdministrativeProxyNote)).join('；');
   const dateSourceRecords = rows.length ? rows : sourceRecords;
   const rangeRecords = g && (g.isExchange || g.isTriangle)
     ? dateSourceRecords.filter(record => {
@@ -617,7 +626,10 @@ function generateFormHtml(g, currentType, ctx) {
   const courseReason = isLeave
     ? administrativeNote
     : uniquePrintValues([reason === '請假' ? '' : reason, administrativeNote]).join('；') || '課務調整';
-  const reasonLine = `假別：${isLeave ? escapePrintHtml(reason || '請假') : ''}`;
+  const reasonLine = `假別：${isLeave ? escapePrintHtml(isClassNotice ? '請假' : (reason || '請假')) : ''}`;
+  const courseReasonLine = !isClassNotice && courseReason
+    ? `原因：${escapePrintHtml(courseReason)}`
+    : '';
   const instructions = '1.請於填寫線上假單時填妥課務安排情形，紙本送教務處備查。2.請先確認班級特教學生課務，有特教生抽離請通知特教組。3.代課以同科教師為原則，並先行將課務交代該代課老師。4.補課請自覓時間，於二週內完成。';
   const exchangeArrowSvg = isTriangle
     ? getTriangleArrowSvg(g, rows, dateLists)
@@ -645,7 +657,7 @@ function generateFormHtml(g, currentType, ctx) {
            </tr>
            <tr class="official-course-row">
              <td colspan="5" class="official-check-option">${renderPrintCheckbox('僅課務申請(非請假)', !isLeave)}</td>
-             <td colspan="5" class="official-reason-cell">原因：${escapePrintHtml(courseReason)}</td>
+             <td colspan="5" class="official-reason-cell">${courseReasonLine}</td>
           </tr>
              <tr class="official-section-row"><td colspan="15"><span class="official-section-caption">代（調、補）課情形★★請註明科目、日期★★</span></td><td colspan="2" class="official-signature-header">代課教師</td></tr>
            <tr class="official-schedule-header">
@@ -1115,7 +1127,7 @@ function buildPrintForms(recordsToPrint, allSubs, ctx) {
     staffFormCount += 1;
 
     bundle.members.forEach(function (member) {
-      const classForm = generateFormHtml(member, 'Official', ctx);
+      const classForm = generateFormHtml(member, 'NoticeClass', ctx);
       if (!classForm) return;
       const classLabels = getPrintAudienceLabels(member, ctx);
       const classLabel = classLabels[3] || staffLabels[3];

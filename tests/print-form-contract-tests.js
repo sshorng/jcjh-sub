@@ -136,6 +136,10 @@ assert.equal(preview.pageCount, 2);
 assert.equal(preview.copyCount, 4);
 assert.match(preview.documentHtml, /print-preview-stack/);
 assert.match(preview.documentHtml, /教學組留存（請簽名）/);
+const classLeaveOutput = context.window.generateFormHtml(substitution, 'NoticeClass', fixtureContext);
+assert.match(classLeaveOutput, /假別：請假/);
+assert.doesNotMatch(classLeaveOutput, /假別：事假/);
+assert.doesNotMatch(classLeaveOutput, /原因：/);
 assert.match(context.window.getPrintPreviewCss(), /official-audience-label \{[^}]*top: -5\.8mm[^}]*left: 0[^}]*padding: \.8mm 2mm[^}]*border: none[^}]*background: #e5e7eb[^}]*font-size: 10pt/);
 assert.match(context.window.getPrintPreviewCss(), /official-audience-label-retain \{[^}]*border: none; background: #e5e7eb;/);
 assert.match(styleSource, /\.official-audience-label \{[^}]*top: -5\.8mm[^}]*padding: \.8mm 2mm[^}]*border: none[^}]*background: #e5e7eb[^}]*font-size: 10pt/);
@@ -204,7 +208,7 @@ assert.doesNotMatch(appSource, /seedClassKey/, 'single-request batch printing sh
 assert.match(appSource, /teacherKey\(record, 'actual'\) === targetKey/, 'single-request batch printing should group by recipient teacher');
 assert.match(printHelperSource, /const signatureSide = 'actual';/);
 assert.match(printHelperSource, /function getOfficialArrowMarkerHtml\(markerId\)/);
-assert.match(indexSource, /print-helper\.js\?v=20260831-combined3/);
+assert.match(indexSource, /print-helper\.js\?v=20260901-class-print1/);
 assert.match(indexSource, /<title>建成國中線上課表系統<\/title>/);
 assert.match(indexSource, /application-name" content="JCJH Timetable"/);
 assert.equal((indexSource.match(/class="mini-grid-date"/g) || []).length, 12, '對照頁一般與左右兩張跨週課表都應顯示日期');
@@ -255,6 +259,14 @@ assert.match(previewSvg, /<br \/>/, 'preview image SVG should use XHTML-compatib
 const adminOutput = context.window.generateFormHtml(substitution, 'Admin', Object.assign({}, fixtureContext, { isAdmin: true }));
 assert.match(adminOutput, /class="official-signature-name">王小明/);
 
+const administrativeProxyOutput = context.window.generateFormHtml(Object.assign({}, substitution, {
+  records: [Object.assign({}, substitution.records[0], {
+    note: '[行政代申請：王小明 代 陳小華]'
+  })]
+}), 'NoticeTeacher', fixtureContext);
+assert.doesNotMatch(administrativeProxyOutput, /行政代申請/);
+assert.doesNotMatch(administrativeProxyOutput, /原因：/);
+
 const adjustmentLeaveOutput = context.window.generateFormHtml(Object.assign({}, substitution, {
   records: [Object.assign({}, substitution.records[0], { reason: '身心調適假', note: '' })]
 }), 'NoticeTeacher', fixtureContext);
@@ -299,6 +311,7 @@ assert.equal(context.window.getPrintAudienceLabels(exchange, fixtureContext).joi
 ].join('\n'));
 assert.match(exchangeOutput, /■調課/);
 assert.match(exchangeOutput, /■僅課務申請\(非請假\)/);
+assert.doesNotMatch(exchangeOutput, /原因：/);
 assert.match(exchangeOutput, /生活科技/);
 assert.match(exchangeOutput, /803/);
 const exchangeGridSubjectRows = [...exchangeOutput.matchAll(/<tr class="official-subject-row">([\s\S]*?)<\/tr>/g)].map(match => match[1]);
@@ -423,6 +436,10 @@ assert.equal(audienceForms.staffFormCount, 1, 'same recipient teachers should sh
 assert.equal(audienceForms.classCopyCount, 2, 'each class should receive its own copy');
 assert.equal(audienceForms.copyCount, 5, 'three staff copies plus one copy per class');
 assert.equal(audienceForms.pageCount, 3, 'five recipient copies should use three A4 pages');
+assert.match(audienceForms[0], /假別：事假/);
+assert.ok(audienceForms.slice(1).every(form => /假別：請假/.test(form)
+  && !/假別：事假/.test(form)
+  && !/原因：/.test(form)), '班級副本不得列出實際假別與原因');
 assert.match(audienceForms[0], /801/);
 assert.match(audienceForms[0], /802/);
 assert.ok(audienceForms.slice(1).some(form => /班級：801/.test(form)));
@@ -523,7 +540,8 @@ const triangleLeaveGroup = context.window.buildPrintGroups([triangleLeaveRecords
 const triangleLeaveOutput = context.window.generateFormHtml(triangleLeaveGroup, 'NoticeClass', fixtureContext);
 assert.match(triangleLeaveOutput, /■請假/);
 assert.match(triangleLeaveOutput, /□僅課務申請\(非請假\)/);
-assert.match(triangleLeaveOutput, /假別：公假/);
+assert.match(triangleLeaveOutput, /假別：請假/);
+assert.doesNotMatch(triangleLeaveOutput, /假別：公假/);
 assert.doesNotMatch(triangleLeaveOutput, /原因：公假/);
 assert.match(triangleLeaveOutput, /自115年9月7日/);
 
