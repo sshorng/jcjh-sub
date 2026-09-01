@@ -142,6 +142,21 @@ assert.match(classLeaveOutput, /假別：請假/);
 assert.doesNotMatch(classLeaveOutput, /假別：事假/);
 assert.doesNotMatch(classLeaveOutput, /原因：/);
 assert.match(classLeaveOutput, /class="official-signature-name">王小明/);
+const targetOnlyRecord = {
+  id: 'target-only-1',
+  requestId: 'target-only-1',
+  type: 'substitution',
+  originalTeacherEmail: 'owner@school.example',
+  targetTeacherEmail: 'invitee@school.example',
+  targetTeacherName: '王小明',
+  date: '2026-09-07',
+  period: 1,
+  className: '802',
+  subject: '生活科技',
+  reason: '事假'
+};
+const targetOnlyForms = context.window.buildPrintForms([targetOnlyRecord], [], fixtureContext);
+assert.match(targetOnlyForms[1], /class="official-signature-name">王小明/);
 const retainOutput = context.window.generateFormHtml(substitution, 'Official', fixtureContext);
 assert.match(retainOutput, /class="official-signature-hint">請簽名/);
 assert.doesNotMatch(retainOutput, /class="official-signature-name">王小明/);

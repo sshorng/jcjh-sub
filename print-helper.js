@@ -253,7 +253,17 @@ function isPrintCombinedReturnRecord(record) {
 
 function getPrintTeacherKey(record, side) {
   if (!record) return '';
-  if (side === 'actual') return String(record.actualTeacherEmail || record.actualTeacherName || '').trim();
+  if (side === 'actual') {
+    return String(record.actualTeacherEmail
+      || record.actualTeacherName
+      || record.targetTeacherEmail
+      || record.targetTeacherName
+      || record.subTeacherEmail
+      || record.subTeacherName
+      || record.subEmail
+      || record.subTeacher
+      || '').trim();
+  }
   return String(record.originalTeacherEmail || record.originalTeacherName || record.leaveEmail || '').trim();
 }
 
@@ -261,10 +271,10 @@ function getPrintMergeTeacherKey(record, side, ctx) {
   if (!record) return '';
   const isActual = side === 'actual';
   const name = String(isActual
-    ? (record.actualTeacherName || record.targetTeacherName || '')
+    ? (record.actualTeacherName || record.targetTeacherName || record.subTeacherName || record.subTeacher || '')
     : (record.originalTeacherName || record.requesterName || record.leaveTeacherName || '')).trim();
   const rawValues = (isActual
-    ? [record.actualTeacherEmail, record.targetTeacherEmail]
+    ? [record.actualTeacherEmail, record.targetTeacherEmail, record.subTeacherEmail, record.subEmail, record.subTeacher]
     : [record.originalTeacherEmail, record.requesterEmail, record.leaveEmail])
     .map(value => String(value == null ? '' : value).trim())
     .filter(Boolean);
@@ -295,7 +305,7 @@ function getPrintSlotRows(group) {
       originalTeacherEmail: getPrintTeacherKey(record, 'original'),
       originalTeacherName: record.originalTeacherName,
       actualTeacherEmail: getPrintTeacherKey(record, 'actual'),
-      actualTeacherName: record.actualTeacherName,
+      actualTeacherName: record.actualTeacherName || record.targetTeacherName || record.subTeacherName || record.subTeacher,
       serial: resolvePrintSerial(record),
       leaveEmail: getPrintTeacherKey(record, 'original'),
       reason: record.reason || group.reason || '',
@@ -311,10 +321,10 @@ function getPrintSlotRows(group) {
     num: record.period,
     cls: record.className,
     sub: record.subject,
-     originalTeacherEmail: getPrintTeacherKey(record, 'original'),
-     originalTeacherName: record.originalTeacherName,
-     actualTeacherEmail: getPrintTeacherKey(record, 'actual'),
-     actualTeacherName: record.actualTeacherName,
+      originalTeacherEmail: getPrintTeacherKey(record, 'original'),
+      originalTeacherName: record.originalTeacherName,
+      actualTeacherEmail: getPrintTeacherKey(record, 'actual'),
+      actualTeacherName: record.actualTeacherName || record.targetTeacherName || record.subTeacherName || record.subTeacher,
      serial: resolvePrintSerial(record),
       leaveEmail: getPrintTeacherKey(record, 'original'),
      reason: record.reason || group.reason || '',
@@ -860,7 +870,11 @@ function buildPrintGroups(recordsToPrint, allSubs, ctx) {
         cls: group.isTriangle ? record.className : (record.formClassName || record.className),
         sub: group.isTriangle ? record.subject : (record.formSubject || record.subject),
         actualTeacherEmail: getPrintTeacherKey(record, 'actual'),
-        actualTeacherName: record.actualTeacherName || '',
+         actualTeacherName: record.actualTeacherName
+           || record.targetTeacherName
+           || record.subTeacherName
+           || record.subTeacher
+           || '',
         sourceDate: record.triangleSourceDate || record.sourceDate || record.date,
         sourcePeriod: record.triangleSourcePeriod != null ? record.triangleSourcePeriod : record.period,
         targetDate: record.triangleTargetDate || record.targetDate || '',
