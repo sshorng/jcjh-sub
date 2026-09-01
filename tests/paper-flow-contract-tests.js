@@ -428,7 +428,7 @@ function runLineTemplateTest() {
     declineLink: 'https://school.example/?decline'
   });
   assert.match(single, /小明老師，想問您是否可以協助代課：/);
-  assert.match(single, /09\/04（五） 第1節｜904國文（陳小華老師）/);
+  assert.match(single, /09\/04\(五\) 第1節 904國文（陳小華老師）/);
   assert.match(single, /✅ 可以/);
   assert.doesNotMatch(single, /詳細如下|非常感謝/);
 
@@ -438,7 +438,7 @@ function runLineTemplateTest() {
      classA: '904', subjectA: '國文'
   });
   assert.match(ask, /小明老師，想問您是否可以協助代課：/);
-  assert.match(ask, /09\/04（五） 第1節｜904國文（陳小華老師）/);
+  assert.match(ask, /09\/04\(五\) 第1節 904國文（陳小華老師）/);
   assert.match(ask, /如果可以，我再拿代課單給您，感謝/);
   assert.doesNotMatch(ask, /再麻煩您確認一下喔/);
 
@@ -458,8 +458,8 @@ function runLineTemplateTest() {
   assert.equal(askExchange, [
     '小明老師，想問您是否方便和我調課，',
     '',
-    '09/01（二） 第2節｜707數學（陳小華老師）<->',
-    '09/04（五） 第5節｜707健康教育（王小明老師）',
+    '09/01(二) 第2節 707數學（陳小華老師）<->',
+    '09/04(五) 第5節 707健康教育（王小明老師）',
     '',
     '如果可以，我再拿調課單給您，感謝🙏🏻'
   ].join('\n'));
@@ -485,8 +485,8 @@ function runLineTemplateTest() {
   assert.equal(onlineExchange, [
     '小明老師，想問您是否方便和月亭老師調課，',
     '',
-    '09/01（二） 第2節｜707數學（余月亭老師）<->',
-    '09/04（五） 第5節｜707健康教育（王小明老師）',
+    '09/01(二) 第2節 707數學（余月亭老師）<->',
+    '09/04(五) 第5節 707健康教育（王小明老師）',
     '',
     '感謝🙏🏻'
   ].join('\n'));
@@ -510,7 +510,7 @@ function runLineTemplateTest() {
     dateA: '2026-09-04', dayA: 5, periodA: 1, classA: '904', subjectA: '國文', reason: '事假'
   });
   assert.match(paper, /小明老師，想問您是否可以協助代課：/);
-  assert.match(paper, /09\/04（五） 第1節｜904國文（陳小華老師）/);
+  assert.match(paper, /09\/04\(五\) 第1節 904國文（陳小華老師）/);
   assert.match(paper, /如果可以，我再拿代課單給您，感謝/);
   assert.doesNotMatch(paper, /假別：|紙本調代課通知|簽名後交回教學組|https?:\/\/|action=/);
 
@@ -521,8 +521,8 @@ function runLineTemplateTest() {
       { date: '2026-09-04', day: 5, period: 2, className: '905', subject: '國文', teacherName: '陳小華老師' }
     ]
   });
-  assert.match(paperBatch, /1\. 09\/04（五） 第1節｜904國文（陳小華老師）/);
-  assert.match(paperBatch, /2\. 09\/04（五） 第2節｜905國文（陳小華老師）/);
+  assert.match(paperBatch, /1\. 09\/04\(五\) 第1節 904國文（陳小華老師）/);
+  assert.match(paperBatch, /2\. 09\/04\(五\) 第2節 905國文（陳小華老師）/);
   assert.match(paperBatch, /如果可以，我再拿代課單給您，感謝/);
 
   const pendingSlot = templates.getLineHandledSlot({
@@ -534,7 +534,7 @@ function runLineTemplateTest() {
     dateA: pendingSlot.date, dayA: pendingSlot.day, periodA: pendingSlot.period,
     classA: pendingSlot.className, subjectA: pendingSlot.subject
   });
-  assert.match(pendingAsk, /09\/07（一） 第2節｜906自然（陳小華老師）/);
+  assert.match(pendingAsk, /09\/07\(一\) 第2節 906自然（陳小華老師）/);
 }
 
 function runCourseDisplayFormatTest() {
@@ -543,7 +543,7 @@ function runCourseDisplayFormatTest() {
   assert.equal(notificationCourse, '802體育（OOO老師）');
   const tableCourse = formatter.formatCourseDisplayText('802', '體育');
   assert.equal(tableCourse, '802體育');
-  assert.equal(formatter._fmtSlot('2026-09-08', '二', 3, tableCourse), '09/08（二） 第3節｜802體育');
+  assert.equal(formatter._fmtSlot('2026-09-08', '二', 3, tableCourse), '09/08(二) 第3節 802體育');
 }
 
 function runTriangleLineFormatTest() {
@@ -554,7 +554,7 @@ function runTriangleLineFormatTest() {
       { className: '802', subject: '體育' },
       'OOO老師'
     ),
-    '09/08（二） 第3節｜802體育（OOO老師）'
+    '09/08(二) 第3節 802體育（OOO老師）'
   );
   const text = templates.buildTriangleLineText({
     targetTeacherName: '王小明',
@@ -572,8 +572,8 @@ function runTriangleLineFormatTest() {
     className: '802',
     subject: '體育'
   }]);
-  assert.match(text, /09\/08（二） 第3節｜802體育（余明錦老師）/);
-  assert.match(text, /09\/10（四） 第5節｜802體育（余明錦老師）/);
+  assert.match(text, /09\/08\(二\) 第3節 802體育（余明錦老師）/);
+  assert.match(text, /09\/10\(四\) 第5節 802體育（余明錦老師）/);
 }
 
 function loadPaperFlowClassifier() {
@@ -761,7 +761,7 @@ function runApplicationFormContractTest() {
    assert.match(appSource, /openExchangeModeDemo: \(\) => openExchangeModeDemoForTour\(\)/, 'tour should demonstrate exchange mode');
     assert.match(appSource, /ONBOARDING_SCRIPT = 'onboarding-tour\.js\?v=20260831-combined3'/, 'onboarding cache must refresh with the exchange tour');
     assert.match(html, /ui-activity\.js\?v=20260901-batch-display2/);
-    assert.match(html, /app\.js\?v=20260901-batch-display2/);
+    assert.match(html, /app\.js\?v=20260901-slot-format1/);
      assert.match(appSource, /openPaperPrintDemo: \(\) => openPaperPrintDemoForTour\(\)/, 'paper tour should open a print preview demo');
      assert.match(appSource, /openExchangeModeDemo: \(\) => openExchangeModeDemoForTour\(\)/, 'tour should demonstrate exchange mode');
     assert.match(appSource, /source: 'paperTour'/, 'paper tour preview must use an isolated source');

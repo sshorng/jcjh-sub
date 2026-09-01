@@ -51,6 +51,12 @@
     font-size: 0.72rem !important;
     line-height: 1.25 !important;
   }
+  .table-responsive .custom-table .teacher-email-cell {
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    max-width: 150px;
+  }
   .table-responsive .custom-table.history-table col {
     width: auto !important;
   }

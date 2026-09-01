@@ -1521,13 +1521,13 @@ createApp({
       scrollMainToTop();
       const me = (user.value && user.value.displayName) || '您';
       const demo = findDemoScheduleCell();
-      let leaveSlot = '03/20（三）第3節 · 701 國文';
+      let leaveSlot = '03/20(三) 第3節 701國文';
       if (demo && demo.classData) {
         const d = String(demo.dateStr || '');
         const mmdd = d.length >= 10 ? d.slice(5, 10).replace('-', '/') : d;
         const dayTxt = typeof getWeekDayText === 'function' ? getWeekDayText(demo.dayOfWeek) : '';
-        const cls = ((demo.classData.className || '') + ' ' + (demo.classData.subject || '')).trim();
-        leaveSlot = mmdd + (dayTxt ? '（' + dayTxt + '）' : '') + '第' + demo.period + '節' + (cls ? ' · ' + cls : '');
+        const cls = ((demo.classData.className || '') + (demo.classData.subject || '')).trim();
+        leaveSlot = mmdd + (dayTxt ? '(' + dayTxt + ')' : '') + ' 第' + demo.period + '節' + (cls ? ' ' + cls : '');
       }
       const today = typeof getTodayString === 'function' ? getTodayString() : new Date().toISOString().slice(0, 10);
       tourDemoInvite.value = {
@@ -2016,18 +2016,18 @@ createApp({
         const subject = r.subject || '';
         const dayPart = dayNum ? (window.DateUtils.getWeekDayText(dayNum) || '') : '';
         const datePart = dayPart
-          ? `${formatDateMMDD(r.date)}（${dayPart}）`
+          ? `${formatDateMMDD(r.date)}(${dayPart})`
           : `${formatDateMMDD(r.date)}`;
         const isMutual = !isEx && isQuotaDeductFee(r.subFee);
         const isCombined = isCombinedReturnRequest(r);
         // 班級摘要：互代不顯示「不結鐘點」字樣
         const line = isEx
-          ? `${datePart}第${r.period}節 改上 ${subject}（${toName}）`
+          ? `${datePart} ${formatPeriodText(r.period)} 改上 ${subject}（${toName}）`
           : isCombined
-             ? `${datePart}第${r.period}節 ${subject} 併班上課，由${toName}代課`
+             ? `${datePart} ${formatPeriodText(r.period)} ${subject} 併班上課，由${toName}代課`
           : isMutual
-            ? `${datePart}第${r.period}節 ${subject} 由${toName}互代`
-            : `${datePart}第${r.period}節 ${subject} 由${toName}代課`;
+            ? `${datePart} ${formatPeriodText(r.period)} ${subject} 由${toName}互代`
+            : `${datePart} ${formatPeriodText(r.period)} ${subject} 由${toName}代課`;
         rows.push({
           id: r.id,
           date: r.date,
@@ -2050,16 +2050,16 @@ createApp({
       ).forEach(change => {
         const dayPart = change.dayNum ? (window.DateUtils.getWeekDayText(change.dayNum) || '') : '';
         const datePart = dayPart
-          ? `${formatDateMMDD(change.date)}（${dayPart}）`
+          ? `${formatDateMMDD(change.date)}(${dayPart})`
           : `${formatDateMMDD(change.date)}`;
-        const sourcePart = `${formatDateMMDD(change.sourceDate)}${formatPeriodText(change.sourcePeriod)}`;
+        const sourcePart = `${formatDateMMDD(change.sourceDate)} ${formatPeriodText(change.sourcePeriod)}`;
         rows.push({
           id: change.id,
           date: change.date,
           period: change.period,
           dayText: dayPart,
           type: '全校對調',
-          line: `${datePart}${formatPeriodText(change.period)} ${change.subject}（原${sourcePart}）`,
+          line: `${datePart} ${formatPeriodText(change.period)} ${change.subject}（原${sourcePart}）`,
           inWeek: change.inWeek,
           isSchoolSwap: true
         });
@@ -2660,7 +2660,7 @@ createApp({
       const lesson = [className, subject].filter(value => String(value || '').trim()).join('');
       const teacher = cleanLineTeacherName(teacherName);
       const teacherSuffix = teacher ? `（${teacher}老師）` : '';
-      return `${dateText}${dayText ? `（${dayText}）` : ''} ${periodText}${lesson ? `｜${lesson}${teacherSuffix}` : ''}`.trim();
+      return `${dateText}${dayText ? `(${dayText})` : ''} ${periodText}${lesson ? ` ${lesson}${teacherSuffix}` : ''}`.trim();
     };
 
     const cleanLineTeacherName = (value) => String(value || '').replace(/\s*老師\s*$/, '').trim();
@@ -3793,7 +3793,7 @@ createApp({
         ? window.DateUtils.decodeTimeKey(timeKey)
         : { day: parseInt(String(timeKey).split('-')[0], 10), period: parseInt(String(timeKey).split('-')[1], 10) };
       const dayText = getWeekDayText(decoded.day);
-      return `${formatDateMMDD(date)}（${dayText}）${formatPeriodText(decoded.period)}`;
+      return `${formatDateMMDD(date)}${dayText ? `(${dayText})` : ''} ${formatPeriodText(decoded.period)}`;
     };
 
     const isAdmin = computed(() => userRole.value === 'admin');
@@ -5356,7 +5356,7 @@ createApp({
         const dow = new Date(dateStr.replace(/-/g, '/')).getDay();
         const day = getWeekDayText(dow);
         const v = verb != null ? verb : '上';
-        return v ? `${mmdd}(${day})第${period}節 ${v} ${className}${subject}` : `${mmdd}(${day})第${period}節 ${className}${subject}`;
+        return v ? `${mmdd}(${day}) 第${period}節 ${v} ${className}${subject}` : `${mmdd}(${day}) 第${period}節 ${className}${subject}`;
       };
 
       const fmtPeerSlot = (dateStr, period) => {
@@ -5526,7 +5526,7 @@ createApp({
                   date: endpoint.date,
                   period: endpoint.period,
                   classLine: fmtClassLine(endpoint.date, endpoint.period, className || (attr === '巡堂' ? '巡堂' : ''), subject, ''),
-                  desc: `🔁 全校對調：${row.name}（原${formatDateMMDD(endpoint.sourceDate)}${formatPeriodText(endpoint.sourcePeriod)}）`,
+                  desc: `🔁 全校對調：${row.name}（原${formatDateMMDD(endpoint.sourceDate)} ${formatPeriodText(endpoint.sourcePeriod)}）`,
                   serial: row.id || 'SWAP',
                   isPast: endpoint.date < todayStr,
                   statusClass: 'tag-blue',
@@ -9746,7 +9746,7 @@ createApp({
     // ════════════════════════════════════════
 
     // ── 待辦摘要 / 格子白話 / 行政批次 ──
-    // 請假課堂：2026-07-23（四）第3節 · 804 走讀
+    // 請假課堂：07/23(四) 第3節 804走讀
     /** 類型旁標籤：經費／第8節（不進「狀態」欄） */
     const getRequestTypeTags = (req) => {
       if (!req) return [];
@@ -9781,10 +9781,10 @@ createApp({
       const dayText = /^\d+$/.test(rawDay)
         ? getWeekDayText(Number(rawDay))
         : rawDay.replace(/^週/, '');
-      const daySuffix = dayText && dayText !== '—' ? `（${dayText}）` : '';
+      const daySuffix = dayText && dayText !== '—' ? `(${dayText})` : '';
       const periodText = period == null || period === '' ? '—' : formatPeriodText(period);
       const course = formatCourseDisplayText(clsSubj, '');
-      return `${m}${daySuffix} ${periodText}${course ? `｜${course}` : ''}`.trim();
+      return `${m}${daySuffix} ${periodText}${course ? ` ${course}` : ''}`.trim();
     };
     /** 同節先前義務（此人為 actual 的代課／調入），可排除本筆及本申請單 */
     const findPriorDutyAtSlot = (email, dateStr, period, excludeId, excludeRequestId) => {
@@ -10253,7 +10253,7 @@ createApp({
       const dayPart = day ? '(' + day + ')' : '';
       const perPart = formatPeriodText(period) || '';
       const subj = String(subject || className || '').replace(/\s+/g, '');
-      return md + dayPart + perPart + subj;
+      return [md + dayPart, perPart, subj].filter(Boolean).join(' ');
     };
 
     /**

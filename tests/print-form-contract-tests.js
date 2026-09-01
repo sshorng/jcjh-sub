@@ -202,13 +202,16 @@ const combinedCandidates = findCombinedReturnCandidates({
   classData: { className: '音樂班' }
 });
 assert.equal(combinedCandidates.map(candidate => candidate.email).sort().join(','), 'invitee@school.example,unrelated@school.example', '併班代課候選人應依同節併班課列入，不應要求班名重疊');
-assert.match(indexSource, /app\.js\?v=20260901-batch-display2/);
+assert.match(indexSource, /app\.js\?v=20260901-slot-format1/);
 assert.doesNotMatch(preview.documentHtml, /<script\b/i, '列印預覽 srcdoc 不應注入腳本');
 assert.doesNotMatch(appSource, /seedClassKey/, 'single-request batch printing should include the same recipient across classes');
 assert.match(appSource, /teacherKey\(record, 'actual'\) === targetKey/, 'single-request batch printing should group by recipient teacher');
 assert.match(printHelperSource, /const signatureSide = 'actual';/);
 assert.match(printHelperSource, /function getOfficialArrowMarkerHtml\(markerId\)/);
-assert.match(indexSource, /print-helper\.js\?v=20260901-class-merge2/);
+assert.match(indexSource, /print-helper\.js\?v=20260901-class-merge3/);
+assert.match(indexSource, /class="teacher-email-cell"/);
+assert.match(styleSource, /\.teacher-email-cell \{[^}]*overflow-wrap: anywhere/);
+assert.match(mobileSource, /\.teacher-email-cell \{[^}]*overflow-wrap: anywhere/);
 assert.match(indexSource, /<title>建成國中線上課表系統<\/title>/);
 assert.match(indexSource, /application-name" content="JCJH Timetable"/);
 assert.equal((indexSource.match(/class="mini-grid-date"/g) || []).length, 12, '對照頁一般與左右兩張跨週課表都應顯示日期');

@@ -7996,30 +7996,24 @@ function _buildReqTable_(req) {
   var isCombinedReturn = isCombinedReturnRequest_(req);
   var isExchange = !!(req.targetDate || req["對調目標日期"]);
   
-  var getShortDay = function(d) {
-    return {"1":"一","2":"二","3":"三","4":"四","5":"五"}[String(d)] || "";
-  };
-
-  var leaveDay = getShortDay(req.requestPeriodDay || req["異動星期"]);
+  var leaveDay = req.requestPeriodDay || req["異動星期"] || _dayFromDateStr_(req.requestDate || req["異動日期"]);
   var leavePeriod = req.requestPeriod || req["異動節次"];
   var leaveClass = req.className || req["班級"] || "";
   var leaveSubject = req.subject || req["科目"] || "";
-  var leaveClassSubject = (leaveClass + " " + leaveSubject).trim();
-  
-  var leaveTimeText = "(" + leaveDay + ") 第" + leavePeriod + "節 - " + leaveClassSubject;
   var leaveDateText = req.requestDate || req["異動日期"];
+  var leaveTimeText = _fmtSlotLine_(leaveDateText, leaveDay, leavePeriod, leaveClass, leaveSubject);
   var rows = isCombinedReturn ? [
     ["請假教師", req.requesterName || req["申請人姓名"]],
     ["代課教師", targetTeacher || ""],
     ["特殊流程", "合班回原班"],
     ["假別", req.reason || req["請假事由"] || "請假"],
     ["被代教師扣減類別", req.subFee || req["經費來源"] || "自費代課"],
-    ["課堂", leaveDateText + " " + leaveTimeText]
+    ["課堂", leaveTimeText]
   ] : [
     ["請假教師", req.requesterName || req["申請人姓名"]],
     [isExchange ? "對調教師" : "代課教師", targetTeacher || ""],
     ["請假原因", req.reason || req["請假事由"] || "公假"],
-    ["請假課堂", leaveDateText + " " + leaveTimeText]
+    ["請假課堂", leaveTimeText]
   ];
   var targetDateVal = req.targetDate || req["對調目標日期"];
   if (targetDateVal) {
@@ -8110,10 +8104,13 @@ function sendTriangleInviteEmail_(req, currentUrl, groupRows) {
   var agreeLink = sysUrl + "?action=respond&id=" + encodeURIComponent(reqId) + "&status=agree";
   var declineLink = sysUrl + "?action=respond&id=" + encodeURIComponent(reqId) + "&status=decline";
   var people = triangleGroupPeople_(groupRows || [req]).join("、");
-  var targetSlot = String(req["對調目標日期"] || "") + " 第" + String(req["對調目標節次"] || "") + "節　"
-    + String(req["對調目標班級"] || "") + " " + String(req["對調目標科目"] || "");
-  var receiveSlot = String(req["對調目標日期"] || "") + " 第" + String(req["對調目標節次"] || "") + "節　"
-    + String(req["班級"] || "") + " " + String(req["科目"] || "");
+  var targetDate = String(req["對調目標日期"] || "");
+  var targetDay = req["對調目標星期"] || _dayFromDateStr_(targetDate);
+  var targetPeriod = req["對調目標節次"] || "";
+  var targetSlot = _fmtSlotLine_(targetDate, targetDay, targetPeriod,
+    String(req["對調目標班級"] || ""), String(req["對調目標科目"] || ""));
+  var receiveSlot = _fmtSlotLine_(targetDate, targetDay, targetPeriod,
+    String(req["班級"] || ""), String(req["科目"] || ""));
   var content = '<p style="color:#1e293b;font-size:15px;margin-bottom:8px;">親愛的 <b>' + escapeHtml_(targetName) + '</b> 老師，您好：</p>'
     + '<p style="color:#475569;margin-top:0;"><b>' + escapeHtml_(sourceName) + '</b> 老師邀請您參與三角調課。這是一組三位教師、三堂原課的整堂循環交換，必須三方都同意後才會送教學組核准。</p>'
     + '<table style="border-collapse:collapse;width:100%;margin:18px 0;border:1px solid #e2e8f0;">'
@@ -8180,10 +8177,6 @@ function sendSubInviteBatchEmail_(rows, currentUrl) {
    var safeFee = escapeHtml_(fee);
   var subject = "【建成國中線上課表系統】您收到一批來自 " + requesterName + " 老師的代課邀請（共 " + n + " 節）";
 
-  var getShortDay = function (d) {
-    return { "1": "一", "2": "二", "3": "三", "4": "四", "5": "五" }[String(d)] || "";
-  };
-
   var batchId = first["批次ID"] || first.batchId || "";
   var agreeAllLink = sysUrl + "?action=respondBatch&batchId=" + encodeURIComponent(batchId) + "&status=agree";
   var declineAllLink = sysUrl + "?action=respondBatch&batchId=" + encodeURIComponent(batchId) + "&status=decline";
@@ -8212,13 +8205,7 @@ function sendSubInviteBatchEmail_(rows, currentUrl) {
     var serial = req.serial || req["單號"] || "";
     var agreeLink = sysUrl + "?action=respond&id=" + encodeURIComponent(reqId) + "&status=agree";
     var declineLink = sysUrl + "?action=respond&id=" + encodeURIComponent(reqId) + "&status=decline";
-    var mmdd = "";
-    if (dateVal && String(dateVal).length >= 10) {
-      mmdd = String(dateVal).substr(5, 2) + "/" + String(dateVal).substr(8, 2);
-    } else {
-      mmdd = dateVal;
-    }
-    var title = (i + 1) + ". " + mmdd + "（" + getShortDay(dayVal) + "）第" + periodVal + "節 " + cls + " " + subj;
+    var title = (i + 1) + ". " + _fmtSlotLine_(dateVal, dayVal, periodVal, cls, subj);
     return '<div style="border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin:0 0 12px;background:#fff;">'
        + '<div style="font-weight:700;color:#1e293b;font-size:14px;margin-bottom:4px;">' + escapeHtml_(title) + '</div>'
        + (serial ? '<div style="font-size:12px;color:#94a3b8;margin-bottom:10px;">單號：' + escapeHtml_(serial) + '</div>' : '')
@@ -8254,9 +8241,6 @@ function sendRespondAgreeBatchEmail_(rows, currentUrl) {
    var safeRequesterName = escapeHtml_(requesterName);
    var safeTargetTeacherName = escapeHtml_(targetTeacherName);
   var subject = "【建成國中線上課表系統】" + targetTeacherName + " 老師已全部同意您的批次代課（共 " + n + " 節），待行政審核";
-  var getShortDay = function (d) {
-    return { "1": "一", "2": "二", "3": "三", "4": "四", "5": "五" }[String(d)] || "";
-  };
   var listHtml = '<ul style="padding-left:20px;color:#1e293b;font-size:14px;line-height:1.7;">'
     + rows.map(function (req) {
       var dateVal = req.requestDate || req["異動日期"] || "";
@@ -8264,7 +8248,7 @@ function sendRespondAgreeBatchEmail_(rows, currentUrl) {
       var periodVal = req.requestPeriod || req["異動節次"] || "";
       var cls = req.className || req["班級"] || "";
       var subj = req.subject || req["科目"] || "";
-        return '<li>' + escapeHtml_(dateVal + ' (' + getShortDay(dayVal) + ') 第' + periodVal + '節　' + cls + ' ' + subj) + '</li>';
+        return '<li>' + escapeHtml_(_fmtSlotLine_(dateVal, dayVal, periodVal, cls, subj)) + '</li>';
     }).join("")
     + '</ul>';
    var content = '<p style="color:#1e293b;font-size:15px;margin-bottom:8px;">親愛的 <b>' + safeRequesterName + '</b> 老師，您好：</p>'
@@ -8327,7 +8311,9 @@ function _periodTimeSpan_(p) {
 }
 
 function _shortDay_(d) {
-  return { "1": "一", "2": "二", "3": "三", "4": "四", "5": "五" }[String(d)] || "";
+  var text = String(d == null ? "" : d).trim();
+  return { "1": "一", "2": "二", "3": "三", "4": "四", "5": "五" }[text]
+    || ({ "一": "一", "二": "二", "三": "三", "四": "四", "五": "五" }[text] || "");
 }
 
 /** 由日期推星期 1–5（失敗回 0） */
@@ -8443,15 +8429,17 @@ function _resolveExchangeSides_(req) {
 
 function _fmtSlotLine_(dateVal, dayVal, periodVal, cls, subj) {
   var dayTxt = _shortDay_(dayVal);
-  var head = String(dateVal || "");
-  if (dayTxt) head += " (" + dayTxt + ")";
+  var rawDate = String(dateVal || "");
+  if (!dayTxt && rawDate) dayTxt = _shortDay_(_dayFromDateStr_(rawDate));
+  var head = rawDate.length >= 10 ? rawDate.substr(5, 5).replace("-", "/") : rawDate;
+  if (dayTxt) head += "(" + dayTxt + ")";
   head += " 第" + periodVal + "節";
-  var course = (String(cls || "") + " " + String(subj || "")).trim();
-  return course ? (head + "　" + course) : head;
+  var course = (String(cls || "") + String(subj || "")).trim();
+  return (course ? (head + " " + course) : head).trim();
 }
 
 /**
- * 緊湊節次：3/20(三)第2節 701國文
+ * 緊湊節次：3/20(三) 第2節 701國文
  */
 function _fmtSlotCompact_(dateVal, dayVal, periodVal, cls, subj) {
   var mmdd = "";
@@ -8462,7 +8450,7 @@ function _fmtSlotCompact_(dateVal, dayVal, periodVal, cls, subj) {
   var course = (String(cls || "") + String(subj || "")).trim();
   var s = mmdd;
   if (dayTxt) s += "(" + dayTxt + ")";
-  s += "第" + periodVal + "節";
+  s += " 第" + periodVal + "節";
   if (course) s += " " + course;
   return s;
 }

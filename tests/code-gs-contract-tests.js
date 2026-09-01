@@ -147,6 +147,8 @@ assert.equal(sides.targetSubject, '國文');
 const allRoles = context._buildApproveSlotListHtml_([request], { itemsOnly: true });
 const leaveRole = context._buildApproveSlotListHtml_([request], { role: 'leave', itemsOnly: true });
 const coverRole = context._buildApproveSlotListHtml_([request], { role: 'cover', itemsOnly: true });
+assert.equal(context._fmtSlotLine_('2026-09-02', 3, 5, '904', '國文'), '09/02(三) 第5節 904國文');
+assert.equal(context._fmtSlotLine_('2026-09-02', '三', 5, '904', '國文'), '09/02(三) 第5節 904國文');
 assert.match(allRoles, /703數學/);
 assert.match(allRoles, /704國文/);
 assert.match(leaveRole, /不用上 09\/01.*703數學.*改上 09\/03.*703數學/);

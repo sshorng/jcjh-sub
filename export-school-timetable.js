@@ -51,7 +51,7 @@ window.ExportSchoolTimetable = (function () {
   function formatDateHeader(dateStr) {
     var d = parseDate(dateStr);
     if (!d) return dateStr;
-    return pad2(d.getMonth() + 1) + '/' + pad2(d.getDate()) + '（' + (DAY_ZH[d.getDay()] || '') + '）';
+    return pad2(d.getMonth() + 1) + '/' + pad2(d.getDate()) + '(' + (DAY_ZH[d.getDay()] || '') + ')';
   }
 
   function isChangedCell(cell) {

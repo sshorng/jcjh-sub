@@ -30,5 +30,6 @@ assert.strictEqual(matrix.rows.length, 1);
 assert.strictEqual(matrix.rows[0].cells.length, expectedPeriods.length);
 assert.strictEqual(matrix.rows[0].cells[0].text, '701');
 assert.strictEqual(matrix.rows[0].cells[5].text, '701');
+assert.strictEqual(window.ExportSchoolTimetable.formatDateHeader('2026-08-17'), '08/17(一)');
 
 console.log('period contract tests PASS');

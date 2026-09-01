@@ -6,9 +6,9 @@
   <title>建成國中線上課表系統</title>
   <meta name="application-name" content="JCJH Timetable">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📅</text></svg>">
-  <link rel="stylesheet" href="style.css?v=20260831-combined3">
+  <link rel="stylesheet" href="style.css?v=20260901-slot-format1">
   <!-- 手機版獨立樣式：不影響桌機 -->
-  <link rel="stylesheet" href="mobile.css?v=20260831-combined3" media="(max-width: 768px)">
+  <link rel="stylesheet" href="mobile.css?v=20260901-slot-format1" media="(max-width: 768px)">
   
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 
@@ -1888,7 +1888,7 @@
                 <tbody>
                   <tr v-for="t in teachersListDetails" :key="t.loginEmail || t.email" @dblclick="openEditTeacherModal(t)" class="cursor-pointer" title="點擊兩下快速編輯此教師資料">
                     <td><strong>{{ t.name }}</strong></td>
-                    <td>{{ t.loginEmail }}</td>
+                    <td class="teacher-email-cell">{{ t.loginEmail }}</td>
                     <td>{{ t.subject }}</td>
                      <td>{{ t.jobTitle || '未填' }}</td>
                      <td :title="getExpensePlanSummary(t.expensePlan)">{{ getExpensePlanSummary(t.expensePlan) }}</td>
@@ -2098,8 +2098,8 @@
                         <strong>{{ row.name }}</strong>
                         <div v-if="row.note" class="req-note-cell">{{ row.note }}</div>
                       </td>
-                      <td>{{ row.dateA }}（{{ schoolSwapWeekdayText(row.dateA) }}）{{ formatPeriodText(row.periodA) }}</td>
-                      <td>{{ row.dateB }}（{{ schoolSwapWeekdayText(row.dateB) }}）{{ formatPeriodText(row.periodB) }}</td>
+                      <td>{{ formatDateMMDD(row.dateA) }}({{ schoolSwapWeekdayText(row.dateA) }}) {{ formatPeriodText(row.periodA) }}</td>
+                      <td>{{ formatDateMMDD(row.dateB) }}({{ schoolSwapWeekdayText(row.dateB) }}) {{ formatPeriodText(row.periodB) }}</td>
                       <td><span class="status-badge" :class="row.enabled ? 'status-approved' : 'status-pending-teacher'">{{ row.enabled ? '啟用' : '停用' }}</span></td>
                       <td>{{ row.updatedAt || row.createdAt || '尚無時間' }}</td>
                       <td>
@@ -2348,7 +2348,7 @@
                     @click="selectBatchSlotForMatch(s.key)"
                   >
                     <span>
-                      {{ formatDateMMDD(s.dateStr) }}（{{ getWeekDayText(s.dayOfWeek) }}）{{ formatPeriodText(s.period) }} {{ s.className }} {{ s.subject }}
+                      {{ formatDateMMDD(s.dateStr) }}({{ getWeekDayText(s.dayOfWeek) }}) {{ formatPeriodText(s.period) }} {{ s.className }}{{ s.subject }}
                     </span>
                     <span style="display:flex;align-items:center;gap:6px;">
                       <strong v-if="s.subTeacherEmail" style="color:var(--color-success);">{{ s.subTeacherName }}</strong>
@@ -2365,7 +2365,7 @@
                 </div>
                 <div v-else class="batch-slot-chips">
                   <span v-for="s in batchSlots" :key="'m'+s.key" class="batch-slot-chip">
-                    {{ formatDateMMDD(s.dateStr) }}（{{ getWeekDayText(s.dayOfWeek) }}）{{ formatPeriodText(s.period) }} {{ s.className }}{{ s.subject }}
+                    {{ formatDateMMDD(s.dateStr) }}({{ getWeekDayText(s.dayOfWeek) }}) {{ formatPeriodText(s.period) }} {{ s.className }}{{ s.subject }}
                   </span>
                 </div>
                 <div class="text-xs-muted-75-mt">
@@ -2402,9 +2402,7 @@
                   >三角調</button>
                 </div>
                 <div style="color: var(--text-secondary); font-size: 0.8rem; line-height: 1.4;">
-                  {{ inputRequestDate }}（{{ getWeekDayText(activeCell.dayOfWeek) }}）{{ formatPeriodText(activeCell.period) }}
-                  {{ activeCell.classData ? activeCell.classData.className : '' }}
-                  {{ activeCell.classData ? activeCell.classData.subject : '' }}
+                  {{ inputRequestDate }}({{ getWeekDayText(activeCell.dayOfWeek) }}) {{ formatPeriodText(activeCell.period) }} {{ activeCell.classData ? activeCell.classData.className : '' }}{{ activeCell.classData ? activeCell.classData.subject : '' }}
                 </div>
                 <!-- 跨週調課週次選擇 -->
                 <div v-if="matchMode === 'exchange'" data-tour="exchange-controls">
@@ -2455,7 +2453,7 @@
                         目前 {{ batchSlots.length }} 節找不到「全節皆空」的同一位代課老師。
                       </template>
                       <template v-else>
-                        全校 {{ teachersList.length }} 位中，{{ inputRequestDate }} 星期{{ getWeekDayText(activeCell.dayOfWeek) }}第 {{ activeCell.period }} 節目前無可代人選。
+                        全校 {{ teachersList.length }} 位中，{{ inputRequestDate }}({{ getWeekDayText(activeCell.dayOfWeek) }}) {{ formatPeriodText(activeCell.period) }}目前無可代人選。
                       </template>
                     </div>
                     <ul v-if="matchEmptyReasons && matchEmptyReasons.length" class="match-empty-reasons">
@@ -2717,7 +2715,7 @@
                           <span v-if="r.restriction === 'restricted'" class="badge-match badge-restricted">對調課綁課</span>
                         </td>
                         <td style="padding: 10px 4px; font-size: 0.8rem; color: var(--text-secondary);">
-                          可調：<span v-if="getMatchSlotDateMMDD(r.dayOfWeek)" style="font-weight: 600; color: var(--text-primary); margin-right: 2px;">{{ getMatchSlotDateMMDD(r.dayOfWeek) }}</span>（{{ getWeekDayText(r.dayOfWeek) }}）{{ formatPeriodText(r.period) }}
+                          可調：<span v-if="getMatchSlotDateMMDD(r.dayOfWeek)" style="font-weight: 600; color: var(--text-primary); margin-right: 2px;">{{ getMatchSlotDateMMDD(r.dayOfWeek) }}</span>({{ getWeekDayText(r.dayOfWeek) }}) {{ formatPeriodText(r.period) }}
                         </td>
                         <td class="td-match-op">
                           <button class="btn btn-primary btn-sm-compact" @click.stop="prepCompare('exchange', r.teacherEmail, r.periodKey, r.subject, r.className)">模擬</button>
@@ -3014,13 +3012,13 @@
               </div>
               <div v-if="pendingRequestData.isPerSlot" class="batch-slot-list" style="max-height:180px;background:#fff;">
                 <div v-for="s in batchSlots" :key="'c'+s.key" class="batch-slot-item">
-                  <span>{{ formatDateMMDD(s.dateStr) }}（{{ getWeekDayText(s.dayOfWeek) }}）{{ formatPeriodText(s.period) }} {{ s.className }} {{ s.subject }}</span>
+                  <span>{{ formatDateMMDD(s.dateStr) }}({{ getWeekDayText(s.dayOfWeek) }}) {{ formatPeriodText(s.period) }} {{ s.className }}{{ s.subject }}</span>
                   <strong class="text-primary-strong">{{ s.subTeacherName || getTeacherNameByEmail(s.subTeacherEmail) }}</strong>
                 </div>
               </div>
               <div v-else class="batch-slot-chips">
                 <span v-for="s in batchSlots" :key="'c'+s.key" class="batch-slot-chip">
-                  {{ formatDateMMDD(s.dateStr) }}（{{ getWeekDayText(s.dayOfWeek) }}）{{ formatPeriodText(s.period) }} {{ s.className }} {{ s.subject }}
+                  {{ formatDateMMDD(s.dateStr) }}({{ getWeekDayText(s.dayOfWeek) }}) {{ formatPeriodText(s.period) }} {{ s.className }}{{ s.subject }}
                 </span>
               </div>
               <div class="text-xs-muted-75-mt">
@@ -3955,11 +3953,11 @@
                 </div>
                 <div style="grid-column: span 2;">
                   <span class="text-muted-block">異動課堂</span>
-                  <strong>{{ detailRequest.requestDate }} ({{ getWeekDayText(detailRequest.requestPeriodDay || new Date(detailRequest.requestDate.replace(/-/g, '/')).getDay()) }}) 第{{ detailRequest.requestPeriod }}節 {{ getOriginalRequestClass(detailRequest) }} {{ getOriginalRequestSubject(detailRequest) }}</strong>
+                  <strong>{{ formatDateMMDD(detailRequest.requestDate) }}({{ getWeekDayText(detailRequest.requestPeriodDay || new Date(detailRequest.requestDate.replace(/-/g, '/')).getDay()) }}) 第{{ detailRequest.requestPeriod }}節 {{ getOriginalRequestClass(detailRequest) }}{{ getOriginalRequestSubject(detailRequest) }}</strong>
                 </div>
                  <div v-if="detailRequest.type === 'exchange' || detailRequest.type === '對調'" style="grid-column: span 2; border-top: 1px dashed var(--border-color); padding-top: 8px; margin-top: 4px;">
                   <span class="text-muted-block">對調課堂</span>
-                  <strong class="text-primary-strong">{{ detailRequest.targetDate }} ({{ getWeekDayText(detailRequest.targetDayOfWeek) }}) 第{{ detailRequest.targetPeriod }}節 {{ getOriginalTargetClass(detailRequest) }} {{ getOriginalTargetSubject(detailRequest) }}</strong>
+                  <strong class="text-primary-strong">{{ formatDateMMDD(detailRequest.targetDate) }}({{ getWeekDayText(detailRequest.targetDayOfWeek) }}) 第{{ detailRequest.targetPeriod }}節 {{ getOriginalTargetClass(detailRequest) }}{{ getOriginalTargetSubject(detailRequest) }}</strong>
                 </div>
                 <div v-if="detailRequest.type !== 'exchange' && detailRequest.type !== '對調' && detailRequest.type !== 'triangle'">
                  <span class="text-muted-block">代課經費</span>
@@ -4253,7 +4251,7 @@
                 <span class="text-xs-muted-78" >（額度 {{ emptySlotForm.quota }}）</span>
               </div>
               <div style="margin-top:4px;color:var(--text-secondary);">
-                 {{ emptySlotForm.dateStr }}　（{{ getWeekDayText(emptySlotForm.dayOfWeek) }}）{{ formatPeriodText(emptySlotForm.period) }}
+                 {{ formatDateMMDD(emptySlotForm.dateStr) }}({{ getWeekDayText(emptySlotForm.dayOfWeek) }}) {{ formatPeriodText(emptySlotForm.period) }}
               </div>
             </div>
             <div v-if="emptySlotQuotaZero" style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 12px;font-size:0.8rem;color:#b91c1c;">
@@ -4442,7 +4440,7 @@
      <script defer src="ui-approval.js?v=20260831-combined3"></script>
   <!-- ui-admin：僅管理員／後台操作時 ensureUiAdmin -->
      <script defer src="app-shell-utils.js?v=20260831-combined3"></script>
-          <script defer src="app.js?v=20260901-batch-display2"></script>
+          <script defer src="app.js?v=20260901-slot-format1"></script>
   <script>
     (function () {
       function loadScript(src) {
@@ -4486,12 +4484,12 @@
       };
       window.ensurePrintHelper = function () {
         if (typeof window.generateFormHtml === 'function') return Promise.resolve();
-          if (!_printP) _printP = loadScript('print-helper.js?v=20260901-class-merge2');
+          if (!_printP) _printP = loadScript('print-helper.js?v=20260901-class-merge3');
         return _printP;
       };
       window.ensureExportSchoolTimetable = function () {
         if (window.ExportSchoolTimetable) return Promise.resolve();
-          if (!_exportP) _exportP = loadScript('export-school-timetable.js?v=20260831-combined3');
+          if (!_exportP) _exportP = loadScript('export-school-timetable.js?v=20260901-slot-format1');
         return _exportP;
       };
       var _activityCoverP = null;
@@ -4504,7 +4502,7 @@
       var _excelJsP = null;
       window.ensureExportInvigilation = function () {
         if (window.ExportInvigilation) return Promise.resolve();
-          if (!_invigP) _invigP = loadScript('export-invigilation.js?v=20260831-combined3');
+          if (!_invigP) _invigP = loadScript('export-invigilation.js?v=20260901-slot-format1');
         return _invigP;
       };
       window.ensureExcelJS = function () {

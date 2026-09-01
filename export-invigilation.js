@@ -35,7 +35,7 @@ window.ExportInvigilation = (function () {
   function formatDayHeader(dateStr) {
     var d = parseDate(dateStr);
     if (!d) return String(dateStr || '');
-    return (d.getMonth() + 1) + '月' + d.getDate() + '日(星期' + (DAY_ZH[d.getDay()] || '') + ')';
+    return (d.getMonth() + 1) + '月' + d.getDate() + '日(' + (DAY_ZH[d.getDay()] || '') + ')';
   }
 
   function dayOfWeekMon1(dateStr) {
