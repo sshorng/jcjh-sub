@@ -3829,17 +3829,18 @@ createApp({
     };
     const toggleCourseAdjustmentOnly = (event) => {
       const p = pendingRequestData.value || {};
-      if (p.mode !== 'substitution') return;
+      if (p.mode !== 'substitution' && p.mode !== 'exchange') return;
+      if (p.specialFlow === 'combined_return') return;
       const enabled = event && event.target ? !!event.target.checked : !!p.courseAdjustmentOnly;
       if (enabled) {
         const autoFee = typeof defaultSubFeeForReason === 'function'
           ? defaultSubFeeForReason('課務調整')
-          : (p.subFee || '自費代課');
+          : (p.subFee || (p.mode === 'exchange' ? '無' : '自費代課'));
         pendingRequestData.value = Object.assign({}, p, {
           courseAdjustmentOnly: true,
           leaveReasonBeforeCourseAdjustment: p.reason && p.reason !== '課務調整' ? p.reason : '',
           reason: '課務調整',
-          subFee: autoFee,
+          subFee: p.mode === 'exchange' ? '無' : autoFee,
           leaveTimeType: '',
           leaveTimeStart: '',
           leaveTimeEnd: '',
@@ -3847,14 +3848,18 @@ createApp({
         });
         return;
       }
-      const d = getLeaveTimeDefaults(p.leaveTeacher);
+      const d = p.mode === 'substitution'
+        ? getLeaveTimeDefaults(p.leaveTeacher)
+        : { type: '', start: '', end: '', range: '' };
       const restoredReason = p.leaveReasonBeforeCourseAdjustment || (isMutualCover.value ? '公假' : '');
       pendingRequestData.value = Object.assign({}, p, {
         courseAdjustmentOnly: false,
         reason: restoredReason,
-        subFee: typeof defaultSubFeeForReason === 'function'
-          ? defaultSubFeeForReason(restoredReason)
-          : (p.subFee || '自費代課'),
+        subFee: p.mode === 'exchange'
+          ? '無'
+          : (typeof defaultSubFeeForReason === 'function'
+            ? defaultSubFeeForReason(restoredReason)
+            : (p.subFee || '自費代課')),
         leaveReasonBeforeCourseAdjustment: '',
         leaveTimeType: d.type,
         leaveTimeStart: d.start,
@@ -4294,7 +4299,20 @@ createApp({
     });
 
     const teachersListDetails = computed(() => teachersList.value);
-    const accountingPlanOptions = computed(() => Array.from(new Set((teachersList.value || []).map(t => String(t && t.expensePlan || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'zh-Hant', { numeric: true })));
+    const accountingPlanOptions = computed(() => {
+      const sources = new Set(['計畫A', '計畫B', '校內經費']);
+      (teachersList.value || []).forEach((teacher) => {
+        if (window.FieldMap && typeof window.FieldMap.expensePlanSources === 'function') {
+          window.FieldMap.expensePlanSources(teacher && teacher.expensePlan).forEach(source => sources.add(source));
+        } else if (teacher && teacher.expensePlan) {
+          sources.add(String(teacher.expensePlan).trim());
+        }
+      });
+      return Array.from(sources).filter(Boolean).sort((a, b) => a.localeCompare(b, 'zh-Hant', { numeric: true }));
+    });
+    const getExpensePlanSummary = (value) => window.FieldMap && window.FieldMap.formatExpensePlanSummary
+      ? window.FieldMap.formatExpensePlanSummary(value)
+      : String(value || '預設').trim() || '預設';
     const pendingHomeroomRecords = computed(() => {
       return (homeroomRecords.value || [])
         .filter(r => r && r.enabled !== false && String(r.status || '').toLowerCase() !== 'cancelled')
@@ -7130,22 +7148,26 @@ createApp({
         const buildPopupState = (period) => {
           const reportWeeks = initialWeeks;
           const monthlyRows = buildMonthlyRowsForExport(reportWeeks);
-          const preview = window.ExportAccounting.buildExportData({
-            ...exportOpts,
-            reportWeeksCount: reportWeeks,
-            monthlyReportRows: monthlyRows,
-            periods: period
-          });
-          const summaryLines = preview.summary.map((item) => item.label + '：' + item.count + ' 筆／' + Number(item.hours || 0).toLocaleString() + ' 節／NT$ ' + Number(item.amount || 0).toLocaleString());
-          const warningLines = preview.warnings.length
-            ? '\n\n匯出前提示：\n' + preview.warnings.map((w) => '⚠️ ' + w).join('\n')
-            : '';
+           const preview = window.ExportAccounting.buildExportData({
+             ...exportOpts,
+             reportWeeksCount: reportWeeks,
+             monthlyReportRows: monthlyRows,
+             periods: period
+           });
+           const summaryLines = preview.summary.map((item) => item.label + '：' + item.count + ' 筆／' + Number(item.hours || 0).toLocaleString() + ' 節／NT$ ' + Number(item.amount || 0).toLocaleString());
+           const blockingLines = (preview.blocking || []).length
+             ? '\n\n無法匯出：\n' + preview.blocking.map((w) => '⛔ ' + w).join('\n')
+             : '';
+           const warningLines = preview.warnings.length
+             ? '\n\n匯出前提示：\n' + preview.warnings.map((w) => '⚠️ ' + w).join('\n')
+             : '';
           return {
             period,
             reportWeeksCount: reportWeeks,
             monthlyReportRows: monthlyRows,
-            message: '將套用會計範本下載單一 Excel：\n\n授課週數：' + reportWeeks + ' 週\n\n' + summaryLines.join('\n') + warningLines + '\n\n扣勞健保與實際金額欄位會留白。'
-          };
+             blocking: preview.blocking || [],
+             message: '將套用會計範本下載單一 Excel：\n\n授課週數：' + reportWeeks + ' 週\n\n' + summaryLines.join('\n') + blockingLines + warningLines + '\n\n扣勞健保與實際金額欄位會留白。'
+           };
         };
         let popupState = buildPopupState(initialPeriod);
         const confirmed = await showConfirm(
@@ -7157,20 +7179,24 @@ createApp({
             periodEnd: popupState.period.end,
             periodDefault,
             onAccountingPeriodChange: (draftPeriod) => {
-              const nextPeriod = normalizeAccountingPeriod(draftPeriod);
-              if (!nextPeriod) return '請先填寫有效的會計匯出起訖日，再確認下載。';
-              popupState = buildPopupState(nextPeriod);
-              return popupState.message;
+               const nextPeriod = normalizeAccountingPeriod(draftPeriod);
+               if (!nextPeriod) return '請先填寫有效的會計匯出起訖日，再確認下載。';
+               popupState = buildPopupState(nextPeriod);
+               return popupState.message;
             },
             validateAccountingPeriod: (draftPeriod) => {
-              const nextPeriod = normalizeAccountingPeriod(draftPeriod);
-              if (!nextPeriod) return false;
-              popupState = buildPopupState(nextPeriod);
-              return true;
-            }
-          }
-        );
-        if (!confirmed || !confirmed.ok) return;
+               const nextPeriod = normalizeAccountingPeriod(draftPeriod);
+               if (!nextPeriod) return false;
+               popupState = buildPopupState(nextPeriod);
+               return !(popupState.blocking && popupState.blocking.length);
+             }
+           }
+         );
+         if (!confirmed || !confirmed.ok) return;
+         if (popupState.blocking && popupState.blocking.length) {
+           showToast('請先補齊超鐘點經費來源，才能匯出會計 Excel。', 'warning');
+           return;
+         }
         const finalPeriod = normalizeAccountingPeriod(confirmed.period) || popupState.period;
         const finalWeeks = initialWeeks;
         const finalPopupState = buildPopupState(finalPeriod);
@@ -8562,7 +8588,7 @@ createApp({
     // 與排課系統教師課表一致：基本鐘點取教師設定，超鐘點取本週正式排課差額。
     const teacherTimetableHours = computed(() => {
       const map = Object.create(null);
-      (displayTimetableTeachers.value || []).forEach(teacher => {
+      (teachersList.value || []).forEach(teacher => {
         const basicHours = teacher.baseHours === 0 || teacher.baseHours === '0'
           ? 0
           : (parseInt(teacher.baseHours, 10) || 16);
@@ -10817,6 +10843,9 @@ createApp({
     const showTeacherModal = ref(false);
     const teacherModalMode = ref('add');
     const teacherForm = ref({ email: '', name: '', subject: '', jobTitle: '', expensePlan: '', role: 'teacher', baseHours: 16, mutualQuota: 0 });
+    const showOvertimePlanModal = ref(false);
+    const overtimePlanTeacher = ref(null);
+    const overtimePlanRows = ref([]);
     const excelData = ref([]);
     const excelHeaders = ref([]);
     const mappingFields = ref({
@@ -10868,9 +10897,13 @@ createApp({
         showScheduleEditModal,
         scheduleForm,
         showTeacherModal,
-        teacherModalMode,
-        teacherForm,
-        excelData,
+         teacherModalMode,
+         teacherForm,
+         showOvertimePlanModal,
+         overtimePlanTeacher,
+         overtimePlanRows,
+         accountingPlanOptions,
+         excelData,
         excelHeaders,
         mappingFields,
         importPreview
@@ -10879,6 +10912,7 @@ createApp({
         _uiAdminModalsBound = true;
         bindFlagModal(showImportTeachersModal, () => { showImportTeachersModal.value = false; }, '匯入教師');
         bindFlagModal(showTeacherModal, () => { showTeacherModal.value = false; }, '教師資料');
+        bindFlagModal(showOvertimePlanModal, () => { showOvertimePlanModal.value = false; }, '超鐘點經費來源');
         bindFlagModal(showScheduleEditModal, () => { showScheduleEditModal.value = false; }, '編輯課表');
         bindFlagModal(showHistoryEditModal, () => { showHistoryEditModal.value = false; }, '編輯歷史');
       }
@@ -10914,6 +10948,12 @@ createApp({
     const openAddTeacherModal = (...a) => needUiAdmin('openAddTeacherModal', ...a);
     const openEditTeacherModal = (...a) => needUiAdmin('openEditTeacherModal', ...a);
     const saveTeacher = (...a) => needUiAdmin('saveTeacher', ...a);
+    const getOvertimeExpenseSourceOptions = (...a) => {
+      if (_uiAdminApi && typeof _uiAdminApi.getOvertimeExpenseSourceOptions === 'function') return _uiAdminApi.getOvertimeExpenseSourceOptions(...a);
+      return accountingPlanOptions.value || [];
+    };
+    const openOvertimePlanModal = (...a) => needUiAdmin('openOvertimePlanModal', ...a);
+    const saveOvertimePlan = (...a) => needUiAdmin('saveOvertimePlan', ...a);
     const deleteTeacher = (...a) => needUiAdmin('deleteTeacher', ...a);
     const handleTeacherExcelChange = (...a) => needUiAdmin('handleTeacherExcelChange', ...a);
     const importTeachersBatch = (...a) => needUiAdmin('importTeachersBatch', ...a);
@@ -11678,7 +11718,7 @@ createApp({
       adminSubTab,
       showImportTeachersModal, teacherExcelData, teacherExcelHeaders, teacherMappingFields, teacherImportPreview, runTeacherImportPreview, handleTeacherExcelChange, importTeachersBatch,
       isScheduleEditMode, showScheduleEditModal, scheduleForm,
-      showTeacherModal, teacherModalMode, teacherForm,
+       showTeacherModal, teacherModalMode, teacherForm, showOvertimePlanModal, overtimePlanTeacher, overtimePlanRows,
       showQuotaLedgerModal, quotaLedgerLoading, quotaLedgerTeacher, quotaLedgerRows, openQuotaLedger, closeQuotaLedger, quotaTypeClass,
       showEmptySlotModal, emptySlotForm, emptySlotQuotaZero, openEmptySlotAssign, openEmptySlotFromDetail, closeEmptySlotModal, executeEmptySlotAssign,
       reportMonth, reportWeeksCount, monthlyReportData,
@@ -11692,7 +11732,7 @@ createApp({
       isProxySubmitEmailGranted, toggleProxySubmitEmail, clearAllProxySubmitEmails, persistProxySubmitEmails,
       proxyTargetEmail, proxyTargetName, proxyTargetQuery, showProxyTargetDropdown, filteredProxyTeachers,
       setProxyTarget, clearProxyTarget, canOperateOnTeacherEmail, ensureProxyTargetForTeacher,
-      userRoleText, subjectsList, filteredTeachers, displayTimetableTeachers, pendingCount, myInviteCount, adminTodoCount, hasQuickTodo, quickTodoSentOpen, allTeachersList, teachersListDetails, accountingPlanOptions,
+       userRoleText, subjectsList, filteredTeachers, displayTimetableTeachers, pendingCount, myInviteCount, adminTodoCount, hasQuickTodo, quickTodoSentOpen, allTeachersList, teachersListDetails, accountingPlanOptions, getExpensePlanSummary,
       pendingHomeroomRecords, homeroomAssignSelections, homeroomRecordsLoading, getHomeroomCoverCandidates, loadHomeroomRecords, assignHomeroomTeacher, homeroomTeachersList, onHomeroomInputSelect, onManualCoverTeacherInput,
       showManualHomeroomModal, homeroomStatusFilter, manualHomeroomForm, openManualHomeroomModal, onManualHomeroomLeaveTeacherChange, currentMonthHomeroomRecords, currentMonthHomeroomFeeTotal, currentMonthHomeroomAssignedCount, currentMonthHomeroomPendingCount, saveManualHomeroomRecord, deleteHomeroomRecord,
       matchPreview,
@@ -11723,7 +11763,7 @@ createApp({
        isAdminBatchGroupSelected, toggleAdminBatchGroupSelection,
         batchAdminApprove, batchAdminReject, openBatchPendingPrintPreview, lastBatchPrintIds, showBatchPrintPrompt, printLastBatchNotices, dismissBatchPrintPrompt,
        closeSuccessGoPending, closeSuccessGoRecords, closeSuccessStayTimetable, closeSuccessCopyLine,
-      openScheduleEditModal, saveScheduleCell, clearScheduleCell, updateTeacherBaseHours, pickScheduleAttr,
+       openScheduleEditModal, saveScheduleCell, clearScheduleCell, updateTeacherBaseHours, pickScheduleAttr, getOvertimeExpenseSourceOptions, openOvertimePlanModal, saveOvertimePlan,
       openAddTeacherModal, openEditTeacherModal, saveTeacher, deleteTeacher,
         handleFileChange, getMappingLabel, importSchedules, migrateNameKeySchema, toggleSelectAllRecords, isHistoryRecordSelected, isHistoryBatchGroupSelected, toggleHistoryBatchGroupSelection, loadTeacherClassesForExchange,
       printSelectedForms, sendSelectedBatchNotices, calculateMonthlyReport, exportReportToExcel, exportSubFeeToExcel,

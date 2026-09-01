@@ -603,7 +603,7 @@ function runApplicationFormContractTest() {
   assert.doesNotMatch(html, /代課鐘點費結算方式/);
   assert.match(html, /id="course-adjustment-only"/);
   assert.match(html, /@change="toggleCourseAdjustmentOnly"/);
-  assert.match(html, /pendingRequestData\.mode === 'substitution' && !pendingRequestData\.courseAdjustmentOnly/);
+   assert.match(html, /\(pendingRequestData\.mode === 'substitution' \|\| pendingRequestData\.mode === 'exchange'\) && pendingRequestData\.specialFlow !== 'combined_return'/);
   assert.ok((html.match(/預覽調代課單/g) || []).length >= 3, 'compare modal must expose preview in every footer branch');
   assert.ok((html.match(/@click="openPaperPrintDraftFromCompare"/g) || []).length >= 3, 'preview buttons must use the shared preview flow');
   assert.doesNotMatch(html, /🖨️ 列印紙本通知/, 'compare modal must not expose the standalone paper notice button');
@@ -616,10 +616,12 @@ function runApplicationFormContractTest() {
   assert.match(html, /@click="openSuccessPrintPreview"/);
   assert.match(html, /@click="addSuccessToCalendar"/);
   assert.match(html, /@click="closeSuccessGoRecords"/);
-  const appSource = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
-  const activitySource = fs.readFileSync(path.join(root, 'ui-activity.js'), 'utf8');
-  const onboardingSource = fs.readFileSync(path.join(root, 'onboarding-tour.js'), 'utf8');
-  const batchPanelStart = activitySource.indexOf('window.UiBatchPanel =');
+   const appSource = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
+   const activitySource = fs.readFileSync(path.join(root, 'ui-activity.js'), 'utf8');
+   const onboardingSource = fs.readFileSync(path.join(root, 'onboarding-tour.js'), 'utf8');
+   assert.match(appSource, /if \(p\.mode !== 'substitution' && p\.mode !== 'exchange'\) return;/, '課務調整切換應支援調課模式');
+   assert.match(appSource, /const d = p\.mode === 'substitution'\s*\? getLeaveTimeDefaults\(p\.leaveTeacher\)\s*:\s*\{ type: '', start: '', end: '', range: '' \};/, '調課取消課務調整時不應套用請假時間');
+   const batchPanelStart = activitySource.indexOf('window.UiBatchPanel =');
   assert.ok(batchPanelStart >= 0, 'batch panel module must remain discoverable');
   const batchPanelSource = activitySource.slice(batchPanelStart);
   assert.match(batchPanelSource, /var successActionRequests = deps\.successActionRequests/);
@@ -1076,6 +1078,39 @@ async function runCourseAdjustmentTest() {
     allSchedules: ref([])
   });
   assert.equal(await api.validateSubmitRequest(deps), true);
+
+  const exchangeDeps = singleDeps();
+  exchangeDeps.pendingRequestData.value = Object.assign({}, exchangeDeps.pendingRequestData.value, {
+    mode: 'exchange',
+    date: '2026-09-01',
+    timeKey: '2-6',
+    dateB: '2026-09-03',
+    timeB: '4-2',
+    subBClass: '704',
+    subB: '國文',
+    reason: '課務調整',
+    courseAdjustmentOnly: true,
+    leaveTimeType: '',
+    leaveTimeStart: '',
+    leaveTimeEnd: '',
+    leaveTime: ''
+  });
+  const exchangeCourseOnly = api.buildSubmitPayload(exchangeDeps, 'req-exchange-course-only', 'SWP5678');
+  assert.equal(exchangeCourseOnly.newRequest.courseAdjustmentOnly, true);
+  assert.equal(exchangeCourseOnly.newRequest['僅課務調整'], '是');
+  assert.equal(exchangeCourseOnly.newRequest['請假時間類型'], '');
+  assert.equal(exchangeCourseOnly.newRequest['請假時間'], '');
+  assert.equal(exchangeCourseOnly.newRequest['對調目標班級'], '704');
+  assert.equal(exchangeCourseOnly.newRequest['對調目標科目'], '國文');
+
+  Object.assign(exchangeDeps, {
+    showToast: () => {},
+    showConfirm: async () => true,
+    hasSubTeacherConflict: ref(false),
+    assertQuotaDeductAllowed: () => true,
+    allSchedules: ref([])
+  });
+  assert.equal(await api.validateSubmitRequest(exchangeDeps), true, '調課課務調整不需填請假時間');
 
   const directDeps = singleDeps();
   directDeps.isAdmin.value = true;

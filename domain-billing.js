@@ -211,6 +211,262 @@ window.DomainBilling = (function () {
     return tags.indexOf('超鐘點') >= 0;
   }
 
+  var UNASSIGNED_EXPENSE_SOURCE = '未分配';
+
+  function teacherExpensePlanValue(teacher) {
+    return teacher && (teacher.expensePlan !== undefined
+      ? teacher.expensePlan
+      : (teacher['鐘點支出計畫'] !== undefined
+        ? teacher['鐘點支出計畫']
+        : (teacher['鐘點支出來源'] || teacher['支出計畫'] || teacher['計畫'] || teacher.plan || '')));
+  }
+
+  function parseTeacherExpensePlan(teacher) {
+    var raw = teacherExpensePlanValue(teacher);
+    if (window.FieldMap && window.FieldMap.parseExpensePlan) {
+      return window.FieldMap.parseExpensePlan(raw);
+    }
+    var text = String(raw == null ? '' : raw).trim();
+    return text ? { mode: 'legacy', slots: [], legacySource: text, invalid: false, invalidCount: 0 }
+      : { mode: 'empty', slots: [], legacySource: '', invalid: false, invalidCount: 0 };
+  }
+
+  function sourceForOvertimeSchedule(teacher, schedule) {
+    var parsed = parseTeacherExpensePlan(teacher);
+    if (parsed.mode === 'legacy') return parsed.legacySource;
+    if (parsed.mode !== 'slots') return '';
+    if (window.FieldMap && window.FieldMap.expensePlanSourceForSlot) {
+      return window.FieldMap.expensePlanSourceForSlot(parsed, {
+        day: schedule && (schedule.dayOfWeek != null ? schedule.dayOfWeek : schedule['星期']),
+        period: schedule && (schedule.period != null ? schedule.period : schedule['節次']),
+        className: schedule && (schedule.className != null ? schedule.className : schedule['班級'])
+      });
+    }
+    return '';
+  }
+
+  function expenseClassNamesOverlap(left, right) {
+    if (window.FieldMap && window.FieldMap.expenseClassesOverlap) {
+      return window.FieldMap.expenseClassesOverlap(left, right);
+    }
+    var a = String(left == null ? '' : left).trim();
+    var b = String(right == null ? '' : right).trim();
+    return !a || !b || a === b;
+  }
+
+  function overtimeScheduleSlotText(schedule) {
+    var day = parseInt(schedule && (schedule.dayOfWeek != null ? schedule.dayOfWeek : schedule['星期']), 10);
+    var period = parseInt(schedule && (schedule.period != null ? schedule.period : schedule['節次']), 10);
+    var dayText = ['', '一', '二', '三', '四', '五', '六', '日'][day] || '';
+    var periodText = period === 0 ? '早自習' : (period === 45 ? '午休' : String(period || ''));
+    var className = String(schedule && (schedule.className || schedule['班級']) || '').trim();
+    return '週' + dayText + periodText + (className ? '（' + className + '）' : '');
+  }
+
+  function scheduleIsInWeek(schedule, dates) {
+    var day = parseInt(schedule && (schedule.dayOfWeek != null ? schedule.dayOfWeek : schedule['星期']), 10);
+    return (dates || []).some(function (dateStr) {
+      return day === dayOfWeekFromDate(dateStr) && isScheduleActiveOnDate(schedule, dateStr);
+    });
+  }
+
+  function sortOvertimeSchedules(left, right) {
+    return (parseInt(left && (left.dayOfWeek != null ? left.dayOfWeek : left['星期']), 10) || 0)
+      - (parseInt(right && (right.dayOfWeek != null ? right.dayOfWeek : right['星期']), 10) || 0)
+      || (parseInt(left && (left.period != null ? left.period : left['節次']), 10) || 0)
+      - (parseInt(right && (right.period != null ? right.period : right['節次']), 10) || 0)
+      || String(left && (left.className || left['班級']) || '').localeCompare(String(right && (right.className || right['班級']) || ''), 'zh-Hant');
+  }
+
+  /** 找出請假紀錄原課格的超鐘點經費來源。 */
+  function overtimeExpenseSourceForRecord(record, teachers, schedules, schoolSwapIndex) {
+    if (!record) return '';
+    var originalKeys = originalTeacherKeys(record);
+    if (!originalKeys.length) return '';
+    var teacher = (teachers || []).find(function (item) {
+      return hasCommonKey(originalKeys, teacherKeys(item));
+    });
+    if (!teacher) return '';
+    var slot = resolveBillingSlot(record, schoolSwapIndex);
+    var date = recordDate(record);
+    var className = String(record.className || record['班級'] || '').trim();
+    var sources = [];
+    (schedules || []).filter(function (schedule) {
+      return hasCommonKey(originalKeys, scheduleTeacherKeys(schedule))
+        && parseInt(schedule.dayOfWeek != null ? schedule.dayOfWeek : schedule['星期'], 10) === slot.dayOfWeek
+        && parseInt(schedule.period != null ? schedule.period : schedule['節次'], 10) === slot.period
+        && isScheduleActiveOnDate(schedule, date)
+        && expenseClassNamesOverlap(schedule.className || schedule['班級'], className)
+        && isOvertimeScheduleSlot(schedule);
+    }).forEach(function (schedule) {
+      var source = sourceForOvertimeSchedule(teacher, schedule);
+      if (source && sources.indexOf(source) < 0) sources.push(source);
+    });
+    if (sources.length === 1) return sources[0];
+    return sources.length > 1 ? UNASSIGNED_EXPENSE_SOURCE : '';
+  }
+
+  function overtimeDeductionSourceForRecord(record, teacher, schedules, schoolSwapIndex) {
+    var source = overtimeExpenseSourceForRecord(record, [teacher], schedules, schoolSwapIndex);
+    if (source) return source;
+    var parsed = parseTeacherExpensePlan(teacher);
+    if (parsed.mode === 'legacy' && parsed.legacySource) return parsed.legacySource;
+    if (parsed.mode === 'empty') return '預設';
+    return UNASSIGNED_EXPENSE_SOURCE;
+  }
+
+  /**
+   * 依每週超鐘點課格建立來源桶。陣列配置只記課格，節數由目前課表自動推導。
+   * 舊的單一文字計畫仍沿用整位教師的超鐘點，避免既有資料失效。
+   */
+  function buildOvertimeExpenseBuckets(opts) {
+    opts = opts || {};
+    var teacher = opts.teacher || {};
+    var allSchedules = opts.allSchedules || [];
+    var weeklyGroups = opts.weeklyGroups || [];
+    var weeklyPeriodCounts = opts.weeklyPeriodCounts || [];
+    var baseHours = Number(opts.baseHours) || 0;
+    var parsed = parseTeacherExpensePlan(teacher);
+    var buckets = [];
+    var bucketMap = {};
+    var warnings = [];
+    var teacherIdentity = teacherKeys(teacher);
+    var overtimeSchedules = allSchedules.filter(function (schedule) {
+      return hasCommonKey(teacherIdentity, scheduleTeacherKeys(schedule))
+        && isWeeklyHoursSlot(schedule)
+        && isOvertimeScheduleSlot(schedule);
+    }).sort(sortOvertimeSchedules);
+
+    function getBucket(source) {
+      var name = String(source || UNASSIGNED_EXPENSE_SOURCE).trim() || UNASSIGNED_EXPENSE_SOURCE;
+      if (!bucketMap[name]) {
+        bucketMap[name] = {
+          source: name,
+          rawHours: 0,
+          weekCounts: [],
+          slots: []
+        };
+        buckets.push(bucketMap[name]);
+      }
+      return bucketMap[name];
+    }
+
+    function addHours(source, count, weekIndex, schedule) {
+      var n = Number(count) || 0;
+      if (n <= 0) return;
+      var bucket = getBucket(source);
+      bucket.rawHours += n;
+      bucket.weekCounts[weekIndex] = (bucket.weekCounts[weekIndex] || 0) + n;
+      if (schedule) {
+        var text = overtimeScheduleSlotText(schedule);
+        if (bucket.slots.indexOf(text) < 0) bucket.slots.push(text);
+      }
+    }
+
+    if (parsed.invalid) {
+      warnings.push('教師「' + (teacher.name || teacher.teacherName || '') + '」的超鐘點經費配置格式有誤。');
+    }
+
+    weeklyGroups.forEach(function (dates, weekIndex) {
+      var target = Math.max(0, (Number(weeklyPeriodCounts[weekIndex]) || 0) - baseHours);
+      if (!target) return;
+
+      if (parsed.mode !== 'slots') {
+        var fallbackSource = parsed.mode === 'legacy' && parsed.legacySource
+          ? parsed.legacySource : '預設';
+        addHours(fallbackSource, target, weekIndex, null);
+        return;
+      }
+
+      var candidates = overtimeSchedules.filter(function (schedule) {
+        return scheduleIsInWeek(schedule, dates);
+      });
+      var usable = Math.min(target, candidates.length);
+      candidates.slice(0, usable).forEach(function (schedule) {
+        addHours(sourceForOvertimeSchedule(teacher, schedule) || UNASSIGNED_EXPENSE_SOURCE, 1, weekIndex, schedule);
+      });
+      if (candidates.length > target) {
+        warnings.push('教師「' + (teacher.name || teacher.teacherName || '') + '」第 ' + (weekIndex + 1) + ' 週超鐘點課格多於計算節數。');
+      }
+      if (candidates.length < target) {
+        addHours(UNASSIGNED_EXPENSE_SOURCE, target - candidates.length, weekIndex, null);
+        warnings.push('教師「' + (teacher.name || teacher.teacherName || '') + '」第 ' + (weekIndex + 1) + ' 週有 ' + (target - candidates.length) + ' 節超鐘點尚未對應課格來源。');
+      }
+    });
+
+    buckets.forEach(function (bucket) {
+      bucket.weeklyHours = weeklyGroups.length ? bucket.rawHours / weeklyGroups.length : bucket.rawHours;
+      bucket.schedule = bucket.slots.join('、');
+    });
+    if (bucketMap[UNASSIGNED_EXPENSE_SOURCE]) {
+      warnings.push('部分超鐘點缺少經費來源，已暫列「' + UNASSIGNED_EXPENSE_SOURCE + '」。');
+    }
+    return { buckets: buckets, warnings: warnings, parsed: parsed };
+  }
+
+  function applyOvertimeExpenseDeductions(result, reduceDeduction, leaveDeduction, deductionBySource) {
+    var buckets = (result && result.buckets ? result.buckets : []).map(function (bucket) {
+      return Object.assign({}, bucket, { reduceHours: 0, grossHours: bucket.rawHours, deduction: 0, actualHours: bucket.rawHours });
+    });
+    var remainingReduce = Math.max(0, Number(reduceDeduction) || 0);
+    var remainingLeave = Math.max(0, Number(leaveDeduction) || 0);
+
+    function ensureFallbackBucket() {
+      if (!buckets.length) {
+        buckets.push({ source: UNASSIGNED_EXPENSE_SOURCE, rawHours: 0, weeklyHours: 0, schedule: '', slots: [], weekCounts: [], reduceHours: 0, grossHours: 0, deduction: 0, actualHours: 0 });
+      }
+      return buckets[buckets.length - 1];
+    }
+
+    buckets.forEach(function (bucket) {
+      var reduce = Math.min(Math.max(0, Number(bucket.rawHours) || 0), remainingReduce);
+      bucket.reduceHours = reduce;
+      bucket.grossHours = (Number(bucket.rawHours) || 0) - reduce;
+      remainingReduce -= reduce;
+    });
+    if (remainingReduce > 0) {
+      var reduceFallback = ensureFallbackBucket();
+      reduceFallback.reduceHours += remainingReduce;
+      reduceFallback.grossHours -= remainingReduce;
+      remainingReduce = 0;
+    }
+
+    var sourceDeductions = deductionBySource && typeof deductionBySource === 'object'
+      ? Object.keys(deductionBySource).reduce(function (map, source) {
+        var amount = Math.max(0, Number(deductionBySource[source]) || 0);
+        if (amount) map[source] = amount;
+        return map;
+      }, {})
+      : null;
+    var hasSourceDeductions = sourceDeductions && Object.keys(sourceDeductions).length > 0;
+    if (hasSourceDeductions) {
+      buckets.forEach(function (bucket) {
+        var wanted = sourceDeductions[bucket.source] || 0;
+        var leave = Math.min(Math.max(0, Number(bucket.grossHours) || 0), wanted);
+        bucket.deduction = leave;
+        bucket.actualHours = (Number(bucket.grossHours) || 0) - leave;
+        sourceDeductions[bucket.source] = wanted - leave;
+      });
+      remainingLeave = Object.keys(sourceDeductions).reduce(function (sum, source) {
+        return sum + (Number(sourceDeductions[source]) || 0);
+      }, 0);
+    } else {
+      buckets.forEach(function (bucket) {
+        var leave = Math.min(Math.max(0, Number(bucket.grossHours) || 0), remainingLeave);
+        bucket.deduction = leave;
+        bucket.actualHours = (Number(bucket.grossHours) || 0) - leave;
+        remainingLeave -= leave;
+      });
+    }
+    if (remainingLeave > 0) {
+      var leaveFallback = ensureFallbackBucket();
+      leaveFallback.deduction += remainingLeave;
+      leaveFallback.actualHours -= remainingLeave;
+      remainingLeave = 0;
+    }
+    return buckets;
+  }
+
   function isCombinedReturnRecord(record) {
     var raw = record && record.specialFlow;
     if (String(raw == null ? '' : raw).trim() === '') raw = record && record['特殊流程'];
@@ -639,6 +895,13 @@ window.DomainBilling = (function () {
       // 公費只要原堂是超鐘點，就逐筆沖減；不可再用每週超時數量封頂。
       // 自費與公費是兩種獨立扣除來源，先後順序不應互相吃掉扣除額。
       var publicOvertimeUsed = pubConcurrentLeaveRecords.length;
+      var deductionBySource = {};
+      leaveRecords.filter(function (record) {
+        return isSelfPaidFee(record) || pubConcurrentLeaveRecords.indexOf(record) >= 0;
+      }).forEach(function (record) {
+        var source = overtimeDeductionSourceForRecord(record, t, allSchedules, schoolSwapIndex);
+        deductionBySource[source] = (deductionBySource[source] || 0) + 1;
+      });
       // 學校公付節數：全部公費請假 − 已沖超鐘（超鐘點公費）的部分
       var schoolPublicPayout = Math.max(0, pubLeaveCount - publicOvertimeUsed);
 
@@ -671,6 +934,23 @@ window.DomainBilling = (function () {
       var actualOvertime = scheduledOvertime - reduceDeduction - selfPaidDeduction - publicOvertimeUsed;
       var overtimeFee = actualOvertime * FEE_OVERTIME;
       var pubSubFee = pubSubCount * FEE_REGULAR;
+      var expenseBucketResult = buildOvertimeExpenseBuckets({
+        teacher: t,
+        allSchedules: allSchedules,
+        weeklyGroups: weeklyGroups,
+        weeklyPeriodCounts: weeklyPeriodCounts,
+        baseHours: baseHours
+      });
+      var expensePlanAllocations = applyOvertimeExpenseDeductions(
+        expenseBucketResult,
+        reduceDeduction,
+        selfPaidDeduction + publicOvertimeUsed,
+        deductionBySource
+      );
+      var expensePlanSummary = window.FieldMap && window.FieldMap.formatExpensePlanSummary
+        ? window.FieldMap.formatExpensePlanSummary(teacherExpensePlanValue(t))
+        : String(teacherExpensePlanValue(t) || '預設').trim();
+      var expensePlanWarnings = expenseBucketResult.warnings || [];
 
       var p8row = p8.byEmail[em] || { count: 0, fee: 0, details: [] };
 
@@ -679,6 +959,9 @@ window.DomainBilling = (function () {
         name: t.name,
         subject: t.subject,
         expensePlan: String(t.expensePlan || t['鐘點支出計畫'] || t['鐘點支出來源'] || t['支出計畫'] || t['計畫'] || t.plan || '').trim(),
+        expensePlanSummary: expensePlanSummary,
+        expensePlanAllocations: expensePlanAllocations,
+        expensePlanWarnings: expensePlanWarnings,
          weeklyPeriods: weeklyPeriods,
          baseHours: baseHours,
          weeklyOvertime: weeklyOvertime,
@@ -705,8 +988,12 @@ window.DomainBilling = (function () {
   function toExcelRows(reportRows) {
     return (reportRows || []).map(function (row) {
       return {
-        "教師姓名": row.name,
-        "學科": row.subject,
+         "教師姓名": row.name,
+         "學科": row.subject,
+         "超鐘點經費配置": row.expensePlanSummary || row.expensePlan || '預設',
+         "超鐘點來源分配": (row.expensePlanAllocations || []).map(function (allocation) {
+           return allocation.source + '：' + (allocation.actualHours !== undefined ? allocation.actualHours : allocation.rawHours) + '節';
+         }).join('、'),
          "每週排課(早自習+1-7+午休)": row.weeklyPeriods,
         "基本授課鐘點": row.baseHours,
         "預設超時/週": row.weeklyOvertime,
@@ -961,6 +1248,9 @@ window.DomainBilling = (function () {
     listWeekdaysInMonth: listWeekdaysInMonth,
     isWeeklyHoursSlot: isWeeklyHoursSlot,
     isWeeklyHoursPeriod: isWeeklyHoursPeriod,
+    overtimeExpenseSourceForRecord: overtimeExpenseSourceForRecord,
+    buildOvertimeExpenseBuckets: buildOvertimeExpenseBuckets,
+    applyOvertimeExpenseDeductions: applyOvertimeExpenseDeductions,
     buildPeriod8Payout: buildPeriod8Payout,
     buildMonthlyReportRows: buildMonthlyReportRows,
     toExcelRows: toExcelRows,

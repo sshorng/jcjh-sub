@@ -4,7 +4,9 @@
 const assert = require('node:assert/strict');
 
 global.window = global;
+require('../field-map.js');
 require('../domain-school-swap.js');
+require('../domain-billing.js');
 require('../export-accounting.js');
 
 const period = { start: '2026-07-01', end: '2026-07-31' };
@@ -108,5 +110,59 @@ const swappedPublic = build([{
 }]);
 assert.equal(swappedPublic.sheets.overtime[0].deduction, 1, 'accounting export must resolve the original overtime slot after school swap');
 assert.equal(swappedPublic.sheets.overtime[0].actualHours, 0);
+
+const configuredPlan = JSON.stringify([
+  { day: 1, period: 1, className: '701', source: '計畫A' },
+  { day: 1, period: 2, className: '702', source: '計畫B' }
+]);
+const configuredInput = {
+  reportMonth: '2026-07',
+  reportWeeksCount: 1,
+  periods: { overtime: period },
+  teachers: [
+    { email: 'bill@x', name: 'Billing', baseHours: 0, expensePlan: configuredPlan },
+    { email: 'cover@x', name: 'Cover', baseHours: 0 }
+  ],
+  allSchedules: [
+    { teacherEmail: 'bill@x', dayOfWeek: 1, period: 1, className: '701', attr: '超鐘點' },
+    { teacherEmail: 'bill@x', dayOfWeek: 1, period: 2, className: '702', attr: '超鐘點' }
+  ],
+  substitutionRecords: [
+    {
+      id: 'configured-a', date: '2026-07-13', period: 1, className: '701',
+      originalTeacherEmail: 'bill@x', actualTeacherEmail: 'cover@x', subFee: '公費代課', status: 'approved'
+    },
+    {
+      id: 'configured-b', date: '2026-07-13', period: 2, className: '702',
+      originalTeacherEmail: 'bill@x', actualTeacherEmail: 'cover@x', subFee: '自費代課', status: 'approved'
+    }
+  ]
+};
+configuredInput.monthlyReportRows = window.DomainBilling.buildMonthlyReportRows(configuredInput);
+const configured = window.ExportAccounting.buildExportData(configuredInput);
+const configuredA = configured.overtimePlans.find(group => group.plan === '計畫A');
+const configuredB = configured.overtimePlans.find(group => group.plan === '計畫B');
+assert.ok(configuredA && configuredB, 'slot sources must create one overtime group per plan');
+assert.deepEqual(configuredA.rows[0], {
+  expensePlan: '計畫A', serial: 1, title: '教師', name: 'Billing', weeklyOvertime: 1,
+  schedule: '週一1（701）', weeks: 1, grossHours: 1, deduction: 1, actualHours: 0,
+  rate: 455, amount: 0, reduceNote: '', note: '1、1*1(週一1（701）)\n2、7/13公假扣1節'
+});
+assert.equal(configuredB.rows[0].expensePlan, '計畫B');
+assert.equal(configuredB.rows[0].grossHours, 1);
+assert.equal(configuredB.rows[0].deduction, 1);
+assert.ok(configuredA.rows.some(row => row.name === 'Cover' && row.expensePlan === '計畫A'));
+assert.ok(configuredB.rows.some(row => row.name === 'Cover' && row.expensePlan === '計畫B'));
+assert.equal(configured.blocking.length, 0);
+
+const missingSourceInput = Object.assign({}, configuredInput, {
+  teachers: [{ email: 'bill@x', name: 'Billing', baseHours: 0, expensePlan: JSON.stringify([
+    { day: 1, period: 1, className: '701', source: '計畫A' }
+  ])}],
+  substitutionRecords: []
+});
+missingSourceInput.monthlyReportRows = window.DomainBilling.buildMonthlyReportRows(missingSourceInput);
+const missingSource = window.ExportAccounting.buildExportData(missingSourceInput);
+assert.ok(missingSource.blocking.some(message => message.indexOf('未分配') >= 0), 'missing slot source must block accounting export');
 
 console.log('export accounting tests PASS');

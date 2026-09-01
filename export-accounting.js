@@ -260,6 +260,51 @@
     ));
   }
 
+  function parseExpensePlan(value) {
+    if (root.FieldMap && typeof root.FieldMap.parseExpensePlan === 'function') {
+      return root.FieldMap.parseExpensePlan(value);
+    }
+    var text = normalizeExpensePlan(value);
+    if (!text) return { mode: 'empty', slots: [], legacySource: '', invalid: false, invalidCount: 0 };
+    if (text.charAt(0) !== '[') return { mode: 'legacy', slots: [], legacySource: text, invalid: false, invalidCount: 0 };
+    try {
+      var raw = JSON.parse(text);
+      if (!Array.isArray(raw)) throw new Error('not array');
+      var slots = raw.map(function (item) {
+        return item && {
+          day: Number(item.day !== undefined ? item.day : item.dayOfWeek),
+          period: Number(item.period),
+          className: String(item.className || '').trim(),
+          source: normalizeExpensePlan(item.source || item.plan || item['經費來源'])
+        };
+      }).filter(function (item) {
+        return item && item.source && Number.isFinite(item.day) && Number.isFinite(item.period);
+      });
+      return { mode: 'slots', slots: slots, legacySource: '', invalid: slots.length !== raw.length, invalidCount: raw.length - slots.length };
+    } catch (e) {
+      return { mode: 'invalid', slots: [], legacySource: '', invalid: true, invalidCount: 1 };
+    }
+  }
+
+  function expensePlanSourcesForRow(row) {
+    var sources = [];
+    function add(source) {
+      var value = normalizeExpensePlan(source);
+      if (value && sources.indexOf(value) < 0) sources.push(value);
+    }
+    (row && row.expensePlanAllocations || []).forEach(function (allocation) {
+      add(allocation && allocation.source);
+    });
+    var parsed = parseExpensePlan(row && row.expensePlan);
+    if (parsed.mode === 'legacy') add(parsed.legacySource);
+    if (parsed.mode === 'slots') (parsed.slots || []).forEach(function (slot) { add(slot.source); });
+    return sources;
+  }
+
+  function addUniqueMessage(list, message) {
+    if (message && list.indexOf(message) < 0) list.push(message);
+  }
+
   function planLabel(value) {
     return normalizeExpensePlan(value) || '預設';
   }
@@ -749,6 +794,22 @@
     });
   }
 
+  function expenseSourceForChargedRecord(opts, source, record, schoolSwapIndex) {
+    if (root.DomainBilling && typeof root.DomainBilling.overtimeExpenseSourceForRecord === 'function') {
+      var resolved = root.DomainBilling.overtimeExpenseSourceForRecord(
+        record,
+        opts.teachers || [],
+        opts.allSchedules || [],
+        schoolSwapIndex
+      );
+      if (resolved) return resolved;
+    }
+    var parsed = parseExpensePlan(source && source.expensePlan);
+    if (parsed.mode === 'legacy' && parsed.legacySource) return parsed.legacySource;
+    if (parsed.mode === 'empty') return '預設';
+    return '未分配';
+  }
+
   function substitutionKey(record) {
     var id = record && (record.id || record.recordId || record['紀錄ID'] || record['調代課紀錄ID']);
     if (id) return 'id:' + String(id);
@@ -818,12 +879,16 @@
     var records = opts.substitutionRecords || [];
     reportSourceRows(opts).forEach(function (source) {
       if (!normalizeExpensePlan(source.expensePlan)) return;
-       chargedSubstitutionRecords(records, opts.allSchedules, source, period, schoolSwapIndex)
-        .filter(function (record) { return !isCombinedReturnRecord(record); })
-        .forEach(function (record) {
-          var key = substitutionKey(record);
-          var email = teacherEmail(source.email);
-          var item = { record: record, source: source, plan: normalizeExpensePlan(source.expensePlan) };
+        chargedSubstitutionRecords(records, opts.allSchedules, source, period, schoolSwapIndex)
+         .filter(function (record) { return !isCombinedReturnRecord(record); })
+         .forEach(function (record) {
+           var key = substitutionKey(record);
+           var email = teacherEmail(source.email);
+           var item = {
+             record: record,
+             source: source,
+             plan: expenseSourceForChargedRecord(opts, source, record, schoolSwapIndex)
+           };
           result.byKey[key] = item;
           if (!result.byOriginal[email]) result.byOriginal[email] = [];
           result.byOriginal[email].push(item);
@@ -850,7 +915,7 @@
     var className = String(record.className || record['\u73ed\u7d1a'] || '').trim();
     if (className) detail += '\uff08' + className + '\uff09';
     return {
-      expensePlan: normalizeExpensePlan(source.expensePlan),
+      expensePlan: planLabel(item.plan || source.expensePlan),
       serial: serial,
       title: teacherTitle(actualTeacher) || '\u6559\u5e2b',
       name: teacherName(actualTeacher, record.actualTeacherName || record.actualTeacherEmail),
@@ -866,6 +931,27 @@
       note: detail
     };
   }
+
+  function overtimeSourceVariants(source, expectedPlan) {
+    var allocations = Array.isArray(source && source.expensePlanAllocations)
+      ? source.expensePlanAllocations : [];
+    var matches = allocations.filter(function (allocation) {
+      return planLabel(allocation && allocation.source) === expectedPlan;
+    });
+    if (matches.length) {
+      return matches.map(function (allocation) {
+        return {
+          row: Object.assign({}, source, { expensePlan: expectedPlan }),
+          allocation: allocation
+        };
+      });
+    }
+    if (!allocations.length && expensePlanSourcesForRow(source).indexOf(expectedPlan) >= 0) {
+      return [{ row: Object.assign({}, source, { expensePlan: expectedPlan }), allocation: null }];
+    }
+    return [];
+  }
+
   function buildSummaryRows(config, opts, period, planFilter, chargedMap, schoolSwapIndex) {
     var teacherMap = {};
     (opts.teachers || []).forEach(function (t) { addTeacherToMap(teacherMap, t); });
@@ -874,55 +960,92 @@
     var rows = [];
     var expectedPlan = config.key === 'overtime' ? normalizeExpensePlan(planFilter) : null;
     reportSourceRows(opts).forEach(function (source) {
-      var t = teacherFromMap(teacherMap, source.email, source.name);
-      var sourcePlan = normalizeExpensePlan(source.expensePlan || source['鐘點支出計畫'] || source.plan);
-      if (config.key === 'overtime' && sourcePlan !== expectedPlan) return;
-      var adjunct = isAdjunctTeacher(t);
-      if (config.key === 'adjunct' ? !adjunct : adjunct) return;
-      var title = teacherTitle(t) || (adjunct ? '兼課教師' : '教師');
-       var leave = leaveRecordsFor(source, records, period);
-       var selfCount = leave.filter(isSelfPaidRecord).length;
-       var publicUsed = publicOvertimeUsed(source, records, opts.allSchedules, period, schoolSwapIndex);
-       var chargedItemsForSource = sourcePlan && chargedMap && chargedMap.byOriginal[teacherEmail(source.email)] || [];
-       var chargedRecordsForSource = chargedSubstitutionRecords(records, opts.allSchedules || [], source, period, schoolSwapIndex);
-      var reduce = Number(source.reduceDeduction) || 0;
-      if (period.start.slice(0, 7) !== String(opts.reportMonth || '') || period.end.slice(0, 7) !== String(opts.reportMonth || '')) {
-        reduce = 0;
-      }
-       var scheduledOvertime = source.scheduledOvertime !== undefined
-         ? Number(source.scheduledOvertime) || 0
-         : (Number(source.weeklyOvertime) || 0) * weeks;
-       var grossHours = Math.max(0, scheduledOvertime - reduce);
-      var deduction = selfCount + publicUsed;
-      var actualHours = grossHours - deduction;
-      var rate = Number(opts.overtimeRate) || FEE_DEFAULT;
-       var overtimeNotes = [overtimeClassNote(opts, source, weeks, period)]
-        .concat(leaveNoteParts(chargedRecordsForSource, publicUsed));
-      var notes = config.key === 'overtime'
-        ? joinAccountingNotes(overtimeNotes)
-         : summaryNote(opts, source, period, leave, publicUsed, schoolSwapIndex);
-      var row = {
-        expensePlan: sourcePlan,
-        serial: rows.length + 1,
-        title: title,
-        name: teacherName(t, source.name),
-        weeklyOvertime: Number(source.weeklyOvertime) || 0,
-         schedule: scheduleText(source, opts.allSchedules, true, period),
-        weeks: weeks,
-        grossHours: grossHours,
-        deduction: deduction,
-        actualHours: actualHours,
-        rate: rate,
-        amount: actualHours * rate,
-        reduceNote: reduce ? ('空堂調降 ' + reduce + ' 節') : '',
-        note: notes
-      };
-      rows.push(row);
-      if (config.key === 'overtime' && sourcePlan && chargedMap && chargedMap.byOriginal[teacherEmail(source.email)]) {
-        chargedMap.byOriginal[teacherEmail(source.email)].forEach(function (item) {
-          rows.push(buildOvertimeSubstitutionRow(opts, source, teacherMap, item, rows.length + 1));
-        });
-      }
+      var variants = config.key === 'overtime' && expectedPlan
+        ? overtimeSourceVariants(source, expectedPlan)
+        : [{ row: source, allocation: null }];
+      variants.forEach(function (variant) {
+        var sourceRow = variant.row;
+        var allocation = variant.allocation;
+        var t = teacherFromMap(teacherMap, sourceRow.email, sourceRow.name);
+        var sourcePlan = allocation
+          ? planLabel(allocation.source)
+          : normalizeExpensePlan(sourceRow.expensePlan || sourceRow['鐘點支出計畫'] || sourceRow.plan);
+        var adjunct = isAdjunctTeacher(t);
+        if (config.key === 'adjunct' ? !adjunct : adjunct) return;
+        var title = teacherTitle(t) || (adjunct ? '兼課教師' : '教師');
+        var leave = leaveRecordsFor(source, records, period);
+        var chargedItems = chargedMap && chargedMap.byOriginal[teacherEmail(source.email)] || null;
+        if (chargedItems) {
+          chargedItems = config.key === 'overtime' && expectedPlan
+            ? chargedItems.filter(function (item) { return planLabel(item.plan) === expectedPlan; })
+            : chargedItems.slice();
+        }
+        var chargedRecordsForSource = chargedItems
+          ? chargedItems.map(function (item) { return item.record; })
+          : chargedSubstitutionRecords(records, opts.allSchedules || [], source, period, schoolSwapIndex);
+        var selfCount = allocation
+          ? chargedRecordsForSource.filter(isSelfPaidRecord).length
+          : leave.filter(isSelfPaidRecord).length;
+        var publicUsed = allocation
+          ? chargedRecordsForSource.filter(isPublicOvertimeRecord).length
+          : publicOvertimeUsed(source, records, opts.allSchedules, period, schoolSwapIndex);
+        var reduce = allocation
+          ? Math.max(0, Number(allocation.reduceHours) || 0)
+          : (Number(sourceRow.reduceDeduction) || 0);
+        if (period.start.slice(0, 7) !== String(opts.reportMonth || '') || period.end.slice(0, 7) !== String(opts.reportMonth || '')) {
+          reduce = 0;
+        }
+        var scheduledOvertime = allocation
+          ? Number(allocation.rawHours) || 0
+          : (sourceRow.scheduledOvertime !== undefined
+            ? Number(sourceRow.scheduledOvertime) || 0
+            : (Number(sourceRow.weeklyOvertime) || 0) * weeks);
+        var grossHours = allocation && allocation.grossHours !== undefined
+          ? Number(allocation.grossHours) || 0
+          : Math.max(0, scheduledOvertime - reduce);
+        var deduction = allocation && allocation.deduction !== undefined
+          ? Number(allocation.deduction) || 0
+          : selfCount + publicUsed;
+        var actualHours = allocation && allocation.actualHours !== undefined
+          ? Number(allocation.actualHours) || 0
+          : grossHours - deduction;
+        var weeklyOvertime = allocation
+          ? (Number(allocation.weeklyHours) || (weeks ? scheduledOvertime / weeks : scheduledOvertime))
+          : (Number(sourceRow.weeklyOvertime) || 0);
+        var rate = Number(opts.overtimeRate) || FEE_DEFAULT;
+        var schedule = allocation && allocation.schedule
+          ? String(allocation.schedule)
+          : scheduleText(sourceRow, opts.allSchedules, true, period);
+        var overtimeNotes = [allocation && schedule
+          ? (weeklyOvertime ? displayCount(weeklyOvertime) + '*' + weeks + '(' + schedule + ')' : schedule)
+          : overtimeClassNote(opts, sourceRow, weeks, period)]
+          .concat(leaveNoteParts(chargedRecordsForSource, publicUsed));
+        var notes = config.key === 'overtime'
+          ? joinAccountingNotes(overtimeNotes)
+          : summaryNote(opts, sourceRow, period, leave, publicUsed, schoolSwapIndex);
+        var row = {
+          expensePlan: sourcePlan,
+          serial: rows.length + 1,
+          title: title,
+          name: teacherName(t, sourceRow.name),
+          weeklyOvertime: weeklyOvertime,
+          schedule: schedule,
+          weeks: weeks,
+          grossHours: grossHours,
+          deduction: deduction,
+          actualHours: actualHours,
+          rate: rate,
+          amount: actualHours * rate,
+          reduceNote: reduce ? ('空堂調降 ' + reduce + ' 節') : '',
+          note: notes
+        };
+        rows.push(row);
+        if (config.key === 'overtime' && chargedItems) {
+          chargedItems.forEach(function (item) {
+            rows.push(buildOvertimeSubstitutionRow(opts, sourceRow, teacherMap, item, rows.length + 1));
+          });
+        }
+      });
     });
     return rows;
   }
@@ -1017,6 +1140,10 @@
 
   function buildExportData(opts) {
     opts = opts || {};
+    if (!Array.isArray(opts.monthlyReportRows)
+        && root.DomainBilling && typeof root.DomainBilling.buildMonthlyReportRows === 'function') {
+      opts.monthlyReportRows = root.DomainBilling.buildMonthlyReportRows(opts);
+    }
     var schoolSwapIndex = root.DomainSchoolSwap && root.DomainSchoolSwap.buildIndex
       ? root.DomainSchoolSwap.buildIndex(opts.schoolSwaps || [])
       : null;
@@ -1051,8 +1178,23 @@
 
     var planKeys = [];
     reportSourceRows(opts).forEach(function (source) {
-      var plan = normalizeExpensePlan(source.expensePlan || source['鐘點支出計畫'] || source.plan);
-      if (plan && planKeys.indexOf(plan) < 0) planKeys.push(plan);
+      var parsed = parseExpensePlan(source.expensePlan);
+      var addPlan = function (value) {
+        var plan = normalizeExpensePlan(value);
+        if (plan && plan !== '預設' && planKeys.indexOf(plan) < 0) planKeys.push(plan);
+      };
+      expensePlanSourcesForRow(source).forEach(addPlan);
+      if (parsed.invalid) {
+        var invalidMessage = '教師「' + teacherName(source, source.email) + '」的超鐘點經費配置格式有誤。';
+        addUniqueMessage(data.warnings, invalidMessage);
+        addUniqueMessage(data.blocking, invalidMessage + '請先修正後再匯出。');
+      }
+      (source.expensePlanWarnings || []).forEach(function (warning) {
+        addUniqueMessage(data.warnings, warning);
+        if (String(warning).indexOf('未分配') >= 0) {
+          addUniqueMessage(data.blocking, warning + '請先補上課格經費來源。');
+        }
+      });
     });
     planKeys.sort(function (a, b) { return a.localeCompare(b, 'zh-Hant', { numeric: true }); });
     planKeys.forEach(function (plan) {
@@ -1356,6 +1498,9 @@
   async function exportWorkbook(opts) {
     opts = opts || {};
     var data = buildExportData(opts);
+    if (data.blocking && data.blocking.length) {
+      throw new Error('會計匯出被阻擋：\n' + data.blocking.join('\n'));
+    }
     var ExcelJSLib = opts.ExcelJS || root.ExcelJS || (typeof ExcelJS !== 'undefined' ? ExcelJS : null);
     if (!ExcelJSLib) throw new Error('ExcelJS 未載入');
     var buffer = opts.templateBuffer || await loadTemplateBuffer();
@@ -1384,6 +1529,7 @@
       fileName: (parts.month + '月會計核銷明細.xlsx'),
       summary: data.summary,
       warnings: data.warnings,
+      blocking: data.blocking,
       periods: data.periods
     };
   }

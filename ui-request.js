@@ -60,6 +60,10 @@ window.UiSubmitHelpers = (function () {
     return value === 'combined_return' || value === '合班回原班';
   }
 
+  function supportsCourseAdjustmentOnly(mode) {
+    return mode === 'substitution' || mode === 'exchange';
+  }
+
   async function validateSubmitRequest(deps) {
     var pending = deps.pendingRequestData.value;
     var showToast = deps.showToast;
@@ -120,7 +124,9 @@ window.UiSubmitHelpers = (function () {
         return false;
       }
     }
-    var courseAdjustmentOnly = !combinedReturn && pending.mode === 'substitution' && !!pending.courseAdjustmentOnly;
+    var courseAdjustmentOnly = !combinedReturn
+      && supportsCourseAdjustmentOnly(pending.mode)
+      && !!pending.courseAdjustmentOnly;
     if (pending.mode === 'substitution' && !combinedReturn && !courseAdjustmentOnly && (!pending.leaveTimeType || !pending.leaveTimeStart || !pending.leaveTimeEnd || pending.leaveTimeStart >= pending.leaveTimeEnd)) {
       showToast('請填寫有效的請假時間（可選全天／上午／下午或自行修改）', 'info');
       return false;
@@ -240,7 +246,9 @@ window.UiSubmitHelpers = (function () {
       ? 'pending_admin'
       : (doDirectApprove ? 'approved' : (proxyActive ? 'pending_admin' : 'pending_teacher')));
     var isExchange = pending.mode === 'exchange';
-    var courseAdjustmentOnly = pending.mode === 'substitution' && !!pending.courseAdjustmentOnly;
+    var courseAdjustmentOnly = !combinedReturn
+      && supportsCourseAdjustmentOnly(pending.mode)
+      && !!pending.courseAdjustmentOnly;
     var finalFeeType = '無';
     if (!isExchange) {
       var tk0 = (window.DateUtils && window.DateUtils.decodeTimeKey)

@@ -1831,7 +1831,7 @@
                   <tbody>
                     <tr v-for="row in monthlyReportData" :key="row.email">
                       <td class="billing-sticky-name"><strong>{{ row.name }}</strong></td>
-                      <td class="billing-plan">{{ row.expensePlan || '預設' }}</td>
+                     <td class="billing-plan" :title="(row.expensePlanWarnings || []).join('；')">{{ row.expensePlanSummary || row.expensePlan || '預設' }}</td>
                       <td class="billing-subj">{{ row.subject }}</td>
                       <td class="num">{{ row.weeklyPeriods }}</td>
                       <td class="num">{{ row.baseHours }}</td>
@@ -1879,9 +1879,10 @@
                     <th>職務</th>
                     <th>超鐘點計畫</th>
                      <th>基本鐘點（基鐘）</th>
+                     <th title="依目前選定週次的正式排課節數扣除基本鐘點">每週超鐘點</th>
                     <th title="可用餘額；點數字可看額度帳本歷程">折抵額度</th>
                     <th>系統角色</th>
-                    <th style="width: 130px;">操作</th>
+                     <th style="width: 220px;">操作</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1890,18 +1891,21 @@
                     <td>{{ t.loginEmail }}</td>
                     <td>{{ t.subject }}</td>
                      <td>{{ t.jobTitle || '未填' }}</td>
-                    <td>{{ t.expensePlan || '預設' }}</td>
-                    <td>
-                      <!-- 基礎基本鐘點設定 -->
-                      <input 
+                     <td :title="getExpensePlanSummary(t.expensePlan)">{{ getExpensePlanSummary(t.expensePlan) }}</td>
+                     <td>
+                       <!-- 基礎基本鐘點設定 -->
+                       <input
                         type="number" 
                         style="padding: 4px 6px; width: 65px; text-align: center; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.85rem; color: var(--text-primary); font-family: var(--font-sans);"
                         v-model.number="t.baseHours"
                         @change="updateTeacherBaseHours(t.loginEmail, t.baseHours)"
                         @click.stop
                         @dblclick.stop
-                      > 節
-                    </td>
+                       > 節
+                     </td>
+                     <td style="white-space:nowrap;text-align:center;">
+                       <strong>{{ getTeacherTimetableHours(t).overtimeHours }}</strong> 節／週
+                     </td>
                     <td @click.stop @dblclick.stop>
                       <button
                         type="button"
@@ -1917,9 +1921,10 @@
                       </span>
                     </td>
                     <td>
-                      <div style="display: flex; gap: 6px;">
-                        <button class="btn btn-secondary" style="padding: 3px 6px; font-size: 0.75rem;" @click="openEditTeacherModal(t)">✏️ 編輯</button>
-                        <button class="btn btn-secondary" style="padding: 3px 6px; font-size: 0.75rem; color: var(--color-danger); border-color: rgba(239, 68, 68, 0.1);" @click="deleteTeacher(t.loginEmail, t.name)">🗑️ 刪除</button>
+                       <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                         <button class="btn btn-secondary" style="padding: 3px 6px; font-size: 0.75rem;" @click.stop="openEditTeacherModal(t)">✏️ 編輯</button>
+                         <button class="btn btn-secondary" style="padding: 3px 6px; font-size: 0.75rem;" @click.stop="openOvertimePlanModal(t)">💰 超鐘點來源</button>
+                         <button class="btn btn-secondary" style="padding: 3px 6px; font-size: 0.75rem; color: var(--color-danger); border-color: rgba(239, 68, 68, 0.1);" @click.stop="deleteTeacher(t.loginEmail, t.name)">🗑️ 刪除</button>
                       </div>
                     </td>
                   </tr>
@@ -3040,7 +3045,7 @@
                      <div class="form-group compare-form-leave-type" data-tour="compare-reason">
                       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
                          <label class="form-label" style="margin:0;">假別</label>
-                         <label v-if="pendingRequestData.mode === 'substitution' && pendingRequestData.specialFlow !== 'combined_return'" style="display:flex;align-items:center;gap:5px;font-size:0.78rem;color:var(--text-secondary);cursor:pointer;">
+                          <label v-if="(pendingRequestData.mode === 'substitution' || pendingRequestData.mode === 'exchange') && pendingRequestData.specialFlow !== 'combined_return'" style="display:flex;align-items:center;gap:5px;font-size:0.78rem;color:var(--text-secondary);cursor:pointer;">
                           <input
                             id="course-adjustment-only"
                             type="checkbox"
@@ -3535,14 +3540,22 @@
               <label class="form-label">職務（含「導師」即列入代導費）</label>
               <input type="text" class="form-input" placeholder="例如：七年級導師、行政教師" v-model="teacherForm.jobTitle">
             </div>
-            <div class="form-group">
-              <label class="form-label">超鐘點支出計畫</label>
-              <input type="text" class="form-input" list="accounting-plan-options" maxlength="40" placeholder="留白＝原本的超鐘點（預設經費）" v-model="teacherForm.expensePlan">
-              <datalist id="accounting-plan-options">
-                <option v-for="plan in accountingPlanOptions" :key="'accounting-plan-' + plan" :value="plan"></option>
-              </datalist>
-              <span style="font-size:0.72rem;color:var(--text-muted);display:block;margin-top:4px;">只有超鐘點會依計畫拆表；代這位教師的課，超鐘點扣抵會沿用這個計畫。其他四類會計表維持原樣。</span>
-            </div>
+             <div class="form-group">
+               <label class="form-label">超鐘點支出計畫</label>
+               <template v-if="String(teacherForm.expensePlan || '').trim().charAt(0) === '['">
+                 <div style="padding:8px 10px;border:1px solid var(--border-color);border-radius:6px;background:var(--surface-muted,#f8fafc);font-size:0.82rem;">
+                   {{ getExpensePlanSummary(teacherForm.expensePlan) }}
+                   <button v-if="overtimePlanTeacher" type="button" class="btn btn-secondary" style="display:block;margin-top:7px;padding:4px 8px;font-size:0.75rem;" @click="showTeacherModal = false; openOvertimePlanModal(overtimePlanTeacher)">編輯課格來源</button>
+                 </div>
+               </template>
+               <template v-else>
+                 <input type="text" class="form-input" list="accounting-plan-options" maxlength="40" placeholder="留白＝原本的超鐘點（預設經費）" v-model="teacherForm.expensePlan">
+                 <datalist id="accounting-plan-options">
+                   <option v-for="plan in accountingPlanOptions" :key="'accounting-plan-' + plan" :value="plan"></option>
+                 </datalist>
+               </template>
+               <span style="font-size:0.72rem;color:var(--text-muted);display:block;margin-top:4px;">只有超鐘點會依計畫拆表；若要分節指定來源，請按教師列表的「超鐘點來源」。其他四類會計表維持原樣。</span>
+             </div>
             <div class="form-group">
               <label class="form-label">系統角色</label>
               <select class="form-select" v-model="teacherForm.role">
@@ -3564,6 +3577,42 @@
           <div class="modal-footer">
             <button class="btn btn-primary" @click="saveTeacher">儲存</button>
             <button class="btn btn-secondary" @click="showTeacherModal = false">取消</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4.1. 超鐘點課格經費來源設定 Modal -->
+      <div v-if="showOvertimePlanModal" class="modal-overlay" @click.self="showOvertimePlanModal = false">
+        <div class="modal-card" style="max-width:760px;">
+          <div class="modal-header">
+            <h3>💰 設定超鐘點經費來源{{ overtimePlanTeacher ? '：' + overtimePlanTeacher.name : '' }}</h3>
+            <button class="btn-close" @click="showOvertimePlanModal = false">&times;</button>
+          </div>
+          <div class="modal-body">
+            <p style="margin:0 0 12px;color:var(--text-secondary);font-size:0.82rem;line-height:1.6;">
+              請為每一個超鐘點課格選擇經費來源。儲存後會依日期、節次與班級分配至會計 Excel 的對應工作表。
+            </p>
+            <div v-if="!overtimePlanRows.length" class="empty-state" style="padding:24px 12px;">
+              目前課表沒有標記為「超鐘點」的課格。
+            </div>
+            <div v-else style="display:flex;flex-direction:column;gap:8px;">
+              <div v-for="row in overtimePlanRows" :key="row.key" style="display:grid;grid-template-columns:70px 78px minmax(90px,1fr) minmax(180px,1fr);align-items:center;gap:8px;padding:9px 10px;border:1px solid var(--border-color);border-radius:8px;background:var(--surface-muted,#f8fafc);">
+                <span style="font-weight:700;">週{{ ['日','一','二','三','四','五','六','日'][row.day] || row.day }}</span>
+                <span>{{ row.period === 0 ? '早自習' : (row.period === 45 ? '午休' : '第' + row.period + '節') }}</span>
+                <span>{{ row.className || '未指定班級' }}<small v-if="row.subject" style="display:block;color:var(--text-muted);">{{ row.subject }}</small></span>
+                <input type="text" class="form-input" list="overtime-expense-source-options" maxlength="40" placeholder="可直接輸入計畫名稱" v-model="row.source">
+              </div>
+            </div>
+            <datalist id="overtime-expense-source-options">
+              <option v-for="source in getOvertimeExpenseSourceOptions()" :key="'overtime-source-' + source" :value="source"></option>
+            </datalist>
+            <div style="margin-top:12px;font-size:0.75rem;color:var(--text-muted);">
+              可直接輸入新的計畫名稱，也可從下拉建議套用其他教師已使用過的計畫。已設定 {{ overtimePlanRows.filter(row => row.source).length }}／{{ overtimePlanRows.length }} 個課格。
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-primary" :disabled="loading || overtimePlanRows.some(row => !row.source)" @click="saveOvertimePlan">儲存來源設定</button>
+            <button class="btn btn-secondary" @click="showOvertimePlanModal = false">取消</button>
           </div>
         </div>
       </div>
@@ -4377,7 +4426,7 @@
 
   <!-- 模組：defer 依文件順序執行，不擋 HTML 解析；billing/print/export 另延後 -->
      <script defer src="name-key-contract.js?v=20260831-combined3"></script>
-     <script defer src="field-map.js?v=20260831-combined3"></script>
+      <script defer src="field-map.js?v=20260901-expense-plan1"></script>
      <script defer src="date-utils.js?v=20260831-combined3"></script>
      <script defer src="gas-api.js?v=20260831-combined3"></script>
      <script defer src="domain-school-swap.js?v=20260831-combined3"></script>
@@ -4393,7 +4442,7 @@
      <script defer src="ui-approval.js?v=20260831-combined3"></script>
   <!-- ui-admin：僅管理員／後台操作時 ensureUiAdmin -->
      <script defer src="app-shell-utils.js?v=20260831-combined3"></script>
-         <script defer src="app.js?v=20260831-combined3"></script>
+          <script defer src="app.js?v=20260901-expense-plan2"></script>
   <script>
     (function () {
       function loadScript(src) {
@@ -4415,12 +4464,12 @@
       var _uiAdminP = null;
       window.ensureDomainBilling = function () {
         if (window.DomainBilling) return Promise.resolve();
-          if (!_billingP) _billingP = loadScript('domain-billing.js?v=20260831-combined3');
+           if (!_billingP) _billingP = loadScript('domain-billing.js?v=20260901-expense-plan1');
         return _billingP;
       };
       window.ensureExportAccounting = function () {
         if (window.ExportAccounting) return Promise.resolve();
-          if (!_accountingP) _accountingP = loadScript('export-accounting.js?v=20260831-combined3');
+           if (!_accountingP) _accountingP = loadScript('export-accounting.js?v=20260901-expense-plan1');
         return _accountingP;
       };
       /** 活動互代／額度／空堂任務邏輯（首屏不載） */
@@ -4432,7 +4481,7 @@
       /** 後台匯入／教師／課表編輯（教師首屏不載） */
       window.ensureUiAdmin = function () {
         if (window.UiAdmin) return Promise.resolve();
-          if (!_uiAdminP) _uiAdminP = loadScript('ui-admin.js?v=20260831-combined3');
+           if (!_uiAdminP) _uiAdminP = loadScript('ui-admin.js?v=20260901-expense-plan3');
         return _uiAdminP;
       };
       window.ensurePrintHelper = function () {

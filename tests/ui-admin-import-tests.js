@@ -16,6 +16,7 @@ require('../ui-admin.js');
 
 const ref = value => ({ value });
 let importPayload = null;
+const schedules = ref([]);
 const admin = window.UiAdmin.create({
   ref,
   callGasApi: async () => ({ count: 1 }),
@@ -32,13 +33,26 @@ const admin = window.UiAdmin.create({
   getTeacherNameByEmail: value => value,
   currentSemester: ref('S1'),
   teachersList: ref([{ loginEmail: 'teacher@example.com', email: '教師', name: '教師' }]),
-  allSchedules: ref([]),
+  allSchedules: schedules,
   leaveReasonOptions: [],
   getHistoryEditDefaultSubFee: () => '自費代課',
   historyEditForm: ref({}),
   showHistoryEditModal: ref(false),
   requestsList: ref([])
 });
+
+schedules.value = [{
+  teacherEmail: '教師',
+  teacherName: '教師',
+  dayOfWeek: 1,
+  period: 1,
+  className: '701',
+  attr: '超鐘點'
+}];
+admin.openOvertimePlanModal({ loginEmail: 'teacher@example.com', email: '教師', name: '教師' });
+assert.equal(admin.overtimePlanRows.value.length, 1, '登入 Email 與課表姓名鍵不同時仍應找到超鐘點課格');
+admin.overtimePlanRows.value[0].source = '校務自訂計畫';
+assert.ok(admin.getOvertimeExpenseSourceOptions().includes('校務自訂計畫'), '目前輸入的新計畫也應立即成為下拉建議');
 
 admin.mappingFields.value = {
   teacherName: 'name',

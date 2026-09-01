@@ -65,6 +65,10 @@ window.UiAdmin = (function () {
     var showTeacherModal = useRef('showTeacherModal', false);
     var teacherModalMode = useRef('teacherModalMode', 'add');
     var teacherForm = useRef('teacherForm', { email: '', name: '', subject: '', jobTitle: '', expensePlan: '', role: 'teacher', baseHours: 16, mutualQuota: 0 });
+    var showOvertimePlanModal = useRef('showOvertimePlanModal', false);
+    var overtimePlanTeacher = useRef('overtimePlanTeacher', null);
+    var overtimePlanRows = useRef('overtimePlanRows', []);
+    var accountingPlanOptions = deps.accountingPlanOptions || { value: ['計畫A', '計畫B', '校內經費'] };
 
     var excelData = useRef('excelData', []);
     var excelHeaders = useRef('excelHeaders', []);
@@ -807,6 +811,148 @@ window.UiAdmin = (function () {
       });
     }
 
+    function teacherIdentityKeys(value) {
+      var keys = [];
+      [value && value.email, value && value.loginEmail, value && value.teacherEmail,
+        value && value.teacherName, value && value.name, value && value['教師Email'],
+        value && value['教師姓名']].forEach(function (item) {
+        var key = String(item == null ? '' : item).trim().toLowerCase();
+        if (key && keys.indexOf(key) < 0) keys.push(key);
+      });
+      return keys;
+    }
+
+    function isOvertimeScheduleEntry(schedule) {
+      var attr = String(schedule && (schedule.attr || schedule['課堂屬性']) || '').trim();
+      if (attr.indexOf('超鐘點') >= 0) return true;
+      return String(schedule && (schedule.specialTags || schedule['特殊標記']) || '')
+        .split(/[,，、;；\/／|｜\s]+/)
+        .some(function (value) { return String(value || '').trim() === '超鐘點'; });
+    }
+
+    function overtimePeriodLabel(period) {
+      var p = parseInt(period, 10);
+      if (p === 0) return '早自習';
+      if (p === 45) return '午休';
+      return p ? '第' + p + '節' : '';
+    }
+
+    function overtimeWeekdayLabel(day) {
+      return ['日', '一', '二', '三', '四', '五', '六', '日'][parseInt(day, 10)] || '';
+    }
+
+    function getOvertimeExpenseSourceOptions() {
+      var seen = {};
+      var list = [];
+      ['計畫A', '計畫B', '校內經費']
+        .concat(accountingPlanOptions.value || [])
+        .concat((overtimePlanRows.value || []).map(function (row) { return row.source; }))
+        .forEach(function (value) {
+        var source = window.FieldMap && window.FieldMap.normalizeExpenseSource
+          ? window.FieldMap.normalizeExpenseSource(value) : String(value || '').trim();
+        if (source && !seen[source]) {
+          seen[source] = true;
+          list.push(source);
+        }
+        });
+      return list;
+    }
+
+    function expenseSourceForSchedule(teacher, schedule) {
+      var raw = teacher && (teacher.expensePlan !== undefined
+        ? teacher.expensePlan
+        : (teacher['鐘點支出計畫'] || teacher['鐘點支出來源'] || ''));
+      if (window.FieldMap && window.FieldMap.expensePlanSourceForSlot) {
+        return window.FieldMap.expensePlanSourceForSlot(raw, {
+          day: schedule.dayOfWeek,
+          period: schedule.period,
+          className: schedule.className
+        });
+      }
+      return '';
+    }
+
+    function openOvertimePlanModal(teacher) {
+      if (!teacher) return;
+      var rows = (allSchedules.value || []).filter(function (schedule) {
+        var scheduleKeys = teacherIdentityKeys(schedule);
+        return teacherIdentityKeys(teacher).some(function (key) {
+          return scheduleKeys.indexOf(key) >= 0;
+        }) && isOvertimeScheduleEntry(schedule);
+      }).slice().sort(function (a, b) {
+        return (parseInt(a.dayOfWeek, 10) || 0) - (parseInt(b.dayOfWeek, 10) || 0)
+          || (parseInt(a.period, 10) || 0) - (parseInt(b.period, 10) || 0)
+          || String(a.className || '').localeCompare(String(b.className || ''), 'zh-Hant')
+          || String(a.activeFrom || '').localeCompare(String(b.activeFrom || ''));
+      });
+      overtimePlanTeacher.value = teacher;
+      overtimePlanRows.value = rows.map(function (schedule, index) {
+        return {
+          key: String(schedule.id || '') + '|' + index,
+          day: parseInt(schedule.dayOfWeek, 10),
+          period: parseInt(schedule.period, 10),
+          className: String(schedule.className || '').trim(),
+          subject: String(schedule.subject || '').trim(),
+          activeFrom: schedule.activeFrom || '',
+          activeTo: schedule.activeTo || '',
+          source: expenseSourceForSchedule(teacher, schedule) || ''
+        };
+      });
+      showOvertimePlanModal.value = true;
+    }
+
+    async function saveOvertimePlan() {
+      var teacher = overtimePlanTeacher.value;
+      var rows = overtimePlanRows.value || [];
+      if (!teacher) return;
+      if (rows.some(function (row) { return !String(row.source || '').trim(); })) {
+        showToast('每一個超鐘點課格都必須選擇經費來源', 'warning');
+        return;
+      }
+      var slots = rows.map(function (row) {
+        return {
+          day: row.day,
+          period: row.period,
+          className: row.className,
+          source: String(row.source || '').trim()
+        };
+      });
+      var serialized = window.FieldMap && window.FieldMap.serializeExpensePlanSlots
+        ? window.FieldMap.serializeExpensePlanSlots(slots) : JSON.stringify(slots);
+      var quota = parseFloat(teacher.mutualQuota);
+      var reqPayload = {
+        '教師Email': teacher.loginEmail || teacher['教師Email'] || teacher.email,
+        '教師姓名': teacher.name || teacher.teacherName || teacher['教師姓名'],
+        '授課科目': teacher.subject || teacher['授課科目'] || '',
+        '職務': teacher.jobTitle || teacher['職務'] || '',
+        '鐘點支出計畫': serialized,
+        '系統角色': teacher.role || teacher['系統角色'] || 'teacher',
+        '基本鐘點': teacher.baseHours === 0 || teacher.baseHours === '0'
+          ? 0 : (parseInt(teacher.baseHours, 10) || 16),
+        '折抵額度': isNaN(quota) || quota < 0 ? 0 : Math.round(quota * 1000) / 1000
+      };
+      loading.value = true;
+      try {
+        await callGasApi('saveTeacher', reqPayload);
+        var mapped = window.FieldMap.mapTeacher(reqPayload);
+        var list = teachersList.value.slice();
+        var index = list.findIndex(function (item) {
+          return String(item.loginEmail || '').toLowerCase() === String(mapped.loginEmail || '').toLowerCase()
+            || item.email === mapped.email;
+        });
+        if (index >= 0) list[index] = Object.assign({}, list[index], mapped);
+        teachersList.value = list;
+        showOvertimePlanModal.value = false;
+        showToast('超鐘點經費來源已儲存', 'success');
+        softRefreshInBackground({ force: true, delay: 800 });
+      } catch (e) {
+        console.error(e);
+        showToast('儲存超鐘點經費來源失敗：' + e.message, 'error');
+      } finally {
+        loading.value = false;
+      }
+    }
+
     async function saveScheduleCell() {
       var isNewVersion = !!scheduleForm.value._newVersion;
       if (isNewVersion && !String(scheduleForm.value.activeFrom || '').trim()) {
@@ -986,12 +1132,14 @@ window.UiAdmin = (function () {
 
     function openAddTeacherModal() {
       teacherModalMode.value = 'add';
+      overtimePlanTeacher.value = null;
       teacherForm.value = { email: '', name: '', subject: '', jobTitle: '', expensePlan: '', role: 'teacher', baseHours: 16, mutualQuota: 0 };
       showTeacherModal.value = true;
     }
 
     function openEditTeacherModal(t) {
       teacherModalMode.value = 'edit';
+      overtimePlanTeacher.value = t;
       teacherForm.value = {
         email: t.loginEmail || t.email,
         name: t.name,
@@ -1657,6 +1805,12 @@ window.UiAdmin = (function () {
       saveScheduleCell: saveScheduleCell,
       clearScheduleCell: clearScheduleCell,
       updateTeacherBaseHours: updateTeacherBaseHours,
+      showOvertimePlanModal: showOvertimePlanModal,
+      overtimePlanTeacher: overtimePlanTeacher,
+      overtimePlanRows: overtimePlanRows,
+      getOvertimeExpenseSourceOptions: getOvertimeExpenseSourceOptions,
+      openOvertimePlanModal: openOvertimePlanModal,
+      saveOvertimePlan: saveOvertimePlan,
       openAddTeacherModal: openAddTeacherModal,
       openEditTeacherModal: openEditTeacherModal,
       saveTeacher: saveTeacher,

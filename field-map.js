@@ -193,6 +193,169 @@ window.FieldMap = (function () {
     return 'teacher';
   }
 
+  /**
+   * 超鐘點經費配置共用格式：教師名單的單一儲存格存 JSON 陣列。
+   * 舊資料若是一般文字，視為該教師所有超鐘點的單一來源。
+   */
+  function normalizeExpenseSource(raw) {
+    return String(raw == null ? '' : raw).replace(/\s+/g, ' ').trim();
+  }
+
+  function expenseClassTokens(raw) {
+    return String(raw == null ? '' : raw).trim()
+      .split(/[,，、\/／;；|｜\s]+/)
+      .map(function (value) { return value.trim(); })
+      .filter(function (value) { return value && !/^0+$/.test(value); });
+  }
+
+  function expenseClassesOverlap(left, right) {
+    const leftTokens = expenseClassTokens(left);
+    const rightTokens = expenseClassTokens(right);
+    if (!leftTokens.length || !rightTokens.length) return true;
+    return leftTokens.some(function (value) { return rightTokens.indexOf(value) >= 0; });
+  }
+
+  function isExpensePeriod(value) {
+    const period = parseInt(value, 10);
+    return period === 0 || period === 45 || (period >= 1 && period <= 8);
+  }
+
+  function normalizeExpenseSlot(item, inheritedSource) {
+    if (!item || typeof item !== 'object') return null;
+    const source = normalizeExpenseSource(inheritedSource || item.source || item.plan
+      || item['經費來源'] || item['支出計畫'] || item['計畫']);
+    const day = parseInt(item.day !== undefined ? item.day
+      : (item.dayOfWeek !== undefined ? item.dayOfWeek : item['星期']), 10);
+    const period = parseInt(item.period !== undefined ? item.period : item['節次'], 10);
+    const className = String(item.className !== undefined ? item.className
+      : (item['班級'] !== undefined ? item['班級'] : '')).trim();
+    if (!source || !Number.isFinite(day) || day < 1 || day > 7 || !isExpensePeriod(period)) return null;
+    return { day: day, period: period, className: className, source: source };
+  }
+
+  function parseExpensePlan(value) {
+    const empty = { mode: 'empty', slots: [], legacySource: '', invalid: false, invalidCount: 0 };
+    if (Array.isArray(value)) value = JSON.stringify(value);
+    const text = String(value == null ? '' : value).trim();
+    if (!text) return empty;
+
+    let raw;
+    if (text.charAt(0) !== '[') {
+      return { mode: 'legacy', slots: [], legacySource: normalizeExpenseSource(text), invalid: false, invalidCount: 0 };
+    }
+    try {
+      raw = JSON.parse(text);
+    } catch (e) {
+      return { mode: 'invalid', slots: [], legacySource: '', invalid: true, invalidCount: 1 };
+    }
+    if (!Array.isArray(raw)) {
+      return { mode: 'invalid', slots: [], legacySource: '', invalid: true, invalidCount: 1 };
+    }
+
+    const slots = [];
+    const seen = {};
+    let invalidCount = 0;
+    raw.forEach(function (item) {
+      if (item && Array.isArray(item.slots)) {
+        const inherited = item.source || item.plan || item['經費來源'] || item['支出計畫'] || item['計畫'];
+        item.slots.forEach(function (slot) {
+          const normalized = normalizeExpenseSlot(slot, inherited);
+          if (!normalized) {
+            invalidCount += 1;
+            return;
+          }
+          const key = normalized.day + '|' + normalized.period + '|' + normalized.className;
+          if (seen[key]) {
+            invalidCount += 1;
+            return;
+          }
+          seen[key] = true;
+          slots.push(normalized);
+        });
+        return;
+      }
+      const normalized = normalizeExpenseSlot(item);
+      if (!normalized) {
+        invalidCount += 1;
+        return;
+      }
+      const key = normalized.day + '|' + normalized.period + '|' + normalized.className;
+      if (seen[key]) {
+        invalidCount += 1;
+        return;
+      }
+      seen[key] = true;
+      slots.push(normalized);
+    });
+    return {
+      mode: 'slots',
+      slots: slots,
+      legacySource: '',
+      invalid: invalidCount > 0,
+      invalidCount: invalidCount
+    };
+  }
+
+  function expensePlanSourceForSlot(value, slot) {
+    const parsed = value && value.mode ? value : parseExpensePlan(value);
+    if (!slot) return '';
+    if (parsed.mode === 'legacy') return parsed.legacySource;
+    if (parsed.mode !== 'slots') return '';
+    const day = parseInt(slot.day !== undefined ? slot.day : slot.dayOfWeek, 10);
+    const period = parseInt(slot.period, 10);
+    const className = slot.className !== undefined ? slot.className : slot['班級'];
+    const hits = parsed.slots.filter(function (item) {
+      return item.day === day && item.period === period && expenseClassesOverlap(item.className, className);
+    });
+    const sources = [];
+    hits.forEach(function (item) {
+      if (sources.indexOf(item.source) < 0) sources.push(item.source);
+    });
+    return sources.length === 1 ? sources[0] : '';
+  }
+
+  function expensePlanSources(value) {
+    const parsed = value && value.mode ? value : parseExpensePlan(value);
+    const sources = [];
+    if (parsed.mode === 'legacy' && parsed.legacySource) return [parsed.legacySource];
+    (parsed.slots || []).forEach(function (item) {
+      if (sources.indexOf(item.source) < 0) sources.push(item.source);
+    });
+    return sources;
+  }
+
+  function serializeExpensePlanSlots(slots) {
+    const normalized = [];
+    const seen = {};
+    (slots || []).forEach(function (slot) {
+      const item = normalizeExpenseSlot(slot);
+      if (!item) return;
+      const key = item.day + '|' + item.period + '|' + item.className;
+      if (seen[key]) return;
+      seen[key] = true;
+      normalized.push(item);
+    });
+    return JSON.stringify(normalized);
+  }
+
+  function formatExpensePlanSummary(value) {
+    const parsed = value && value.mode ? value : parseExpensePlan(value);
+    if (parsed.mode === 'legacy') return parsed.legacySource || '預設';
+    if (parsed.mode !== 'slots') return parsed.invalid ? '配置格式錯誤' : '預設';
+    const counts = {};
+    const order = [];
+    (parsed.slots || []).forEach(function (item) {
+      if (!counts[item.source]) {
+        counts[item.source] = 0;
+        order.push(item.source);
+      }
+      counts[item.source] += 1;
+    });
+    return order.length ? order.map(function (source) {
+      return source + '（' + counts[source] + '節）';
+    }).join('、') : '預設';
+  }
+
   function normalizeSpecialTags(raw) {
     const aliases = {
       '合班': '併班',
@@ -425,9 +588,12 @@ window.FieldMap = (function () {
   /** 前端 → Sheets：教師寫入列（同時寫入授課科目/任課科目別名，相容舊表頭） */
   function teacherToSheet(t, semesterId) {
     const subject = t.subject || t["授課科目"] || t["任課科目"] || '';
-    const expensePlan = String(t.expensePlan !== undefined ? t.expensePlan
+    const rawExpensePlan = t.expensePlan !== undefined ? t.expensePlan
       : (t["鐘點支出計畫"] !== undefined ? t["鐘點支出計畫"]
-        : (t["鐘點支出來源"] !== undefined ? t["鐘點支出來源"] : (t["計畫"] || "")))).trim();
+        : (t["鐘點支出來源"] !== undefined ? t["鐘點支出來源"] : (t["計畫"] || "")));
+    const expensePlan = Array.isArray(rawExpensePlan)
+      ? serializeExpensePlanSlots(rawExpensePlan)
+      : String(rawExpensePlan == null ? '' : rawExpensePlan).trim();
     const quota = t.mutualQuota !== undefined ? t.mutualQuota
       : (t["折抵額度"] !== undefined ? t["折抵額度"] : 0);
     return {
@@ -599,6 +765,13 @@ window.FieldMap = (function () {
     asInt,
     asFloat,
     normalizeRole,
+    normalizeExpenseSource,
+    expenseClassesOverlap,
+    parseExpensePlan,
+    expensePlanSourceForSlot,
+    expensePlanSources,
+    serializeExpensePlanSlots,
+    formatExpensePlanSummary,
     normalizeSpecialFlow,
     isCombinedReturn,
     normalizeRequestStatus,
