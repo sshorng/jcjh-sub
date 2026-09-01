@@ -339,7 +339,7 @@ function renderPrintCheckbox(label, checked) {
   return `<span class="official-checkbox${checked ? ' is-checked' : ''}">${checked ? '■' : '□'}${escapePrintHtml(label)}</span>`;
 }
 
-function getPrintSignatureText(group, rows, ctx, getName) {
+function getPrintSignatureText(group, rows, ctx, getName, showTeacherName) {
   const entries = [];
   const signatureSide = 'actual';
   (rows || []).forEach(row => {
@@ -354,9 +354,8 @@ function getPrintSignatureText(group, rows, ctx, getName) {
     if (!name || entries.some(entry => entry.identity === identity)) return;
     entries.push({ key, name, identity });
   });
-  const admin = ctx.isAdmin === true || !!(ctx.isAdmin && ctx.isAdmin.value === true);
   return entries.map(entry => {
-    const fallback = admin ? entry.name : '';
+    const fallback = showTeacherName ? entry.name : '';
     return group && group.isPaperDraft
       ? getPaperSignatureText(group, entry.key, fallback)
       : fallback;
@@ -611,7 +610,14 @@ function generateFormHtml(g, currentType, ctx) {
       return `<td colspan="${dayCols[index]}" class="official-slot-value official-class-value">${escapePrintHtml(value)}</td>`;
     }).join('');
     const label = ['', '第一節', '第二節', '第三節', '第四節', '第五節', '第六節', '第七節', '第八節'][period];
-    const periodSignature = getPrintSignatureText(g || {}, periodRows, ctx, getName);
+    const periodSignature = getPrintSignatureText(
+      g || {},
+      periodRows,
+      ctx,
+      getName,
+      isClassNotice
+        || ['admin', 'officialteacher'].includes(String(currentType || '').trim().toLowerCase())
+    );
     const signatureCell = `<td colspan="2" class="official-signature-cell">${periodSignature ? `<span class="official-signature-name">${escapePrintHtml(periodSignature)}</span>` : ''}</td>`;
     return `
       <tr class="official-subject-row">
@@ -1149,12 +1155,15 @@ function buildPrintForms(recordsToPrint, allSubs, ctx) {
   audienceBundles.forEach(function (bundle) {
     const staffForm = generateFormHtml(bundle.group, 'Official', ctx);
     if (!staffForm) return;
+    const staffTeacherForm = generateFormHtml(bundle.group, 'OfficialTeacher', ctx);
+    const isAdmin = ctx && (ctx.isAdmin === true || (ctx.isAdmin && ctx.isAdmin.value === true));
+    const staffDisplayForm = isAdmin ? (staffTeacherForm || staffForm) : staffForm;
     const staffLabels = getPrintAudienceLabels(bundle.group, ctx);
-    forms.push(withPrintAudienceLabel(staffForm, staffLabels[0]));
+    forms.push(withPrintAudienceLabel(staffDisplayForm, staffLabels[0]));
     audienceLabelSets.push(staffLabels);
-    printCopies.push(withPrintAudienceLabel(staffForm, staffLabels[0]));
-    printCopies.push(withPrintAudienceLabel(staffForm, staffLabels[1]));
-    printCopies.push(withPrintAudienceLabel(staffForm, staffLabels[2]));
+    printCopies.push(withPrintAudienceLabel(staffDisplayForm, staffLabels[0]));
+    printCopies.push(withPrintAudienceLabel(staffTeacherForm || staffForm, staffLabels[1]));
+    printCopies.push(withPrintAudienceLabel(staffTeacherForm || staffForm, staffLabels[2]));
     staffFormCount += 1;
 
     bundle.members.forEach(member => classGroups.push(member));

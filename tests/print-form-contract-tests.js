@@ -140,6 +140,8 @@ const classLeaveOutput = context.window.generateFormHtml(substitution, 'NoticeCl
 assert.match(classLeaveOutput, /假別：請假/);
 assert.doesNotMatch(classLeaveOutput, /假別：事假/);
 assert.doesNotMatch(classLeaveOutput, /原因：/);
+assert.match(classLeaveOutput, /class="official-signature-name">王小明/);
+assert.doesNotMatch(output, /class="official-signature-name">王小明/);
 assert.match(context.window.getPrintPreviewCss(), /official-audience-label \{[^}]*top: -5\.8mm[^}]*left: 0[^}]*padding: \.8mm 2mm[^}]*border: none[^}]*background: #e5e7eb[^}]*font-size: 10pt/);
 assert.match(context.window.getPrintPreviewCss(), /official-audience-label-retain \{[^}]*border: none; background: #e5e7eb;/);
 assert.match(styleSource, /\.official-audience-label \{[^}]*top: -5\.8mm[^}]*padding: \.8mm 2mm[^}]*border: none[^}]*background: #e5e7eb[^}]*font-size: 10pt/);
@@ -442,9 +444,11 @@ assert.equal(audienceForms.classCopyCount, 2, 'each class should receive its own
 assert.equal(audienceForms.copyCount, 5, 'three staff copies plus one copy per class');
 assert.equal(audienceForms.pageCount, 3, 'five recipient copies should use three A4 pages');
 assert.match(audienceForms[0], /假別：事假/);
+assert.doesNotMatch(audienceForms[0], /class="official-signature-name">王小明/);
 assert.ok(audienceForms.slice(1).every(form => /假別：請假/.test(form)
   && !/假別：事假/.test(form)
   && !/原因：/.test(form)), '班級副本不得列出實際假別與原因');
+assert.ok(audienceForms.slice(1).some(form => /class="official-signature-name">王小明/.test(form)), '班級聯應顯示實際代課教師');
 assert.match(audienceForms[0], /801/);
 assert.match(audienceForms[0], /802/);
 assert.ok(audienceForms.slice(1).some(form => /班級：801/.test(form)));
@@ -457,6 +461,12 @@ assert.match(audiencePacked, /請假教師：陳小華/);
 assert.match(audiencePacked, /代課\/調課教師：王小明/);
 assert.match(audiencePacked, /班級：801/);
 assert.match(audiencePacked, /班級：802/);
+assert.doesNotMatch(audienceForms.printCopies[0], /class="official-signature-name">王小明/);
+assert.match(audienceForms.printCopies[1], /class="official-signature-name">王小明/);
+assert.match(audienceForms.printCopies[2], /class="official-signature-name">王小明/);
+const adminAudienceForms = context.window.buildPrintForms(audienceBatchRecords, [], Object.assign({}, fixtureContext, { isAdmin: true }));
+assert.match(adminAudienceForms[0], /class="official-signature-name">王小明/);
+assert.match(adminAudienceForms.printCopies[0], /class="official-signature-name">王小明/);
 const audiencePreview = context.window.buildPrintPreview(Object.assign({}, fixtureContext, {
   selectedRecordIds: { value: audienceBatchRecords.map(record => record.id) },
   substitutionRecords: { value: audienceBatchRecords }
