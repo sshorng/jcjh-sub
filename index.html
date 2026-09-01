@@ -1803,14 +1803,13 @@
                 <table class="custom-table billing-table">
                   <thead>
                     <tr class="billing-th-group">
-                      <th colspan="3" class="billing-th-id">教師</th>
+                      <th colspan="2" class="billing-th-id">教師</th>
                        <th colspan="8" class="billing-th-17">1～7＋早自習／午休 鐘點</th>
                        <th colspan="4" class="billing-th-sub">早自習／1～7／午休 我去代課</th>
                       <th colspan="2" class="billing-th-p8">第 8 節</th>
                     </tr>
                     <tr class="billing-th-cols">
                       <th class="billing-sticky-name">姓名</th>
-                      <th title="超鐘點支出來源；留白為預設經費">超鐘點計畫</th>
                       <th>科目</th>
                        <th title="每週早自習＋1～7＋午休；基本／一般／超鐘點／抽離（不含巡堂／第8）">排課</th>
                       <th title="教師基本授課鐘點">基鐘</th>
@@ -1831,7 +1830,6 @@
                   <tbody>
                     <tr v-for="row in monthlyReportData" :key="row.email">
                       <td class="billing-sticky-name"><strong>{{ row.name }}</strong></td>
-                     <td class="billing-plan" :title="(row.expensePlanWarnings || []).join('；')">{{ row.expensePlanSummary || row.expensePlan || '預設' }}</td>
                       <td class="billing-subj">{{ row.subject }}</td>
                       <td class="num">{{ row.weeklyPeriods }}</td>
                       <td class="num">{{ row.baseHours }}</td>
@@ -1849,7 +1847,7 @@
                        <td class="num result-p8">{{ row.period8Fee ? ('$' + row.period8Fee) : '無' }}</td>
                     </tr>
                     <tr v-if="monthlyReportData.length === 0">
-                      <td colspan="17" class="billing-empty">請先在「教師名單」設定基本授課鐘點，再選擇月份統計。</td>
+                      <td colspan="16" class="billing-empty">請先在「教師名單」設定基本授課鐘點，再選擇月份統計。</td>
                     </tr>
                   </tbody>
                 </table>

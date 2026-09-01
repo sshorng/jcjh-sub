@@ -211,7 +211,12 @@ window.DomainBilling = (function () {
     return tags.indexOf('超鐘點') >= 0;
   }
 
-  var UNASSIGNED_EXPENSE_SOURCE = '未分配';
+  var DEFAULT_EXPENSE_SOURCE = '預設';
+
+  function normalizeExpenseSource(value) {
+    var source = String(value == null ? '' : value).trim();
+    return !source || source === '未分配' ? DEFAULT_EXPENSE_SOURCE : source;
+  }
 
   function teacherExpensePlanValue(teacher) {
     return teacher && (teacher.expensePlan !== undefined
@@ -302,17 +307,17 @@ window.DomainBilling = (function () {
       var source = sourceForOvertimeSchedule(teacher, schedule);
       if (source && sources.indexOf(source) < 0) sources.push(source);
     });
-    if (sources.length === 1) return sources[0];
-    return sources.length > 1 ? UNASSIGNED_EXPENSE_SOURCE : '';
+    if (sources.length === 1) return normalizeExpenseSource(sources[0]);
+    return sources.length > 1 ? DEFAULT_EXPENSE_SOURCE : '';
   }
 
   function overtimeDeductionSourceForRecord(record, teacher, schedules, schoolSwapIndex) {
     var source = overtimeExpenseSourceForRecord(record, [teacher], schedules, schoolSwapIndex);
     if (source) return source;
     var parsed = parseTeacherExpensePlan(teacher);
-    if (parsed.mode === 'legacy' && parsed.legacySource) return parsed.legacySource;
-    if (parsed.mode === 'empty') return '預設';
-    return UNASSIGNED_EXPENSE_SOURCE;
+    if (parsed.mode === 'legacy' && parsed.legacySource) return normalizeExpenseSource(parsed.legacySource);
+    if (parsed.mode === 'empty') return DEFAULT_EXPENSE_SOURCE;
+    return DEFAULT_EXPENSE_SOURCE;
   }
 
   /**
@@ -338,7 +343,7 @@ window.DomainBilling = (function () {
     }).sort(sortOvertimeSchedules);
 
     function getBucket(source) {
-      var name = String(source || UNASSIGNED_EXPENSE_SOURCE).trim() || UNASSIGNED_EXPENSE_SOURCE;
+      var name = normalizeExpenseSource(source);
       if (!bucketMap[name]) {
         bucketMap[name] = {
           source: name,
@@ -373,7 +378,7 @@ window.DomainBilling = (function () {
 
       if (parsed.mode !== 'slots') {
         var fallbackSource = parsed.mode === 'legacy' && parsed.legacySource
-          ? parsed.legacySource : '預設';
+          ? parsed.legacySource : DEFAULT_EXPENSE_SOURCE;
         addHours(fallbackSource, target, weekIndex, null);
         return;
       }
@@ -383,14 +388,13 @@ window.DomainBilling = (function () {
       });
       var usable = Math.min(target, candidates.length);
       candidates.slice(0, usable).forEach(function (schedule) {
-        addHours(sourceForOvertimeSchedule(teacher, schedule) || UNASSIGNED_EXPENSE_SOURCE, 1, weekIndex, schedule);
+        addHours(sourceForOvertimeSchedule(teacher, schedule) || DEFAULT_EXPENSE_SOURCE, 1, weekIndex, schedule);
       });
       if (candidates.length > target) {
         warnings.push('教師「' + (teacher.name || teacher.teacherName || '') + '」第 ' + (weekIndex + 1) + ' 週超鐘點課格多於計算節數。');
       }
       if (candidates.length < target) {
-        addHours(UNASSIGNED_EXPENSE_SOURCE, target - candidates.length, weekIndex, null);
-        warnings.push('教師「' + (teacher.name || teacher.teacherName || '') + '」第 ' + (weekIndex + 1) + ' 週有 ' + (target - candidates.length) + ' 節超鐘點尚未對應課格來源。');
+        addHours(DEFAULT_EXPENSE_SOURCE, target - candidates.length, weekIndex, null);
       }
     });
 
@@ -398,9 +402,6 @@ window.DomainBilling = (function () {
       bucket.weeklyHours = weeklyGroups.length ? bucket.rawHours / weeklyGroups.length : bucket.rawHours;
       bucket.schedule = bucket.slots.join('、');
     });
-    if (bucketMap[UNASSIGNED_EXPENSE_SOURCE]) {
-      warnings.push('部分超鐘點缺少經費來源，已暫列「' + UNASSIGNED_EXPENSE_SOURCE + '」。');
-    }
     return { buckets: buckets, warnings: warnings, parsed: parsed };
   }
 
@@ -412,10 +413,11 @@ window.DomainBilling = (function () {
     var remainingLeave = Math.max(0, Number(leaveDeduction) || 0);
 
     function ensureFallbackBucket() {
-      if (!buckets.length) {
-        buckets.push({ source: UNASSIGNED_EXPENSE_SOURCE, rawHours: 0, weeklyHours: 0, schedule: '', slots: [], weekCounts: [], reduceHours: 0, grossHours: 0, deduction: 0, actualHours: 0 });
-      }
-      return buckets[buckets.length - 1];
+      var fallback = buckets.find(function (bucket) { return bucket.source === DEFAULT_EXPENSE_SOURCE; });
+      if (fallback) return fallback;
+      fallback = { source: DEFAULT_EXPENSE_SOURCE, rawHours: 0, weeklyHours: 0, schedule: '', slots: [], weekCounts: [], reduceHours: 0, grossHours: 0, deduction: 0, actualHours: 0 };
+      buckets.push(fallback);
+      return fallback;
     }
 
     buckets.forEach(function (bucket) {
@@ -465,6 +467,27 @@ window.DomainBilling = (function () {
       remainingLeave = 0;
     }
     return buckets;
+  }
+
+  function formatExpenseHours(value) {
+    var hours = Number(value) || 0;
+    return String(Math.round(hours * 10) / 10).replace(/\.0$/, '');
+  }
+
+  function formatExpensePlanSummary(value, allocations) {
+    var summary = window.FieldMap && window.FieldMap.formatExpensePlanSummary
+      ? window.FieldMap.formatExpensePlanSummary(value)
+      : String(value || DEFAULT_EXPENSE_SOURCE).trim() || DEFAULT_EXPENSE_SOURCE;
+    summary = summary.replace(/未分配/g, DEFAULT_EXPENSE_SOURCE);
+    var defaultHours = (allocations || []).reduce(function (sum, allocation) {
+      return String(allocation && allocation.source || '').trim() === DEFAULT_EXPENSE_SOURCE
+        ? sum + (Number(allocation.rawHours) || 0) : sum;
+    }, 0);
+    if (defaultHours <= 0) return summary;
+    var defaultSummary = DEFAULT_EXPENSE_SOURCE + '（' + formatExpenseHours(defaultHours) + '節）';
+    if (summary === DEFAULT_EXPENSE_SOURCE) return defaultSummary;
+    if (summary.indexOf(DEFAULT_EXPENSE_SOURCE + '（') >= 0) return summary;
+    return summary + '、' + defaultSummary;
   }
 
   function isCombinedReturnRecord(record) {
@@ -947,9 +970,7 @@ window.DomainBilling = (function () {
         selfPaidDeduction + publicOvertimeUsed,
         deductionBySource
       );
-      var expensePlanSummary = window.FieldMap && window.FieldMap.formatExpensePlanSummary
-        ? window.FieldMap.formatExpensePlanSummary(teacherExpensePlanValue(t))
-        : String(teacherExpensePlanValue(t) || '預設').trim();
+      var expensePlanSummary = formatExpensePlanSummary(teacherExpensePlanValue(t), expensePlanAllocations);
       var expensePlanWarnings = expenseBucketResult.warnings || [];
 
       var p8row = p8.byEmail[em] || { count: 0, fee: 0, details: [] };

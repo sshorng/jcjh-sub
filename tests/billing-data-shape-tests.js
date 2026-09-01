@@ -109,4 +109,23 @@ assert.deepEqual(configuredRow.expensePlanAllocations.map(row => [row.source, ro
   ['計畫B', 1, 1, 0]
 ]);
 
+const partiallyConfiguredPlan = JSON.stringify([
+  { day: 1, period: 1, className: '701', source: '計畫A' }
+]);
+const partiallyConfiguredRow = window.DomainBilling.buildMonthlyReportRows({
+  teachers: [{ email: 'Billing', name: 'Billing', baseHours: 0, expensePlan: partiallyConfiguredPlan }],
+  allSchedules: [
+    window.FieldMap.mapSchedule({ '教師姓名': 'Billing', '星期': 1, '節次': 1, '班級': '701', '課堂屬性': '超鐘點' }),
+    window.FieldMap.mapSchedule({ '教師姓名': 'Billing', '星期': 1, '節次': 2, '班級': '702', '課堂屬性': '超鐘點' })
+  ],
+  substitutionRecords: [],
+  reportMonth: '2026-07',
+  reportWeeksCount: 1
+})[0];
+assert.equal(partiallyConfiguredRow.expensePlanSummary, '計畫A（1節）、預設（1節）');
+assert.deepEqual(partiallyConfiguredRow.expensePlanAllocations.map(row => [row.source, row.rawHours]), [
+  ['計畫A', 1],
+  ['預設', 1]
+]);
+
 console.log('billing data shape tests PASS');

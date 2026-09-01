@@ -163,6 +163,12 @@ const missingSourceInput = Object.assign({}, configuredInput, {
 });
 missingSourceInput.monthlyReportRows = window.DomainBilling.buildMonthlyReportRows(missingSourceInput);
 const missingSource = window.ExportAccounting.buildExportData(missingSourceInput);
-assert.ok(missingSource.blocking.some(message => message.indexOf('未分配') >= 0), 'missing slot source must block accounting export');
+const defaultPlan = missingSource.overtimePlans.find(group => group.plan === '預設');
+assert.ok(defaultPlan, 'missing slot source must be grouped into the default overtime plan');
+assert.equal(defaultPlan.rows[0].expensePlan, '預設');
+assert.equal(defaultPlan.rows[0].grossHours, 1);
+assert.equal(defaultPlan.rows[0].actualHours, 1);
+assert.equal(missingSource.blocking.length, 0, 'default overtime plan must not block accounting export');
+assert.ok(missingSource.summary.some(item => item.key === 'overtime:預設' && item.hours === 1), 'default overtime plan must be included in export summary');
 
 console.log('export accounting tests PASS');

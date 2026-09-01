@@ -250,7 +250,8 @@
   }
 
   function normalizeExpensePlan(value) {
-    return String(value == null ? '' : value).replace(/\s+/g, ' ').trim();
+    var plan = String(value == null ? '' : value).replace(/\s+/g, ' ').trim();
+    return plan === '未分配' ? '預設' : plan;
   }
 
   function teacherExpensePlan(teacher) {
@@ -298,6 +299,7 @@
     var parsed = parseExpensePlan(row && row.expensePlan);
     if (parsed.mode === 'legacy') add(parsed.legacySource);
     if (parsed.mode === 'slots') (parsed.slots || []).forEach(function (slot) { add(slot.source); });
+    if (parsed.mode === 'empty') add('預設');
     return sources;
   }
 
@@ -807,7 +809,7 @@
     var parsed = parseExpensePlan(source && source.expensePlan);
     if (parsed.mode === 'legacy' && parsed.legacySource) return parsed.legacySource;
     if (parsed.mode === 'empty') return '預設';
-    return '未分配';
+    return '預設';
   }
 
   function substitutionKey(record) {
@@ -879,16 +881,16 @@
     var records = opts.substitutionRecords || [];
     reportSourceRows(opts).forEach(function (source) {
       if (!normalizeExpensePlan(source.expensePlan)) return;
-        chargedSubstitutionRecords(records, opts.allSchedules, source, period, schoolSwapIndex)
-         .filter(function (record) { return !isCombinedReturnRecord(record); })
-         .forEach(function (record) {
-           var key = substitutionKey(record);
-           var email = teacherEmail(source.email);
-           var item = {
-             record: record,
-             source: source,
-             plan: expenseSourceForChargedRecord(opts, source, record, schoolSwapIndex)
-           };
+      chargedSubstitutionRecords(records, opts.allSchedules, source, period, schoolSwapIndex)
+        .filter(function (record) { return !isCombinedReturnRecord(record); })
+        .forEach(function (record) {
+          var key = substitutionKey(record);
+          var email = teacherEmail(source.email);
+          var item = {
+            record: record,
+            source: source,
+            plan: expenseSourceForChargedRecord(opts, source, record, schoolSwapIndex)
+          };
           result.byKey[key] = item;
           if (!result.byOriginal[email]) result.byOriginal[email] = [];
           result.byOriginal[email].push(item);
@@ -1181,7 +1183,7 @@
       var parsed = parseExpensePlan(source.expensePlan);
       var addPlan = function (value) {
         var plan = normalizeExpensePlan(value);
-        if (plan && plan !== '預設' && planKeys.indexOf(plan) < 0) planKeys.push(plan);
+        if (plan && planKeys.indexOf(plan) < 0) planKeys.push(plan);
       };
       expensePlanSourcesForRow(source).forEach(addPlan);
       if (parsed.invalid) {
@@ -1191,9 +1193,6 @@
       }
       (source.expensePlanWarnings || []).forEach(function (warning) {
         addUniqueMessage(data.warnings, warning);
-        if (String(warning).indexOf('未分配') >= 0) {
-          addUniqueMessage(data.blocking, warning + '請先補上課格經費來源。');
-        }
       });
     });
     planKeys.sort(function (a, b) { return a.localeCompare(b, 'zh-Hant', { numeric: true }); });
