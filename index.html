@@ -1034,7 +1034,7 @@
                         </div>
                       </td>
                       <td>{{ row.items[0].requesterName }}</td>
-                      <td>{{ row.items[0].targetTeacherName }}</td>
+                       <td>{{ getBatchGroupTeacherSummary(row) }}</td>
                       <td><span class="hist-slot-inline">{{ getBatchGroupSlotSummary(row, formatLeaveClassSlot) }}</span></td>
                       <td><span class="hist-slot-inline">{{ getBatchGroupSlotSummary(row, formatExchangeClassSlot) }}</span></td>
                       <td><span class="status-badge w-fit-fs-75" :class="getBatchGroupStatusClass(row)">{{ getBatchGroupStatusText(row) }}</span></td>
@@ -1277,7 +1277,7 @@
                         </div>
                       </td>
                       <td>{{ row.items[0].requesterName }}</td>
-                      <td>{{ row.items[0].targetTeacherName }}</td>
+                       <td>{{ getBatchGroupTeacherSummary(row) }}</td>
                       <td><span class="hist-slot-inline">{{ getBatchGroupSlotSummary(row, formatLeaveClassSlot) }}</span></td>
                       <td><span class="hist-slot-inline">{{ getBatchGroupSlotSummary(row, formatExchangeClassSlot) }}</span></td>
                       <td><span class="status-badge w-fit-fs-75" :class="getBatchGroupStatusClass(row)">{{ getBatchGroupStatusText(row) }}</span></td>
@@ -1506,7 +1506,7 @@
                         </div>
                       </td>
                       <td>{{ row.items[0].requesterName }}</td>
-                      <td>{{ row.items[0].targetTeacherName }}</td>
+                       <td>{{ getBatchGroupTeacherSummary(row) }}</td>
                       <td><span class="hist-slot-inline">{{ getBatchGroupSlotSummary(row, formatHistoryLeaveSlot) }}</span></td>
                       <td><span class="hist-slot-inline">{{ getBatchGroupSlotSummary(row, formatHistoryExchangeSlot) }}</span></td>
                       <td>
@@ -2574,7 +2574,7 @@
                            <div style="font-weight:700;color:#1d4ed8;font-size:0.82rem;margin-bottom:6px;">A．目前原課</div>
                           <div style="font-size:0.82rem;line-height:1.5;">
                             <strong>{{ activeCell.teacherName }}</strong><br>
-                            {{ formatTriangleSlot({ date: inputRequestDate, day: activeCell.dayOfWeek, period: activeCell.period }, activeCell.classData) }}
+                            {{ formatTriangleSlot({ date: inputRequestDate, day: activeCell.dayOfWeek, period: activeCell.period }, activeCell.classData, activeCell.teacherName) }}
                           </div>
                         </div>
                          <div class="card" style="margin:0;padding:12px;background:#fff;border:1px solid #bfdbfe;">
@@ -2601,7 +2601,7 @@
                               @click="selectTriangleCandidateB(candidate)"
                             >
                               <strong style="font-size:0.78rem;">B．{{ candidate.teacherName }}</strong>
-                              <span style="display:block;font-size:0.74rem;margin-top:2px;color:var(--text-secondary);">{{ formatTriangleSlot(candidate, candidate) }}</span>
+                              <span style="display:block;font-size:0.74rem;margin-top:2px;color:var(--text-secondary);">{{ formatTriangleSlot(candidate, candidate, candidate.teacherName) }}</span>
                               <span v-if="candidate.triangleCanDirectExchange || candidate.isPullOut || candidate.attr === '抽離' || triangleCandidateIsRestricted(candidate)" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">
                                 <span v-if="candidate.triangleCanDirectExchange" class="badge-match" style="background:#dcfce7;color:#166534;">可直接對調</span>
                                 <span v-if="candidate.isPullOut || candidate.attr === '抽離'" class="badge-match badge-pullout">抽離</span>
@@ -2622,7 +2622,7 @@
                               @click="selectTriangleCandidateC(candidate)"
                             >
                               <strong style="font-size:0.78rem;">C．{{ candidate.teacherName }}</strong>
-                              <span style="display:block;font-size:0.74rem;color:var(--text-secondary);margin-top:2px;">{{ formatTriangleSlot(candidate, candidate) }}</span>
+                               <span style="display:block;font-size:0.74rem;color:var(--text-secondary);margin-top:2px;">{{ formatTriangleSlot(candidate, candidate, candidate.teacherName) }}</span>
                               <span v-if="candidate.isPullOut || candidate.attr === '抽離' || triangleCandidateIsRestricted(candidate)" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">
                                 <span v-if="candidate.isPullOut || candidate.attr === '抽離'" class="badge-match badge-pullout">抽離</span>
                                 <span v-if="triangleCandidateIsRestricted(candidate)" class="badge-match badge-restricted">綁課</span>
@@ -2640,9 +2640,9 @@
                      <div v-if="trianglePreviewRows.length" style="margin-top:14px;padding:12px 14px;background:#fff;border:1px solid var(--border-color);border-radius:10px;">
                        <div style="font-weight:700;color:var(--text-primary);font-size:0.86rem;margin-bottom:8px;">交換前後預覽</div>
                        <div v-for="row in trianglePreviewRows" :key="'tri-preview-' + row.index" style="display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center;padding:8px 0;border-top:1px solid #f1f5f9;font-size:0.78rem;line-height:1.45;">
-                         <span><strong>{{ row.sourceTeacher }}</strong><br>{{ formatTriangleSlot(row.sourceSlot, row.sourceCourse) }}</span>
+                         <span><strong>{{ row.sourceTeacher }}</strong><br>{{ formatTriangleSlot(row.sourceSlot, row.sourceCourse, row.sourceTeacher) }}</span>
                           <span style="font-size:1.05rem;color:#64748b;">→</span>
-                         <span><strong>{{ row.targetTeacher }} 時段</strong><br>{{ formatTriangleSlot(row.targetSlot, row.sourceCourse) }}</span>
+                         <span><strong>{{ row.targetTeacher }} 時段</strong><br>{{ formatTriangleSlot(row.targetSlot, row.sourceCourse, row.sourceTeacher) }}</span>
                        </div>
                        <div style="margin-top:8px;font-size:0.75rem;color:var(--text-secondary);">三位教師完成交換後，每位教師只保留一個最終授課時段；中間步驟的暫時衝堂不單獨否決。</div>
                      </div>
@@ -2753,7 +2753,7 @@
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px;">
                          <section v-for="teacher in triangleTimetablePreview" :key="'tri-timetable-' + teacher.role" style="min-width:0;border:1px solid #bfdbfe;border-radius:10px;background:#eff6ff;padding:8px;">
                  <div style="font-weight:700;color:#1d4ed8;font-size:0.82rem;margin-bottom:3px;">{{ teacher.role }}．{{ teacher.teacherName }}</div>
-                 <div style="font-size:0.68rem;color:#2563eb;margin-bottom:7px;">原課：{{ formatTriangleSlot(teacher.sourceSlot, teacher.sourceCourse) }}</div>
+                  <div style="font-size:0.68rem;color:#2563eb;margin-bottom:7px;">原課：{{ formatTriangleSlot(teacher.sourceSlot, teacher.sourceCourse, teacher.teacherName) }}</div>
                 <div style="overflow-x:auto;background:#fff;border-radius:6px;">
                   <table style="width:100%;min-width:390px;border-collapse:collapse;table-layout:fixed;font-size:0.68rem;">
                     <thead>
@@ -2784,7 +2784,7 @@
              <div style="margin-top:12px;padding:10px 12px;border:1px solid #bfdbfe;border-radius:8px;background:#fff;font-size:0.76rem;line-height:1.5;">
                <strong style="color:#1d4ed8;">交換路線</strong>
               <div v-for="row in trianglePreviewRows" :key="'tri-timetable-route-' + row.index" style="padding:5px 0;border-top:1px solid #f1f5f9;">
-                {{ row.sourceTeacher }}：{{ formatTriangleSlot(row.sourceSlot, row.sourceCourse) }} → {{ row.targetTeacher }}時段（{{ formatTriangleSlot(row.targetSlot, row.sourceCourse) }}）
+                 {{ row.sourceTeacher }}：{{ formatTriangleSlot(row.sourceSlot, row.sourceCourse, row.sourceTeacher) }} → {{ row.targetTeacher }}時段（{{ formatTriangleSlot(row.targetSlot, row.sourceCourse, row.sourceTeacher) }}）
               </div>
             </div>
           </div>
@@ -2826,7 +2826,7 @@
                 送出後<strong>跳過受邀確認</strong>，直接進入「待教學組核准」。
               </div>
             </div>
-              <div v-if="isAdmin && pendingRequestData.specialFlow !== 'combined_return' && !(isProxySubmitActive && pendingRequestData.leaveTeacher && user && String(pendingRequestData.leaveTeacher).toLowerCase() !== String(getTeacherNameByEmail(user.email) || '').toLowerCase())" class="direct-approve-box">
+               <div v-if="isAdmin && !notificationsSuppressed && pendingRequestData.specialFlow !== 'combined_return' && !(isProxySubmitActive && pendingRequestData.leaveTeacher && user && String(pendingRequestData.leaveTeacher).toLowerCase() !== String(getTeacherNameByEmail(user.email) || '').toLowerCase())" class="direct-approve-box">
               <label class="direct-approve-row">
                 <input type="checkbox" class="direct-approve-check" v-model="directApproveMode">
                 <span class="direct-approve-text">
@@ -4436,13 +4436,13 @@
   <!-- domain-activity-cover：活動互代／空堂任務時 ensureDomainActivityCover -->
      <script defer src="domain-class-away.js?v=20260831-combined3"></script>
      <script defer src="fee-utils.js?v=20260831-combined3"></script>
-     <script defer src="ui-activity.js?v=20260831-combined3"></script>
+      <script defer src="ui-activity.js?v=20260901-batch-display2"></script>
      <script defer src="ui-request.js?v=20260831-combined3"></script>
      <script defer src="ui-timetable.js?v=20260831-combined3"></script>
      <script defer src="ui-approval.js?v=20260831-combined3"></script>
   <!-- ui-admin：僅管理員／後台操作時 ensureUiAdmin -->
      <script defer src="app-shell-utils.js?v=20260831-combined3"></script>
-          <script defer src="app.js?v=20260901-expense-plan2"></script>
+          <script defer src="app.js?v=20260901-batch-display2"></script>
   <script>
     (function () {
       function loadScript(src) {

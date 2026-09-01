@@ -903,6 +903,10 @@ window.UiMutualSubmit = (function () {
     var isSubmitting = deps.isSubmitting;
 
     if (deps.paperMode && deps.paperMode.value && isMutualCover.value && !(isAdmin && isAdmin.value)) {
+      hasLineTemplate.value = false;
+      lineCopyText.value = '';
+      lineBatchParts.value = [];
+      if (showSuccessModal) showSuccessModal.value = false;
       if (typeof deps.openPaperPrintMutualDrafts === 'function') {
         deps.openPaperPrintMutualDrafts();
       } else {
@@ -1063,7 +1067,8 @@ window.UiMutualSubmit = (function () {
                   day: r['異動星期'],
                   period: r['異動節次'],
                   className: r['班級'],
-                  subject: r['科目']
+                   subject: r['科目'],
+                   teacherName: r['申請人姓名']
                 };
               })
             })
@@ -1374,6 +1379,10 @@ window.UiBatchSubmit = (function () {
       if (paperFlowActive) {
         showCompareModal.value = false;
         showMatchModal.value = false;
+        hasLineTemplate.value = false;
+        lineCopyText.value = '';
+        lineBatchParts.value = [];
+        if (showSuccessModal) showSuccessModal.value = false;
         if (typeof deps.openPaperPrintDraft === 'function') {
           deps.openPaperPrintDraft(rows);
         }
@@ -1440,7 +1449,8 @@ window.UiBatchSubmit = (function () {
                   day: r["異動星期"],
                   period: r["異動節次"],
                   className: r["班級"],
-                  subject: r["科目"]
+                   subject: r["科目"],
+                   teacherName: r["申請人姓名"]
                 };
               })
             })

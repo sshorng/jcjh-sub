@@ -1048,6 +1048,9 @@ window.UiSubmitHelpers = (function () {
       softRefreshInBackground({ delay: 2500 });
 
       if (paperFlowActive) {
+        lineCopyText.value = '';
+        hasLineTemplate.value = false;
+        if (showSuccessModal) showSuccessModal.value = false;
         if (deps.openPaperPrintDraft) {
           deps.openPaperPrintDraft([newRequest]);
         }
@@ -1065,6 +1068,8 @@ window.UiSubmitHelpers = (function () {
       var linePayload = {
         targetName: newRequest['受邀人姓名'],
         requesterName: newRequest.isProxySubmit ? newRequest['申請人姓名'] : '',
+        courseTeacherA: newRequest['申請人姓名'],
+        courseTeacherB: newRequest['受邀人姓名'],
         dateA: handledDate || newRequest['異動日期'],
         dayA: handledDay != null ? handledDay : newRequest['異動星期'],
         periodA: handledPeriod != null ? handledPeriod : newRequest['異動節次'],

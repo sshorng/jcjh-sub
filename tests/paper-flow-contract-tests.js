@@ -372,6 +372,52 @@ function loadLineTemplates() {
   });
 }
 
+function loadCourseDisplayFormatter() {
+  const source = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
+  const start = source.indexOf('const formatCourseDisplayText =');
+  const end = source.indexOf('/** 同節先前義務', start);
+  assert.ok(start >= 0 && end > start, 'course display formatter must remain discoverable');
+  return vm.runInNewContext(`(() => {
+    ${source.slice(start, end)}
+    return { formatCourseDisplayText, _fmtSlot };
+  })()`, {
+    String,
+    Number,
+    getWeekDayText: value => ({ 1: '一', 2: '二', 3: '三', 4: '四', 5: '五' })[value] || '',
+    formatPeriodText: value => '第' + value + '節'
+  });
+}
+
+function loadTriangleLineTemplates() {
+  const source = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
+  const lineStart = source.indexOf('const formatLineSlot =');
+  const lineEnd = source.indexOf('const copyLineMessageForRequest =', lineStart);
+  const triangleStart = source.indexOf('const formatTriangleSlot =');
+  const triangleEnd = source.indexOf('const submitTriangleRequest =', triangleStart);
+  assert.ok(lineStart >= 0 && lineEnd > lineStart, 'LINE slot formatter must remain discoverable');
+  assert.ok(triangleStart >= 0 && triangleEnd > triangleStart, 'triangle LINE formatter must remain discoverable');
+  return vm.runInNewContext(`(() => {
+    ${source.slice(lineStart, lineEnd)}
+    ${source.slice(triangleStart, triangleEnd)}
+    return { buildTriangleLineText, formatTriangleSlot };
+  })()`, {
+    window: { location: { origin: 'https://school.example', pathname: '/index.html' } },
+    String,
+    Number,
+    Array,
+    Object,
+    Date,
+    Math,
+    RegExp,
+    parseInt,
+    isNaN,
+    encodeURIComponent,
+    formatDateMMDD: value => String(value || '').slice(5).replace('-', '/'),
+    getWeekDayText: value => ({ 1: '一', 2: '二', 3: '三', 4: '四', 5: '五' })[value] || '',
+    formatPeriodText: value => '第' + value + '節'
+  });
+}
+
 function runLineTemplateTest() {
   const templates = loadLineTemplates();
   const single = templates.buildLineInviteText({
@@ -405,20 +451,22 @@ function runLineTemplateTest() {
   const askExchange = templates.buildAskFirstLineText({
     targetName: '王小明老師',
     dateA: '2026-09-01', dayA: 2, periodA: 2, classA: '707', subjectA: '數學',
+    courseTeacherA: '陳小華老師', courseTeacherB: '王小明老師',
     isExchange: true,
     dateB: '2026-09-04', dayB: 5, periodB: 5, classB: '707', subjectB: '健康教育'
   });
   assert.equal(askExchange, [
     '小明老師，想問您是否方便和我調課，',
     '',
-    '09/01（週二） 第2節｜707數學<->',
-    '09/04（週五） 第5節｜707健康教育',
+    '09/01（週二） 第2節｜707數學（陳小華老師）<->',
+    '09/04（週五） 第5節｜707健康教育（王小明老師）',
     '',
     '如果可以，我再拿調課單給您，感謝🙏🏻'
   ].join('\n'));
   const askProxyExchange = templates.buildAskFirstLineText({
     targetName: '王小明老師', requesterName: '余月亭老師',
     dateA: '2026-09-01', dayA: 2, periodA: 2, classA: '707', subjectA: '數學',
+    courseTeacherA: '余月亭老師', courseTeacherB: '王小明老師',
     isExchange: true,
     dateB: '2026-09-04', dayB: 5, periodB: 5, classB: '707', subjectB: '健康教育'
   });
@@ -430,14 +478,15 @@ function runLineTemplateTest() {
 
   const onlineExchange = templates.buildLineInviteText({
     targetName: '王小明老師', requesterName: '余月亭老師', isExchange: true,
+    courseTeacherA: '余月亭老師', courseTeacherB: '王小明老師',
     dateA: '2026-09-01', dayA: 2, periodA: 2, classA: '707', subjectA: '數學',
     dateB: '2026-09-04', dayB: 5, periodB: 5, classB: '707', subjectB: '健康教育'
   });
   assert.equal(onlineExchange, [
     '小明老師，想問您是否方便和月亭老師調課，',
     '',
-    '09/01（週二） 第2節｜707數學<->',
-    '09/04（週五） 第5節｜707健康教育',
+    '09/01（週二） 第2節｜707數學（余月亭老師）<->',
+    '09/04（週五） 第5節｜707健康教育（王小明老師）',
     '',
     '感謝🙏🏻'
   ].join('\n'));
@@ -446,8 +495,8 @@ function runLineTemplateTest() {
   const batch = templates.buildLineBatchInviteText({
     targetName: '王小明老師', requesterName: '陳小華老師', batchId: 'B1', systemUrl: 'https://school.example/',
     slots: [
-      { id: '1', date: '2026-09-04', day: 5, period: 1, className: '904', subject: '國文' },
-      { id: '2', date: '2026-09-04', day: 5, period: 2, className: '905', subject: '國文' }
+      { id: '1', date: '2026-09-04', day: 5, period: 1, className: '904', subject: '國文', teacherName: '陳小華老師' },
+      { id: '2', date: '2026-09-04', day: 5, period: 2, className: '905', subject: '國文', teacherName: '陳小華老師' }
     ]
   });
   assert.match(batch, /小明老師，想問您是否可以幫忙協助以下代課：/);
@@ -468,8 +517,8 @@ function runLineTemplateTest() {
   const paperBatch = templates.buildAskFirstLineText({
     targetName: '王小明老師', requesterName: '陳小華老師',
     slots: [
-      { date: '2026-09-04', day: 5, period: 1, className: '904', subject: '國文' },
-      { date: '2026-09-04', day: 5, period: 2, className: '905', subject: '國文' }
+      { date: '2026-09-04', day: 5, period: 1, className: '904', subject: '國文', teacherName: '陳小華老師' },
+      { date: '2026-09-04', day: 5, period: 2, className: '905', subject: '國文', teacherName: '陳小華老師' }
     ]
   });
   assert.match(paperBatch, /1\. 09\/04（週五） 第1節｜904國文（陳小華老師）/);
@@ -486,6 +535,43 @@ function runLineTemplateTest() {
     classA: pendingSlot.className, subjectA: pendingSlot.subject
   });
   assert.match(pendingAsk, /09\/07（週一） 第2節｜906自然（陳小華老師）/);
+}
+
+function runCourseDisplayFormatTest() {
+  const formatter = loadCourseDisplayFormatter();
+  const course = formatter.formatCourseDisplayText('802', '體育', 'OOO老師');
+  assert.equal(course, '802體育（OOO老師）');
+  assert.equal(formatter._fmtSlot('2026-09-08', '二', 3, course), '09/08（週二） 第3節｜802體育（OOO老師）');
+}
+
+function runTriangleLineFormatTest() {
+  const templates = loadTriangleLineTemplates();
+  assert.equal(
+    templates.formatTriangleSlot(
+      { date: '2026-09-08', day: 2, period: 3 },
+      { className: '802', subject: '體育' },
+      'OOO老師'
+    ),
+    '09/08（週二） 第3節｜802體育（OOO老師）'
+  );
+  const text = templates.buildTriangleLineText({
+    targetTeacherName: '王小明',
+    reason: '課務調整'
+  }, [{
+    id: 'triangle-1',
+    requesterName: '余明錦',
+    targetTeacherName: '王小明',
+    requestDate: '2026-09-08',
+    requestPeriodDay: 2,
+    requestPeriod: 3,
+    targetDate: '2026-09-10',
+    targetDayOfWeek: 4,
+    targetPeriod: 5,
+    className: '802',
+    subject: '體育'
+  }]);
+  assert.match(text, /09\/08（週二） 第3節｜802體育（余明錦老師）/);
+  assert.match(text, /09\/10（週四） 第5節｜802體育（余明錦老師）/);
 }
 
 function loadPaperFlowClassifier() {
@@ -616,10 +702,25 @@ function runApplicationFormContractTest() {
   assert.match(html, /@click="openSuccessPrintPreview"/);
   assert.match(html, /@click="addSuccessToCalendar"/);
   assert.match(html, /@click="closeSuccessGoRecords"/);
-   const appSource = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
-   const activitySource = fs.readFileSync(path.join(root, 'ui-activity.js'), 'utf8');
-   const onboardingSource = fs.readFileSync(path.join(root, 'onboarding-tour.js'), 'utf8');
-   assert.match(appSource, /if \(p\.mode !== 'substitution' && p\.mode !== 'exchange'\) return;/, '課務調整切換應支援調課模式');
+    const appSource = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
+    const activitySource = fs.readFileSync(path.join(root, 'ui-activity.js'), 'utf8');
+    const onboardingSource = fs.readFileSync(path.join(root, 'onboarding-tour.js'), 'utf8');
+    assert.match(appSource, /const paperFlow = computed\(\(\) =>\s*!isMutualCover\.value\s*&&\s*notificationsSuppressed\.value\s*&&\s*!isProxySubmitActive\.value\s*\);/, '關閉線上申請時應優先走紙本流程');
+    assert.match(html, /v-if="isAdmin && !notificationsSuppressed && pendingRequestData\.specialFlow !== 'combined_return'/, '紙本模式不應顯示直接核准選項');
+    assert.equal((html.match(/getBatchGroupTeacherSummary\(row\)/g) || []).length, 3, '三個批次主列都應顯示全部代課教師');
+    const batchTeacherStart = appSource.indexOf('const getBatchGroupTeacherSummary =');
+    const batchTeacherEnd = appSource.indexOf('const getBatchGroupStatusValues =', batchTeacherStart);
+    assert.ok(batchTeacherStart >= 0 && batchTeacherEnd > batchTeacherStart, '批次教師摘要函式必須存在');
+    const getBatchGroupTeacherSummary = vm.runInNewContext(`(() => {
+      ${appSource.slice(batchTeacherStart, batchTeacherEnd)}
+      return getBatchGroupTeacherSummary;
+    })()`, { String, Set });
+    assert.equal(getBatchGroupTeacherSummary({ items: [
+      { targetTeacherName: '黃健忠' },
+      { targetTeacherName: '余明錦' },
+      { targetTeacherName: '黃健忠' }
+    ] }), '黃健忠、余明錦', '批次主列應去重顯示全部教師');
+    assert.match(appSource, /if \(p\.mode !== 'substitution' && p\.mode !== 'exchange'\) return;/, '課務調整切換應支援調課模式');
    assert.match(appSource, /const d = p\.mode === 'substitution'\s*\? getLeaveTimeDefaults\(p\.leaveTeacher\)\s*:\s*\{ type: '', start: '', end: '', range: '' \};/, '調課取消課務調整時不應套用請假時間');
    const batchPanelStart = activitySource.indexOf('window.UiBatchPanel =');
   assert.ok(batchPanelStart >= 0, 'batch panel module must remain discoverable');
@@ -656,7 +757,9 @@ function runApplicationFormContractTest() {
   assert.match(appSource, /successActionRequests/);
    assert.match(appSource, /mode: notificationsSuppressed\.value \? 'paper' : 'online'/, 'onboarding should follow the global paper mode');
    assert.match(appSource, /openExchangeModeDemo: \(\) => openExchangeModeDemoForTour\(\)/, 'tour should demonstrate exchange mode');
-   assert.match(appSource, /ONBOARDING_SCRIPT = 'onboarding-tour\.js\?v=20260831-combined3'/, 'onboarding cache must refresh with the exchange tour');
+    assert.match(appSource, /ONBOARDING_SCRIPT = 'onboarding-tour\.js\?v=20260831-combined3'/, 'onboarding cache must refresh with the exchange tour');
+    assert.match(html, /ui-activity\.js\?v=20260901-batch-display2/);
+    assert.match(html, /app\.js\?v=20260901-batch-display2/);
      assert.match(appSource, /openPaperPrintDemo: \(\) => openPaperPrintDemoForTour\(\)/, 'paper tour should open a print preview demo');
      assert.match(appSource, /openExchangeModeDemo: \(\) => openExchangeModeDemoForTour\(\)/, 'tour should demonstrate exchange mode');
     assert.match(appSource, /source: 'paperTour'/, 'paper tour preview must use an isolated source');
@@ -968,9 +1071,9 @@ async function runSingleTest() {
     buildLineInviteText: () => '',
     successModalTitle: ref(''),
     successModalMessage: ref(''),
-    lineCopyText: ref(''),
-    hasLineTemplate: ref(false),
-     showSuccessModal: ref(false),
+     lineCopyText: ref('舊的線上訊息'),
+     hasLineTemplate: ref(true),
+      showSuccessModal: ref(true),
      successActionRequests: ref([]),
      showToast: () => {},
     openPaperPrintDraft: rows => { printedRows = rows; },
@@ -986,9 +1089,12 @@ async function runSingleTest() {
   assert.equal(sentPayloads[0].request['申請單ID'], sentPayloads[1].request['申請單ID']);
   assert.equal(sentPayloads[0].paperFlow, true);
   assert.equal(sentPayloads[1].request['狀態'], 'pending_admin');
-   assert.equal(printedRows.length, 1);
-   assert.equal(printedRows[0]['紙本流程'], 'TRUE');
-   assert.equal(deps.successActionRequests.value.length, 1);
+    assert.equal(printedRows.length, 1);
+    assert.equal(printedRows[0]['紙本流程'], 'TRUE');
+    assert.equal(deps.successActionRequests.value.length, 1);
+    assert.equal(deps.hasLineTemplate.value, false);
+    assert.equal(deps.lineCopyText.value, '');
+    assert.equal(deps.showSuccessModal.value, false);
 }
 
 async function runLineHandledSlotTest() {
@@ -1124,7 +1230,7 @@ async function runCourseAdjustmentTest() {
   assert.doesNotMatch(direct.newRequest['備註'], /直接核准/);
 }
 
-async function runBatchTest(courseAdjustmentOnly = false) {
+async function runBatchTest(courseAdjustmentOnly = false, adminPaperMode = false) {
   const api = load('ui-activity.js').UiBatchSubmit;
   const batchSlots = ref([
     { teacherEmail: 'owner@school.example', subTeacherEmail: 'invitee@school.example', subTeacherName: '受邀人', dateStr: '2026-08-17', dayOfWeek: 1, period: 1, className: '701', subject: '國文' },
@@ -1163,7 +1269,7 @@ async function runBatchTest(courseAdjustmentOnly = false) {
     isMutualCover: ref(false),
     mutualAwayClasses: ref([]),
     mutualSkipNotify: ref(false),
-    isAdmin: ref(false),
+     isAdmin: ref(adminPaperMode),
     isQuotaDeductFee: () => false,
     QUOTA_DEDUCT_FEE: '扣額度',
     ACTIVITY_PUBLIC_FEE: '活動公費',
@@ -1173,7 +1279,7 @@ async function runBatchTest(courseAdjustmentOnly = false) {
     loading: ref(false),
     loadingMessage: ref(''),
     currentSemester: ref('115-1'),
-    directApproveMode: ref(false),
+     directApproveMode: ref(adminPaperMode),
     directApproveSkipNotify: ref(false),
     paperFlow: ref(true),
     paperMode: ref(true),
@@ -1190,10 +1296,10 @@ async function runBatchTest(courseAdjustmentOnly = false) {
     activityBalanceCtx: () => ({}),
     successModalTitle: ref(''),
     successModalMessage: ref(''),
-    hasLineTemplate: ref(false),
-    lineBatchParts: ref([]),
-    lineCopyText: ref(''),
-    showSuccessModal: ref(false),
+   hasLineTemplate: ref(true),
+   lineBatchParts: ref([{ text: '舊的線上分卡' }]),
+   lineCopyText: ref('舊的線上訊息'),
+   showSuccessModal: ref(true),
     successActionRequests: ref([]),
     showCompareModal: ref(true),
     showMatchModal: ref(false),
@@ -1208,10 +1314,14 @@ async function runBatchTest(courseAdjustmentOnly = false) {
   await api.executeBatchSubmit(deps);
   assert.equal(sent.length, 1);
   assert.equal(sent[0].paperFlow, true);
+  assert.equal(sent[0].directApprove, false);
   assert.equal(sent[0].skipNotify, true);
   assert.ok(sent[0].requests.every(row => row['狀態'] === 'pending_admin' && row['紙本流程'] === 'TRUE'));
   assert.equal(printedRows.length, 2, 'paper records must be built before batch slots are cleared');
   assert.equal(deps.successActionRequests.value.length, 2);
+  assert.equal(deps.hasLineTemplate.value, false, '紙本批次不應產生 LINE 範本');
+  assert.equal(deps.lineBatchParts.value.length, 0, '紙本批次不應產生 LINE 分卡');
+  assert.equal(deps.showSuccessModal.value, false, '紙本批次不應顯示線上成功 Modal');
   if (courseAdjustmentOnly) {
     assert.ok(sent[0].requests.every(row => row['請假時間類型'] === '' && row['請假時間'] === ''));
   }
@@ -1334,6 +1444,8 @@ function runRechangeLabelTest() {
 
 Promise.resolve()
   .then(() => runLineTemplateTest())
+  .then(() => runCourseDisplayFormatTest())
+  .then(() => runTriangleLineFormatTest())
   .then(() => runProgressTest())
   .then(() => runFieldMapTest())
   .then(() => runRequestListSortTest())
@@ -1348,6 +1460,7 @@ Promise.resolve()
   .then(runRechangeLabelTest)
   .then(runBatchTest)
   .then(() => runBatchTest(true))
+  .then(() => runBatchTest(false, true))
   .then(() => console.log('paper flow contract tests PASS'))
   .catch(error => {
     console.error(error);

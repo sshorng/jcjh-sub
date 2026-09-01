@@ -2653,12 +2653,14 @@ createApp({
     };
 
     // LINE 範本：短版、先說明需求，再列課務與回覆方式。
-    const formatLineSlot = (date, day, period, className, subject) => {
+    const formatLineSlot = (date, day, period, className, subject, teacherName) => {
       const dateText = formatDateMMDD(date) || date || '';
       const dayText = getWeekDayText(day);
       const periodText = formatPeriodText(period);
       const lesson = [className, subject].filter(value => String(value || '').trim()).join('');
-      return `${dateText}${dayText ? `（週${dayText}）` : ''} ${periodText}${lesson ? `｜${lesson}` : ''}`.trim();
+      const teacher = cleanLineTeacherName(teacherName);
+      const teacherSuffix = teacher ? `（${teacher}老師）` : '';
+      return `${dateText}${dayText ? `（週${dayText}）` : ''} ${periodText}${lesson ? `｜${lesson}${teacherSuffix}` : ''}`.trim();
     };
 
     const cleanLineTeacherName = (value) => String(value || '').replace(/\s*老師\s*$/, '').trim();
@@ -2671,17 +2673,18 @@ createApp({
     const buildLineInviteText = (opts) => {
       const name = shortTeacherName(opts.targetName) || cleanLineTeacherName(opts.targetName) || '對方';
       const requesterName = cleanLineTeacherName(opts.requesterName);
-      const requesterSuffix = requesterName ? `（${requesterName}老師）` : '';
-      const leaveLine = formatLineSlot(opts.dateA, opts.dayA, opts.periodA, opts.classA, opts.subjectA);
+      const courseTeacherA = opts.courseTeacherA || opts.teacherA || opts.requesterName;
+      const courseTeacherB = opts.courseTeacherB || opts.teacherB || opts.targetTeacherName || opts.targetName;
+      const leaveLine = formatLineSlot(opts.dateA, opts.dayA, opts.periodA, opts.classA, opts.subjectA, courseTeacherA);
       const opening = opts.isExchange
         ? `${name}老師，想問您是否方便和${getLineExchangePartner(requesterName)}調課，`
         : `${name}老師，想問您是否可以協助代課：`;
       let text = `${opening}\n`;
       if (opts.isExchange) {
-        const swapLine = formatLineSlot(opts.dateB, opts.dayB, opts.periodB, opts.classB, opts.subjectB);
+        const swapLine = formatLineSlot(opts.dateB, opts.dayB, opts.periodB, opts.classB, opts.subjectB, courseTeacherB);
         text += `\n${leaveLine}<->\n${swapLine}`;
       } else {
-        text += `${leaveLine}${requesterSuffix}`;
+        text += leaveLine;
       }
       if (opts.notificationOnly) {
         text += '\n\n這筆安排已完成，請依排定時間上課。';
@@ -2740,10 +2743,11 @@ createApp({
     const buildAskFirstLineText = (opts) => {
       const name = shortTeacherName(opts.targetName) || cleanLineTeacherName(opts.targetName) || '對方';
       const requesterName = cleanLineTeacherName(opts.requesterName);
-      const requesterSuffix = requesterName ? `（${requesterName}老師）` : '';
+      const courseTeacherA = opts.courseTeacherA || opts.teacherA || opts.requesterName;
+      const courseTeacherB = opts.courseTeacherB || opts.teacherB || opts.targetTeacherName || opts.targetName;
       if (opts.isExchange) {
-        const lineA = formatLineSlot(opts.dateA, opts.dayA, opts.periodA, opts.classA, opts.subjectA);
-        const lineB = formatLineSlot(opts.dateB, opts.dayB, opts.periodB, opts.classB, opts.subjectB);
+        const lineA = formatLineSlot(opts.dateA, opts.dayA, opts.periodA, opts.classA, opts.subjectA, courseTeacherA);
+        const lineB = formatLineSlot(opts.dateB, opts.dayB, opts.periodB, opts.classB, opts.subjectB, courseTeacherB);
         return `${name}老師，想問您是否方便和${getLineExchangePartner(requesterName)}調課，\n\n${lineA}<->\n${lineB}\n\n如果可以，我再拿調課單給您，感謝🙏🏻`;
       }
       const slots = Array.isArray(opts.slots) && opts.slots.length
@@ -2753,11 +2757,12 @@ createApp({
           day: opts.dayA,
           period: opts.periodA,
           className: opts.classA,
-          subject: opts.subjectA
+          subject: opts.subjectA,
+          teacherName: courseTeacherA
         }];
       const lines = slots.map((slot, index) => {
-        const line = formatLineSlot(slot.date, slot.day, slot.period, slot.className, slot.subject);
-        return `${slots.length > 1 ? `${index + 1}. ` : ''}${line}${requesterSuffix}`;
+        const line = formatLineSlot(slot.date, slot.day, slot.period, slot.className, slot.subject, slot.teacherName || courseTeacherA);
+        return `${slots.length > 1 ? `${index + 1}. ` : ''}${line}`;
       });
       return `${name}老師，想問您是否可以協助代課：\n${lines.join('\n')}\n\n如果可以，我再拿代課單給您，感謝🙏🏻`;
     };
@@ -2785,6 +2790,7 @@ createApp({
           periodA: s.period,
           classA: s.className,
           subjectA: s.subject,
+          courseTeacherA: s.teacherName || opts.courseTeacherA || opts.requesterName,
           agreeLink: `${currentUrl}?action=respond&id=${encodeURIComponent(s.id)}&status=agree`,
           declineLink: `${currentUrl}?action=respond&id=${encodeURIComponent(s.id)}&status=decline`,
           systemUrl: currentUrl,
@@ -2792,8 +2798,6 @@ createApp({
         });
       }
 
-      const requesterName = cleanLineTeacherName(opts.requesterName);
-      const requesterSuffix = requesterName ? `（${requesterName}老師）` : '';
       let text = `${name}老師，想問您是否可以幫忙協助以下代課：`;
       if (batchId) {
         text += '\n\n請回覆：';
@@ -2801,10 +2805,10 @@ createApp({
         text += `\n❌ 全部不便：${currentUrl}?action=respondBatch&batchId=${encodeURIComponent(batchId)}&status=decline`;
       }
       slots.forEach((s, i) => {
-        const line = formatLineSlot(s.date, s.day, s.period, s.className, s.subject);
+        const line = formatLineSlot(s.date, s.day, s.period, s.className, s.subject, s.teacherName || opts.courseTeacherA || opts.requesterName);
         const agree = `${currentUrl}?action=respond&id=${encodeURIComponent(s.id)}&status=agree`;
         const decline = `${currentUrl}?action=respond&id=${encodeURIComponent(s.id)}&status=decline`;
-        text += `\n\n${i + 1}. ${line}${requesterSuffix}\n　✅ 可以：${agree}\n　❌ 不方便：${decline}`;
+        text += `\n\n${i + 1}. ${line}\n　✅ 可以：${agree}\n　❌ 不方便：${decline}`;
       });
       text += '\n\n感謝🙏🏻';
       return text;
@@ -2840,7 +2844,9 @@ createApp({
              ? (first.requesterName || req.requesterName)
              : '',
            isExchange: firstIsExchange,
-           dateA: firstSlot.date,
+            courseTeacherA: first.requesterName || first.originalTeacherName || '',
+            courseTeacherB: first.targetTeacherName || first.actualTeacherName || '',
+            dateA: firstSlot.date,
            dayA: firstSlot.day,
            periodA: firstSlot.period,
            classA: getOriginalRequestClass(first) || firstSlot.className,
@@ -2859,8 +2865,9 @@ createApp({
                date: slot.date,
                day: slot.day,
                period: slot.period,
-               className: getOriginalRequestClass(row) || slot.className,
-               subject: getOriginalRequestSubject(row) || slot.subject
+                className: getOriginalRequestClass(row) || slot.className,
+                subject: getOriginalRequestSubject(row) || slot.subject,
+                teacherName: row.requesterName || row.originalTeacherName || ''
              };
            });
         }
@@ -2884,8 +2891,9 @@ createApp({
              date: slot.date,
              day: slot.day,
              period: slot.period,
-             className: getOriginalRequestClass(r) || slot.className,
-             subject: getOriginalRequestSubject(r) || slot.subject
+              className: getOriginalRequestClass(r) || slot.className,
+              subject: getOriginalRequestSubject(r) || slot.subject,
+              teacherName: r.requesterName || r.originalTeacherName || ''
            };
          });
         lineText = buildLineBatchInviteText({
@@ -2912,6 +2920,8 @@ createApp({
         lineText = buildLineInviteText({
           targetName: req.targetTeacherName,
           requesterName: isProxySubmitRequest(req) ? req.requesterName : '',
+          courseTeacherA: req.requesterName || req.originalTeacherName || '',
+          courseTeacherB: req.targetTeacherName || req.actualTeacherName || '',
            dateA: leaveSlot.date,
            dayA: leaveSlot.day,
            periodA: leaveSlot.period,
@@ -2954,10 +2964,12 @@ createApp({
       const handledSlot = getLineHandledSlot(p);
       const opts = {
         targetName: shortTeacherName(getTeacherNameByEmail(targetEmail) || targetEmail),
-        requesterName: isProxyApplication
-          ? (getTeacherNameByEmail(p.leaveTeacher) || p.leaveTeacher || '')
-          : '',
-        isExchange: p.mode === 'exchange',
+         requesterName: isProxyApplication
+           ? (getTeacherNameByEmail(p.leaveTeacher) || p.leaveTeacher || '')
+           : '',
+         courseTeacherA: getTeacherNameByEmail(p.leaveTeacher) || p.leaveTeacher || '',
+         courseTeacherB: getTeacherNameByEmail(p.subTeacher) || p.subTeacher || '',
+         isExchange: p.mode === 'exchange',
         dateA: handledSlot.date,
         dayA: handledSlot.day,
         periodA: handledSlot.period,
@@ -3893,12 +3905,11 @@ createApp({
       const tgt = String(proxyTargetEmail.value || '').toLowerCase();
       return !!(tgt && tgt !== me);
     });
-    // 紙本模式：本人申請走「送出並列印」；代申請仍走既有線上待教學組核准。
+    // 紙本模式：非代理申請與非活動互代一律走「送出並列印」。
     const paperFlow = computed(() =>
       !isMutualCover.value
       && notificationsSuppressed.value
       && !isProxySubmitActive.value
-      && (!isAdmin.value || !directApproveMode.value)
     );
     const proxyTargetName = computed(() => {
       const em = proxyTargetEmail.value;
@@ -5017,6 +5028,22 @@ createApp({
       if (!values.length) return '—';
       if (values.length === 1) return values[0];
       return `${values[0]} 等 ${group.items.length} 筆`;
+    };
+    const getBatchGroupTeacherSummary = (group) => {
+      const values = [];
+      const seen = new Set();
+      (group && group.items ? group.items : []).forEach(item => {
+        const value = String(
+          (item && (item.targetTeacherName || item['受邀人姓名']))
+          || (item && (item.targetTeacherEmail || item['受邀人Email']))
+          || ''
+        ).trim();
+        const key = value.toLowerCase();
+        if (!key || seen.has(key)) return;
+        seen.add(key);
+        values.push(value);
+      });
+      return values.length ? values.join('、') : '—';
     };
     const getBatchGroupStatusValues = (group) => [...new Set((group && group.items ? group.items : [])
       .map(item => String(item && item.status || '').trim().toLowerCase()).filter(Boolean))];
@@ -6529,22 +6556,26 @@ createApp({
       triangleCandidateSearch.value = '';
       triangleCandidateDisplayCount.value = 18;
     };
-    const formatTriangleSlot = (slot, course) => {
+    const formatTriangleSlot = (slot, course, teacherName) => {
       if (!slot) return '—';
-      const day = getWeekDayText(slot.day != null ? slot.day : slot.dayOfWeek);
-      const date = formatDateMMDD(slot.date) || slot.date || '—';
-      const period = formatPeriodText(slot.period);
-      const lesson = [course && course.className, course && course.subject].filter(Boolean).join(' ');
-      return `${date}（${day}）${period}${lesson ? ' · ' + lesson : ''}`;
+      const source = course || {};
+      return formatLineSlot(
+        slot.date,
+        slot.day != null ? slot.day : slot.dayOfWeek,
+        slot.period,
+        source.className,
+        source.subject,
+        teacherName || source.teacherName || source.teacher
+      );
     };
     const buildTriangleLineText = (request, groupRows) => {
       const row = request || {};
       const rows = groupRows || [];
       const participants = rows.map((item) => `${item.requesterName || ''}→${item.targetTeacherName || ''}`).join('、');
       const lines = rows.map((item, index) => {
-        const source = formatLineSlot(item.requestDate, item.requestPeriodDay, item.requestPeriod, item.className, item.subject);
+         const source = formatLineSlot(item.requestDate, item.requestPeriodDay, item.requestPeriod, item.className, item.subject, item.requesterName || item.originalTeacherName);
          // 三角調是整堂課跟著來源教師走，目標時段仍顯示這條 leg 移入的原課。
-         const target = formatLineSlot(item.targetDate, item.targetDayOfWeek, item.targetPeriod, item.className, item.subject);
+          const target = formatLineSlot(item.targetDate, item.targetDayOfWeek, item.targetPeriod, item.className, item.subject, item.requesterName || item.originalTeacherName);
         const agree = `${window.location.origin}${window.location.pathname}?action=respond&id=${encodeURIComponent(item.id)}&status=agree`;
         const decline = `${window.location.origin}${window.location.pathname}?action=respond&id=${encodeURIComponent(item.id)}&status=decline`;
         return `${index + 1}. ${item.requesterName || '教師'}：${source} → ${target}\n　✅ 同意：${agree}\n　❌ 拒絕整組：${decline}`;
@@ -6622,9 +6653,13 @@ createApp({
         frontRows.forEach((row) => optimisticUpsertRequest(row));
         successActionRequests.value = frontRows;
         softRefreshInBackground({ delay: 2500 });
-        if (actualTrianglePaperFlow) {
-          showMatchModal.value = false;
-          resetTriangleDraft();
+         if (actualTrianglePaperFlow) {
+           showMatchModal.value = false;
+           hasLineTemplate.value = false;
+           lineCopyText.value = '';
+           lineBatchParts.value = [];
+           showSuccessModal.value = false;
+           resetTriangleDraft();
           // openPrintPreview 需要 loading 已解除，才能像一般紙本流程一樣直接開啟列印預覽。
           loading.value = false;
           await openPaperPrintDraftForSubmittedRequests(frontRows);
@@ -9735,9 +9770,21 @@ createApp({
     const getRequestRiskTags = (req) => getRequestTypeTags(req);
 
     // 歷史紀錄列 → 請假課堂字串
-    const _fmtSlot = (dateStr, day, period, clsSubj) => {
+    const formatCourseDisplayText = (className, subject, teacherName) => {
+      const course = [className, subject].filter(value => String(value || '').trim()).join('');
+      const teacher = String(teacherName || '').replace(/\s*老師\s*$/, '').trim();
+      return course + (teacher ? `（${teacher}老師）` : '');
+    };
+    const _fmtSlot = (dateStr, day, period, clsSubj, teacherName) => {
       const m = dateStr && dateStr !== '—' && dateStr.length >= 10 ? dateStr.slice(5, 10).replace('-', '/') : (dateStr || '—');
-      return `${m}(${day || '—'})第${period}節` + (clsSubj ? ` · ${clsSubj}` : '');
+      const rawDay = String(day == null ? '' : day).trim();
+      const dayText = /^\d+$/.test(rawDay)
+        ? getWeekDayText(Number(rawDay))
+        : rawDay.replace(/^週/, '');
+      const daySuffix = dayText && dayText !== '—' ? `（週${dayText}）` : '';
+      const periodText = period == null || period === '' ? '—' : formatPeriodText(period);
+      const course = formatCourseDisplayText(clsSubj, '', teacherName);
+      return `${m}${daySuffix} ${periodText}${course ? `｜${course}` : ''}`.trim();
     };
     /** 同節先前義務（此人為 actual 的代課／調入），可排除本筆及本申請單 */
     const findPriorDutyAtSlot = (email, dateStr, period, excludeId, excludeRequestId) => {
@@ -9956,8 +10003,8 @@ createApp({
       }
       const day = dayNum != null ? getWeekDayText(dayNum) : '—';
       const resolved = resolveHistoryLeaveClassSubject(rec);
-      const cls = `${resolved.className || ''} ${resolved.subject || ''}`.trim();
-      return _fmtSlot(dateStr, day, period, cls || '');
+       const cls = formatCourseDisplayText(resolved.className, resolved.subject, rec.originalTeacherName || rec.requesterName);
+       return _fmtSlot(dateStr, day, period, cls || '');
     };
     /**
      * 對調目標節：受邀人在該日該節的「有效課」
@@ -9999,7 +10046,7 @@ createApp({
           const d = new Date(String(dateStr).replace(/-/g, '/'));
           if (!Number.isNaN(d.getTime())) dayNum = d.getDay() === 0 ? 7 : d.getDay();
         }
-        const movedCourse = `${rec.className || ''} ${rec.subject || ''}`.trim();
+        const movedCourse = formatCourseDisplayText(rec.className, rec.subject, rec.requesterName || rec.originalTeacherName || rec.actualTeacherName);
         return _fmtSlot(dateStr, dayNum != null ? getWeekDayText(dayNum) : '—', rec.targetPeriod || rec.period, movedCourse);
       }
       let targetDate = rec.targetDate;
@@ -10012,8 +10059,8 @@ createApp({
         const d = new Date(String(targetDate).replace(/-/g, '/'));
         if (!Number.isNaN(d.getTime())) dayNum = d.getDay() === 0 ? 7 : d.getDay();
         const day = dayNum != null ? getWeekDayText(dayNum) : '—';
-        const cls = `${clsName} ${subj}`.trim();
-        return _fmtSlot(targetDate, day, targetPeriod, cls || '');
+         const cls = formatCourseDisplayText(clsName, subj, rec.targetTeacherName || rec.actualTeacherName);
+         return _fmtSlot(targetDate, day, targetPeriod, cls || '');
       }
       // 備援：目標日 edge _1 的班科就是目標位置原本的課堂。
       let peerTargetEdge = null;
@@ -10052,8 +10099,8 @@ createApp({
         if (!Number.isNaN(d3.getTime())) dayNumOut = d3.getDay() === 0 ? 7 : d3.getDay();
       }
       const day = dayNumOut != null ? getWeekDayText(dayNumOut) : '—';
-      const cls = `${clsName} ${subj}`.trim();
-      return _fmtSlot(targetDate, day, targetPeriod, cls || '');
+       const cls = formatCourseDisplayText(clsName, subj, rec.targetTeacherName || rec.actualTeacherName);
+       return _fmtSlot(targetDate, day, targetPeriod, cls || '');
     };
 
     /**
@@ -10152,10 +10199,8 @@ createApp({
     const formatLeaveClassSlot = (req) => {
       if (!req) return '—';
       const day = getWeekDayText(req.requestPeriodDay);
-      const m = req.requestDate ? req.requestDate.slice(5, 10).replace('-', '/') : '—';
-      const cls = `${req.className || ''} ${req.subject || ''}`.trim();
-      const per = formatPeriodText(req.requestPeriod);
-      return `${m}(${day})${per}` + (cls ? ` · ${cls}` : '');
+      const cls = formatCourseDisplayText(req.className, req.subject, req.requesterName || req.originalTeacherName);
+      return _fmtSlot(req.requestDate, day, req.requestPeriod, cls || '');
     };
     // 對調課堂：受邀人在目標節的有效班／科（含調入／代課）；勿回退申請人班科
     const formatExchangeClassSlot = (req) => {
@@ -10166,20 +10211,15 @@ createApp({
            const d = new Date(String(req.targetDate).replace(/-/g, '/'));
            if (!Number.isNaN(d.getTime())) dayNum = d.getDay() === 0 ? 7 : d.getDay();
          }
-         const movedCourse = `${req.className || ''} ${req.subject || ''}`.trim();
-         const m = req.targetDate && String(req.targetDate).length >= 10
-           ? String(req.targetDate).slice(5, 10).replace('-', '/')
-           : (req.targetDate || '—');
-         return `${m}(${getWeekDayText(dayNum) || '—'})${formatPeriodText(req.targetPeriod)}`
-           + (movedCourse ? ` · ${movedCourse}` : '');
+          const movedCourse = formatCourseDisplayText(req.className, req.subject, req.requesterName || req.originalTeacherName || req.actualTeacherName);
+          return _fmtSlot(req.targetDate, getWeekDayText(dayNum), req.targetPeriod, movedCourse || '');
        }
        let dayNum = req.targetDayOfWeek;
       if ((dayNum == null || dayNum === '') && req.targetDate) {
         const d = new Date(String(req.targetDate).replace(/-/g, '/'));
         if (!Number.isNaN(d.getTime())) dayNum = d.getDay() === 0 ? 7 : d.getDay();
       }
-      const day = getWeekDayText(dayNum);
-      const cell = resolveExchangeTargetCell(
+       const cell = resolveExchangeTargetCell(
         req.targetTeacherEmail,
         req.targetDate,
         req.targetPeriod,
@@ -10187,12 +10227,8 @@ createApp({
       );
       const clsName = cell ? (cell.className || '') : (req.targetClassName || '');
       const subj = cell ? (cell.subject || '') : (req.targetSubject || '');
-      const cls = `${clsName} ${subj}`.trim();
-      const m = req.targetDate && String(req.targetDate).length >= 10
-        ? String(req.targetDate).slice(5, 10).replace('-', '/')
-        : (req.targetDate || '—');
-      const per = formatPeriodText(req.targetPeriod);
-      return `${m}(${day || '—'})${per}` + (cls ? ` · ${cls}` : '');
+       const cls = formatCourseDisplayText(clsName, subj, req.targetTeacherName || req.actualTeacherName);
+       return _fmtSlot(req.targetDate, getWeekDayText(dayNum), req.targetPeriod, cls || '');
     };
 
     /** 快速待辦節次：7/24(五)第7節國文 */
@@ -11744,7 +11780,7 @@ createApp({
        pendingMyPendingPage, pendingMySentPage, pendingAdminPage,
        paginatedMyPending, paginatedMySent, paginatedAdminPending,
        pendingMyPendingTotal, pendingMySentTotal, pendingAdminTotal, filteredAdminPendingRequests,
-       isBatchGroupExpanded, toggleBatchGroup, getBatchGroupSlotSummary, getBatchGroupStatusText, getBatchGroupStatusClass, isAdminPendingPageFullySelected,
+         isBatchGroupExpanded, toggleBatchGroup, getBatchGroupSlotSummary, getBatchGroupTeacherSummary, getBatchGroupStatusText, getBatchGroupStatusClass, isAdminPendingPageFullySelected,
       reportMonthOptions, personalChanges, recommendedExchangeList, displayedExchangeList,
       loginWithGoogle, logout, gsiButtonReady, gsiButtonError, gsiLoggingIn, reloadGsiLoginButton,
       changeWeek,       getPeriodTimeSpan, getWeekDayText, formatDateMMDD,
