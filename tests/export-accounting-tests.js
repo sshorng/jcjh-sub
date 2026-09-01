@@ -145,8 +145,8 @@ const configuredB = configured.overtimePlans.find(group => group.plan === '計�
 assert.ok(configuredA && configuredB, 'slot sources must create one overtime group per plan');
 assert.deepEqual(configuredA.rows[0], {
   expensePlan: '計畫A', serial: 1, title: '教師', name: 'Billing', weeklyOvertime: 1,
-  schedule: '週一1（701）', weeks: 1, grossHours: 1, deduction: 1, actualHours: 0,
-  rate: 455, amount: 0, reduceNote: '', note: '1、1*1(週一1（701）)\n2、7/13公假扣1節'
+  schedule: '一1', weeks: 1, grossHours: 1, deduction: 1, actualHours: 0,
+  rate: 455, amount: 0, reduceNote: '', note: '1、1*1(一1)\n2、7/13公假扣1節'
 });
 assert.equal(configuredB.rows[0].expensePlan, '計畫B');
 assert.equal(configuredB.rows[0].grossHours, 1);
@@ -154,6 +154,25 @@ assert.equal(configuredB.rows[0].deduction, 1);
 assert.ok(configuredA.rows.some(row => row.name === 'Cover' && row.expensePlan === '計畫A'));
 assert.ok(configuredB.rows.some(row => row.name === 'Cover' && row.expensePlan === '計畫B'));
 assert.equal(configured.blocking.length, 0);
+assert.equal(configured.summary.some(item => item.key === 'overtime'), false, 'split export must not include the aggregate overtime summary');
+
+const scheduleFormatInput = Object.assign({}, configuredInput, {
+  teachers: [{ email: 'bill@x', name: 'Billing', baseHours: 0, expensePlan: JSON.stringify([
+    { day: 2, period: 6, className: '701', source: '計畫A' },
+    { day: 3, period: 3, className: '702', source: '計畫A' }
+  ])}],
+  allSchedules: [
+    { teacherEmail: 'bill@x', dayOfWeek: 2, period: 6, className: '701', attr: '超鐘點' },
+    { teacherEmail: 'bill@x', dayOfWeek: 3, period: 3, className: '702', attr: '超鐘點' }
+  ],
+  substitutionRecords: []
+});
+scheduleFormatInput.monthlyReportRows = window.DomainBilling.buildMonthlyReportRows(scheduleFormatInput);
+const scheduleFormat = window.ExportAccounting.buildExportData(scheduleFormatInput);
+const scheduleFormatPlan = scheduleFormat.overtimePlans.find(group => group.plan === '計畫A');
+assert.equal(scheduleFormatPlan.rows[0].schedule, '二6、三3');
+assert.equal(scheduleFormatPlan.rows[0].schedule.includes('週'), false);
+assert.equal(scheduleFormatPlan.rows[0].schedule.includes('（'), false);
 
 const missingSourceInput = Object.assign({}, configuredInput, {
   teachers: [{ email: 'bill@x', name: 'Billing', baseHours: 0, expensePlan: JSON.stringify([
@@ -165,6 +184,7 @@ missingSourceInput.monthlyReportRows = window.DomainBilling.buildMonthlyReportRo
 const missingSource = window.ExportAccounting.buildExportData(missingSourceInput);
 const defaultPlan = missingSource.overtimePlans.find(group => group.plan === '預設');
 assert.ok(defaultPlan, 'missing slot source must be grouped into the default overtime plan');
+assert.equal(missingSource.overtimePlans[0].plan, '預設', 'default overtime plan must be listed first');
 assert.equal(defaultPlan.rows[0].expensePlan, '預設');
 assert.equal(defaultPlan.rows[0].grossHours, 1);
 assert.equal(defaultPlan.rows[0].actualHours, 1);

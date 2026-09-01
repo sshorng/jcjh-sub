@@ -689,6 +689,17 @@
     return DAY_NAMES[n === 7 ? 0 : n] || '';
   }
 
+  function periodName(period) {
+    var value = Number(period);
+    if (value === 0) return '早自習';
+    if (value === 45) return '午休';
+    return String(value || '');
+  }
+
+  function dayPeriodText(day, period) {
+    return dayNameForWeekday(day) + periodName(period);
+  }
+
   function scheduleText(email, allSchedules, onlyOvertime, period) {
     var seen = {};
     var list = (allSchedules || []).filter(function (s) {
@@ -708,7 +719,7 @@
       return a.day - b.day || a.period - b.period;
     });
     return list.map(function (x) {
-      return dayNameForWeekday(x.day) + String(x.period);
+      return dayPeriodText(x.day, x.period);
     }).filter(Boolean).join('\u3001');
   }
   function accountingClassParts(value) {
@@ -1176,7 +1187,6 @@
     var overtimePeriod = getPeriod(periods, 'overtime', opts.reportMonth);
     var chargedMap = buildChargedRecordMap(opts, overtimePeriod, schoolSwapIndex);
     data.sheets.overtime = buildSummaryRows(overtimeConfig, opts, overtimePeriod, '', chargedMap, schoolSwapIndex);
-    summaryFor('overtime', '超鐘點', data.sheets.overtime);
 
     var planKeys = [];
     reportSourceRows(opts).forEach(function (source) {
@@ -1195,7 +1205,11 @@
         addUniqueMessage(data.warnings, warning);
       });
     });
-    planKeys.sort(function (a, b) { return a.localeCompare(b, 'zh-Hant', { numeric: true }); });
+    planKeys.sort(function (a, b) {
+      if (a === '預設') return -1;
+      if (b === '預設') return 1;
+      return a.localeCompare(b, 'zh-Hant', { numeric: true });
+    });
     planKeys.forEach(function (plan) {
       var rows = buildSummaryRows(overtimeConfig, opts, overtimePeriod, plan, chargedMap, schoolSwapIndex);
       if (!rows.length) return;
@@ -1278,7 +1292,7 @@
     if (config.key === 'overtime') return 15;
     if (config.key === 'adjunct') return 14;
     if (config.key === 'publicSub') return 9;
-    if (config.key === 'selfSub' || config.key === 'mentor') return 10;
+    if (config.key === 'selfSub' || config.key === 'mentor') return 9;
     return 0;
   }
 
@@ -1320,6 +1334,29 @@
     };
   }
 
+  function mergeCellRange(sheet, range) {
+    try { sheet.mergeCells(range); } catch (e) { /* 範本可能已經合併 */ }
+  }
+
+  function mergeSummaryNoteRow(sheet, config, totalRow) {
+    var endColumn = config.key === 'overtime' ? 'O' : 'N';
+    var noteRow = totalRow + 1;
+    mergeCellRange(sheet, 'B' + noteRow + ':' + endColumn + noteRow);
+  }
+
+  function lineNoteText(row) {
+    return [row && row.originalName, row && (row.reason || row.note)]
+      .map(function (value) { return String(value == null ? '' : value).trim(); })
+      .filter(Boolean)
+      .join('；');
+  }
+
+  function mergeLineNoteColumns(sheet, totalRow) {
+    mergeCellRange(sheet, 'I2:J2');
+    sheet.getCell(2, 9).value = '備註';
+    for (var row = 3; row <= totalRow; row += 1) mergeCellRange(sheet, 'I' + row + ':J' + row);
+  }
+
   function writeSummarySheet(sheet, config, rows) {
     var totalRow = prepareRows(sheet, config, rows.length);
     var values = rows.map(function (row) {
@@ -1346,6 +1383,7 @@
       sheet.getCell(totalRow, 9).value = sumFormula('I', config.dataStart, end);
       sheet.getCell(totalRow, 11).value = sumFormula('K', config.dataStart, end);
     }
+    mergeSummaryNoteRow(sheet, config, totalRow);
     return totalRow;
   }
 
@@ -1365,8 +1403,9 @@
   function writeLineSheet(sheet, config, rows) {
     var totalRow = prepareRows(sheet, config, rows.length);
     writeRows(sheet, config.dataStart, rows.map(function (row) {
-      return [row.actualName, row.date, row.time, row.course, row.period, row.count, row.rate, row.amount, row.originalName, row.reason || row.note];
+      return [row.actualName, row.date, row.time, row.course, row.period, row.count, row.rate, row.amount, lineNoteText(row), null];
     }));
+    mergeLineNoteColumns(sheet, totalRow);
     applyNoteLayout(sheet, config, config.dataStart, rows);
     var end = config.dataStart + rows.length - 1;
     sheet.getCell(totalRow, 1).value = '合計';
@@ -1432,17 +1471,20 @@
     var overtimeConfig = SHEET_CONFIG.overtime;
     var overtimeTemplate = workbook.worksheets[overtimeConfig.index];
     if (!overtimeTemplate) throw new Error('範本缺少工作表：' + overtimeConfig.label);
-    var planSheets = (data.overtimePlans || []).map(function (group, index) {
-      return {
+    var planSheets = [];
+    (data.overtimePlans || []).forEach(function (group, index) {
+      planSheets.push({
         group: group,
-        sheet: cloneWorksheet(overtimeTemplate, workbook, '__overtime_plan_' + index, overtimeConfig.columns)
-      };
+        sheet: index === 0
+          ? overtimeTemplate
+          : cloneWorksheet(overtimeTemplate, workbook, '__overtime_plan_' + index, overtimeConfig.columns)
+      });
     });
-    [SHEET_CONFIG.overtime, SHEET_CONFIG.adjunct, SHEET_CONFIG.publicSub, SHEET_CONFIG.selfSub, SHEET_CONFIG.mentor].forEach(function (config) {
+    [SHEET_CONFIG.adjunct, SHEET_CONFIG.publicSub, SHEET_CONFIG.selfSub, SHEET_CONFIG.mentor].forEach(function (config) {
       var sheet = workbook.worksheets[config.index];
       if (!sheet) throw new Error('範本缺少工作表：' + config.label);
       var period = getPeriod(data.periods, config.key, opts.reportMonth);
-      var plan = config.key === 'overtime' ? '' : null;
+      var plan = null;
       var titleCell = firstTitleCell(sheet, config.columns);
       titleCell.value = titleFor(config, opts.reportMonth, period, plan);
       var name = sheetName(config, opts.reportMonth, period, plan);
@@ -1475,14 +1517,15 @@
       sheet.name = name;
       writeSummarySheet(sheet, overtimeConfig, group.rows);
     });
-    // 計畫表要緊接在一般超鐘點後面，讓會計查看時先看到一般表，再看到各計畫表。
+    if (!planSheets.length && typeof workbook.removeWorksheet === 'function') {
+      workbook.removeWorksheet(overtimeTemplate.id);
+    }
     var baseSheets = workbook.worksheets.filter(function (sheet) {
       return planSheets.every(function (entry) { return entry.sheet !== sheet; });
     });
-    if (planSheets.length && baseSheets.length) {
-      var orderedSheets = [baseSheets[0]]
-        .concat(planSheets.map(function (entry) { return entry.sheet; }))
-        .concat(baseSheets.slice(1));
+    if (planSheets.length || baseSheets.length) {
+      var orderedSheets = planSheets.map(function (entry) { return entry.sheet; })
+        .concat(baseSheets);
       orderedSheets.forEach(function (sheet, index) {
         sheet.orderNo = index;
       });

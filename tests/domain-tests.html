@@ -663,8 +663,8 @@
            getTeacherNameByEmail: function (e) { return e; },
            isSingleWeek: function () { return true; }
          });
-          assert('第8公費誰上誰拿', p8MixedFees.byEmail['c@x'] && p8MixedFees.byEmail['c@x'].fee === 500);
-          assert('第8自費誰上誰拿', p8MixedFees.byEmail['d@x'] && p8MixedFees.byEmail['d@x'].fee === 500);
+          assert('第8公費誰上誰拿', p8MixedFees.byEmail['c@x'] && p8MixedFees.byEmail['c@x'].fee === 600);
+          assert('第8自費誰上誰拿', p8MixedFees.byEmail['d@x'] && p8MixedFees.byEmail['d@x'].fee === 600);
 
           var p8Pending = window.DomainBilling.buildPeriod8Payout({
             reportMonth: '2026-07',

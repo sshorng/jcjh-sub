@@ -7,7 +7,7 @@ window.DomainBilling = (function () {
   var FEE_REGULAR = 455;
   /** 1～7 超鐘點費（元／節）；與公代費同額，若校內不同請改此常數 */
   var FEE_OVERTIME = 455;
-  var FEE_8TH = 500;
+  var FEE_8TH = 600;
 
   function getWeekKey(dateStr) {
     var d = new Date(String(dateStr).replace(/-/g, '/'));
@@ -264,8 +264,7 @@ window.DomainBilling = (function () {
     var period = parseInt(schedule && (schedule.period != null ? schedule.period : schedule['節次']), 10);
     var dayText = ['', '一', '二', '三', '四', '五', '六', '日'][day] || '';
     var periodText = period === 0 ? '早自習' : (period === 45 ? '午休' : String(period || ''));
-    var className = String(schedule && (schedule.className || schedule['班級']) || '').trim();
-    return '週' + dayText + periodText + (className ? '（' + className + '）' : '');
+    return dayText + periodText;
   }
 
   function scheduleIsInWeek(schedule, dates) {
@@ -1029,7 +1028,7 @@ window.DomainBilling = (function () {
         "我去代課(自費費1-7)": row.selfSubFee,
         "我去代課(自費明細1-7)": row.selfSubDetail,
         "第8節實際上課節數": row.period8SubCount,
-        "第8節費(500元/節)": row.period8Fee
+        "第8節費(600元/節)": row.period8Fee
       };
     });
   }
