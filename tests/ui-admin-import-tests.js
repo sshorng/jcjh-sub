@@ -40,6 +40,7 @@ const admin = window.UiAdmin.create({
   showHistoryEditModal: ref(false),
   requestsList: ref([])
 });
+assert.deepEqual(admin.getOvertimeExpenseSourceOptions(), [], '未設定資料時不應提供預設計畫名稱');
 
 schedules.value = [{
   teacherEmail: '教師',

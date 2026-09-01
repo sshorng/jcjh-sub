@@ -68,7 +68,7 @@ window.UiAdmin = (function () {
     var showOvertimePlanModal = useRef('showOvertimePlanModal', false);
     var overtimePlanTeacher = useRef('overtimePlanTeacher', null);
     var overtimePlanRows = useRef('overtimePlanRows', []);
-    var accountingPlanOptions = deps.accountingPlanOptions || { value: ['計畫A', '計畫B', '校內經費'] };
+    var accountingPlanOptions = deps.accountingPlanOptions || { value: [] };
 
     var excelData = useRef('excelData', []);
     var excelHeaders = useRef('excelHeaders', []);
@@ -844,8 +844,7 @@ window.UiAdmin = (function () {
     function getOvertimeExpenseSourceOptions() {
       var seen = {};
       var list = [];
-      ['計畫A', '計畫B', '校內經費']
-        .concat(accountingPlanOptions.value || [])
+      (accountingPlanOptions.value || [])
         .concat((overtimePlanRows.value || []).map(function (row) { return row.source; }))
         .forEach(function (value) {
         var source = window.FieldMap && window.FieldMap.normalizeExpenseSource
@@ -905,10 +904,7 @@ window.UiAdmin = (function () {
       var teacher = overtimePlanTeacher.value;
       var rows = overtimePlanRows.value || [];
       if (!teacher) return;
-      if (rows.some(function (row) { return !String(row.source || '').trim(); })) {
-        showToast('每一個超鐘點課格都必須選擇經費來源', 'warning');
-        return;
-      }
+      // 空白來源代表預設經費；序列化時會略過未指定的課格。
       var slots = rows.map(function (row) {
         return {
           day: row.day,

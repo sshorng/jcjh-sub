@@ -761,7 +761,7 @@ function runApplicationFormContractTest() {
    assert.match(appSource, /openExchangeModeDemo: \(\) => openExchangeModeDemoForTour\(\)/, 'tour should demonstrate exchange mode');
     assert.match(appSource, /ONBOARDING_SCRIPT = 'onboarding-tour\.js\?v=20260831-combined3'/, 'onboarding cache must refresh with the exchange tour');
     assert.match(html, /ui-activity\.js\?v=20260901-batch-display2/);
-    assert.match(html, /app\.js\?v=20260901-slot-format1/);
+     assert.match(html, /app\.js\?v=20260901-expense-default1/);
      assert.match(appSource, /openPaperPrintDemo: \(\) => openPaperPrintDemoForTour\(\)/, 'paper tour should open a print preview demo');
      assert.match(appSource, /openExchangeModeDemo: \(\) => openExchangeModeDemoForTour\(\)/, 'tour should demonstrate exchange mode');
     assert.match(appSource, /source: 'paperTour'/, 'paper tour preview must use an isolated source');

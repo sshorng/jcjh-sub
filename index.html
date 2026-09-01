@@ -3185,7 +3185,7 @@
               class="print-preview-frame"
               :srcdoc="printPreview.documentHtml"
               title="調代課單單欄列印預覽"
-              sandbox
+              sandbox="allow-scripts"
             ></iframe>
           </div>
           <div class="modal-footer print-preview-modal-footer">
@@ -3598,18 +3598,18 @@
                  <span style="font-weight:700;">{{ ['日','一','二','三','四','五','六','日'][row.day] || row.day }}</span>
                 <span>{{ row.period === 0 ? '早自習' : (row.period === 45 ? '午休' : '第' + row.period + '節') }}</span>
                 <span>{{ row.className || '未指定班級' }}<small v-if="row.subject" style="display:block;color:var(--text-muted);">{{ row.subject }}</small></span>
-                <input type="text" class="form-input" list="overtime-expense-source-options" maxlength="40" placeholder="可直接輸入計畫名稱" v-model="row.source">
+                <input type="text" class="form-input" list="overtime-expense-source-options" maxlength="40" placeholder="留白＝預設經費，可直接輸入計畫名稱" v-model="row.source">
               </div>
             </div>
             <datalist id="overtime-expense-source-options">
               <option v-for="source in getOvertimeExpenseSourceOptions()" :key="'overtime-source-' + source" :value="source"></option>
             </datalist>
             <div style="margin-top:12px;font-size:0.75rem;color:var(--text-muted);">
-              可直接輸入新的計畫名稱，也可從下拉建議套用其他教師已使用過的計畫。已設定 {{ overtimePlanRows.filter(row => row.source).length }}／{{ overtimePlanRows.length }} 個課格。
+              可直接輸入新的計畫名稱，也可從下拉建議套用其他教師已使用過的計畫；留白代表預設經費。已設定 {{ overtimePlanRows.filter(row => row.source).length }}／{{ overtimePlanRows.length }} 個課格。
             </div>
           </div>
           <div class="modal-footer">
-            <button class="btn btn-primary" :disabled="loading || overtimePlanRows.some(row => !row.source)" @click="saveOvertimePlan">儲存來源設定</button>
+            <button type="button" class="btn btn-primary" :disabled="loading" @click="saveOvertimePlan">儲存來源設定</button>
             <button class="btn btn-secondary" @click="showOvertimePlanModal = false">取消</button>
           </div>
         </div>
@@ -4440,7 +4440,7 @@
      <script defer src="ui-approval.js?v=20260831-combined3"></script>
   <!-- ui-admin：僅管理員／後台操作時 ensureUiAdmin -->
      <script defer src="app-shell-utils.js?v=20260831-combined3"></script>
-          <script defer src="app.js?v=20260901-slot-format1"></script>
+          <script defer src="app.js?v=20260901-expense-default1"></script>
   <script>
     (function () {
       function loadScript(src) {
@@ -4479,7 +4479,7 @@
       /** 後台匯入／教師／課表編輯（教師首屏不載） */
       window.ensureUiAdmin = function () {
         if (window.UiAdmin) return Promise.resolve();
-           if (!_uiAdminP) _uiAdminP = loadScript('ui-admin.js?v=20260901-expense-plan3');
+           if (!_uiAdminP) _uiAdminP = loadScript('ui-admin.js?v=20260901-expense-default1');
         return _uiAdminP;
       };
       window.ensurePrintHelper = function () {

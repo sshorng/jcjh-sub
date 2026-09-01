@@ -4311,7 +4311,7 @@ createApp({
 
     const teachersListDetails = computed(() => teachersList.value);
     const accountingPlanOptions = computed(() => {
-      const sources = new Set(['計畫A', '計畫B', '校內經費']);
+      const sources = new Set();
       (teachersList.value || []).forEach((teacher) => {
         if (window.FieldMap && typeof window.FieldMap.expensePlanSources === 'function') {
           window.FieldMap.expensePlanSources(teacher && teacher.expensePlan).forEach(source => sources.add(source));
