@@ -28,8 +28,8 @@ function buildExchangeRouteHtml(opts) {
   const subjectB = escapePrintHtml(opts.subjectB || '');
   const compact = !!opts.compact;
 
-  const slotA = [dayA ? `週${dayA}` : '', periodA ? `第${periodA}節` : ''].filter(Boolean).join(' ');
-  const slotB = [dayB ? `週${dayB}` : '', periodB ? `第${periodB}節` : ''].filter(Boolean).join(' ');
+  const slotA = [dayA ? `（${dayA}）` : '', periodA ? `第${periodA}節` : ''].filter(Boolean).join(' ');
+  const slotB = [dayB ? `（${dayB}）` : '', periodB ? `第${periodB}節` : ''].filter(Boolean).join(' ');
   const metaA = [classA, subjectA].filter(Boolean).join(' ');
   const metaB = [classB, subjectB].filter(Boolean).join(' ');
 

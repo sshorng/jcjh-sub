@@ -2660,7 +2660,7 @@ createApp({
       const lesson = [className, subject].filter(value => String(value || '').trim()).join('');
       const teacher = cleanLineTeacherName(teacherName);
       const teacherSuffix = teacher ? `（${teacher}老師）` : '';
-      return `${dateText}${dayText ? `（週${dayText}）` : ''} ${periodText}${lesson ? `｜${lesson}${teacherSuffix}` : ''}`.trim();
+      return `${dateText}${dayText ? `（${dayText}）` : ''} ${periodText}${lesson ? `｜${lesson}${teacherSuffix}` : ''}`.trim();
     };
 
     const cleanLineTeacherName = (value) => String(value || '').replace(/\s*老師\s*$/, '').trim();
@@ -3793,7 +3793,7 @@ createApp({
         ? window.DateUtils.decodeTimeKey(timeKey)
         : { day: parseInt(String(timeKey).split('-')[0], 10), period: parseInt(String(timeKey).split('-')[1], 10) };
       const dayText = getWeekDayText(decoded.day);
-      return `${formatDateMMDD(date)}（週${dayText}）${formatPeriodText(decoded.period)}`;
+      return `${formatDateMMDD(date)}（${dayText}）${formatPeriodText(decoded.period)}`;
     };
 
     const isAdmin = computed(() => userRole.value === 'admin');
@@ -9775,15 +9775,15 @@ createApp({
       const teacher = String(teacherName || '').replace(/\s*老師\s*$/, '').trim();
       return course + (teacher ? `（${teacher}老師）` : '');
     };
-    const _fmtSlot = (dateStr, day, period, clsSubj, teacherName) => {
+    const _fmtSlot = (dateStr, day, period, clsSubj) => {
       const m = dateStr && dateStr !== '—' && dateStr.length >= 10 ? dateStr.slice(5, 10).replace('-', '/') : (dateStr || '—');
       const rawDay = String(day == null ? '' : day).trim();
       const dayText = /^\d+$/.test(rawDay)
         ? getWeekDayText(Number(rawDay))
         : rawDay.replace(/^週/, '');
-      const daySuffix = dayText && dayText !== '—' ? `（週${dayText}）` : '';
+      const daySuffix = dayText && dayText !== '—' ? `（${dayText}）` : '';
       const periodText = period == null || period === '' ? '—' : formatPeriodText(period);
-      const course = formatCourseDisplayText(clsSubj, '', teacherName);
+      const course = formatCourseDisplayText(clsSubj, '');
       return `${m}${daySuffix} ${periodText}${course ? `｜${course}` : ''}`.trim();
     };
     /** 同節先前義務（此人為 actual 的代課／調入），可排除本筆及本申請單 */
@@ -10003,7 +10003,7 @@ createApp({
       }
       const day = dayNum != null ? getWeekDayText(dayNum) : '—';
       const resolved = resolveHistoryLeaveClassSubject(rec);
-       const cls = formatCourseDisplayText(resolved.className, resolved.subject, rec.originalTeacherName || rec.requesterName);
+       const cls = formatCourseDisplayText(resolved.className, resolved.subject);
        return _fmtSlot(dateStr, day, period, cls || '');
     };
     /**
@@ -10046,7 +10046,7 @@ createApp({
           const d = new Date(String(dateStr).replace(/-/g, '/'));
           if (!Number.isNaN(d.getTime())) dayNum = d.getDay() === 0 ? 7 : d.getDay();
         }
-        const movedCourse = formatCourseDisplayText(rec.className, rec.subject, rec.requesterName || rec.originalTeacherName || rec.actualTeacherName);
+        const movedCourse = formatCourseDisplayText(rec.className, rec.subject);
         return _fmtSlot(dateStr, dayNum != null ? getWeekDayText(dayNum) : '—', rec.targetPeriod || rec.period, movedCourse);
       }
       let targetDate = rec.targetDate;
@@ -10059,7 +10059,7 @@ createApp({
         const d = new Date(String(targetDate).replace(/-/g, '/'));
         if (!Number.isNaN(d.getTime())) dayNum = d.getDay() === 0 ? 7 : d.getDay();
         const day = dayNum != null ? getWeekDayText(dayNum) : '—';
-         const cls = formatCourseDisplayText(clsName, subj, rec.targetTeacherName || rec.actualTeacherName);
+         const cls = formatCourseDisplayText(clsName, subj);
          return _fmtSlot(targetDate, day, targetPeriod, cls || '');
       }
       // 備援：目標日 edge _1 的班科就是目標位置原本的課堂。
@@ -10099,7 +10099,7 @@ createApp({
         if (!Number.isNaN(d3.getTime())) dayNumOut = d3.getDay() === 0 ? 7 : d3.getDay();
       }
       const day = dayNumOut != null ? getWeekDayText(dayNumOut) : '—';
-       const cls = formatCourseDisplayText(clsName, subj, rec.targetTeacherName || rec.actualTeacherName);
+       const cls = formatCourseDisplayText(clsName, subj);
        return _fmtSlot(targetDate, day, targetPeriod, cls || '');
     };
 
@@ -10199,7 +10199,7 @@ createApp({
     const formatLeaveClassSlot = (req) => {
       if (!req) return '—';
       const day = getWeekDayText(req.requestPeriodDay);
-      const cls = formatCourseDisplayText(req.className, req.subject, req.requesterName || req.originalTeacherName);
+       const cls = formatCourseDisplayText(req.className, req.subject);
       return _fmtSlot(req.requestDate, day, req.requestPeriod, cls || '');
     };
     // 對調課堂：受邀人在目標節的有效班／科（含調入／代課）；勿回退申請人班科
@@ -10211,7 +10211,7 @@ createApp({
            const d = new Date(String(req.targetDate).replace(/-/g, '/'));
            if (!Number.isNaN(d.getTime())) dayNum = d.getDay() === 0 ? 7 : d.getDay();
          }
-          const movedCourse = formatCourseDisplayText(req.className, req.subject, req.requesterName || req.originalTeacherName || req.actualTeacherName);
+          const movedCourse = formatCourseDisplayText(req.className, req.subject);
           return _fmtSlot(req.targetDate, getWeekDayText(dayNum), req.targetPeriod, movedCourse || '');
        }
        let dayNum = req.targetDayOfWeek;
@@ -10227,7 +10227,7 @@ createApp({
       );
       const clsName = cell ? (cell.className || '') : (req.targetClassName || '');
       const subj = cell ? (cell.subject || '') : (req.targetSubject || '');
-       const cls = formatCourseDisplayText(clsName, subj, req.targetTeacherName || req.actualTeacherName);
+       const cls = formatCourseDisplayText(clsName, subj);
        return _fmtSlot(req.targetDate, getWeekDayText(dayNum), req.targetPeriod, cls || '');
     };
 

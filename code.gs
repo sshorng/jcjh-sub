@@ -8264,7 +8264,7 @@ function sendRespondAgreeBatchEmail_(rows, currentUrl) {
       var periodVal = req.requestPeriod || req["異動節次"] || "";
       var cls = req.className || req["班級"] || "";
       var subj = req.subject || req["科目"] || "";
-       return '<li>' + escapeHtml_(dateVal + ' (週' + getShortDay(dayVal) + ') 第' + periodVal + '節　' + cls + ' ' + subj) + '</li>';
+        return '<li>' + escapeHtml_(dateVal + ' (' + getShortDay(dayVal) + ') 第' + periodVal + '節　' + cls + ' ' + subj) + '</li>';
     }).join("")
     + '</ul>';
    var content = '<p style="color:#1e293b;font-size:15px;margin-bottom:8px;">親愛的 <b>' + safeRequesterName + '</b> 老師，您好：</p>'
@@ -8444,7 +8444,7 @@ function _resolveExchangeSides_(req) {
 function _fmtSlotLine_(dateVal, dayVal, periodVal, cls, subj) {
   var dayTxt = _shortDay_(dayVal);
   var head = String(dateVal || "");
-  if (dayTxt) head += " (週" + dayTxt + ")";
+  if (dayTxt) head += " (" + dayTxt + ")";
   head += " 第" + periodVal + "節";
   var course = (String(cls || "") + " " + String(subj || "")).trim();
   return course ? (head + "　" + course) : head;

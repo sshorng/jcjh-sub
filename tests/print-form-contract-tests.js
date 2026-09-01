@@ -208,7 +208,7 @@ assert.doesNotMatch(appSource, /seedClassKey/, 'single-request batch printing sh
 assert.match(appSource, /teacherKey\(record, 'actual'\) === targetKey/, 'single-request batch printing should group by recipient teacher');
 assert.match(printHelperSource, /const signatureSide = 'actual';/);
 assert.match(printHelperSource, /function getOfficialArrowMarkerHtml\(markerId\)/);
-assert.match(indexSource, /print-helper\.js\?v=20260901-class-merge1/);
+assert.match(indexSource, /print-helper\.js\?v=20260901-class-merge2/);
 assert.match(indexSource, /<title>建成國中線上課表系統<\/title>/);
 assert.match(indexSource, /application-name" content="JCJH Timetable"/);
 assert.equal((indexSource.match(/class="mini-grid-date"/g) || []).length, 12, '對照頁一般與左右兩張跨週課表都應顯示日期');
@@ -483,8 +483,9 @@ assert.equal(sameClassDifferentSubForms.classCopyCount, 1, '同班同週不同�
 assert.equal(sameClassDifferentSubForms.length, 3, '兩份教師版加一份班級通知單');
 const sameClassMergedForm = sameClassDifferentSubForms.find(form => /班級：802/.test(form));
 assert.ok(sameClassMergedForm, '應產生合併後的班級通知單');
-assert.match(sameClassMergedForm, /生活科技/);
-assert.match(sameClassMergedForm, /健康教育/);
+const sameClassMergedSubjectRows = [...sameClassMergedForm.matchAll(/<tr class="official-subject-row">([\s\S]*?)<\/tr>/g)].map(match => match[1]);
+assert.match(sameClassMergedSubjectRows[0], /生活科技/);
+assert.match(sameClassMergedSubjectRows[1], /健康教育/);
 
 const batchDifferentTargetGroups = context.window.buildPrintGroups([
   batchRecords[0],
