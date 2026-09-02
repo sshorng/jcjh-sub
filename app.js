@@ -5396,7 +5396,8 @@ createApp({
         if (!r) return false;
         if (isQuotaDeductFee(r.subFee)) return true;
         const f = String(r.subFee || '');
-        return f === '活動公費' || f === '第8節代課';
+        // 「第8節代課」是第八節的一般代課經費代碼，不代表活動互代。
+        return f === '活動公費';
       };
       /** 事由是否屬「請假」類（否則用「課務異動／代課」） */
       const isLeaveLikeReason = (reason) => {

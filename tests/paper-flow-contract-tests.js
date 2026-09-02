@@ -724,10 +724,20 @@ function runApplicationFormContractTest() {
   assert.match(html, /@click="openSuccessPrintPreview"/);
   assert.match(html, /@click="addSuccessToCalendar"/);
   assert.match(html, /@click="closeSuccessGoRecords"/);
-    const appSource = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
-    const activitySource = fs.readFileSync(path.join(root, 'ui-activity.js'), 'utf8');
-    const onboardingSource = fs.readFileSync(path.join(root, 'onboarding-tour.js'), 'utf8');
-    assert.match(appSource, /const paperFlow = computed\(\(\) =>\s*!isMutualCover\.value\s*&&\s*notificationsSuppressed\.value\s*&&\s*!isProxySubmitActive\.value\s*\);/, '關閉線上申請時應優先走紙本流程');
+     const appSource = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
+     const activitySource = fs.readFileSync(path.join(root, 'ui-activity.js'), 'utf8');
+     const onboardingSource = fs.readFileSync(path.join(root, 'onboarding-tour.js'), 'utf8');
+     const mutualRecStart = appSource.indexOf('const isMutualRec =');
+     const mutualRecEnd = appSource.indexOf('/** 事由是否屬「請假」類', mutualRecStart);
+     assert.ok(mutualRecStart >= 0 && mutualRecEnd > mutualRecStart, '個人異動互代判斷函式必須存在');
+     const isMutualRec = vm.runInNewContext(`(() => {
+       const isQuotaDeductFee = fee => String(fee || '') === '扣額度' || String(fee || '') === '互代不結';
+       ${appSource.slice(mutualRecStart, mutualRecEnd)}
+       return isMutualRec;
+     })()`);
+     assert.equal(isMutualRec({ subFee: '第8節代課' }), false, '第8節代課經費不可顯示為互代');
+     assert.equal(isMutualRec({ subFee: '活動公費' }), true, '活動公費仍應顯示為互代');
+     assert.match(appSource, /const paperFlow = computed\(\(\) =>\s*!isMutualCover\.value\s*&&\s*notificationsSuppressed\.value\s*&&\s*!isProxySubmitActive\.value\s*\);/, '關閉線上申請時應優先走紙本流程');
     assert.match(html, /v-if="isAdmin && !notificationsSuppressed && pendingRequestData\.specialFlow !== 'combined_return'/, '紙本模式不應顯示直接核准選項');
     assert.equal((html.match(/getBatchGroupTeacherSummary\(row\)/g) || []).length, 3, '三個批次主列都應顯示全部代課教師');
     const batchTeacherStart = appSource.indexOf('const getBatchGroupTeacherSummary =');
@@ -781,7 +791,7 @@ function runApplicationFormContractTest() {
    assert.match(appSource, /openExchangeModeDemo: \(\) => openExchangeModeDemoForTour\(\)/, 'tour should demonstrate exchange mode');
     assert.match(appSource, /ONBOARDING_SCRIPT = 'onboarding-tour\.js\?v=20260831-combined3'/, 'onboarding cache must refresh with the exchange tour');
     assert.match(html, /ui-activity\.js\?v=20260901-batch-display2/);
-     assert.match(html, /app\.js\?v=20260901-expense-default1/);
+      assert.match(html, /app\.js\?v=20260903-p8-label1/);
      assert.match(appSource, /openPaperPrintDemo: \(\) => openPaperPrintDemoForTour\(\)/, 'paper tour should open a print preview demo');
      assert.match(appSource, /openExchangeModeDemo: \(\) => openExchangeModeDemoForTour\(\)/, 'tour should demonstrate exchange mode');
     assert.match(appSource, /source: 'paperTour'/, 'paper tour preview must use an isolated source');
