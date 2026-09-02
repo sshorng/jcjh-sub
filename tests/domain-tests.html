@@ -529,6 +529,30 @@
           );
           assert('教師課表正式鐘點排除巡堂／預排／第8並去重', timetableHours === 2, 'hours=' + timetableHours);
 
+          var combinedHoursBilling = window.DomainBilling.buildMonthlyReportRows({
+            teachers: [{ email: 'combined-hours@x', name: 'Combined Hours', baseHours: 1 }],
+            allSchedules: [
+              { teacherEmail: 'combined-hours@x', dayOfWeek: 1, period: 1, className: '701', attr: '一般', specialTags: '併班' },
+              { teacherEmail: 'combined-hours@x', dayOfWeek: 1, period: 1, className: '702', attr: '一般', specialTags: '併班' },
+              { teacherEmail: 'combined-hours@x', dayOfWeek: 1, period: 2, className: '703', attr: '超鐘點', specialTags: '併班' },
+              { teacherEmail: 'combined-hours@x', dayOfWeek: 1, period: 2, className: '704', attr: '超鐘點', specialTags: '併班' }
+            ],
+            substitutionRecords: [],
+            reportMonth: '2026-07',
+            reportWeeksCount: 1
+          })[0];
+          var combinedAllocatedHours = (combinedHoursBilling.expensePlanAllocations || [])
+            .reduce(function (sum, allocation) { return sum + (Number(allocation.rawHours) || 0); }, 0);
+          assert('月報併班同節只算一堂並與課表一致', combinedHoursBilling
+            && combinedHoursBilling.weeklyPeriods === 2
+            && combinedHoursBilling.weeklyOvertime === 1
+            && combinedHoursBilling.scheduledOvertime === 1
+            && combinedAllocatedHours === 1,
+            combinedHoursBilling && 'weekly=' + combinedHoursBilling.weeklyPeriods
+              + ', overtime=' + combinedHoursBilling.weeklyOvertime
+              + ', scheduled=' + combinedHoursBilling.scheduledOvertime
+              + ', allocated=' + combinedAllocatedHours);
+
          function billingCase(period, attr, fee) {
            return window.DomainBilling.buildMonthlyReportRows({
              teachers: [{ email: 'bill@x', name: 'Billing', baseHours: 0 }],

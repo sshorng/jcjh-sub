@@ -68,18 +68,93 @@ window.DomainBilling = (function () {
     return out;
   }
 
-  function weeklyPeriodsForDates(teacherIdentity, schedules, dates) {
-    var dateSet = {};
-    (dates || []).forEach(function (dateStr) { dateSet[dateStr] = true; });
-    return (schedules || []).filter(function (schedule) {
-      if (!hasCommonKey(teacherIdentity, scheduleTeacherKeys(schedule)) || !isWeeklyHoursSlot(schedule)) return false;
-      var day = parseInt(schedule.dayOfWeek != null ? schedule.dayOfWeek : schedule['星期'], 10);
-      return (dates || []).some(function (dateStr) {
-        return dateSet[dateStr]
-          && (!day || isNaN(day) || dayOfWeekFromDate(dateStr) === day)
-          && isScheduleActiveOnDate(schedule, dateStr);
+  function scheduleDay(schedule) {
+    return parseInt(schedule && (schedule.dayOfWeek != null ? schedule.dayOfWeek : schedule['星期']), 10);
+  }
+
+  function schedulePeriod(schedule) {
+    return parseInt(schedule && (schedule.period != null ? schedule.period : schedule['節次']), 10);
+  }
+
+  function hasScheduleTag(schedule, tag) {
+    var raw = schedule && (schedule.specialTags || schedule['特殊標記'] || '');
+    if (Array.isArray(raw)) return raw.indexOf(tag) >= 0;
+    return String(raw).split(/[、,，;；/／|｜\s]+/).map(function (value) {
+      return String(value || '').trim();
+    }).indexOf(tag) >= 0;
+  }
+
+  function isPatrolScheduleSlot(schedule) {
+    var attr = String(schedule && (schedule.attr || schedule['課堂屬性']) || '').trim();
+    if (attr.indexOf('巡堂') >= 0) return true;
+    var className = String(schedule && (schedule.className || schedule['班級']) || '').trim();
+    var subject = String(schedule && (schedule.subject || schedule['科目']) || '').trim();
+    return className === '巡堂' || subject === '巡堂';
+  }
+
+  function isFormalWeeklyScheduleSlot(schedule) {
+    if (!isWeeklyHoursSlot(schedule) || isPatrolScheduleSlot(schedule)) return false;
+    var attr = String(schedule && (schedule.attr || schedule['課堂屬性']) || '').trim();
+    return !schedule.isPreplanned && attr !== '預排' && !hasScheduleTag(schedule, '預排');
+  }
+
+  function mergeWeeklySlotRows(rows) {
+    if (!rows.length) return null;
+    if (rows.length === 1) return rows[0];
+    var merged = Object.assign({}, rows[0]);
+    var classes = [];
+    var tags = [];
+    rows.forEach(function (row) {
+      var className = String(row && (row.className || row['班級']) || '').trim();
+      if (className && classes.indexOf(className) < 0) classes.push(className);
+      var rawTags = row && (row.specialTags || row['特殊標記'] || '');
+      String(Array.isArray(rawTags) ? rawTags.join('、') : rawTags)
+        .split(/[、,，;；/／|｜\s]+/).map(function (value) { return String(value || '').trim(); })
+        .filter(Boolean).forEach(function (tag) {
+          if (tags.indexOf(tag) < 0) tags.push(tag);
+        });
+    });
+    if (classes.length) {
+      merged.className = classes.join('、');
+      if (Object.prototype.hasOwnProperty.call(merged, '班級')) merged['班級'] = merged.className;
+    }
+    if (tags.length) {
+      merged.specialTags = tags.join('、');
+      if (Object.prototype.hasOwnProperty.call(merged, '特殊標記')) merged['特殊標記'] = merged.specialTags;
+    }
+    return merged;
+  }
+
+  /**
+   * 依課表口徑整理週鐘點課格：同一教師同一星期／節次只算一堂。
+   * 同節多列通常是併班；合併班級文字後仍保留來源判定所需的資訊。
+   */
+  function weeklyScheduleSlotsForDates(teacherIdentity, schedules, dates, onlyOvertime) {
+    var weekDates = Array.isArray(dates) ? dates : [];
+    var slots = {};
+    (schedules || []).forEach(function (schedule) {
+      if (!hasCommonKey(teacherIdentity, scheduleTeacherKeys(schedule))
+          || !isFormalWeeklyScheduleSlot(schedule)
+          || (onlyOvertime && !isOvertimeScheduleSlot(schedule))) return;
+      var day = scheduleDay(schedule);
+      var period = schedulePeriod(schedule);
+      if (!Number.isFinite(period)) return;
+      var hasValidDay = Number.isFinite(day) && day >= 1 && day <= 5;
+      var activeThisWeek = !weekDates.length || weekDates.some(function (dateStr, index) {
+        return (!hasValidDay || index + 1 === day) && isScheduleActiveOnDate(schedule, dateStr);
       });
-    }).length;
+      if (!activeThisWeek) return;
+      var key = (hasValidDay ? day : 'unknown') + '|' + period;
+      if (!slots[key]) slots[key] = [];
+      slots[key].push(schedule);
+    });
+    return Object.keys(slots).map(function (key) {
+      return mergeWeeklySlotRows(slots[key]);
+    });
+  }
+
+  function weeklyPeriodsForDates(teacherIdentity, schedules, dates) {
+    return weeklyScheduleSlotsForDates(teacherIdentity, schedules, dates, false).length;
   }
 
   function emailKey(em) {
@@ -335,12 +410,6 @@ window.DomainBilling = (function () {
     var bucketMap = {};
     var warnings = [];
     var teacherIdentity = teacherKeys(teacher);
-    var overtimeSchedules = allSchedules.filter(function (schedule) {
-      return hasCommonKey(teacherIdentity, scheduleTeacherKeys(schedule))
-        && isWeeklyHoursSlot(schedule)
-        && isOvertimeScheduleSlot(schedule);
-    }).sort(sortOvertimeSchedules);
-
     function getBucket(source) {
       var name = normalizeExpenseSource(source);
       if (!bucketMap[name]) {
@@ -385,9 +454,8 @@ window.DomainBilling = (function () {
         return;
       }
 
-      var candidates = overtimeSchedules.filter(function (schedule) {
-        return scheduleIsInWeek(schedule, dates);
-      });
+      var candidates = weeklyScheduleSlotsForDates(teacherIdentity, allSchedules, dates, true)
+        .sort(sortOvertimeSchedules);
       var usable = Math.min(target, candidates.length);
       candidates.slice(0, usable).forEach(function (schedule) {
         addHours(sourceForOvertimeSchedule(teacher, schedule) || DEFAULT_EXPENSE_SOURCE, 1, weekIndex, schedule);
@@ -877,9 +945,7 @@ window.DomainBilling = (function () {
       });
       var weeklyPeriods = weeklyPeriodCounts.length
         ? weeklyPeriodCounts[0]
-        : allSchedules.filter(function (s) {
-          return hasCommonKey(teacherIdentity, scheduleTeacherKeys(s)) && isWeeklyHoursSlot(s);
-        }).length;
+        : weeklyScheduleSlotsForDates(teacherIdentity, allSchedules, [], false).length;
       var reduceDeduction = 0;
       if (window.DomainClassAway && classAwayEvents.length) {
         reduceDeduction = window.DomainClassAway.computeReduceDeduction({
