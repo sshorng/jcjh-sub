@@ -505,6 +505,17 @@ function runLineTemplateTest() {
   assert.match(batch, /感謝/);
   assert.doesNotMatch(batch, /經費來源|調代課系統訊息/);
 
+  const paperBatchInvite = templates.buildLineBatchInviteText({
+    targetName: '王小明老師', requesterName: '陳小華老師', batchId: 'B1',
+    systemUrl: 'https://school.example/', paperFlow: true,
+    slots: [
+      { id: '1', date: '2026-09-04', day: 5, period: 1, className: '904', subject: '國文', teacherName: '陳小華老師' },
+      { id: '2', date: '2026-09-04', day: 5, period: 2, className: '905', subject: '國文', teacherName: '陳小華老師' }
+    ]
+  });
+  assert.match(paperBatchInvite, /如果可以，我再拿代課單給您，感謝/);
+  assert.doesNotMatch(paperBatchInvite, /請回覆：|全部可以|全部不便|https?:\/\/|action=/);
+
   const paper = templates.buildAskFirstLineText({
     targetName: '王小明老師', requesterName: '陳小華老師',
     dateA: '2026-09-04', dayA: 5, periodA: 1, classA: '904', subjectA: '國文', reason: '事假'
@@ -671,6 +682,12 @@ function runFieldMapTest() {
   assert.equal(classifier.isPaperFlowRequest({
     status: 'pending_admin', paperFlow: false, paperFlowSpecified: true, isProxySubmit: true
   }), false, '代申請仍保留線上待行政流程');
+  assert.equal(classifier.isPaperFlowRequest({
+    status: 'pending_teacher', paperFlow: false, paperFlowSpecified: true
+  }), true, '紙本模式的舊待受邀單也應使用紙本訊息');
+  assert.equal(classifier.isPaperFlowRequest({
+    status: 'pending_teacher', paperFlow: false, paperFlowSpecified: true, isProxySubmit: true
+  }), false, '代申請仍保留線上待受邀流程');
 }
 
 function runRequestListSortTest() {

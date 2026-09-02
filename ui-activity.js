@@ -1060,6 +1060,7 @@ window.UiMutualSubmit = (function () {
               subFee: g.rows[0]['經費來源'],
               systemUrl: currentUrl,
               batchId: g.rows[0]['批次ID'],
+              paperFlow: !!(deps.notificationsSuppressed && deps.notificationsSuppressed.value),
               slots: g.rows.map(function (r) {
                 return {
                   id: r['申請單ID'],
@@ -1442,6 +1443,7 @@ window.UiBatchSubmit = (function () {
               subFee: fee,
               systemUrl: currentUrl,
               batchId: batchId,
+              paperFlow: !!(paperFlow && paperFlow.value),
               slots: g.rows.map(function (r) {
                 return {
                   id: r["申請單ID"],

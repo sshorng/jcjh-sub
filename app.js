@@ -2770,12 +2770,27 @@ createApp({
     /**
      * 批次 LINE：一則訊息只含「該受邀人」的節次
      * 若該人只有 1 節 → 改用一般單節邀請格式（不出現批次用語）
-     * opts: { targetName, requesterName, reason, subFee, systemUrl, batchId, slots: [{ id, date, day, period, className, subject }] }
+     * opts: { targetName, requesterName, reason, subFee, systemUrl, batchId, paperFlow, slots: [{ id, date, day, period, className, subject }] }
      */
     const buildLineBatchInviteText = (opts) => {
       const name = shortTeacherName(opts.targetName) || cleanLineTeacherName(opts.targetName) || '對方';
       const slots = opts.slots || [];
       const n = slots.length;
+      if (opts.paperFlow) {
+        return buildAskFirstLineText({
+          targetName: name,
+          requesterName: opts.requesterName,
+          isExchange: false,
+          slots: slots.map((slot) => ({
+            date: slot.date,
+            day: slot.day,
+            period: slot.period,
+            className: slot.className,
+            subject: slot.subject,
+            teacherName: slot.teacherName || opts.requesterName
+          }))
+        });
+      }
       const currentUrl = opts.systemUrl || (window.location.origin + window.location.pathname);
       const batchId = opts.batchId || '';
 
@@ -8810,18 +8825,19 @@ createApp({
       return normalized === 'true' || normalized === '1' || normalized === '是' || normalized === '紙本';
     };
 
-    /** 舊申請可能沒有紙本欄位；紙本作業期間的待行政單仍視為紙本流程。 */
+    /** 舊申請可能沒有紙本欄位；紙本作業期間的待處理單仍視為紙本流程。 */
     const isPaperFlowRequest = (request) => {
       if (!request) return false;
       if (isPaperFlowValue(request.paperFlow)) return true;
-      // 紙本模式下，非代申請的待行政單仍應使用紙本通知格式。
-      if (notificationsSuppressed.value && request.status === 'pending_admin'
+      // 紙本模式下，非代申請的待處理單仍應使用紙本通知格式。
+      const pendingPaperStatus = request.status === 'pending_admin' || request.status === 'pending_teacher';
+      if (notificationsSuppressed.value && pendingPaperStatus
           && !isProxySubmitRequest(request)) return true;
       if (request.paperFlowSpecified === true) return false;
       if (Object.prototype.hasOwnProperty.call(request, '紙本流程')) {
         return isPaperFlowValue(request['紙本流程']);
       }
-      return !!(notificationsSuppressed.value && request.status === 'pending_admin');
+      return !!(notificationsSuppressed.value && pendingPaperStatus && !isProxySubmitRequest(request));
     };
 
     /** 目前 UI 身分 Email（含模擬身份；列表／權限一律用此，不用 JWT 原帳） */
