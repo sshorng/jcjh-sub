@@ -228,9 +228,9 @@ assert.match(indexSource, /app\.js\?v=20260901-expense-default1/);
 assert.doesNotMatch(preview.documentHtml, /<script\b/i, '列印預覽 srcdoc 不應注入腳本');
 assert.doesNotMatch(appSource, /seedClassKey/, 'single-request batch printing should include the same recipient across classes');
 assert.match(appSource, /teacherKey\(record, 'actual'\) === targetKey/, 'single-request batch printing should group by recipient teacher');
-assert.match(printHelperSource, /const signatureSide = 'actual';/);
+assert.match(printHelperSource, /const signatureSide = group && group\.isExchange \? 'original' : 'actual';/);
 assert.match(printHelperSource, /function getOfficialArrowMarkerHtml\(markerId\)/);
-assert.match(indexSource, /print-helper\.js\?v=20260901-class-merge3/);
+assert.match(indexSource, /print-helper\.js\?v=20260902-course-signature1/);
 assert.match(indexSource, /:disabled="loading" @click="saveOvertimePlan"/);
 assert.doesNotMatch(indexSource, /overtimePlanRows\.some\(row => !row\.source\)/);
 assert.match(indexSource, /class="teacher-email-cell"/);
@@ -345,6 +345,10 @@ const exchangeGridSubjectRows = [...exchangeOutput.matchAll(/<tr class="official
 const exchangeGridClassRows = [...exchangeOutput.matchAll(/<tr class="official-class-row">([\s\S]*?)<\/tr>/g)].map(match => match[1]);
 assert.match(exchangeGridSubjectRows[0], /生活科技/);
 assert.match(exchangeGridSubjectRows[1], /國文/);
+assert.match(exchangeGridSubjectRows[0], /class="official-signature-name">陳小華/);
+assert.doesNotMatch(exchangeGridSubjectRows[0], /class="official-signature-name">王小明/);
+assert.match(exchangeGridSubjectRows[1], /class="official-signature-name">王小明/);
+assert.doesNotMatch(exchangeGridSubjectRows[1], /class="official-signature-name">陳小華/);
 assert.match(exchangeGridClassRows[0], /802/);
 assert.match(exchangeGridClassRows[1], /803/);
 assert.equal((exchangeOutput.match(/class="official-day-date"/g) || []).length, 1, '調課單同一天只顯示一個異動日期');
@@ -375,8 +379,8 @@ assert.match(exchangePreviewSvg, /xmlns="http:\/\/www\.w3\.org\/2000\/svg"/, 'ne
 const exchangeAdminOutput = context.window.generateFormHtml(exchange, 'NoticeClass', Object.assign({}, fixtureContext, { isAdmin: true }));
 assert.match(exchangeAdminOutput, /official-subject-row/);
 assert.match(exchangeAdminOutput, /official-class-row/);
-assert.match(exchangeAdminOutput, /王小明/);
-assert.match(exchangeAdminOutput, /陳小華/);
+assert.match(exchangeAdminOutput, /生活科技[\s\S]*class="official-signature-name">陳小華/);
+assert.match(exchangeAdminOutput, /國文[\s\S]*class="official-signature-name">王小明/);
 
 const crossWeekExchange = {
   isExchange: true,

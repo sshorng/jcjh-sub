@@ -351,9 +351,9 @@ function renderPrintCheckbox(label, checked) {
 
 function getPrintSignatureText(group, rows, ctx, getName, showTeacherName) {
   const entries = [];
-  const signatureSide = 'actual';
+  const signatureSide = group && group.isExchange ? 'original' : 'actual';
   (rows || []).forEach(row => {
-    // 紙本格內顯示原位置課程，簽名由實際授課教師簽署。
+    // 調課左欄顯示原位置課程，右欄姓名要與該課程同列。
     const key = String(signatureSide === 'original'
       ? (row.originalTeacherEmail || row.originalTeacherName || '')
       : (row.actualTeacherEmail || row.actualTeacherName || '')).trim();
