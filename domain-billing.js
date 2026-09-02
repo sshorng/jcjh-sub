@@ -1046,7 +1046,7 @@ window.DomainBilling = (function () {
       return {
          email: email,
          name: t.name,
-         jobTitle: String(t.jobTitle || t.title || t['職務'] || t['職稱'] || t['職位'] || t.teacherTitle || '').trim(),
+         jobTitle: String(t.jobTitle || t.title || t['職務'] || t['職稱'] || t['職位'] || t.teacherTitle || '').trim() || '教師',
          subject: t.subject,
         expensePlan: String(t.expensePlan || t['鐘點支出計畫'] || t['鐘點支出來源'] || t['支出計畫'] || t['計畫'] || t.plan || '').trim(),
         expensePlanSummary: expensePlanSummary,
@@ -1079,7 +1079,7 @@ window.DomainBilling = (function () {
     return (reportRows || []).map(function (row) {
       return {
           "教師姓名": row.name,
-          "職務": row.jobTitle || '',
+          "職務": row.jobTitle || '教師',
           "學科": row.subject,
          "超鐘點經費配置": row.expensePlanSummary || row.expensePlan || '預設',
          "超鐘點來源分配": (row.expensePlanAllocations || []).map(function (allocation) {

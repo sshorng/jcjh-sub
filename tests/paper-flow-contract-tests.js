@@ -709,7 +709,7 @@ function runApplicationFormContractTest() {
   assert.match(html, /id="course-adjustment-only"/);
   assert.match(html, /@change="toggleCourseAdjustmentOnly"/);
   assert.match(html, /<th class="billing-sticky-name">姓名<\/th>\s*<th class="billing-th-job">職務<\/th>\s*<th class="billing-th-subject">科目<\/th>/, '月報應在科目前顯示職務');
-  assert.match(html, /<td class="billing-job" :title="row\.jobTitle \|\| ''">\{\{ row\.jobTitle \|\| '未填' \}\}<\/td>/, '月報應顯示教師職務');
+  assert.match(html, /<td class="billing-job" :title="row\.jobTitle \|\| '教師'">\{\{ row\.jobTitle \|\| '教師' \}\}<\/td>/, '月報未填職務應預設為教師');
   assert.match(html, /<td class="billing-subj" :title="row\.subject \|\| ''">\{\{ row\.subject \}\}<\/td>/, '月報科目應可移入查看完整文字');
    assert.match(html, /\(pendingRequestData\.mode === 'substitution' \|\| pendingRequestData\.mode === 'exchange'\) && pendingRequestData\.specialFlow !== 'combined_return'/);
   assert.ok((html.match(/預覽調代課單/g) || []).length >= 3, 'compare modal must expose preview in every footer branch');

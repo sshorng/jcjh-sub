@@ -1831,7 +1831,7 @@
                   <tbody>
                     <tr v-for="row in monthlyReportData" :key="row.email">
                        <td class="billing-sticky-name"><strong>{{ row.name }}</strong></td>
-                       <td class="billing-job" :title="row.jobTitle || ''">{{ row.jobTitle || '未填' }}</td>
+                       <td class="billing-job" :title="row.jobTitle || '教師'">{{ row.jobTitle || '教師' }}</td>
                        <td class="billing-subj" :title="row.subject || ''">{{ row.subject }}</td>
                       <td class="num">{{ row.weeklyPeriods }}</td>
                       <td class="num">{{ row.baseHours }}</td>
@@ -1890,7 +1890,7 @@
                     <td><strong>{{ t.name }}</strong></td>
                     <td class="teacher-email-cell">{{ t.loginEmail }}</td>
                     <td>{{ t.subject }}</td>
-                     <td>{{ t.jobTitle || '未填' }}</td>
+                      <td>{{ t.jobTitle || '教師' }}</td>
                      <td :title="getExpensePlanSummary(t.expensePlan)">{{ getExpensePlanSummary(t.expensePlan) }}</td>
                      <td>
                        <!-- 基礎基本鐘點設定 -->
@@ -4462,7 +4462,7 @@
       var _uiAdminP = null;
       window.ensureDomainBilling = function () {
         if (window.DomainBilling) return Promise.resolve();
-           if (!_billingP) _billingP = loadScript('domain-billing.js?v=20260903-cohired-job1');
+           if (!_billingP) _billingP = loadScript('domain-billing.js?v=20260903-job-default1');
         return _billingP;
       };
       window.ensureExportAccounting = function () {

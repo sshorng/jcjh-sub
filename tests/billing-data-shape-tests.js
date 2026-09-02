@@ -138,4 +138,14 @@ const coEmployedRow = window.DomainBilling.buildMonthlyReportRows({
 assert.equal(coEmployedRow.jobTitle, '共聘');
 assert.equal(window.DomainBilling.toExcelRows([coEmployedRow])[0]['職務'], '共聘');
 
+const defaultJobRow = window.DomainBilling.buildMonthlyReportRows({
+  teachers: [{ email: 'DefaultJob', name: '未填職務', baseHours: 0 }],
+  allSchedules: [],
+  substitutionRecords: [],
+  reportMonth: '2026-07',
+  reportWeeksCount: 1
+})[0];
+assert.equal(defaultJobRow.jobTitle, '教師');
+assert.equal(window.DomainBilling.toExcelRows([defaultJobRow])[0]['職務'], '教師');
+
 console.log('billing data shape tests PASS');
