@@ -2435,6 +2435,14 @@ body {
   color: var(--text-secondary);
   font-size: 0.75rem;
 }
+.billing-table td.billing-job {
+  max-width: 6rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+}
 .billing-table td.billing-detail {
   max-width: 7rem;
   overflow: hidden;

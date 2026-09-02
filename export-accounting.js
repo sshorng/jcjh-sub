@@ -388,7 +388,9 @@
     return (map && (map[teacherEmail(email)] || map['name:' + String(name || '').trim()])) || {};
   }
   function isAdjunctTeacher(teacher) {
-    return teacherTitle(teacher).indexOf('兼課') >= 0;
+    var title = teacherTitle(teacher);
+    // 共聘教師仍使用「兼課教師鐘點」會計工作表，但清冊保留實際職務名稱。
+    return title.indexOf('兼課') >= 0 || title.indexOf('共聘') >= 0;
   }
 
   function feeRate(record, fallback) {

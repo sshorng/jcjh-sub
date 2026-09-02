@@ -1803,14 +1803,15 @@
                 <table class="custom-table billing-table">
                   <thead>
                     <tr class="billing-th-group">
-                      <th colspan="2" class="billing-th-id">教師</th>
+                       <th colspan="3" class="billing-th-id">教師</th>
                        <th colspan="8" class="billing-th-17">1～7＋早自習／午休 鐘點</th>
                        <th colspan="4" class="billing-th-sub">早自習／1～7／午休 我去代課</th>
                       <th colspan="2" class="billing-th-p8">第 8 節</th>
                     </tr>
                     <tr class="billing-th-cols">
-                      <th class="billing-sticky-name">姓名</th>
-                      <th>科目</th>
+                       <th class="billing-sticky-name">姓名</th>
+                       <th>職務</th>
+                       <th>科目</th>
                        <th title="每週早自習＋1～7＋午休；基本／一般／超鐘點／抽離（不含巡堂／第8）">排課</th>
                       <th title="教師基本授課鐘點">基鐘</th>
                       <th title="排課 − 基鐘（每週）">超時/週</th>
@@ -1829,8 +1830,9 @@
                   </thead>
                   <tbody>
                     <tr v-for="row in monthlyReportData" :key="row.email">
-                      <td class="billing-sticky-name"><strong>{{ row.name }}</strong></td>
-                      <td class="billing-subj">{{ row.subject }}</td>
+                       <td class="billing-sticky-name"><strong>{{ row.name }}</strong></td>
+                       <td class="billing-job">{{ row.jobTitle || '未填' }}</td>
+                       <td class="billing-subj">{{ row.subject }}</td>
                       <td class="num">{{ row.weeklyPeriods }}</td>
                       <td class="num">{{ row.baseHours }}</td>
                       <td class="num">{{ row.weeklyOvertime }}</td>
@@ -1847,7 +1849,7 @@
                        <td class="num result-p8">{{ row.period8Fee ? ('$' + row.period8Fee) : '無' }}</td>
                     </tr>
                     <tr v-if="monthlyReportData.length === 0">
-                      <td colspan="16" class="billing-empty">請先在「教師名單」設定基本授課鐘點，再選擇月份統計。</td>
+                       <td colspan="17" class="billing-empty">請先在「教師名單」設定基本授課鐘點，再選擇月份統計。</td>
                     </tr>
                   </tbody>
                 </table>
@@ -3533,7 +3535,7 @@
               <input type="text" class="form-input" placeholder="國文" v-model="teacherForm.subject">
             </div>
             <div class="form-group">
-              <label class="form-label">職務（含「導師」即列入代導費）</label>
+               <label class="form-label">職務（含「導師」即列入代導費；「共聘」列入兼課教師鐘點）</label>
               <input type="text" class="form-input" placeholder="例如：七年級導師、行政教師" v-model="teacherForm.jobTitle">
             </div>
              <div class="form-group">
@@ -4460,12 +4462,12 @@
       var _uiAdminP = null;
       window.ensureDomainBilling = function () {
         if (window.DomainBilling) return Promise.resolve();
-           if (!_billingP) _billingP = loadScript('domain-billing.js?v=20260902-combined-hours1');
+           if (!_billingP) _billingP = loadScript('domain-billing.js?v=20260903-cohired-job1');
         return _billingP;
       };
       window.ensureExportAccounting = function () {
         if (window.ExportAccounting) return Promise.resolve();
-           if (!_accountingP) _accountingP = loadScript('export-accounting.js?v=20260901-expense-plan1');
+           if (!_accountingP) _accountingP = loadScript('export-accounting.js?v=20260903-cohired-adjunct1');
         return _accountingP;
       };
       /** 活動互代／額度／空堂任務邏輯（首屏不載） */

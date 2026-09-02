@@ -128,4 +128,14 @@ assert.deepEqual(partiallyConfiguredRow.expensePlanAllocations.map(row => [row.s
   ['預設', 1]
 ]);
 
+const coEmployedRow = window.DomainBilling.buildMonthlyReportRows({
+  teachers: [{ email: 'CoEmployed', name: '共聘教師', jobTitle: '共聘', baseHours: 0 }],
+  allSchedules: [],
+  substitutionRecords: [],
+  reportMonth: '2026-07',
+  reportWeeksCount: 1
+})[0];
+assert.equal(coEmployedRow.jobTitle, '共聘');
+assert.equal(window.DomainBilling.toExcelRows([coEmployedRow])[0]['職務'], '共聘');
+
 console.log('billing data shape tests PASS');

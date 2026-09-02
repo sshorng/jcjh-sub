@@ -1044,9 +1044,10 @@ window.DomainBilling = (function () {
       var p8row = p8.byEmail[em] || { count: 0, fee: 0, details: [] };
 
       return {
-        email: email,
-        name: t.name,
-        subject: t.subject,
+         email: email,
+         name: t.name,
+         jobTitle: String(t.jobTitle || t.title || t['職務'] || t['職稱'] || t['職位'] || t.teacherTitle || '').trim(),
+         subject: t.subject,
         expensePlan: String(t.expensePlan || t['鐘點支出計畫'] || t['鐘點支出來源'] || t['支出計畫'] || t['計畫'] || t.plan || '').trim(),
         expensePlanSummary: expensePlanSummary,
         expensePlanAllocations: expensePlanAllocations,
@@ -1077,8 +1078,9 @@ window.DomainBilling = (function () {
   function toExcelRows(reportRows) {
     return (reportRows || []).map(function (row) {
       return {
-         "教師姓名": row.name,
-         "學科": row.subject,
+          "教師姓名": row.name,
+          "職務": row.jobTitle || '',
+          "學科": row.subject,
          "超鐘點經費配置": row.expensePlanSummary || row.expensePlan || '預設',
          "超鐘點來源分配": (row.expensePlanAllocations || []).map(function (allocation) {
            return allocation.source + '：' + (allocation.actualHours !== undefined ? allocation.actualHours : allocation.rawHours) + '節';

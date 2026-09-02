@@ -16,17 +16,22 @@ const schedules = [
   { teacherEmail: 'bill@x', dayOfWeek: 1, period: 45, className: '703', attr: '超鐘點' }
 ];
 
-function build(records, baseHours, scheduleRows, schoolSwaps) {
+function build(records, baseHours, scheduleRows, schoolSwaps, teacherOptions) {
   return window.ExportAccounting.buildExportData({
     reportMonth: '2026-07',
     reportWeeksCount: 1,
     periods: { period: period },
-    teachers: [{ email: 'bill@x', name: 'Billing', baseHours: baseHours === undefined ? 2 : baseHours }],
+    teachers: [Object.assign({ email: 'bill@x', name: 'Billing', baseHours: baseHours === undefined ? 2 : baseHours }, teacherOptions || {})],
     allSchedules: scheduleRows || schedules,
     schoolSwaps: schoolSwaps || [],
     substitutionRecords: records
   });
 }
+
+const coEmployed = build([], 0, schedules, [], { jobTitle: '共聘教師' });
+assert.equal(coEmployed.sheets.adjunct.length, 1, '共聘教師仍應列入兼課教師鐘點工作表');
+assert.equal(coEmployed.sheets.adjunct[0].title, '共聘教師', '兼課工作表應保留共聘職務名稱');
+assert.equal(coEmployed.sheets.overtime.length, 0, '共聘教師不應再列入超鐘點工作表');
 
 const publicOvertime = build([{
   date: '2026-07-13', period: 1, className: '701', type: 'substitution',
