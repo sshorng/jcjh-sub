@@ -6,7 +6,7 @@
   <title>建成國中線上課表系統</title>
   <meta name="application-name" content="JCJH Timetable">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📅</text></svg>">
-  <link rel="stylesheet" href="style.css?v=20260901-slot-format1">
+  <link rel="stylesheet" href="style.css?v=20260903-billing-cols1">
   <!-- 手機版獨立樣式：不影響桌機 -->
   <link rel="stylesheet" href="mobile.css?v=20260901-slot-format1" media="(max-width: 768px)">
   
@@ -1810,8 +1810,8 @@
                     </tr>
                     <tr class="billing-th-cols">
                        <th class="billing-sticky-name">姓名</th>
-                       <th>職務</th>
-                       <th>科目</th>
+                       <th class="billing-th-job">職務</th>
+                       <th class="billing-th-subject">科目</th>
                        <th title="每週早自習＋1～7＋午休；基本／一般／超鐘點／抽離（不含巡堂／第8）">排課</th>
                       <th title="教師基本授課鐘點">基鐘</th>
                       <th title="排課 − 基鐘（每週）">超時/週</th>
@@ -1831,8 +1831,8 @@
                   <tbody>
                     <tr v-for="row in monthlyReportData" :key="row.email">
                        <td class="billing-sticky-name"><strong>{{ row.name }}</strong></td>
-                       <td class="billing-job">{{ row.jobTitle || '未填' }}</td>
-                       <td class="billing-subj">{{ row.subject }}</td>
+                       <td class="billing-job" :title="row.jobTitle || ''">{{ row.jobTitle || '未填' }}</td>
+                       <td class="billing-subj" :title="row.subject || ''">{{ row.subject }}</td>
                       <td class="num">{{ row.weeklyPeriods }}</td>
                       <td class="num">{{ row.baseHours }}</td>
                       <td class="num">{{ row.weeklyOvertime }}</td>

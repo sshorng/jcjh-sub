@@ -2427,16 +2427,17 @@ body {
   color: #b45309;
   background: #fffbeb;
 }
+.billing-table .billing-th-job,
+.billing-table td.billing-job,
+.billing-table .billing-th-subject,
 .billing-table td.billing-subj {
-  max-width: 5.5rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text-secondary);
-  font-size: 0.75rem;
+  width: 4.5rem;
+  min-width: 4.5rem;
+  max-width: 4.5rem;
+  box-sizing: border-box;
 }
-.billing-table td.billing-job {
-  max-width: 6rem;
+.billing-table td.billing-job,
+.billing-table td.billing-subj {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
