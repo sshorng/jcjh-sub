@@ -134,12 +134,13 @@
       var g3 = ranked3.find(function (t) { return t.email === 'g@x'; });
       assert('生物代課：課表第二科可推導需求科', g3 && g3.isSameSubject === true && g3.demandDomain === '生物');
 
-      // 曾瀅芮案：8英資A 專題探究（英語資優班），專題探究不吃掉需求科，英語老師與英語資優老師皆為同科
+      // 曾瀅芮案：8英資A 專題探究（英語資優班），請假教師兼任「英語資優、英語」，專題探究不吃掉需求科，英語老師與英語資優老師皆為同科，特教老師不為同科
       var teachersWithEnglish = teachers.concat([
-        { email: 'yingrui@x', name: '曾瀅芮', subject: '英語資優' },
+        { email: 'yingrui@x', name: '曾瀅芮', subject: '英語資優、英語' },
         { email: 'eng@x', name: '英師', subject: '英語' },
         { email: 'eng-gift@x', name: '英資師', subject: '英語資優' },
-        { email: 'math2@x', name: '數師', subject: '數學' }
+        { email: 'math2@x', name: '數師', subject: '數學' },
+        { email: 'special@x', name: '特師', subject: '特教' }
       ]);
       var schedulesWithEnglish = schedules.concat([
         { teacherEmail: 'yingrui@x', dayOfWeek: 3, period: 0, className: '8英資A', subject: '專題探究' }
@@ -152,16 +153,18 @@
         targetDay: 3,
         targetPeriod: 0,
         myCourse: '專題探究',
-        myDomain: '英語資優',
+        myDomain: '英語資優、英語',
         myClass: '8英資A',
         getScheduleForDate: mockGet
       });
       var engCand = rankedYingRui.find(function (t) { return t.email === 'eng@x'; });
       var engGiftCand = rankedYingRui.find(function (t) { return t.email === 'eng-gift@x'; });
       var mathCand = rankedYingRui.find(function (t) { return t.email === 'math2@x'; });
+      var specialCand = rankedYingRui.find(function (t) { return t.email === 'special@x'; });
       assert('曾瀅芮案：專題探究回退英語資優需求科', engGiftCand && engGiftCand.demandDomain === '英語資優');
       assert('曾瀅芮案：英語資優老師同科', engGiftCand && engGiftCand.isSameSubject === true);
-      assert('曾瀅芮案：英語老師同科（兼容多科目）', engCand && engCand.isSameSubject === true);
+      assert('曾瀅芮案：英語老師同科（多科目精確比對）', engCand && engCand.isSameSubject === true);
+      assert('曾瀅芮案：特教老師絕不同科', specialCand && specialCand.isSameSubject === false);
       assert('曾瀅芮案：數學老師不同科', mathCand && mathCand.isSameSubject === false);
       assert('曾瀅芮案：英語資優排序優先於一般英語', engGiftCand && engCand && rankedYingRui.indexOf(engGiftCand) < rankedYingRui.indexOf(engCand));
 

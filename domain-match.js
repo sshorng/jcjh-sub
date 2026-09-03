@@ -44,40 +44,8 @@ window.DomainMatch = (function () {
     return GENERIC_COURSE_REGEX.test(String(name).trim());
   }
 
-  var SUBJECT_FAMILY_GROUPS = [
-    { key: 'chinese', aliases: ['國文', '國語文', '國語'] },
-    { key: 'english', aliases: ['英語', '英文', '英語文', '英語資優', '英資'] },
-    { key: 'math', aliases: ['數學', '數理資優', '數資', '數理'] },
-    { key: 'local', aliases: ['本土語', '本土語文', '閩南語', '台語', '臺語', '客語', '原住民族語', '族語'] },
-    { key: 'science', aliases: ['自然', '自然科', '自然科學', '理化', '物理', '化學', '生物', '地球科學', '地科'] },
-    { key: 'social', aliases: ['社會', '地理', '歷史', '公民', '公民與社會'] },
-    { key: 'health', aliases: ['體育', '健康教育', '健教', '健體', '健康與體育', '健康'] },
-    { key: 'comprehensive', aliases: ['綜合', '綜合活動', '童軍', '家政', '輔導', '輔導活動', '課輔'] },
-    { key: 'technology', aliases: ['科技', '資訊科技', '資訊', '生活科技', '生科', '電腦'] },
-    { key: 'arts', aliases: ['藝術', '視覺藝術', '音樂', '表演藝術', '美術', '美勞', '表藝', '視覺藝'] },
-    { key: 'special', aliases: ['特教', '特殊教育', '資優', '身障', '抽離', '英語資優', '數理資優', '英資', '數資'] }
-  ];
-
   function normalizeSubjectToken(raw) {
     return String(raw || '').trim().toLowerCase().replace(/[\s\-_]/g, '');
-  }
-
-  function getSubjectFamilyKeys(rawSubject) {
-    var token = normalizeSubjectToken(rawSubject);
-    if (!token) return [];
-    var keys = [];
-    SUBJECT_FAMILY_GROUPS.forEach(function (fam) {
-      var hit = fam.aliases.some(function (alias) {
-        var normAlias = normalizeSubjectToken(alias);
-        return token === normAlias
-          || token.indexOf(normAlias) >= 0
-          || normAlias.indexOf(token) >= 0;
-      });
-      if (hit && keys.indexOf(fam.key) < 0) {
-        keys.push(fam.key);
-      }
-    });
-    return keys;
   }
 
   function areSubjectsCompatible(subjA, subjB) {
@@ -85,11 +53,7 @@ window.DomainMatch = (function () {
     var a = normalizeSubjectToken(subjA);
     var b = normalizeSubjectToken(subjB);
     if (!a || !b) return false;
-    if (a === b) return true;
-    if (a.indexOf(b) >= 0 || b.indexOf(a) >= 0) return true;
-    var famA = getSubjectFamilyKeys(a);
-    var famB = getSubjectFamilyKeys(b);
-    return famA.some(function (k) { return famB.indexOf(k) >= 0; });
+    return a === b;
   }
 
   function subjectListHas(list, token) {
@@ -146,11 +110,6 @@ window.DomainMatch = (function () {
     leaveDomains.forEach(function (s) {
       if (!isGenericCourse(s)) knownDomains.add(s);
     });
-    SUBJECT_FAMILY_GROUPS.forEach(function (fam) {
-      fam.aliases.forEach(function (alias) {
-        if (!isGenericCourse(alias)) knownDomains.add(alias);
-      });
-    });
 
     allSchedules.forEach(function (s) {
       if (!s) return;
@@ -158,6 +117,7 @@ window.DomainMatch = (function () {
           && !window.DomainSchedule.isActiveOnDate(s, dateStr)) return;
       var scheduleSubject = s.subject || s['科目'] || '';
       if (scheduleSubject && !isGenericCourse(scheduleSubject)) {
+        knownDomains.add(scheduleSubject);
         scheduleKeys(s).forEach(function (key) {
           if (!scheduleSubjectsByTeacher[key]) scheduleSubjectsByTeacher[key] = [];
           appendUniqueSubjects(scheduleSubjectsByTeacher[key], scheduleSubject);
@@ -274,13 +234,15 @@ window.DomainMatch = (function () {
           effectiveDemands.forEach(function (dd) {
             if (areSubjectsCompatible(candSubj, dd)) {
               isSameSubject = true;
-              var isExact = normalizeSubjectToken(candSubj) === normalizeSubjectToken(dd);
+              var isDemandExact = demandDomain && normalizeSubjectToken(dd) === normalizeSubjectToken(demandDomain);
               var inRoster = rosterDomains.some(function (r) {
                 return areSubjectsCompatible(r, dd);
               });
               var isRosterPrimary = rosterDomains.length > 0
                 && areSubjectsCompatible(rosterDomains[0], dd);
-              var rank = isExact ? (isRosterPrimary ? 3 : 2) : (inRoster ? 2 : 1);
+              var rank = isDemandExact
+                ? (isRosterPrimary ? 4 : (inRoster ? 3 : 2))
+                : (isRosterPrimary ? 2 : 1);
               if (rank > subjectMatchRank) {
                 subjectMatchRank = rank;
                 if (isRosterPrimary) isPrimarySubject = true;
@@ -496,8 +458,7 @@ window.DomainMatch = (function () {
     isSlotFreeForMatch: isSlotFreeForMatch,
     isPullOutSlot: isPullOutSlot,
     areSubjectsCompatible: areSubjectsCompatible,
-    isGenericCourse: isGenericCourse,
-    getSubjectFamilyKeys: getSubjectFamilyKeys
+    isGenericCourse: isGenericCourse
   };
 })();
 

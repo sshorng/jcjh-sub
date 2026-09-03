@@ -76,9 +76,10 @@ assert.ok(
 );
 
 teachers.push(
-  { '教師Email': 'yingrui@school.example', '教師姓名': '曾瀅芮', '授課科目': '英語資優' },
+  { '教師Email': 'yingrui@school.example', '教師姓名': '曾瀅芮', '授課科目': '英語資優、英語' },
   { '教師Email': 'eng@school.example', '教師姓名': '英語教師', '授課科目': '英語' },
   { '教師Email': 'eng-gifted@school.example', '教師姓名': '英語資優教師', '授課科目': '英語資優' },
+  { '教師Email': 'special@school.example', '教師姓名': '特教教師', '授課科目': '特教' },
   { '教師Email': 'math@school.example', '教師姓名': '數學教師', '授課科目': '數學' }
 );
 schedules.push(
@@ -91,17 +92,19 @@ const resultYingRui = context.buildMatchCandidates_('2026-1', {
   dayOfWeek: 3,
   period: 0,
   myCourse: '專題探究',
-  myDomain: '英語資優',
+  myDomain: '英語資優、英語',
   myClass: '8英資A',
   limit: 40
 });
 const candEng = resultYingRui.candidates.find(t => t.teacherName === '英語教師');
 const candEngGifted = resultYingRui.candidates.find(t => t.teacherName === '英語資優教師');
+const candSpecial = resultYingRui.candidates.find(t => t.teacherName === '特教教師');
 const candMath = resultYingRui.candidates.find(t => t.teacherName === '數學教師');
 
 assert.equal(resultYingRui.demandDomain, '英語資優', 'generic course 專題探究 should not hijack demand domain');
-assert.ok(candEng && candEng.isSameSubject === true, '英語教師 should be considered same subject for 英語資優');
+assert.ok(candEng && candEng.isSameSubject === true, '英語教師 should match second subject of leave teacher');
 assert.ok(candEngGifted && candEngGifted.isSameSubject === true, '英語資優教師 should be considered same subject');
+assert.ok(candSpecial && candSpecial.isSameSubject === false, '特教教師 must NEVER be marked same subject for 英語/英語資優');
 assert.ok(candMath && candMath.isSameSubject === false, '數學教師 should not be same subject for 英語資優');
 assert.ok(
   resultYingRui.candidates.indexOf(candEngGifted) < resultYingRui.candidates.indexOf(candEng),
