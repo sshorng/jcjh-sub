@@ -5606,7 +5606,9 @@ createApp({
           const ra = a.isReleasedByAway ? 1 : 0;
           const rb = b.isReleasedByAway ? 1 : 0;
           if (rb !== ra) return rb - ra;
-          return (b.score || 0) - (a.score || 0) || (a.todayPeriodCount || 0) - (b.todayPeriodCount || 0);
+           return (b.score || 0) - (a.score || 0)
+             || (b.subjectMatchRank || 0) - (a.subjectMatchRank || 0)
+             || (a.todayPeriodCount || 0) - (b.todayPeriodCount || 0);
         });
       }
       return list;

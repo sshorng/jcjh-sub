@@ -4163,7 +4163,7 @@ function personalizeSharedPayload_(shared, readerEmail, readerIsAdmin, opts) {
 /** 解析多科字串（後端媒合用，與 domain-match 對齊） */
 function parseSubjectsServer_(raw) {
   return String(raw || "")
-    .split(/[、,，/／|｜\s]+/)
+    .split(/[、,，;；/／|｜\s]+/)
     .map(function (s) { return s.trim(); })
     .filter(Boolean);
 }
@@ -4214,6 +4214,54 @@ function buildMatchCandidates_(semesterId, opts) {
     }
     return rawEmail ? Object.assign({}, schedule, { teacherEmail: rawEmail }) : schedule;
   });
+  function normalizedTeacherKey_(value) {
+    return String(value || "").trim().toLowerCase();
+  }
+  function addUniqueSubject_(list, subject) {
+    var value = String(subject || "").trim();
+    if (value && list.indexOf(value) < 0) list.push(value);
+  }
+  function addSubjectsForKey_(map, key, raw) {
+    var normalized = normalizedTeacherKey_(key);
+    if (!normalized) return;
+    if (!map[normalized]) map[normalized] = [];
+    parseSubjectsServer_(raw).forEach(function (subject) {
+      addUniqueSubject_(map[normalized], subject);
+    });
+  }
+  function scheduleKeys_(schedule) {
+    return [schedule["教師Email"], schedule.teacherEmail, schedule["教師姓名"], schedule.teacherName]
+      .map(normalizedTeacherKey_)
+      .filter(Boolean);
+  }
+  function teacherKeys_(teacher) {
+    return [teacher["教師Email"], teacher.email, teacher.loginEmail, teacher.teacherEmail,
+      teacher["教師姓名"], teacher.name, teacher.teacherName]
+      .map(normalizedTeacherKey_)
+      .filter(Boolean);
+  }
+  var scheduleSubjectsByTeacher = {};
+  var knownDomains = {};
+  schedules.forEach(function (schedule) {
+    if (!schedule) return;
+    if (dateStr && !scheduleActiveOnDate_(schedule, dateStr)) return;
+    var scheduleSubject = schedule["科目"] || schedule.subject || "";
+    parseSubjectsServer_(scheduleSubject).forEach(function (subject) {
+      knownDomains[subject] = true;
+    });
+    scheduleKeys_(schedule).forEach(function (key) {
+      addSubjectsForKey_(scheduleSubjectsByTeacher, key, scheduleSubject);
+    });
+  });
+  function subjectDomainsForTeacher_(teacher) {
+    var domains = parseSubjectsServer_(teacher["授課科目"] || teacher["任課科目"] || teacher.subject);
+    teacherKeys_(teacher).forEach(function (key) {
+      (scheduleSubjectsByTeacher[key] || []).forEach(function (subject) {
+        addUniqueSubject_(domains, subject);
+      });
+    });
+    return domains;
+  }
   var schoolSwaps = getActiveSchoolSwapRows_(semesterId) || [];
   var reqPack = getSemesterRequestsCached_(semesterId, false, 14);
   var allReqRows = reqPack.rows || [];
@@ -4394,10 +4442,9 @@ function buildMatchCandidates_(semesterId, opts) {
     }
   });
 
-  var knownDomains = {};
   teachers.forEach(function (t) {
-    parseSubjectsServer_(t["授課科目"] || t.subject).forEach(function (s) {
-      knownDomains[s] = true;
+    subjectDomainsForTeacher_(t).forEach(function (subject) {
+      knownDomains[subject] = true;
     });
   });
   var leaveDomains = parseSubjectsServer_(myDomainRaw);
@@ -4412,9 +4459,12 @@ function buildMatchCandidates_(semesterId, opts) {
     if (!em || em === leaveEmail) return;
     var fi = isFreeAt(em, period);
     if (!fi.free) return;
-    var candDomains = parseSubjectsServer_(t["授課科目"] || t.subject);
+    var rosterDomains = parseSubjectsServer_(t["授課科目"] || t["任課科目"] || t.subject);
+    var candDomains = subjectDomainsForTeacher_(t);
     var isSameCourse = !!sameCourseTeachers[em];
     var isSameSubject = !!(demandDomain && candDomains.indexOf(demandDomain) >= 0);
+    var isPrimarySubject = !!(demandDomain && rosterDomains[0] === demandDomain);
+    var subjectMatchRank = isSameSubject ? (isPrimarySubject ? 2 : 1) : 0;
     var isSameClass = !!sameClassTeachers[em];
     var isReleasedByAway = !!fi.released;
     var score = (activityMode && isReleasedByAway ? 100 : 0)
@@ -4428,7 +4478,7 @@ function buildMatchCandidates_(semesterId, opts) {
     freeList.push({
       teacherName: String(t["教師姓名"] || t.name || "").trim(),
       name: String(t["教師姓名"] || t.name || "").trim(),
-      subject: String(t["授課科目"] || t.subject || "").trim(),
+      subject: String(t["授課科目"] || t["任課科目"] || t.subject || "").trim(),
       jobTitle: String(t["職務"] || t.jobTitle || "").trim(),
       role: String(t["系統角色"] || t.role || "teacher"),
       baseHours: t["基本鐘點"] != null ? t["基本鐘點"] : (t.baseHours != null ? t.baseHours : 16),
@@ -4436,6 +4486,8 @@ function buildMatchCandidates_(semesterId, opts) {
       todayPeriodCount: busy,
       isSameCourse: isSameCourse,
       isSameSubject: isSameSubject,
+      isPrimarySubject: isPrimarySubject,
+      subjectMatchRank: subjectMatchRank,
       isSameClass: isSameClass,
       isReleasedByAway: isReleasedByAway,
       suggestedFee: activityMode ? (isReleasedByAway ? "扣額度" : "活動公費") : "",
@@ -4450,7 +4502,9 @@ function buildMatchCandidates_(semesterId, opts) {
       var rb = b.isReleasedByAway ? 1 : 0;
       if (rb !== ra) return rb - ra;
     }
-    return b.score - a.score || a.todayPeriodCount - b.todayPeriodCount;
+    return b.score - a.score
+      || (b.subjectMatchRank || 0) - (a.subjectMatchRank || 0)
+      || a.todayPeriodCount - b.todayPeriodCount;
   });
 
   var sliced = freeList.slice(0, limit);

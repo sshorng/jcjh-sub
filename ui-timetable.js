@@ -444,6 +444,8 @@ window.UiTimetable = (function () {
               todayPeriodCount: c.todayPeriodCount || 0,
               isSameCourse: !!c.isSameCourse,
               isSameSubject: !!c.isSameSubject,
+              isPrimarySubject: !!c.isPrimarySubject,
+              subjectMatchRank: c.subjectMatchRank || 0,
               isSameClass: !!c.isSameClass,
               isReleasedByAway: !!c.isReleasedByAway,
               suggestedFee: c.suggestedFee || '',
@@ -867,6 +869,8 @@ window.UiTimetable = (function () {
             todayPeriodCount: 0,
             isSameCourse: false,
             isSameSubject: false,
+            isPrimarySubject: false,
+            subjectMatchRank: 0,
             isSameClass: false,
             isReleasedByAway: false,
             suggestedFee: isMutualCover.value ? ACTIVITY_PUBLIC_FEE : '',
@@ -900,6 +904,11 @@ window.UiTimetable = (function () {
             );
             if (r.isSameCourse) scoreMap[r.email].isSameCourse = true;
             if (r.isSameSubject) scoreMap[r.email].isSameSubject = true;
+            if (r.isPrimarySubject) scoreMap[r.email].isPrimarySubject = true;
+            scoreMap[r.email].subjectMatchRank = Math.max(
+              scoreMap[r.email].subjectMatchRank || 0,
+              r.subjectMatchRank || 0
+            );
             if (r.isSameClass) scoreMap[r.email].isSameClass = true;
             if (r.isReleasedByAway) {
               scoreMap[r.email].isReleasedByAway = true;
@@ -924,7 +933,9 @@ window.UiTimetable = (function () {
             var rcb = b.releasedSlotCount || 0;
             if (rcb !== rca) return rcb - rca;
           }
-          return b.score - a.score || a.todayPeriodCount - b.todayPeriodCount;
+          return b.score - a.score
+            || (b.subjectMatchRank || 0) - (a.subjectMatchRank || 0)
+            || a.todayPeriodCount - b.todayPeriodCount;
         });
         matchSearchQuery.value = '';
         matchDisplayCount.value = 10;

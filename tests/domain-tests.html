@@ -43,6 +43,7 @@
       var ps = window.DomainMatch.parseSubjects;
       assert('parseSubjects 頓號', JSON.stringify(ps('國文、輔導')) === JSON.stringify(['國文', '輔導']));
       assert('parseSubjects 逗號', JSON.stringify(ps('國文,歷史')) === JSON.stringify(['國文', '歷史']));
+      assert('parseSubjects 分號', JSON.stringify(ps('國文；歷史')) === JSON.stringify(['國文', '歷史']));
       assert('parseSubjects 空', ps('').length === 0);
 
       // ── rankSubstitutionCandidates ──
@@ -50,12 +51,17 @@
         { email: 'a@x', name: '甲', subject: '國文' },
         { email: 'b@x', name: '乙', subject: '國文、輔導' },
         { email: 'c@x', name: '丙', subject: '數學' },
-        { email: 'd@x', name: '丁', subject: '輔導' }
+        { email: 'd@x', name: '丁', subject: '輔導' },
+        { email: 'e@x', name: '戊', subject: '國文' },
+        { email: 'f@x', name: '己', subject: '輔導' },
+        { email: 'g@x', name: '庚', subject: '國文' }
       ];
       var schedules = [
         { teacherEmail: 'a@x', dayOfWeek: 1, period: 2, className: '701', subject: '國文' },
         { teacherEmail: 'b@x', dayOfWeek: 1, period: 3, className: '702', subject: '輔導' },
-        { teacherEmail: 'd@x', dayOfWeek: 2, period: 1, className: '701', subject: '輔導' }
+        { teacherEmail: 'd@x', dayOfWeek: 2, period: 1, className: '701', subject: '輔導' },
+        { teacherEmail: 'e@x', dayOfWeek: 2, period: 3, className: '901', subject: '輔導' },
+        { teacherEmail: 'g@x', dayOfWeek: 2, period: 4, className: '901', subject: '生物' }
       ];
       // 簡易 getScheduleForDate：只看基礎課表，不管異動
       function mockGet(email, dateStr, period, day) {
@@ -80,9 +86,14 @@
       var d = ranked.find(function (t) { return t.email === 'd@x'; });
       var c = ranked.find(function (t) { return t.email === 'c@x'; });
       var b = ranked.find(function (t) { return t.email === 'b@x'; });
+      var e = ranked.find(function (t) { return t.email === 'e@x'; });
+      var f = ranked.find(function (t) { return t.email === 'f@x'; });
       assert('輔導代課：丁同科', d && d.isSameSubject === true);
       assert('輔導代課：丙不同科', c && c.isSameSubject === false);
       assert('輔導代課：乙同科（名單含輔導）', b && b.isSameSubject === true);
+      assert('輔導代課：戊同科（課表含第二科）', e && e.isSameSubject === true && e.isPrimarySubject === false);
+      assert('輔導代課：己主要科同科', f && f.isSameSubject === true && f.isPrimarySubject === true);
+      assert('主要科目優先於課表第二科', f && e && ranked.indexOf(f) < ranked.indexOf(e));
       assert('請假人自己不在名單', !ranked.find(function (t) { return t.email === 'a@x'; }));
 
       // 走讀：需求科回退名單第一科「國文」
@@ -102,6 +113,22 @@
       var d2 = ranked2.find(function (t) { return t.email === 'd@x'; });
       assert('走讀：甲同科（回退國文）', a2 && a2.isSameSubject === true, a2 && 'demand=' + a2.demandDomain);
       assert('走讀：丁不同科（只有輔導）', d2 && d2.isSameSubject === false, d2 && 'demand=' + d2.demandDomain);
+
+      // 課表才有的第二科，也應可成為本堂需求科
+      var ranked3 = window.DomainMatch.rankSubstitutionCandidates({
+        teachers: teachers,
+        allSchedules: schedules,
+        leaveEmail: 'a@x',
+        dateStr: '2026-07-13',
+        targetDay: 1,
+        targetPeriod: 1,
+        myCourse: '生物',
+        myDomain: '國文',
+        myClass: '701',
+        getScheduleForDate: mockGet
+      });
+      var g3 = ranked3.find(function (t) { return t.email === 'g@x'; });
+      assert('生物代課：課表第二科可推導需求科', g3 && g3.isSameSubject === true && g3.demandDomain === '生物');
 
       // ── schedule index + resolve ──
       var idx = window.DomainSchedule.buildScheduleIndex(schedules);

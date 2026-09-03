@@ -224,7 +224,7 @@ const combinedCandidates = findCombinedReturnCandidates({
   classData: { className: '音樂班' }
 });
 assert.equal(combinedCandidates.map(candidate => candidate.email).sort().join(','), 'invitee@school.example,unrelated@school.example', '併班代課候選人應依同節併班課列入，不應要求班名重疊');
-assert.match(indexSource, /app\.js\?v=20260903-paper-line2/);
+assert.match(indexSource, /app\.js\?v=20260903-paper-line2-multisubject1/);
 assert.doesNotMatch(preview.documentHtml, /<script\b/i, '列印預覽 srcdoc 不應注入腳本');
 assert.doesNotMatch(appSource, /seedClassKey/, 'single-request batch printing should include the same recipient across classes');
 assert.match(appSource, /teacherKey\(record, 'actual'\) === targetKey/, 'single-request batch printing should group by recipient teacher');

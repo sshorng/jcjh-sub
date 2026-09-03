@@ -29,10 +29,10 @@ window.DomainMatch = (function () {
     return '';
   }
 
-  /** 解析多科：國文、輔導 / 國文,輔導 / 國文/輔導 */
+  /** 解析多科：國文、輔導／國文,輔導／國文；輔導 */
   function parseSubjects(raw) {
     return String(raw || '')
-      .split(/[、,，/／|｜\s]+/)
+      .split(/[、,，;；/／|｜\s]+/)
       .map(function (s) { return s.trim(); })
       .filter(Boolean);
   }
@@ -57,10 +57,45 @@ window.DomainMatch = (function () {
     const myGrade = extractGrade(myClass);
     const getScheduleForDate = opts.getScheduleForDate;
 
-    // 全校名單出現過的領域名（用來判斷格子科目是否為標準科）
+    function normalizedTeacherKey(value) {
+      return String(value || '').trim().toLowerCase();
+    }
+
+    function teacherKeys(t) {
+      return [t && t.email, t && t.teacherEmail, t && t.teacherName, t && t.name, t && t.loginEmail]
+        .map(normalizedTeacherKey)
+        .filter(Boolean);
+    }
+
+    function scheduleKeys(s) {
+      return [s && s.teacherEmail, s && s.teacherName, s && s['教師Email'], s && s['教師姓名']]
+        .map(normalizedTeacherKey)
+        .filter(Boolean);
+    }
+
+    function appendUniqueSubjects(list, raw) {
+      parseSubjects(raw).forEach(function (subject) {
+        if (list.indexOf(subject) < 0) list.push(subject);
+      });
+    }
+
+    // 教師名單通常只有主要科目，第二科可能只存在有效課表中。
+    const scheduleSubjectsByTeacher = Object.create(null);
     const knownDomains = new Set();
+    allSchedules.forEach(function (s) {
+      if (!s) return;
+      if (window.DomainSchedule && window.DomainSchedule.isActiveOnDate
+          && !window.DomainSchedule.isActiveOnDate(s, dateStr)) return;
+      var scheduleSubject = s.subject || s['科目'] || '';
+      parseSubjects(scheduleSubject).forEach(function (subject) { knownDomains.add(subject); });
+      scheduleKeys(s).forEach(function (key) {
+        if (!scheduleSubjectsByTeacher[key]) scheduleSubjectsByTeacher[key] = [];
+        appendUniqueSubjects(scheduleSubjectsByTeacher[key], scheduleSubject);
+      });
+    });
     teachers.forEach(function (t) {
-      parseSubjects(t.subject).forEach(function (s) { knownDomains.add(s); });
+      var rosterDomains = parseSubjects(t.subject || t['授課科目'] || t['任課科目']);
+      rosterDomains.forEach(function (subject) { knownDomains.add(subject); });
     });
     leaveDomains.forEach(function (s) { knownDomains.add(s); });
 
@@ -146,9 +181,17 @@ window.DomainMatch = (function () {
     });
 
     const list = freeAtTarget.map(function (t) {
-      var candDomains = parseSubjects(t.subject);
+      var rosterDomains = parseSubjects(t.subject || t['授課科目'] || t['任課科目']);
+      var candDomains = rosterDomains.slice();
+      teacherKeys(t).forEach(function (key) {
+        (scheduleSubjectsByTeacher[key] || []).forEach(function (subject) {
+          if (candDomains.indexOf(subject) < 0) candDomains.push(subject);
+        });
+      });
       var isSameCourse = sameCourseTeachers.has(t.email);
       var isSameSubject = !!demandDomain && subjectListHas(candDomains, demandDomain);
+      var isPrimarySubject = !!demandDomain && rosterDomains[0] === demandDomain;
+      var subjectMatchRank = isSameSubject ? (isPrimarySubject ? 2 : 1) : 0;
       var isSameClass = sameClassTeachers.has(t.email);
       var isReleasedByAway = !!releasedMap[t.email];
       // 僅活動互代：外出班釋出往上排（+100）；一般調代課當空堂即可，不特別優先
@@ -168,6 +211,8 @@ window.DomainMatch = (function () {
         todayPeriodCount: todayCountMap[t.email] || 0,
         isSameCourse: isSameCourse,
         isSameSubject: isSameSubject,
+        isPrimarySubject: isPrimarySubject,
+        subjectMatchRank: subjectMatchRank,
         isSameClass: isSameClass,
         isReleasedByAway: isReleasedByAway,
         suggestedFee: suggestedFee,
@@ -184,7 +229,9 @@ window.DomainMatch = (function () {
         var rb = b.isReleasedByAway ? 1 : 0;
         if (rb !== ra) return rb - ra;
       }
-      return b.score - a.score || a.todayPeriodCount - b.todayPeriodCount;
+      return b.score - a.score
+        || (b.subjectMatchRank || 0) - (a.subjectMatchRank || 0)
+        || a.todayPeriodCount - b.todayPeriodCount;
     });
     return list;
   }
