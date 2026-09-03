@@ -1445,7 +1445,8 @@ createApp({
         isExchange: false,
         agreeLink: `${currentUrl}?action=respond&id=${encodeURIComponent(demoId)}&status=agree`,
         declineLink: `${currentUrl}?action=respond&id=${encodeURIComponent(demoId)}&status=decline`,
-        systemUrl: currentUrl
+        systemUrl: currentUrl,
+        paperFlow: notificationsSuppressed.value
       });
       // 文末加註：導覽示範
       lineCopyText.value += '\n\n（以上為操作教學示範範本，與正式送出後格式相同；此連結不會對應真實申請單。）';
@@ -2671,6 +2672,8 @@ createApp({
     };
 
     const buildLineInviteText = (opts) => {
+      // 紙本流程只保留詢問內容，避免呼叫端漏掉分流時重新產生線上連結。
+      if (opts.paperFlow) return buildAskFirstLineText(opts);
       const name = shortTeacherName(opts.targetName) || cleanLineTeacherName(opts.targetName) || '對方';
       const requesterName = cleanLineTeacherName(opts.requesterName);
       const courseTeacherA = opts.courseTeacherA || opts.teacherA || opts.requesterName;
@@ -2916,10 +2919,11 @@ createApp({
           requesterName: isProxySubmitRequest(req) ? req.requesterName : '',
           reason: req.reason,
           subFee: req.subFee,
-          systemUrl: currentUrl,
-          batchId: req.batchId,
-          slots
-        });
+           systemUrl: currentUrl,
+           batchId: req.batchId,
+           paperFlow: paperFlowRequest,
+           slots
+         });
       } else {
         const agreeLink = `${currentUrl}?action=respond&id=${req.id}&status=agree`;
         const declineLink = `${currentUrl}?action=respond&id=${req.id}&status=decline`;
@@ -2947,11 +2951,12 @@ createApp({
           dayB: req.targetDayOfWeek,
           periodB: req.targetPeriod,
           classB: swapClass,
-          subjectB: swapSubject,
-          agreeLink,
-          declineLink,
-          systemUrl: currentUrl
-        });
+           subjectB: swapSubject,
+           agreeLink,
+           declineLink,
+           systemUrl: currentUrl,
+           paperFlow: paperFlowRequest
+         });
       }
 
       openLineMessageEditor(lineText, paperFlowRequest ? '送出前先問對方（LINE 範本）' : 'LINE 邀請訊息');
@@ -6587,6 +6592,24 @@ createApp({
     const buildTriangleLineText = (request, groupRows) => {
       const row = request || {};
       const rows = groupRows || [];
+      const paperFlag = row.paperFlow != null ? row.paperFlow : row['紙本流程'];
+      const normalizedPaperFlag = String(paperFlag == null ? '' : paperFlag).trim().toLowerCase();
+      if (paperFlag === true || paperFlag === 1
+          || normalizedPaperFlag === 'true' || normalizedPaperFlag === '1'
+          || normalizedPaperFlag === '是' || normalizedPaperFlag === '紙本') {
+        return buildAskFirstLineText({
+          targetName: row.targetTeacherName,
+          requesterName: '',
+          slots: (rows.length ? rows : [row]).map((item) => ({
+            date: item.requestDate || item.date,
+            day: item.requestPeriodDay != null ? item.requestPeriodDay : item.dayOfWeek,
+            period: item.requestPeriod != null ? item.requestPeriod : item.period,
+            className: item.className,
+            subject: item.subject,
+            teacherName: item.requesterName || item.originalTeacherName || ''
+          }))
+        });
+      }
       const participants = rows.map((item) => `${item.requesterName || ''}→${item.targetTeacherName || ''}`).join('、');
       const lines = rows.map((item, index) => {
          const source = formatLineSlot(item.requestDate, item.requestPeriodDay, item.requestPeriod, item.className, item.subject, item.requesterName || item.originalTeacherName);

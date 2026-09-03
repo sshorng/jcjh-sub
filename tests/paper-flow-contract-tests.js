@@ -432,6 +432,15 @@ function runLineTemplateTest() {
   assert.match(single, /✅ 可以/);
   assert.doesNotMatch(single, /詳細如下|非常感謝/);
 
+  const paperSingle = templates.buildLineInviteText({
+    targetName: '王小明老師', requesterName: '陳小華老師', paperFlow: true,
+    dateA: '2026-09-04', dayA: 5, periodA: 1, classA: '904', subjectA: '國文',
+    agreeLink: 'https://school.example/?action=respond&id=paper-1&status=agree',
+    declineLink: 'https://school.example/?action=respond&id=paper-1&status=decline'
+  });
+  assert.match(paperSingle, /如果可以，我再拿代課單給您，感謝/);
+  assert.doesNotMatch(paperSingle, /請回覆：|https?:\/\/|action=/);
+
   const ask = templates.buildAskFirstLineText({
     targetName: '王小明老師', requesterName: '陳小華老師',
     dateA: '2026-09-04', dayA: 5, periodA: 1,
@@ -585,6 +594,22 @@ function runTriangleLineFormatTest() {
   }]);
   assert.match(text, /09\/08\(二\) 第3節 802體育（余明錦老師）/);
   assert.match(text, /09\/10\(四\) 第5節 802體育（余明錦老師）/);
+
+  const paperText = templates.buildTriangleLineText({
+    targetTeacherName: '王小明',
+    reason: '課務調整',
+    paperFlow: true
+  }, [{
+    requesterName: '余明錦',
+    targetTeacherName: '王小明',
+    requestDate: '2026-09-08',
+    requestPeriodDay: 2,
+    requestPeriod: 3,
+    className: '802',
+    subject: '體育'
+  }]);
+  assert.match(paperText, /如果可以，我再拿代課單給您，感謝/);
+  assert.doesNotMatch(paperText, /請回覆：|https?:\/\/|action=/);
 }
 
 function loadPaperFlowClassifier() {
@@ -791,7 +816,8 @@ function runApplicationFormContractTest() {
    assert.match(appSource, /openExchangeModeDemo: \(\) => openExchangeModeDemoForTour\(\)/, 'tour should demonstrate exchange mode');
     assert.match(appSource, /ONBOARDING_SCRIPT = 'onboarding-tour\.js\?v=20260831-combined3'/, 'onboarding cache must refresh with the exchange tour');
     assert.match(html, /ui-activity\.js\?v=20260901-batch-display2/);
-      assert.match(html, /app\.js\?v=20260903-p8-label1/);
+      assert.match(html, /app\.js\?v=20260903-paper-line2/);
+      assert.match(appSource, /paperFlow: notificationsSuppressed\.value/);
      assert.match(appSource, /openPaperPrintDemo: \(\) => openPaperPrintDemoForTour\(\)/, 'paper tour should open a print preview demo');
      assert.match(appSource, /openExchangeModeDemo: \(\) => openExchangeModeDemoForTour\(\)/, 'tour should demonstrate exchange mode');
     assert.match(appSource, /source: 'paperTour'/, 'paper tour preview must use an isolated source');
