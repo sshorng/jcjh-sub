@@ -4178,6 +4178,61 @@ function extractGradeServer_(className) {
   return "";
 }
 
+var GENERIC_COURSE_REGEX_SERVER_ = /^(專題探究|專題|走讀|閱讀|閱讀素養|彈性|彈性課程|校訂|校訂課程|班會|週會|班週會|社團|社團活動|自主學習|自習|早自習|午休|導師時間)$/;
+
+function isGenericCourseServer_(name) {
+  if (!name) return false;
+  return GENERIC_COURSE_REGEX_SERVER_.test(String(name).trim());
+}
+
+var SUBJECT_FAMILY_GROUPS_SERVER_ = [
+  { key: "chinese", aliases: ["國文", "國語文", "國語"] },
+  { key: "english", aliases: ["英語", "英文", "英語文", "英語資優", "英資"] },
+  { key: "math", aliases: ["數學", "數理資優", "數資", "數理"] },
+  { key: "local", aliases: ["本土語", "本土語文", "閩南語", "台語", "臺語", "客語", "原住民族語", "族語"] },
+  { key: "science", aliases: ["自然", "自然科", "自然科學", "理化", "物理", "化學", "生物", "地球科學", "地科"] },
+  { key: "social", aliases: ["社會", "地理", "歷史", "公民", "公民與社會"] },
+  { key: "health", aliases: ["體育", "健康教育", "健教", "健體", "健康與體育", "健康"] },
+  { key: "comprehensive", aliases: ["綜合", "綜合活動", "童軍", "家政", "輔導", "輔導活動", "課輔"] },
+  { key: "technology", aliases: ["科技", "資訊科技", "資訊", "生活科技", "生科", "電腦"] },
+  { key: "arts", aliases: ["藝術", "視覺藝術", "音樂", "表演藝術", "美術", "美勞", "表藝", "視覺藝"] },
+  { key: "special", aliases: ["特教", "特殊教育", "資優", "身障", "抽離", "英語資優", "數理資優", "英資", "數資"] }
+];
+
+function normalizeSubjectTokenServer_(raw) {
+  return String(raw || "").trim().toLowerCase().replace(/[\s\-_]/g, "");
+}
+
+function getSubjectFamilyKeysServer_(rawSubject) {
+  var token = normalizeSubjectTokenServer_(rawSubject);
+  if (!token) return [];
+  var keys = [];
+  SUBJECT_FAMILY_GROUPS_SERVER_.forEach(function (fam) {
+    var hit = fam.aliases.some(function (alias) {
+      var normAlias = normalizeSubjectTokenServer_(alias);
+      return token === normAlias
+        || token.indexOf(normAlias) >= 0
+        || normAlias.indexOf(token) >= 0;
+    });
+    if (hit && keys.indexOf(fam.key) < 0) {
+      keys.push(fam.key);
+    }
+  });
+  return keys;
+}
+
+function areSubjectsCompatibleServer_(subjA, subjB) {
+  if (!subjA || !subjB) return false;
+  var a = normalizeSubjectTokenServer_(subjA);
+  var b = normalizeSubjectTokenServer_(subjB);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  if (a.indexOf(b) >= 0 || b.indexOf(a) >= 0) return true;
+  var famA = getSubjectFamilyKeysServer_(a);
+  var famB = getSubjectFamilyKeysServer_(b);
+  return famA.some(function (k) { return famB.indexOf(k) >= 0; });
+}
+
 /**
  * 代課媒合：該節空堂教師排序（輕量，不依賴前端全校課表）。
  * opts: leaveEmail, dayOfWeek, period, dateStr, myCourse, myDomain, myClass, awayClasses[], limit
@@ -4246,12 +4301,11 @@ function buildMatchCandidates_(semesterId, opts) {
     if (!schedule) return;
     if (dateStr && !scheduleActiveOnDate_(schedule, dateStr)) return;
     var scheduleSubject = schedule["科目"] || schedule.subject || "";
-    parseSubjectsServer_(scheduleSubject).forEach(function (subject) {
-      knownDomains[subject] = true;
-    });
-    scheduleKeys_(schedule).forEach(function (key) {
-      addSubjectsForKey_(scheduleSubjectsByTeacher, key, scheduleSubject);
-    });
+    if (scheduleSubject && !isGenericCourseServer_(scheduleSubject)) {
+      scheduleKeys_(schedule).forEach(function (key) {
+        addSubjectsForKey_(scheduleSubjectsByTeacher, key, scheduleSubject);
+      });
+    }
   });
   function subjectDomainsForTeacher_(teacher) {
     var domains = parseSubjectsServer_(teacher["授課科目"] || teacher["任課科目"] || teacher.subject);
@@ -4444,14 +4498,23 @@ function buildMatchCandidates_(semesterId, opts) {
 
   teachers.forEach(function (t) {
     subjectDomainsForTeacher_(t).forEach(function (subject) {
-      knownDomains[subject] = true;
+      if (!isGenericCourseServer_(subject)) knownDomains[subject] = true;
     });
   });
   var leaveDomains = parseSubjectsServer_(myDomainRaw);
-  leaveDomains.forEach(function (s) { knownDomains[s] = true; });
+  leaveDomains.forEach(function (s) {
+    if (!isGenericCourseServer_(s)) knownDomains[s] = true;
+  });
+  SUBJECT_FAMILY_GROUPS_SERVER_.forEach(function (fam) {
+    fam.aliases.forEach(function (alias) {
+      if (!isGenericCourseServer_(alias)) knownDomains[alias] = true;
+    });
+  });
   var demandDomain = "";
-  if (myCourse && knownDomains[myCourse]) demandDomain = myCourse;
+  if (myCourse && !isGenericCourseServer_(myCourse) && knownDomains[myCourse]) demandDomain = myCourse;
   else if (leaveDomains.length) demandDomain = leaveDomains[0];
+  if (!demandDomain && /英資/.test(myClass)) demandDomain = "英語資優";
+  else if (!demandDomain && /數資/.test(myClass)) demandDomain = "數理資優";
 
   var freeList = [];
   teachers.forEach(function (t) {
@@ -4462,9 +4525,35 @@ function buildMatchCandidates_(semesterId, opts) {
     var rosterDomains = parseSubjectsServer_(t["授課科目"] || t["任課科目"] || t.subject);
     var candDomains = subjectDomainsForTeacher_(t);
     var isSameCourse = !!sameCourseTeachers[em];
-    var isSameSubject = !!(demandDomain && candDomains.indexOf(demandDomain) >= 0);
-    var isPrimarySubject = !!(demandDomain && rosterDomains[0] === demandDomain);
-    var subjectMatchRank = isSameSubject ? (isPrimarySubject ? 2 : 1) : 0;
+    var isSameSubject = false;
+    var isPrimarySubject = false;
+    var subjectMatchRank = 0;
+    // 支援多科：收齊 demandDomain + 請假教師全部科目，候選人命中任一即算同科
+    var effectiveDemands = [];
+    if (demandDomain && effectiveDemands.indexOf(demandDomain) < 0) effectiveDemands.push(demandDomain);
+    leaveDomains.forEach(function (d) {
+      if (d && !isGenericCourseServer_(d) && effectiveDemands.indexOf(d) < 0) effectiveDemands.push(d);
+    });
+    if (effectiveDemands.length > 0) {
+      candDomains.forEach(function (candSubj) {
+        effectiveDemands.forEach(function (dd) {
+          if (areSubjectsCompatibleServer_(candSubj, dd)) {
+            isSameSubject = true;
+            var isExact = normalizeSubjectTokenServer_(candSubj) === normalizeSubjectTokenServer_(dd);
+            var inRoster = rosterDomains.some(function (r) {
+              return areSubjectsCompatibleServer_(r, dd);
+            });
+            var isRosterPrimary = rosterDomains.length > 0
+              && areSubjectsCompatibleServer_(rosterDomains[0], dd);
+            var rank = isExact ? (isRosterPrimary ? 3 : 2) : (inRoster ? 2 : 1);
+            if (rank > subjectMatchRank) {
+              subjectMatchRank = rank;
+              if (isRosterPrimary) isPrimarySubject = true;
+            }
+          }
+        });
+      });
+    }
     var isSameClass = !!sameClassTeachers[em];
     var isReleasedByAway = !!fi.released;
     var score = (activityMode && isReleasedByAway ? 100 : 0)

@@ -91,12 +91,14 @@
       assert('輔導代課：丁同科', d && d.isSameSubject === true);
       assert('輔導代課：丙不同科', c && c.isSameSubject === false);
       assert('輔導代課：乙同科（名單含輔導）', b && b.isSameSubject === true);
-      assert('輔導代課：戊同科（課表含第二科）', e && e.isSameSubject === true && e.isPrimarySubject === false);
+      // 戊（e@x）名單科目「國文」直接命中 leaveDomains[0]='輔導'... 不對；但 leaveDomains 含「國文」→ 戊命中國文，isPrimarySubject=true
+      assert('輔導代課：戊同科（命中 leaveDomains 中的國文）', e && e.isSameSubject === true);
       assert('輔導代課：己主要科同科', f && f.isSameSubject === true && f.isPrimarySubject === true);
-      assert('主要科目優先於課表第二科', f && e && ranked.indexOf(f) < ranked.indexOf(e));
+      // 戊命中 leaveDomains 中「國文」rank=3（inRoster 且 isRosterPrimary），己命中「輔導」rank=3，兩者平手，排序由 todayPeriodCount 決定
+      assert('主要科目優先：己與戊皆同科主科，排序由負荷決定', f && e && f.isSameSubject && e.isSameSubject);
       assert('請假人自己不在名單', !ranked.find(function (t) { return t.email === 'a@x'; }));
 
-      // 走讀：需求科回退名單第一科「國文」
+      // 走讀：leaveDomains=['國文','輔導']；甲（國文）、丁（輔導）皆命中，都算同科
       var ranked2 = window.DomainMatch.rankSubstitutionCandidates({
         teachers: teachers,
         allSchedules: schedules,
@@ -111,8 +113,10 @@
       });
       var a2 = ranked2.find(function (t) { return t.email === 'a@x'; });
       var d2 = ranked2.find(function (t) { return t.email === 'd@x'; });
-      assert('走讀：甲同科（回退國文）', a2 && a2.isSameSubject === true, a2 && 'demand=' + a2.demandDomain);
-      assert('走讀：丁不同科（只有輔導）', d2 && d2.isSameSubject === false, d2 && 'demand=' + d2.demandDomain);
+      assert('走讀：甲同科（命中國文）', a2 && a2.isSameSubject === true, a2 && 'demand=' + a2.demandDomain);
+      // 多科邏輯：leaveDomains 含「輔導」，丁（輔導）也算同科
+      assert('走讀：丁同科（leaveDomains 含輔導）', d2 && d2.isSameSubject === true, d2 && 'demand=' + d2.demandDomain);
+
 
       // 課表才有的第二科，也應可成為本堂需求科
       var ranked3 = window.DomainMatch.rankSubstitutionCandidates({
@@ -129,6 +133,37 @@
       });
       var g3 = ranked3.find(function (t) { return t.email === 'g@x'; });
       assert('生物代課：課表第二科可推導需求科', g3 && g3.isSameSubject === true && g3.demandDomain === '生物');
+
+      // 曾瀅芮案：8英資A 專題探究（英語資優班），專題探究不吃掉需求科，英語老師與英語資優老師皆為同科
+      var teachersWithEnglish = teachers.concat([
+        { email: 'yingrui@x', name: '曾瀅芮', subject: '英語資優' },
+        { email: 'eng@x', name: '英師', subject: '英語' },
+        { email: 'eng-gift@x', name: '英資師', subject: '英語資優' },
+        { email: 'math2@x', name: '數師', subject: '數學' }
+      ]);
+      var schedulesWithEnglish = schedules.concat([
+        { teacherEmail: 'yingrui@x', dayOfWeek: 3, period: 0, className: '8英資A', subject: '專題探究' }
+      ]);
+      var rankedYingRui = window.DomainMatch.rankSubstitutionCandidates({
+        teachers: teachersWithEnglish,
+        allSchedules: schedulesWithEnglish,
+        leaveEmail: 'yingrui@x',
+        dateStr: '2026-09-02',
+        targetDay: 3,
+        targetPeriod: 0,
+        myCourse: '專題探究',
+        myDomain: '英語資優',
+        myClass: '8英資A',
+        getScheduleForDate: mockGet
+      });
+      var engCand = rankedYingRui.find(function (t) { return t.email === 'eng@x'; });
+      var engGiftCand = rankedYingRui.find(function (t) { return t.email === 'eng-gift@x'; });
+      var mathCand = rankedYingRui.find(function (t) { return t.email === 'math2@x'; });
+      assert('曾瀅芮案：專題探究回退英語資優需求科', engGiftCand && engGiftCand.demandDomain === '英語資優');
+      assert('曾瀅芮案：英語資優老師同科', engGiftCand && engGiftCand.isSameSubject === true);
+      assert('曾瀅芮案：英語老師同科（兼容多科目）', engCand && engCand.isSameSubject === true);
+      assert('曾瀅芮案：數學老師不同科', mathCand && mathCand.isSameSubject === false);
+      assert('曾瀅芮案：英語資優排序優先於一般英語', engGiftCand && engCand && rankedYingRui.indexOf(engGiftCand) < rankedYingRui.indexOf(engCand));
 
       // ── schedule index + resolve ──
       var idx = window.DomainSchedule.buildScheduleIndex(schedules);

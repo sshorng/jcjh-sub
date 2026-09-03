@@ -1,4 +1,4 @@
-﻿/**
+/**
  * 媒合領域邏輯（純函式）
  * 代課推薦排序、調課候選過濾
  */
@@ -35,6 +35,61 @@ window.DomainMatch = (function () {
       .split(/[、,，;；/／|｜\s]+/)
       .map(function (s) { return s.trim(); })
       .filter(Boolean);
+  }
+
+  var GENERIC_COURSE_REGEX = /^(專題探究|專題|走讀|閱讀|閱讀素養|彈性|彈性課程|校訂|校訂課程|班會|週會|班週會|社團|社團活動|自主學習|自習|早自習|午休|導師時間)$/;
+
+  function isGenericCourse(name) {
+    if (!name) return false;
+    return GENERIC_COURSE_REGEX.test(String(name).trim());
+  }
+
+  var SUBJECT_FAMILY_GROUPS = [
+    { key: 'chinese', aliases: ['國文', '國語文', '國語'] },
+    { key: 'english', aliases: ['英語', '英文', '英語文', '英語資優', '英資'] },
+    { key: 'math', aliases: ['數學', '數理資優', '數資', '數理'] },
+    { key: 'local', aliases: ['本土語', '本土語文', '閩南語', '台語', '臺語', '客語', '原住民族語', '族語'] },
+    { key: 'science', aliases: ['自然', '自然科', '自然科學', '理化', '物理', '化學', '生物', '地球科學', '地科'] },
+    { key: 'social', aliases: ['社會', '地理', '歷史', '公民', '公民與社會'] },
+    { key: 'health', aliases: ['體育', '健康教育', '健教', '健體', '健康與體育', '健康'] },
+    { key: 'comprehensive', aliases: ['綜合', '綜合活動', '童軍', '家政', '輔導', '輔導活動', '課輔'] },
+    { key: 'technology', aliases: ['科技', '資訊科技', '資訊', '生活科技', '生科', '電腦'] },
+    { key: 'arts', aliases: ['藝術', '視覺藝術', '音樂', '表演藝術', '美術', '美勞', '表藝', '視覺藝'] },
+    { key: 'special', aliases: ['特教', '特殊教育', '資優', '身障', '抽離', '英語資優', '數理資優', '英資', '數資'] }
+  ];
+
+  function normalizeSubjectToken(raw) {
+    return String(raw || '').trim().toLowerCase().replace(/[\s\-_]/g, '');
+  }
+
+  function getSubjectFamilyKeys(rawSubject) {
+    var token = normalizeSubjectToken(rawSubject);
+    if (!token) return [];
+    var keys = [];
+    SUBJECT_FAMILY_GROUPS.forEach(function (fam) {
+      var hit = fam.aliases.some(function (alias) {
+        var normAlias = normalizeSubjectToken(alias);
+        return token === normAlias
+          || token.indexOf(normAlias) >= 0
+          || normAlias.indexOf(token) >= 0;
+      });
+      if (hit && keys.indexOf(fam.key) < 0) {
+        keys.push(fam.key);
+      }
+    });
+    return keys;
+  }
+
+  function areSubjectsCompatible(subjA, subjB) {
+    if (!subjA || !subjB) return false;
+    var a = normalizeSubjectToken(subjA);
+    var b = normalizeSubjectToken(subjB);
+    if (!a || !b) return false;
+    if (a === b) return true;
+    if (a.indexOf(b) >= 0 || b.indexOf(a) >= 0) return true;
+    var famA = getSubjectFamilyKeys(a);
+    var famB = getSubjectFamilyKeys(b);
+    return famA.some(function (k) { return famB.indexOf(k) >= 0; });
   }
 
   function subjectListHas(list, token) {
@@ -82,29 +137,45 @@ window.DomainMatch = (function () {
     // 教師名單通常只有主要科目，第二科可能只存在有效課表中。
     const scheduleSubjectsByTeacher = Object.create(null);
     const knownDomains = new Set();
+    teachers.forEach(function (t) {
+      var rosterDomains = parseSubjects(t.subject || t['授課科目'] || t['任課科目']);
+      rosterDomains.forEach(function (subject) {
+        if (!isGenericCourse(subject)) knownDomains.add(subject);
+      });
+    });
+    leaveDomains.forEach(function (s) {
+      if (!isGenericCourse(s)) knownDomains.add(s);
+    });
+    SUBJECT_FAMILY_GROUPS.forEach(function (fam) {
+      fam.aliases.forEach(function (alias) {
+        if (!isGenericCourse(alias)) knownDomains.add(alias);
+      });
+    });
+
     allSchedules.forEach(function (s) {
       if (!s) return;
       if (window.DomainSchedule && window.DomainSchedule.isActiveOnDate
           && !window.DomainSchedule.isActiveOnDate(s, dateStr)) return;
       var scheduleSubject = s.subject || s['科目'] || '';
-      parseSubjects(scheduleSubject).forEach(function (subject) { knownDomains.add(subject); });
-      scheduleKeys(s).forEach(function (key) {
-        if (!scheduleSubjectsByTeacher[key]) scheduleSubjectsByTeacher[key] = [];
-        appendUniqueSubjects(scheduleSubjectsByTeacher[key], scheduleSubject);
-      });
+      if (scheduleSubject && !isGenericCourse(scheduleSubject)) {
+        scheduleKeys(s).forEach(function (key) {
+          if (!scheduleSubjectsByTeacher[key]) scheduleSubjectsByTeacher[key] = [];
+          appendUniqueSubjects(scheduleSubjectsByTeacher[key], scheduleSubject);
+        });
+      }
     });
-    teachers.forEach(function (t) {
-      var rosterDomains = parseSubjects(t.subject || t['授課科目'] || t['任課科目']);
-      rosterDomains.forEach(function (subject) { knownDomains.add(subject); });
-    });
-    leaveDomains.forEach(function (s) { knownDomains.add(s); });
 
     // 本堂需求科：格子是標準領域名就用格子；否則回退請假老師名單第一科
     var demandDomain = '';
-    if (myCourse && knownDomains.has(myCourse)) {
+    if (myCourse && !isGenericCourse(myCourse) && knownDomains.has(myCourse)) {
       demandDomain = myCourse;
     } else if (leaveDomains.length) {
       demandDomain = leaveDomains[0];
+    }
+    if (!demandDomain && /英資/.test(myClass)) {
+      demandDomain = '英語資優';
+    } else if (!demandDomain && /數資/.test(myClass)) {
+      demandDomain = '數理資優';
     }
 
     // 同班／同課：單次掃課表
@@ -189,9 +260,35 @@ window.DomainMatch = (function () {
         });
       });
       var isSameCourse = sameCourseTeachers.has(t.email);
-      var isSameSubject = !!demandDomain && subjectListHas(candDomains, demandDomain);
-      var isPrimarySubject = !!demandDomain && rosterDomains[0] === demandDomain;
-      var subjectMatchRank = isSameSubject ? (isPrimarySubject ? 2 : 1) : 0;
+      var isSameSubject = false;
+      var isPrimarySubject = false;
+      var subjectMatchRank = 0;
+      // 支援多科：收齊 demandDomain + 請假教師全部科目，候選人命中任一即算同科
+      var effectiveDemands = [];
+      if (demandDomain && effectiveDemands.indexOf(demandDomain) < 0) effectiveDemands.push(demandDomain);
+      leaveDomains.forEach(function (d) {
+        if (d && !isGenericCourse(d) && effectiveDemands.indexOf(d) < 0) effectiveDemands.push(d);
+      });
+      if (effectiveDemands.length > 0) {
+        candDomains.forEach(function (candSubj) {
+          effectiveDemands.forEach(function (dd) {
+            if (areSubjectsCompatible(candSubj, dd)) {
+              isSameSubject = true;
+              var isExact = normalizeSubjectToken(candSubj) === normalizeSubjectToken(dd);
+              var inRoster = rosterDomains.some(function (r) {
+                return areSubjectsCompatible(r, dd);
+              });
+              var isRosterPrimary = rosterDomains.length > 0
+                && areSubjectsCompatible(rosterDomains[0], dd);
+              var rank = isExact ? (isRosterPrimary ? 3 : 2) : (inRoster ? 2 : 1);
+              if (rank > subjectMatchRank) {
+                subjectMatchRank = rank;
+                if (isRosterPrimary) isPrimarySubject = true;
+              }
+            }
+          });
+        });
+      }
       var isSameClass = sameClassTeachers.has(t.email);
       var isReleasedByAway = !!releasedMap[t.email];
       // 僅活動互代：外出班釋出往上排（+100）；一般調代課當空堂即可，不特別優先
@@ -397,7 +494,10 @@ window.DomainMatch = (function () {
     listExchangeCandidates: listExchangeCandidates,
     parseSubjects: parseSubjects,
     isSlotFreeForMatch: isSlotFreeForMatch,
-    isPullOutSlot: isPullOutSlot
+    isPullOutSlot: isPullOutSlot,
+    areSubjectsCompatible: areSubjectsCompatible,
+    isGenericCourse: isGenericCourse,
+    getSubjectFamilyKeys: getSubjectFamilyKeys
   };
 })();
 

@@ -36,7 +36,7 @@ function request(server, method, requestPath) {
     assert.equal(root.status, 200);
     assert.match(root.body.toString('utf8'), /<title>建成國中線上課表系統<\/title>/);
     assert.match(root.body.toString('utf8'), /application-name" content="JCJH Timetable"/);
-     assert.match(root.body.toString('utf8'), /domain-match\.js\?v=20260903-multisubject1/);
+     assert.match(root.body.toString('utf8'), /domain-match\.js\?v=20260903-multisubject2/);
      assert.match(root.body.toString('utf8'), /ui-request\.js\?v=20260831-combined3/);
      assert.match(root.body.toString('utf8'), /20260831-combined3/);
     assert.equal(root.headers['cache-control'], 'no-cache');

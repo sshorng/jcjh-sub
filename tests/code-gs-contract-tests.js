@@ -40,7 +40,7 @@ assert.match(source, /jobTitle: String\(t\["職務"\] \|\| t\.jobTitle \|\| ""\)
 assert.match(source, /\.split\(\/\[、,，;；\/／\|｜\\s\]\+\/\)/, 'server subject parser should accept common multi-subject separators');
 assert.match(source, /function subjectDomainsForTeacher_\(teacher\)/, 'match candidates should merge roster and schedule subjects');
 assert.match(source, /scheduleSubjectsByTeacher/, 'match candidates should index subjects found in schedules');
-assert.match(source, /var isPrimarySubject = !!\(demandDomain && rosterDomains\[0\] === demandDomain\)/, 'match candidates should retain primary-subject priority');
+assert.match(source, /var effectiveDemands = \[\]/, 'match candidates should use effectiveDemands for multi-subject leave teachers');
 assert.match(source, /\(b\.subjectMatchRank \|\| 0\) - \(a\.subjectMatchRank \|\| 0\)/, 'match candidates should sort primary subject before secondary subject');
 const triangleInputStart = source.indexOf('function triangleInputRows_');
 const triangleInputEnd = source.indexOf('function triangleGroupRowsForRequest_', triangleInputStart);
