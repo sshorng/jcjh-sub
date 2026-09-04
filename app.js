@@ -3561,6 +3561,7 @@ createApp({
     const classList = computed(() => {
       const set = new Set();
       const pullOutClasses = new Set();
+      const pullOutClassLabels = new Set();
       (classDirectory.value || []).forEach(c => {
         const value = String(c || '').trim();
         if (value && !/^0+$/.test(value)) set.add(value);
@@ -3571,16 +3572,26 @@ createApp({
       }
       source.forEach(s => {
         const c = String(s.className || '').trim();
-        if (c && !/^0+$/.test(c)) set.add(c);
-        if (s.attr === '抽離' || s.isPullOut) {
+        const isPullOut = s.attr === '抽離' || s.isPullOut
+          || (window.DomainSchedule && typeof window.DomainSchedule.isPullOutCell === 'function'
+            && window.DomainSchedule.isPullOutCell(s));
+        if (isPullOut) {
           const names = (window.DateUtils && window.DateUtils.parseCombinedClasses)
             ? window.DateUtils.parseCombinedClasses(s.className)
             : c.split(/[、,，/／|｜\s]+/).filter(Boolean);
-          names.forEach(name => pullOutClasses.add(String(name || '').trim()));
+          // 抽離課的多班文字是特殊課程標籤，不是可檢視的班級；個別實際班名仍保留。
+          if (c && names.length > 1) pullOutClassLabels.add(c);
+          names.forEach(name => {
+            const value = String(name || '').trim();
+            pullOutClasses.add(value);
+            if (/英資|特教|資優|抽離/.test(value)) pullOutClassLabels.add(value);
+          });
+        } else if (c && !/^0+$/.test(c)) {
+          set.add(c);
         }
       });
       const isPullOutClass = value => pullOutClasses.has(value) || /英資|特教|資優|抽離/.test(value);
-      return [...set].sort((a, b) => {
+      return [...set].filter(value => !pullOutClassLabels.has(value)).sort((a, b) => {
         const aIsPullOut = isPullOutClass(a);
         const bIsPullOut = isPullOutClass(b);
         if (aIsPullOut !== bIsPullOut) return aIsPullOut ? 1 : -1;
