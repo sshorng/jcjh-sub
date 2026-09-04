@@ -70,6 +70,9 @@ window.DomainTriangle = (function () {
         ? ['targetSubject', '對調目標科目', 'subjectB']
         : ['subject', '科目', 'subjectA'])),
       attr: text(course.attr || pick(row, isTarget ? ['targetAttr'] : ['attr'])),
+      specialTags: text(course.specialTags || course['特殊標記'] || pick(row,
+        isTarget ? ['targetSpecialTags'] : ['specialTags', '特殊標記'])),
+      isPullOut: !!(course.isPullOut || row[isTarget ? 'targetIsPullOut' : 'sourceIsPullOut']),
       isPatrol: !!(course.isPatrol || row[isTarget ? 'targetIsPatrol' : 'sourceIsPatrol']),
       isEmpty: !!(course.isEmpty || row[isTarget ? 'targetIsEmpty' : 'sourceIsEmpty']),
       isPending: !!(course.isPending || row[isTarget ? 'targetIsPending' : 'sourceIsPending']),
@@ -108,7 +111,12 @@ window.DomainTriangle = (function () {
   }
 
   function isPullOutCourse(course) {
-    return text(course && course.attr) === '抽離';
+    var value = course || {};
+    if (value.isPullOut) return true;
+    if (text(value.attr).indexOf('抽離') >= 0) return true;
+    return text(value.specialTags || value['特殊標記']).split(/[、,，;；/／|｜\s]+/).some(function (tag) {
+      return tag === '抽離';
+    });
   }
 
   function classList(value) {

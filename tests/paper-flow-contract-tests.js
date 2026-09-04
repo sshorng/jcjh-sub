@@ -815,8 +815,8 @@ function runApplicationFormContractTest() {
    assert.match(appSource, /mode: notificationsSuppressed\.value \? 'paper' : 'online'/, 'onboarding should follow the global paper mode');
    assert.match(appSource, /openExchangeModeDemo: \(\) => openExchangeModeDemoForTour\(\)/, 'tour should demonstrate exchange mode');
     assert.match(appSource, /ONBOARDING_SCRIPT = 'onboarding-tour\.js\?v=20260831-combined3'/, 'onboarding cache must refresh with the exchange tour');
-    assert.match(html, /ui-activity\.js\?v=20260901-batch-display2/);
-     assert.match(html, /app\.js\?v=20260903-paper-line2-multisubject2/);
+     assert.match(html, /ui-activity\.js\?v=20260904-overtime-tags/);
+      assert.match(html, /app\.js\?v=20260904-overtime-tags/);
       assert.match(appSource, /paperFlow: notificationsSuppressed\.value/);
      assert.match(appSource, /openPaperPrintDemo: \(\) => openPaperPrintDemoForTour\(\)/, 'paper tour should open a print preview demo');
      assert.match(appSource, /openExchangeModeDemo: \(\) => openExchangeModeDemoForTour\(\)/, 'tour should demonstrate exchange mode');

@@ -599,8 +599,8 @@
             allSchedules: [
               { teacherEmail: 'combined-hours@x', dayOfWeek: 1, period: 1, className: '701', attr: '一般', specialTags: '併班' },
               { teacherEmail: 'combined-hours@x', dayOfWeek: 1, period: 1, className: '702', attr: '一般', specialTags: '併班' },
-              { teacherEmail: 'combined-hours@x', dayOfWeek: 1, period: 2, className: '703', attr: '超鐘點', specialTags: '併班' },
-              { teacherEmail: 'combined-hours@x', dayOfWeek: 1, period: 2, className: '704', attr: '超鐘點', specialTags: '併班' }
+              { teacherEmail: 'combined-hours@x', dayOfWeek: 1, period: 2, className: '703', attr: '一般', specialTags: '併班、超鐘點' },
+              { teacherEmail: 'combined-hours@x', dayOfWeek: 1, period: 2, className: '704', attr: '一般', specialTags: '併班、超鐘點' }
             ],
             substitutionRecords: [],
             reportMonth: '2026-07',
@@ -618,10 +618,10 @@
               + ', scheduled=' + combinedHoursBilling.scheduledOvertime
               + ', allocated=' + combinedAllocatedHours);
 
-         function billingCase(period, attr, fee) {
-           return window.DomainBilling.buildMonthlyReportRows({
-             teachers: [{ email: 'bill@x', name: 'Billing', baseHours: 0 }],
-             allSchedules: [{ teacherEmail: 'bill@x', dayOfWeek: 1, period: period, className: '701', attr: attr }],
+          function billingCase(period, attr, fee, specialTags) {
+            return window.DomainBilling.buildMonthlyReportRows({
+              teachers: [{ email: 'bill@x', name: 'Billing', baseHours: 0 }],
+              allSchedules: [{ teacherEmail: 'bill@x', dayOfWeek: 1, period: period, className: '701', attr: attr, specialTags: specialTags || '' }],
              substitutionRecords: fee ? [{
                date: '2026-07-13', period: period, className: '701', type: 'substitution',
                originalTeacherEmail: 'bill@x', actualTeacherEmail: 'cover@x', subFee: fee
@@ -630,17 +630,19 @@
              reportWeeksCount: 1
            })[0];
          }
-         var publicOvertime = billingCase(1, '超鐘點', '公費代課');
-         var publicRegular = billingCase(1, '基本', '公費代課');
-         var publicEarly = billingCase(0, '超鐘點', '公費代課');
-         var publicLunch = billingCase(45, '超鐘點', '公費代課');
-         var publicEarlyRegular = billingCase(0, '基本', '公費代課');
-          var publicLunchRegular = billingCase(45, '基本', '公費代課');
-          var selfEarly = billingCase(0, '基本', '自費代課');
+          var publicOvertime = billingCase(1, '一般', '公費代課', '超鐘點');
+          var publicRegular = billingCase(1, '基本', '公費代課');
+          var publicEarly = billingCase(0, '一般', '公費代課', '超鐘點');
+          var publicLunch = billingCase(45, '一般', '公費代課', '超鐘點');
+          var publicEarlyRegular = billingCase(0, '基本', '公費代課');
+           var publicLunchRegular = billingCase(45, '基本', '公費代課');
+           var selfEarly = billingCase(0, '基本', '自費代課');
+           var pulloutOvertime = billingCase(1, '抽離', '公費代課', '抽離、超鐘點');
          assert('公費1～7超鐘點要扣', publicOvertime.publicOvertimeUsed === 1 && publicOvertime.schoolPublicPayout === 0);
          assert('公費1～7正式課不超鐘不扣', publicRegular.publicOvertimeUsed === 0 && publicRegular.schoolPublicPayout === 1);
          assert('公費早自習超鐘點要扣', publicEarly.publicOvertimeUsed === 1 && publicEarly.schoolPublicPayout === 0);
-         assert('公費午休超鐘點要扣', publicLunch.publicOvertimeUsed === 1 && publicLunch.schoolPublicPayout === 0);
+          assert('公費午休超鐘點要扣', publicLunch.publicOvertimeUsed === 1 && publicLunch.schoolPublicPayout === 0);
+          assert('抽離超鐘點也要扣', pulloutOvertime.publicOvertimeUsed === 1 && pulloutOvertime.schoolPublicPayout === 0);
          assert('公費早自習正式課不超鐘不扣', publicEarlyRegular.publicOvertimeUsed === 0 && publicEarlyRegular.schoolPublicPayout === 1);
          assert('公費午休正式課不超鐘不扣', publicLunchRegular.publicOvertimeUsed === 0 && publicLunchRegular.schoolPublicPayout === 1);
             assert('自費早自習仍要扣', selfEarly.selfPaidDeduction === 1);
@@ -648,8 +650,8 @@
           var datedBilling = window.DomainBilling.buildMonthlyReportRows({
             teachers: [{ email: 'dated@x', name: 'Dated', baseHours: 0 }],
             allSchedules: [
-              { teacherEmail: 'dated@x', dayOfWeek: 1, period: 1, className: '701', attr: '超鐘點', activeTo: '2026-08-09' },
-              { teacherEmail: 'dated@x', dayOfWeek: 1, period: 1, className: '701', attr: '超鐘點', activeFrom: '2026-08-10' }
+              { teacherEmail: 'dated@x', dayOfWeek: 1, period: 1, className: '701', attr: '一般', specialTags: '超鐘點', activeTo: '2026-08-09' },
+              { teacherEmail: 'dated@x', dayOfWeek: 1, period: 1, className: '701', attr: '一般', specialTags: '超鐘點', activeFrom: '2026-08-10' }
             ],
             substitutionRecords: [],
             reportMonth: '2026-08',
@@ -662,8 +664,8 @@
             var mixedBilling = window.DomainBilling.buildMonthlyReportRows({
              teachers: [{ email: 'mixed@x', name: 'Mixed', baseHours: 1 }],
              allSchedules: [
-               { teacherEmail: 'mixed@x', dayOfWeek: 1, period: 1, className: '701', attr: '超鐘點' },
-               { teacherEmail: 'mixed@x', dayOfWeek: 1, period: 2, className: '702', attr: '超鐘點' },
+                { teacherEmail: 'mixed@x', dayOfWeek: 1, period: 1, className: '701', attr: '一般', specialTags: '超鐘點' },
+                { teacherEmail: 'mixed@x', dayOfWeek: 1, period: 2, className: '702', attr: '一般', specialTags: '超鐘點' },
                { teacherEmail: 'mixed@x', dayOfWeek: 1, period: 3, className: '703', attr: '基本' }
              ],
              substitutionRecords: [
@@ -679,10 +681,10 @@
              && mixedBilling.publicOvertimeUsed === 2
              && mixedBilling.actualOvertime === -1);
 
-          function combinedBillingCase(period, attr, fee) {
+          function combinedBillingCase(period, attr, fee, specialTags) {
             return window.DomainBilling.buildMonthlyReportRows({
               teachers: [{ email: 'combined@x', name: 'Combined', baseHours: 0 }],
-              allSchedules: [{ teacherEmail: 'combined@x', dayOfWeek: 1, period: period, className: '701、702', attr: attr }],
+              allSchedules: [{ teacherEmail: 'combined@x', dayOfWeek: 1, period: period, className: '701、702', attr: attr, specialTags: specialTags || '' }],
               substitutionRecords: [{
                 date: '2026-07-13', period: period, className: '701、702', type: 'substitution',
                  originalTeacherEmail: 'combined@x', actualTeacherEmail: 'cover@x', subFee: fee,
@@ -692,7 +694,7 @@
               reportWeeksCount: 1
             })[0];
           }
-          var combinedPublicOvertime = combinedBillingCase(1, '超鐘點', '公費代課');
+          var combinedPublicOvertime = combinedBillingCase(1, '一般', '公費代課', '超鐘點');
           var combinedPublicRegular = combinedBillingCase(1, '基本', '公費代課');
           var combinedSelfRegular = combinedBillingCase(1, '基本', '自費代課');
            assert('合班回原班公費超鐘點仍扣被代教師', combinedPublicOvertime.publicOvertimeUsed === 1 && combinedPublicOvertime.schoolPublicPayout === 0 && combinedPublicOvertime.pubSubCount === 0);

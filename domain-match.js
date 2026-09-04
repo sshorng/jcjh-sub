@@ -316,7 +316,10 @@ window.DomainMatch = (function () {
         && window.DomainSchedule.isPullOutAttr(cellOrSched.attr)) {
       return true;
     }
-    return String(cellOrSched.attr || '').trim() === '抽離';
+    return String(cellOrSched.specialTags || cellOrSched['特殊標記'] || '')
+      .split(/[、,，;；/／|｜\s]+/).some(function (value) {
+        return String(value || '').trim() === '抽離';
+      });
   }
 
   /**

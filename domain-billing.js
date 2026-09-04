@@ -279,11 +279,23 @@ window.DomainBilling = (function () {
   }
 
   function isOvertimeScheduleSlot(schedule) {
+    if (schedule && schedule.isOvertime === true) return true;
     var attr = String(schedule && (schedule.attr || schedule['課堂屬性']) || '').trim();
     if (attr.indexOf('超鐘點') >= 0) return true;
     var tags = String(schedule && (schedule.specialTags || schedule['特殊標記']) || '')
       .split(/[、,，;；/／|｜\s]+/).map(function (value) { return value.trim(); });
     return tags.indexOf('超鐘點') >= 0;
+  }
+
+  function isPullOutScheduleSlot(schedule) {
+    if (!schedule) return false;
+    if (schedule.isPullOut === true) return true;
+    var attr = String(schedule.attr || schedule['課堂屬性'] || '').trim();
+    if (attr.indexOf('抽離') >= 0) return true;
+    return String(schedule.specialTags || schedule['特殊標記'] || '')
+      .split(/[、,，;；/／|｜\s]+/).some(function (value) {
+        return String(value || '').trim() === '抽離';
+      });
   }
 
   var DEFAULT_EXPENSE_SOURCE = '預設';
@@ -582,7 +594,7 @@ window.DomainBilling = (function () {
   /**
    * 是否計入「每週排課鐘點」
    * - 節次：早自習 0、1–7 或 午休 45
-   * - 屬性：基本／一般／超鐘點／抽離（空屬性視同一般）
+    * - 屬性：基本／一般／抽離（超鐘點由特殊標記判定；空屬性視同一般）
    * - 不含：巡堂、第8、課輔（第8）、單雙週課輔
    */
   function isWeeklyHoursSlot(s) {
@@ -712,7 +724,7 @@ window.DomainBilling = (function () {
       if (!base) return null;
       if (base.attr === '單週' && !isSingleWeek(dateStr)) return null;
       if (base.attr === '雙週' && isSingleWeek(dateStr)) return null;
-      if (base.attr === '抽離') return null;
+       if (isPullOutScheduleSlot(base)) return null;
       return base;
     }
 

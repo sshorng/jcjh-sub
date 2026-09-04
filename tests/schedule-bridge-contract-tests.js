@@ -92,7 +92,7 @@ api.excelData.value = [
   },
   {
     '教師姓名': '王老師', '教師Email': 'wang@example.edu.tw', '星期': 2, '節次': 3,
-    '班級': '801', '科目': '數學', '課堂屬性': '超鐘點', '調課限制': '', '特殊標記': '超鐘點'
+    '班級': '801', '科目': '數學', '課堂屬性': '一般', '調課限制': '', '特殊標記': '超鐘點'
   },
   {
     '教師姓名': '巡堂老師', '教師Email': 'patrol@example.edu.tw', '星期': 3, '節次': 4,
@@ -117,7 +117,7 @@ assert.equal(api.importPreview.value.skipped, 0);
   assert.equal(importedPayload.list[0]['特殊標記'], '併班、綁課');
   assert.equal(importedPayload.list[0]['啟用起日'], '2026-08-01');
   assert.equal(importedPayload.list[0]['啟用迄日'], '2026-08-31');
-  assert.equal(importedPayload.list[1]['課堂屬性'], '超鐘點');
+   assert.equal(importedPayload.list[1]['課堂屬性'], '一般');
   assert.equal(importedPayload.list[1]['特殊標記'], '超鐘點');
   assert.equal(importedPayload.list[2]['課堂屬性'], '巡堂');
   assert.equal(importedPayload.list[2]['班級'], '');

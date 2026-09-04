@@ -662,6 +662,7 @@
   }
 
   function isOvertimeSchedule(schedule) {
+    if (schedule && schedule.isOvertime === true) return true;
     var attr = String(schedule && (schedule.attr || schedule['\u8ab2\u5802\u5c6c\u6027']) || '').trim();
     if (attr.indexOf('\u8d85\u9418\u9ede') >= 0) return true;
     var tags = String(schedule && (schedule.specialTags || schedule['\u7279\u6b8a\u6a19\u8a18']) || '')

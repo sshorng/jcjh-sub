@@ -379,6 +379,28 @@ window.FieldMap = (function () {
       .join('、');
   }
 
+  function hasScheduleSpecialTag(rowOrValue, tag) {
+    const raw = rowOrValue && typeof rowOrValue === 'object'
+      ? pick(rowOrValue, ['特殊標記', 'specialTags', 'specialTagsText'])
+      : rowOrValue;
+    return normalizeSpecialTags(raw).split('、').filter(Boolean).indexOf(String(tag || '').trim()) >= 0;
+  }
+
+  /** 課堂的兩個可疊加標記：抽離影響課表／調課，超鐘點影響結算。 */
+  function isOvertimeSchedule(row) {
+    if (!row) return false;
+    if (row.isOvertime === true) return true;
+    const attr = String(pick(row, ['課堂屬性', 'attr']) || '').trim();
+    return attr.indexOf('超鐘點') >= 0 || hasScheduleSpecialTag(row, '超鐘點');
+  }
+
+  function isPullOutSchedule(row) {
+    if (!row) return false;
+    if (row.isPullOut === true) return true;
+    const attr = String(pick(row, ['課堂屬性', 'attr']) || '').trim();
+    return attr.indexOf('抽離') >= 0 || hasScheduleSpecialTag(row, '抽離');
+  }
+
   function isRestrictedScheduleValue(raw) {
     const value = String(raw == null ? '' : raw).trim().toLowerCase();
     return value === 'restricted' || value === '限制' || value === '綁課' || value === '綁班'
@@ -415,20 +437,32 @@ window.FieldMap = (function () {
       cn = '';
     }
     let subj = String(pick(s, ['科目', 'subject']) || '').trim();
-    let attr = String(pick(s, ['課堂屬性', 'attr']) || '').trim();
+    const rawAttr = String(pick(s, ['課堂屬性', 'attr']) || '').trim();
+    let attr = rawAttr;
     const specialTags = normalizeSpecialTags(pick(s, ['特殊標記', 'specialTags', 'specialTagsText']) || '');
     const specialTagList = specialTags.split('、').filter(Boolean);
-    if (attr.indexOf('超鐘點') >= 0) attr = '超鐘點';
-    if ((!attr || attr === '一般' || attr === '基本') && specialTagList.indexOf('抽離') >= 0) attr = '抽離';
-    else if ((!attr || attr === '一般' || attr === '基本') && specialTagList.indexOf('超鐘點') >= 0) attr = '超鐘點';
-    else if ((!attr || attr === '一般' || attr === '基本') && specialTagList.indexOf('實支') >= 0) attr = '實支';
-    else if ((!attr || attr === '一般' || attr === '基本') && specialTagList.indexOf('預排') >= 0) attr = '預排';
+    const attrHasOvertime = rawAttr.indexOf('超鐘點') >= 0;
+    const attrHasPullOut = rawAttr.indexOf('抽離') >= 0;
+    const attrHasPatrol = rawAttr.indexOf('巡堂') >= 0;
     // 基礎課表常見：科目或班級寫「巡堂」、屬性空白 → 正規成 attr=巡堂
-    const isPatrol = attr.indexOf('巡堂') >= 0 || cn.indexOf('巡堂') >= 0 || subj.indexOf('巡堂') >= 0;
+    const isPatrol = attrHasPatrol || cn.indexOf('巡堂') >= 0 || subj.indexOf('巡堂') >= 0;
+    const isOvertime = !isPatrol && (attrHasOvertime || specialTagList.indexOf('超鐘點') >= 0);
+    const isPullOut = !isPatrol && (attrHasPullOut || specialTagList.indexOf('抽離') >= 0);
     if (isPatrol) {
       attr = '巡堂';
       cn = '';
       subj = '';
+    } else if (isPullOut) {
+      // 抽離是課堂型態；超鐘點只保留在特殊標記，兩者可同時成立。
+      attr = '抽離';
+    } else {
+      // 舊列若曾把超鐘點寫在課堂屬性，讀取時也先還原成基礎屬性。
+      if (attrHasOvertime) {
+        attr = attr.replace(/超鐘點/g, '').replace(/[+＋、,，;；/／|｜\s]+/g, '').trim();
+      }
+      if (!attr || attr === '基本') attr = '一般';
+      if ((attr === '一般' || attr === '基本') && specialTagList.indexOf('實支') >= 0) attr = '實支';
+      else if ((attr === '一般' || attr === '基本') && specialTagList.indexOf('預排') >= 0) attr = '預排';
     }
     const mapped = {
       id: pick(s, ['課表ID', 'id']),
@@ -438,6 +472,8 @@ window.FieldMap = (function () {
       className: cn,
       subject: subj,
       attr: attr,
+      isOvertime: isOvertime,
+      isPullOut: isPullOut,
       activeFrom: asDateStr(pick(s, ['啟用起日', '啟用開始日', 'activeFrom', 'activationStartDate', 'effectiveStartDate'])),
       activeTo: asDateStr(pick(s, ['啟用迄日', '啟用結束日', 'activeTo', 'activationEndDate', 'effectiveEndDate'])),
       restriction: (function () {
@@ -780,6 +816,9 @@ window.FieldMap = (function () {
        mapSchoolSwap,
     mapTeacher,
     normalizeSpecialTags,
+    hasScheduleSpecialTag,
+    isOvertimeSchedule,
+    isPullOutSchedule,
     isRestrictedScheduleValue,
     mapSchedule,
     mapSubstitution,

@@ -109,10 +109,10 @@ assert.equal(Object.keys(mapped).some(function (key) { return /email/i.test(key)
 const specialMapped = fieldContext.window.FieldMap.mapSchedule({
   '課表ID': 'S2',
   '班級': '701',
-  '科目': '體育',
-  '課堂屬性': '超鐘點',
+   '科目': '體育',
+    '課堂屬性': '預排',
   '調課限制': '綁課',
-  '特殊標記': '併班、綁課、預排',
+   '特殊標記': '併班、綁課、預排、超鐘點',
   '啟用起日': '2026/08/01',
   '啟用迄日': '2026/08/31',
   '教師姓名': '乙',
@@ -120,9 +120,10 @@ const specialMapped = fieldContext.window.FieldMap.mapSchedule({
   '星期': 1,
   '節次': 2
 });
-assert.equal(specialMapped.attr, '超鐘點');
+assert.equal(specialMapped.attr, '預排');
+assert.equal(specialMapped.isOvertime, true);
 assert.equal(specialMapped.restriction, 'restricted');
-assert.equal(specialMapped.specialTags, '併班、綁課、預排');
+assert.equal(specialMapped.specialTags, '併班、綁課、預排、超鐘點');
 assert.equal(specialMapped.isPreplanned, true);
 assert.equal(specialMapped.activeFrom, '2026-08-01');
 assert.equal(specialMapped.activeTo, '2026-08-31');
@@ -166,9 +167,9 @@ assert.doesNotThrow(function () {
     '節次': 2,
     '班級': '701、702',
     '科目': '體育',
-    '課堂屬性': '超鐘點',
+    '課堂屬性': '一般',
     '調課限制': 'restricted',
-    '特殊標記': '併班、綁課'
+     '特殊標記': '併班、綁課、超鐘點'
   }], '115-1');
 });
 

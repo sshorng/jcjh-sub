@@ -48,7 +48,8 @@ schedules.value = [{
   dayOfWeek: 1,
   period: 1,
   className: '701',
-  attr: '超鐘點'
+   attr: '一般',
+   specialTags: '超鐘點'
 }];
 admin.openOvertimePlanModal({ loginEmail: 'teacher@example.com', email: '教師', name: '教師' });
 assert.equal(admin.overtimePlanRows.value.length, 1, '登入 Email 與課表姓名鍵不同時仍應找到超鐘點課格');
@@ -63,7 +64,7 @@ admin.mappingFields.value = {
   className: 'className',
   attr: 'attr',
   restriction: '',
-  specialTags: '',
+   specialTags: 'specialTags',
   activeFrom: 'from',
   activeTo: 'to'
 };
@@ -73,7 +74,8 @@ admin.excelData.value = [{
   day: '一',
   period: '早自習',
   className: '701',
-   attr: '超鐘點',
+   attr: '一般',
+   specialTags: '超鐘點',
   from: '2026/08/01',
   to: '2026/08/15'
 }];
@@ -82,7 +84,8 @@ admin.runImportPreview();
 assert.equal(admin.importPreview.value.ok, 1);
 admin.importSchedules().then(() => {
   assert.equal(importPayload.list[0]['節次'], 0);
-  assert.equal(importPayload.list[0]['課堂屬性'], '超鐘點');
+   assert.equal(importPayload.list[0]['課堂屬性'], '一般');
+   assert.equal(importPayload.list[0]['特殊標記'], '超鐘點');
   assert.equal(importPayload.list[0]['啟用起日'], '2026-08-01');
   assert.equal(importPayload.list[0]['啟用迄日'], '2026-08-15');
   console.log('ui-admin import tests PASS');

@@ -6,9 +6,9 @@
   <title>建成國中線上課表系統</title>
   <meta name="application-name" content="JCJH Timetable">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📅</text></svg>">
-  <link rel="stylesheet" href="style.css?v=20260903-billing-cols1">
+  <link rel="stylesheet" href="style.css?v=20260904-overtime-tags">
   <!-- 手機版獨立樣式：不影響桌機 -->
-  <link rel="stylesheet" href="mobile.css?v=20260901-slot-format1" media="(max-width: 768px)">
+  <link rel="stylesheet" href="mobile.css?v=20260904-overtime-tags" media="(max-width: 768px)">
   
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 
@@ -656,7 +656,7 @@
                                    <span v-if="isCombinedClass(slot.cell.className) || hasScheduleSpecialTag(slot.cell, '併班')" class="cell-badge tag-combined" title="併班">併班</span>
                                   </div>
                                    <div class="cell-subject" :class="{ 'cell-subject-away': slot.isAwayLabel }">
-                                     {{ slot.cell.subject }}<span v-if="slot.cell.attr === '超鐘點'" title="超鐘點">（超）</span>
+                                      {{ slot.cell.subject }}<span v-if="slot.cell.isOvertime || slot.cell.attr === '超鐘點'" title="超鐘點">（超）</span>
                                      <span v-if="slot.isAwayLabel" class="away-class-badge">{{ getClassAwayEventName(slot.cell.className, currentWeekDates[day-1]) || '空堂事件' }}</span>
                                    </div>
                                   <div v-if="slot.draft" class="cell-sub-text mutual-draft-label">
@@ -676,7 +676,7 @@
                                     {{ slot.cell.subType === 'exchange' ? '調入' : (slot.cell.isEmptySlotAssign ? '空堂任務' : (slot.cell.isMutualCover ? '互代' : '代課')) }}
                                   </span>
                                    <span v-if="slot.cell.isElastic" class="cell-badge tag-green badge-elastic">實支</span>
-                                   <span v-if="slot.cell.attr === '超鐘點'" class="cell-badge tag-overtime">超鐘點</span>
+                                    <span v-if="slot.cell.isOvertime || slot.cell.attr === '超鐘點'" class="cell-badge tag-overtime">超鐘點</span>
                                   <span v-if="slot.cell.attr === '單週'" class="cell-badge tag-week">單週</span>
                                   <span v-if="slot.cell.attr === '雙週'" class="cell-badge tag-week">雙週</span>
                                   <span
@@ -1812,7 +1812,7 @@
                        <th class="billing-sticky-name">姓名</th>
                        <th class="billing-th-job">職務</th>
                        <th class="billing-th-subject">科目</th>
-                       <th title="每週早自習＋1～7＋午休；基本／一般／超鐘點／抽離（不含巡堂／第8）">排課</th>
+                        <th title="每週早自習＋1～7＋午休；基本／一般／抽離（超鐘點另以標記判定；不含巡堂／第8）">排課</th>
                       <th title="教師基本授課鐘點">基鐘</th>
                       <th title="排課 − 基鐘（每週）">超時/週</th>
                       <th title="畢業等 reduce：只扣起日後週 × 1～7">空堂調降</th>
@@ -4186,24 +4186,29 @@
                     :key="e.id"
                      @click="pickScheduleAttr(e.id || e.attr || '一般')"
                   >
-                     {{ e.attr || '一般' }}：{{ e.className }} {{ e.subject }}
+                     {{ getScheduleAttrLabel(e) }}：{{ e.className }} {{ e.subject }}
                      （{{ e.activeFrom || '學期起' }}～{{ e.activeTo || '學期迄' }}）
                    </button>
                    <button type="button" class="btn btn-secondary btn-sm-14" @click="pickScheduleAttr('__new__')">＋建立新版本</button>
                 </div>
               </div>
-              <select class="form-select" v-model="scheduleForm.attr">
-                <option value="一般">一般（計鐘點）</option>
-                <option value="超鐘點">超鐘點（計鐘點）</option>
-                <option value="巡堂">巡堂（不計鐘點、不可調課、可當空堂）</option>
+               <select class="form-select" v-model="scheduleForm.attr" @change="normalizeScheduleFormFlags">
+                 <option value="一般">一般（計鐘點）</option>
+                 <option value="巡堂">巡堂（不計鐘點、不可調課、可當空堂）</option>
                 <option v-if="parseInt(scheduleForm.period, 10) === 8" value="單週">單週（僅第8節課輔）</option>
                 <option v-if="parseInt(scheduleForm.period, 10) === 8" value="雙週">雙週（僅第8節課輔）</option>
                 <option v-if="parseInt(scheduleForm.period, 10) === 8" value="課輔">課輔（第8節每週）</option>
-                <option value="抽離">抽離（不進班級課表；計週鐘點；可另勾綁課）</option>
-              </select>
-              <span class="text-xs-muted-70">
-                 早自習／1～7／午休皆為正式課程並計週鐘點，依課堂屬性判定超鐘點。巡堂、第8不計。抽離一律不進班級課表（含併班）；調課僅可與抽離互調。午休可排特教／資優等。單／雙週僅第8節。
-              </span>
+                 <option value="抽離">抽離（不進班級課表；計週鐘點；可另勾綁課）</option>
+               </select>
+               <label class="form-label" style="display:flex;align-items:center;gap:8px;margin-top:8px;cursor:pointer;">
+                 <input type="checkbox" class="chk-box-16" v-model="scheduleForm.overtime"
+                   :disabled="parseInt(scheduleForm.period, 10) === 8 || scheduleForm.attr === '巡堂'"
+                   @change="normalizeScheduleFormFlags">
+                 <span>超鐘點（計入超鐘點結算，可與抽離並存）</span>
+               </label>
+               <span class="text-xs-muted-70">
+                  早自習／1～7／午休皆為正式課程並計週鐘點；超鐘點以勾選標記，可與抽離並存。巡堂、第8不計。抽離一律不進班級課表（含併班）；調課僅可與抽離互調。午休可排特教／資優等。單／雙週僅第8節。
+               </span>
             </div>
             <div class="form-group" style="flex-direction: row; align-items: center; gap: 8px;">
               <input type="checkbox" id="chk-restricted-course" v-model="scheduleForm.restriction" true-value="restricted" false-value="" class="chk-box-16">
@@ -4423,24 +4428,24 @@
   <!-- App Main JS Logic -->
 
   <!-- 模組：defer 依文件順序執行，不擋 HTML 解析；billing/print/export 另延後 -->
-     <script defer src="name-key-contract.js?v=20260831-combined3"></script>
-      <script defer src="field-map.js?v=20260901-expense-plan1"></script>
-     <script defer src="date-utils.js?v=20260831-combined3"></script>
-     <script defer src="gas-api.js?v=20260831-combined3"></script>
-     <script defer src="domain-school-swap.js?v=20260831-combined3"></script>
-     <script defer src="domain-schedule.js?v=20260831-combined3"></script>
-     <script defer src="domain-triangle.js?v=20260831-combined3"></script>
-     <script defer src="domain-match.js?v=20260903-multisubject3"></script>
+     <script defer src="name-key-contract.js?v=20260904-overtime-tags"></script>
+       <script defer src="field-map.js?v=20260904-overtime-tags"></script>
+     <script defer src="date-utils.js?v=20260904-overtime-tags"></script>
+     <script defer src="gas-api.js?v=20260904-overtime-tags"></script>
+     <script defer src="domain-school-swap.js?v=20260904-overtime-tags"></script>
+     <script defer src="domain-schedule.js?v=20260904-overtime-tags"></script>
+     <script defer src="domain-triangle.js?v=20260904-overtime-tags"></script>
+     <script defer src="domain-match.js?v=20260904-overtime-tags"></script>
   <!-- domain-activity-cover：活動互代／空堂任務時 ensureDomainActivityCover -->
-     <script defer src="domain-class-away.js?v=20260831-combined3"></script>
-     <script defer src="fee-utils.js?v=20260831-combined3"></script>
-      <script defer src="ui-activity.js?v=20260901-batch-display2"></script>
-     <script defer src="ui-request.js?v=20260831-combined3"></script>
-     <script defer src="ui-timetable.js?v=20260903-multisubject1"></script>
-     <script defer src="ui-approval.js?v=20260831-combined3"></script>
+     <script defer src="domain-class-away.js?v=20260904-overtime-tags"></script>
+     <script defer src="fee-utils.js?v=20260904-overtime-tags"></script>
+       <script defer src="ui-activity.js?v=20260904-overtime-tags"></script>
+     <script defer src="ui-request.js?v=20260904-overtime-tags"></script>
+     <script defer src="ui-timetable.js?v=20260904-overtime-tags"></script>
+     <script defer src="ui-approval.js?v=20260904-overtime-tags"></script>
   <!-- ui-admin：僅管理員／後台操作時 ensureUiAdmin -->
-     <script defer src="app-shell-utils.js?v=20260831-combined3"></script>
-           <script defer src="app.js?v=20260903-paper-line2-multisubject2"></script>
+     <script defer src="app-shell-utils.js?v=20260904-overtime-tags"></script>
+           <script defer src="app.js?v=20260904-overtime-tags"></script>
   <script>
     (function () {
       function loadScript(src) {

@@ -11,9 +11,9 @@ require('../export-accounting.js');
 
 const period = { start: '2026-07-01', end: '2026-07-31' };
 const schedules = [
-  { teacherEmail: 'bill@x', dayOfWeek: 1, period: 1, className: '701', attr: '超鐘點' },
-  { teacherEmail: 'bill@x', dayOfWeek: 1, period: 0, className: '702', attr: '超鐘點' },
-  { teacherEmail: 'bill@x', dayOfWeek: 1, period: 45, className: '703', attr: '超鐘點' }
+  { teacherEmail: 'bill@x', dayOfWeek: 1, period: 1, className: '701', attr: '一般', specialTags: '超鐘點' },
+  { teacherEmail: 'bill@x', dayOfWeek: 1, period: 0, className: '702', attr: '一般', specialTags: '超鐘點' },
+  { teacherEmail: 'bill@x', dayOfWeek: 1, period: 45, className: '703', attr: '一般', specialTags: '超鐘點' }
 ];
 
 function build(records, baseHours, scheduleRows, schoolSwaps, teacherOptions) {
@@ -84,8 +84,8 @@ assert.equal(selfSpecial.sheets.overtime[0].deduction, 2);
 assert.deepEqual(selfSpecial.sheets.selfSub.map(row => row.period), ['早自習', '午休']);
 
 const mixedSchedules = [
-  { teacherEmail: 'bill@x', dayOfWeek: 1, period: 1, className: '701', attr: '超鐘點' },
-  { teacherEmail: 'bill@x', dayOfWeek: 1, period: 2, className: '702', attr: '超鐘點' },
+  { teacherEmail: 'bill@x', dayOfWeek: 1, period: 1, className: '701', attr: '一般', specialTags: '超鐘點' },
+  { teacherEmail: 'bill@x', dayOfWeek: 1, period: 2, className: '702', attr: '一般', specialTags: '超鐘點' },
   { teacherEmail: 'bill@x', dayOfWeek: 1, period: 3, className: '703', attr: '基本' }
 ];
 const mixed = build([
@@ -117,7 +117,7 @@ const combinedReturn = build([{
    originalTeacherEmail: 'bill@x', actualTeacherEmail: 'cover@x', subFee: '公費代課',
   specialFlow: 'combined_return', status: 'approved'
 }], 1, [{
-  teacherEmail: 'bill@x', dayOfWeek: 1, period: 1, className: '701', attr: '超鐘點'
+   teacherEmail: 'bill@x', dayOfWeek: 1, period: 1, className: '701', attr: '一般', specialTags: '超鐘點'
 }]);
 assert.equal(combinedReturn.sheets.overtime[0].deduction, 1);
 assert.equal(combinedReturn.sheets.publicSub.length, 0);
@@ -126,7 +126,7 @@ const swappedPublic = build([{
   date: '2026-07-13', period: 1, className: '701', type: 'substitution',
   originalTeacherEmail: 'bill@x', actualTeacherEmail: 'cover@x', subFee: '公費代課', status: 'approved'
 }], 0, [
-  { teacherEmail: 'bill@x', dayOfWeek: 2, period: 3, className: '701', attr: '超鐘點' }
+  { teacherEmail: 'bill@x', dayOfWeek: 2, period: 3, className: '701', attr: '一般', specialTags: '超鐘點' }
 ], [{
   id: 'swap-billing', name: '補課', dateA: '2026-07-13', periodA: 1,
   dateB: '2026-07-14', periodB: 3, enabled: true
@@ -147,8 +147,8 @@ const configuredInput = {
     { email: 'cover@x', name: 'Cover', baseHours: 0 }
   ],
   allSchedules: [
-    { teacherEmail: 'bill@x', dayOfWeek: 1, period: 1, className: '701', attr: '超鐘點' },
-    { teacherEmail: 'bill@x', dayOfWeek: 1, period: 2, className: '702', attr: '超鐘點' }
+    { teacherEmail: 'bill@x', dayOfWeek: 1, period: 1, className: '701', attr: '一般', specialTags: '超鐘點' },
+    { teacherEmail: 'bill@x', dayOfWeek: 1, period: 2, className: '702', attr: '一般', specialTags: '超鐘點' }
   ],
   substitutionRecords: [
     {
@@ -185,8 +185,8 @@ const scheduleFormatInput = Object.assign({}, configuredInput, {
     { day: 3, period: 3, className: '702', source: '計畫A' }
   ])}],
   allSchedules: [
-    { teacherEmail: 'bill@x', dayOfWeek: 2, period: 6, className: '701', attr: '超鐘點' },
-    { teacherEmail: 'bill@x', dayOfWeek: 3, period: 3, className: '702', attr: '超鐘點' }
+    { teacherEmail: 'bill@x', dayOfWeek: 2, period: 6, className: '701', attr: '一般', specialTags: '超鐘點' },
+    { teacherEmail: 'bill@x', dayOfWeek: 3, period: 3, className: '702', attr: '一般', specialTags: '超鐘點' }
   ],
   substitutionRecords: []
 });

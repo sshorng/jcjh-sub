@@ -742,7 +742,11 @@ window.DomainActivityCover = (function () {
       if (window.DomainSchedule && window.DomainSchedule.isPatrolCell
           && window.DomainSchedule.isPatrolCell(cell)) return false;
       var attr = String(cell.attr || '');
-      if (attr === '抽離' || attr === '巡堂') return false;
+       if (attr === '抽離'
+           || cell.isPullOut
+           || (window.DomainSchedule && window.DomainSchedule.isPullOutCell
+             && window.DomainSchedule.isPullOutCell(cell))
+           || attr === '巡堂') return false;
       // 已代（isSubstituted）仍算需求：累計口徑，已送出另欄扣，避免補排時需求變小
       // 僅「純調入而無原班」不在此用 isSubstituted 排除
       var cn = normalizeClass(cell.className);
@@ -793,7 +797,11 @@ window.DomainActivityCover = (function () {
           // 允許早自習 0、午休 45；其餘僅 1–8
           if (!(per === 0 || per === 45 || (per >= 1 && per <= 8))) return;
           var attr = String(s.attr || '');
-          if (attr === '抽離' || attr === '巡堂') return;
+           if (attr === '抽離'
+               || s.isPullOut
+               || (window.DomainSchedule && window.DomainSchedule.isPullOutCell
+                 && window.DomainSchedule.isPullOutCell(s))
+               || attr === '巡堂') return;
           if (window.DomainSchedule && window.DomainSchedule.isPatrolAttr
               && window.DomainSchedule.isPatrolAttr(attr)) return;
           if (single !== null) {

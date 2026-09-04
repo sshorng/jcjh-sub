@@ -17,7 +17,8 @@ const schedule = window.FieldMap.mapSchedule({
   '課堂屬性': '',
   '特殊標記': '超鐘點'
 });
-assert.equal(schedule.attr, '超鐘點');
+assert.equal(schedule.attr, '一般');
+assert.equal(schedule.isOvertime, true);
 
 const request = window.FieldMap.mapRequest({
   '狀態': '已核准',
@@ -57,7 +58,8 @@ const swappedSchedule = window.FieldMap.mapSchedule({
   '節次': 3,
   '班級': '701',
   '科目': '數學',
-  '課堂屬性': '超鐘點'
+  '課堂屬性': '一般',
+  '特殊標記': '超鐘點'
 });
 const swappedRow = window.DomainBilling.buildMonthlyReportRows({
   teachers: [{ email: 'Billing', name: 'Billing', baseHours: 0 }],
@@ -93,8 +95,8 @@ const configuredPlan = JSON.stringify([
 const configuredRow = window.DomainBilling.buildMonthlyReportRows({
   teachers: [{ email: 'Billing', name: 'Billing', baseHours: 0, expensePlan: configuredPlan }],
   allSchedules: [
-    window.FieldMap.mapSchedule({ '教師姓名': 'Billing', '星期': 1, '節次': 1, '班級': '701', '課堂屬性': '超鐘點' }),
-    window.FieldMap.mapSchedule({ '教師姓名': 'Billing', '星期': 1, '節次': 2, '班級': '702', '課堂屬性': '超鐘點' })
+    window.FieldMap.mapSchedule({ '教師姓名': 'Billing', '星期': 1, '節次': 1, '班級': '701', '課堂屬性': '一般', '特殊標記': '超鐘點' }),
+    window.FieldMap.mapSchedule({ '教師姓名': 'Billing', '星期': 1, '節次': 2, '班級': '702', '課堂屬性': '一般', '特殊標記': '超鐘點' })
   ],
   substitutionRecords: [
     { date: '2026-07-13', period: 1, className: '701', type: 'substitution', originalTeacherName: 'Billing', actualTeacherName: 'Cover', subFee: '公費代課' },
@@ -115,8 +117,8 @@ const partiallyConfiguredPlan = JSON.stringify([
 const partiallyConfiguredRow = window.DomainBilling.buildMonthlyReportRows({
   teachers: [{ email: 'Billing', name: 'Billing', baseHours: 0, expensePlan: partiallyConfiguredPlan }],
   allSchedules: [
-    window.FieldMap.mapSchedule({ '教師姓名': 'Billing', '星期': 1, '節次': 1, '班級': '701', '課堂屬性': '超鐘點' }),
-    window.FieldMap.mapSchedule({ '教師姓名': 'Billing', '星期': 1, '節次': 2, '班級': '702', '課堂屬性': '超鐘點' })
+    window.FieldMap.mapSchedule({ '教師姓名': 'Billing', '星期': 1, '節次': 1, '班級': '701', '課堂屬性': '一般', '特殊標記': '超鐘點' }),
+    window.FieldMap.mapSchedule({ '教師姓名': 'Billing', '星期': 1, '節次': 2, '班級': '702', '課堂屬性': '一般', '特殊標記': '超鐘點' })
   ],
   substitutionRecords: [],
   reportMonth: '2026-07',

@@ -10915,7 +10915,7 @@ createApp({
     const showScheduleEditModal = ref(false);
     const scheduleForm = ref({
       id: null, teacherEmail: '', teacherName: '', dayOfWeek: 1, period: 1,
-       className: '', subject: '', attr: '一般', restriction: '', activeFrom: '', activeTo: '',
+       className: '', subject: '', attr: '一般', overtime: false, restriction: '', specialTags: '', activeFrom: '', activeTo: '',
        _newVersion: false, _previousId: ''
     });
     const showTeacherModal = ref(false);
@@ -11016,6 +11016,11 @@ createApp({
     const downloadCurrentSchedules = (...a) => needUiAdmin('downloadCurrentSchedules', ...a);
     const openScheduleEditModal = (...a) => needUiAdmin('openScheduleEditModal', ...a);
     const pickScheduleAttr = (...a) => needUiAdmin('pickScheduleAttr', ...a);
+    const normalizeScheduleFormFlags = (...a) => needUiAdmin('normalizeScheduleFormFlags', ...a);
+    const getScheduleAttrLabel = (...a) => {
+      if (_uiAdminApi && typeof _uiAdminApi.getScheduleAttrLabel === 'function') return _uiAdminApi.getScheduleAttrLabel(...a);
+      return String(a[0] && a[0].attr || '一般');
+    };
     const getSchedule = (...a) => {
       if (_uiAdminApi && typeof _uiAdminApi.getSchedule === 'function') return _uiAdminApi.getSchedule(...a);
       return null;
@@ -11841,7 +11846,7 @@ createApp({
        isAdminBatchGroupSelected, toggleAdminBatchGroupSelection,
         batchAdminApprove, batchAdminReject, openBatchPendingPrintPreview, lastBatchPrintIds, showBatchPrintPrompt, printLastBatchNotices, dismissBatchPrintPrompt,
        closeSuccessGoPending, closeSuccessGoRecords, closeSuccessStayTimetable, closeSuccessCopyLine,
-       openScheduleEditModal, saveScheduleCell, clearScheduleCell, updateTeacherBaseHours, pickScheduleAttr, getOvertimeExpenseSourceOptions, openOvertimePlanModal, saveOvertimePlan,
+        openScheduleEditModal, saveScheduleCell, clearScheduleCell, updateTeacherBaseHours, pickScheduleAttr, normalizeScheduleFormFlags, getScheduleAttrLabel, getOvertimeExpenseSourceOptions, openOvertimePlanModal, saveOvertimePlan,
       openAddTeacherModal, openEditTeacherModal, saveTeacher, deleteTeacher,
         handleFileChange, getMappingLabel, importSchedules, migrateNameKeySchema, toggleSelectAllRecords, isHistoryRecordSelected, isHistoryBatchGroupSelected, toggleHistoryBatchGroupSelection, loadTeacherClassesForExchange,
       printSelectedForms, sendSelectedBatchNotices, calculateMonthlyReport, exportReportToExcel, exportSubFeeToExcel,

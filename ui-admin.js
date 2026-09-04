@@ -59,7 +59,8 @@ window.UiAdmin = (function () {
     var showScheduleEditModal = useRef('showScheduleEditModal', false);
     var scheduleForm = useRef('scheduleForm', {
       id: null, teacherEmail: '', teacherName: '', dayOfWeek: 1, period: 1,
-       className: '', subject: '', attr: '一般', restriction: '', activeFrom: '', activeTo: '', _previousId: ''
+       className: '', subject: '', attr: '一般', overtime: false, restriction: '', specialTags: '',
+       activeFrom: '', activeTo: '', _previousId: ''
     });
 
     var showTeacherModal = useRef('showTeacherModal', false);
@@ -159,9 +160,22 @@ window.UiAdmin = (function () {
       return specialTagList(raw).indexOf(String(tag || '').trim()) >= 0;
     }
 
+    function addSpecialTag(tags, tag) {
+      var value = String(tag || '').trim();
+      if (value && tags.indexOf(value) < 0) tags.push(value);
+      return tags;
+    }
+
+    function removeSpecialTag(tags, tag) {
+      var value = String(tag || '').trim();
+      return tags.filter(function (item) { return item !== value; });
+    }
+
     function normalizeAttrImport(raw, period, subject) {
        var attr = String(raw || '').trim() || '一般';
        if (attr === '基本') attr = '一般';
+       // 超鐘點是可與抽離並存的計費標記，不再佔用課堂屬性欄位。
+       if (attr.indexOf('超鐘點') >= 0) attr = '一般';
        // 早自習與午休也是正式課程，保留匯入檔的課堂屬性。
        if (!raw && period === 8) attr = '課輔';
       if (!raw && period === 8 && /^[單雙]/.test(String(subject || ''))) {
@@ -422,12 +436,23 @@ window.UiAdmin = (function () {
          // 巡堂不綁課
          if (isPatrol) restriction = '';
          var specialTags = specialTagList(specialRaw);
-         if (!isPatrol && (attr === '一般' || !attrRaw)) {
-           if (specialTags.indexOf('抽離') >= 0) attr = '抽離';
-           else if (specialTags.indexOf('超鐘點') >= 0) attr = '超鐘點';
-           else if (specialTags.indexOf('實支') >= 0) attr = '實支';
-           else if (specialTags.indexOf('預排') >= 0) attr = '預排';
-         }
+          var overtimeMarked = !isPatrol && (
+            String(attrRaw || '').indexOf('超鐘點') >= 0
+            || specialTags.indexOf('超鐘點') >= 0
+          );
+          if (period === 8) {
+            overtimeMarked = false;
+            specialTags = removeSpecialTag(specialTags, '超鐘點');
+          }
+          if (!isPatrol && overtimeMarked) addSpecialTag(specialTags, '超鐘點');
+          if (!isPatrol && (specialTags.indexOf('抽離') >= 0 || attr === '抽離')) {
+            attr = '抽離';
+            addSpecialTag(specialTags, '抽離');
+          } else if (!isPatrol && (attr === '一般' || !attrRaw)) {
+            if (specialTags.indexOf('實支') >= 0) attr = '實支';
+            else if (specialTags.indexOf('預排') >= 0) attr = '預排';
+          }
+          if (isPatrol) specialTags = [];
          if (!isPatrol && specialTags.indexOf('綁課') >= 0) restriction = 'restricted';
          if (!isPatrol && window.DateUtils && window.DateUtils.isCombinedClass
              && window.DateUtils.isCombinedClass(className) && specialTags.indexOf('併班') < 0) {
@@ -531,10 +556,10 @@ window.UiAdmin = (function () {
              '啟用起日': '',
              '啟用迄日': ''
            },
-          {
-            '教師姓名': '李美華',
-             '星期': 3,
-            '節次': 5,
+           {
+             '教師姓名': '李美華',
+              '星期': 3,
+             '節次': 5,
              '班級': '801',
              '科目': '數學',
              '課堂屬性': '一般',
@@ -542,8 +567,20 @@ window.UiAdmin = (function () {
              '特殊標記': '併班、綁課',
              '啟用起日': '',
              '啟用迄日': ''
-           },
-          {
+            },
+           {
+             '教師姓名': '李美華',
+              '星期': 3,
+             '節次': 6,
+             '班級': '特教',
+             '科目': '國文',
+             '課堂屬性': '抽離',
+             '調課限制': '',
+             '特殊標記': '抽離、超鐘點',
+             '啟用起日': '',
+             '啟用迄日': ''
+            },
+           {
             '教師姓名': '陳志強',
              '星期': 2,
             '節次': 8,
@@ -591,14 +628,18 @@ window.UiAdmin = (function () {
           return;
         }
         var rows = (allSchedules.value || []).map(function (s) {
-           var restrict = s.restriction === 'restricted' || s.restriction === '限制' ? '綁課' : (s.restriction || '');
-           var attr = s.attr || s.attribute || '一般';
-           if (attr === '基本') attr = '一般';
-           var special = normalizeSpecialTagsImport(s.specialTags || s.specialTagsText || '');
-           if (!special && window.DateUtils && window.DateUtils.isCombinedClass
-               && window.DateUtils.isCombinedClass(s.className)) special = '併班';
-           if (restrict && !hasSpecialTag(special, '綁課')) special = special ? special + '、綁課' : '綁課';
-            return {
+            var restrict = s.restriction === 'restricted' || s.restriction === '限制' ? '綁課' : (s.restriction || '');
+            var isPullOut = isPullOutScheduleEntry(s);
+            var attr = isPullOut ? '抽離' : normSchedAttr(s.attr || s.attribute || '一般');
+            var special = normalizeSpecialTagsImport(s.specialTags || s.specialTagsText || '');
+            var specialList = specialTagList(special);
+            if (window.DateUtils && window.DateUtils.isCombinedClass
+                && window.DateUtils.isCombinedClass(s.className)) addSpecialTag(specialList, '併班');
+            if (isPullOut) addSpecialTag(specialList, '抽離');
+            if (isOvertimeScheduleEntry(s)) addSpecialTag(specialList, '超鐘點');
+            if (restrict) addSpecialTag(specialList, '綁課');
+            special = specialList.join('、');
+             return {
              '教師姓名': s.teacherName || getTeacherNameByEmail(s.teacherEmail) || '',
              '星期': s.dayOfWeek != null ? s.dayOfWeek : '',
             '節次': s.period != null ? s.period : '',
@@ -722,21 +763,38 @@ window.UiAdmin = (function () {
 
     function normSchedAttr(a) {
       var s = String(a || '').trim();
-      if (!s || s === '基本') return '一般';
+      if (!s || s === '基本' || s.indexOf('超鐘點') >= 0) return '一般';
       return s;
+    }
+
+    function isPullOutScheduleEntry(schedule) {
+      if (!schedule) return false;
+      if (window.FieldMap && typeof window.FieldMap.isPullOutSchedule === 'function') {
+        return window.FieldMap.isPullOutSchedule(schedule);
+      }
+      var attr = String(schedule.attr || schedule['課堂屬性'] || '').trim();
+      if (attr.indexOf('抽離') >= 0 || schedule.isPullOut === true) return true;
+      return hasSpecialTag(schedule.specialTags || schedule['特殊標記'], '抽離');
     }
 
     function applyEntryToForm(entry, entries) {
       scheduleForm.value.id = entry ? entry.id : null;
       scheduleForm.value.className = entry ? (entry.className || '') : '';
       scheduleForm.value.subject = entry ? (entry.subject || '') : '';
-      scheduleForm.value.attr = entry ? normSchedAttr(entry.attr) : '一般';
+      scheduleForm.value.attr = entry
+        ? (isPullOutScheduleEntry(entry) ? '抽離' : normSchedAttr(entry.attr))
+        : '一般';
+      scheduleForm.value.overtime = entry ? isOvertimeScheduleEntry(entry) : false;
+      scheduleForm.value.specialTags = entry
+        ? normalizeSpecialTagsImport(entry.specialTags || entry['特殊標記'] || '')
+        : '';
       scheduleForm.value.restriction = entry ? (entry.restriction || '') : '';
       scheduleForm.value.activeFrom = entry ? (entry.activeFrom || entry.activationStartDate || '') : '';
       scheduleForm.value.activeTo = entry ? (entry.activeTo || entry.activationEndDate || '') : '';
       scheduleForm.value._newVersion = false;
       scheduleForm.value._previousId = '';
       scheduleForm.value._entries = entries || [];
+      normalizeScheduleFormFlags();
     }
 
     function openScheduleEditModal(email, day, period) {
@@ -748,10 +806,12 @@ window.UiAdmin = (function () {
         dayOfWeek: day,
         period: period,
         className: '',
-        subject: '',
-        attr: '一般',
-        restriction: '',
-        activeFrom: '',
+         subject: '',
+         attr: '一般',
+         overtime: false,
+         restriction: '',
+         specialTags: '',
+         activeFrom: '',
         activeTo: '',
         _newVersion: false,
         _previousId: '',
@@ -776,31 +836,43 @@ window.UiAdmin = (function () {
         var previousEntry = entries.find(function (e) { return e.id === previousId; });
         applyEntryToForm(null, entries);
         if (previousEntry) {
-          scheduleForm.value.className = previousEntry.className || '';
-          scheduleForm.value.subject = previousEntry.subject || '';
-          scheduleForm.value.attr = normSchedAttr(previousEntry.attr);
-          scheduleForm.value.restriction = previousEntry.restriction || '';
+           scheduleForm.value.className = previousEntry.className || '';
+           scheduleForm.value.subject = previousEntry.subject || '';
+           scheduleForm.value.attr = isPullOutScheduleEntry(previousEntry)
+             ? '抽離' : normSchedAttr(previousEntry.attr);
+           scheduleForm.value.overtime = isOvertimeScheduleEntry(previousEntry);
+           scheduleForm.value.specialTags = normalizeSpecialTagsImport(
+             previousEntry.specialTags || previousEntry['特殊標記'] || ''
+           );
+           scheduleForm.value.restriction = previousEntry.restriction || '';
         }
         scheduleForm.value._newVersion = true;
         scheduleForm.value._previousId = previousId;
         return;
       }
-      var target = normSchedAttr(attr);
-      var entry = entries.find(function (e) {
-        return e.id && scheduleForm.value.id && e.id === scheduleForm.value.id && normSchedAttr(e.attr) === target;
-      }) || entries.find(function (e) {
-        return normSchedAttr(e.attr) === target;
-      });
-      // 也允許用 id 點選（同 attr 多筆時）
-      if (!entry && attr) {
-        entry = entries.find(function (e) { return e.id === attr; });
-      }
+       var target = normSchedAttr(attr);
+       var entry = entries.find(function (e) { return e.id === attr; }) || entries.find(function (e) {
+         return e.id && scheduleForm.value.id && e.id === scheduleForm.value.id && normSchedAttr(e.attr) === target;
+       }) || entries.find(function (e) {
+         return normSchedAttr(e.attr) === target;
+       });
       if (entry) {
         applyEntryToForm(entry, entries);
       } else {
-        applyEntryToForm(null, entries);
-        scheduleForm.value.attr = target || '一般';
-      }
+         applyEntryToForm(null, entries);
+         scheduleForm.value.attr = target || '一般';
+       }
+     }
+
+    function normalizeScheduleFormFlags() {
+      var period = parseInt(scheduleForm.value.period, 10);
+      var attr = String(scheduleForm.value.attr || '').trim();
+      if (period === 8 || attr === '巡堂') scheduleForm.value.overtime = false;
+    }
+
+    function isOvertimePeriod(period) {
+      var value = parseInt(period, 10);
+      return value === 0 || value === 45 || (value >= 1 && value <= 7);
     }
 
     function getSchedule(email, day, period) {
@@ -823,11 +895,20 @@ window.UiAdmin = (function () {
     }
 
     function isOvertimeScheduleEntry(schedule) {
+      if (schedule && schedule.isOvertime === true) return true;
+      if (window.FieldMap && typeof window.FieldMap.isOvertimeSchedule === 'function') {
+        return window.FieldMap.isOvertimeSchedule(schedule);
+      }
       var attr = String(schedule && (schedule.attr || schedule['課堂屬性']) || '').trim();
       if (attr.indexOf('超鐘點') >= 0) return true;
       return String(schedule && (schedule.specialTags || schedule['特殊標記']) || '')
         .split(/[,，、;；\/／|｜\s]+/)
-        .some(function (value) { return String(value || '').trim() === '超鐘點'; });
+         .some(function (value) { return String(value || '').trim() === '超鐘點'; });
+    }
+
+    function getScheduleAttrLabel(schedule) {
+      var attr = isPullOutScheduleEntry(schedule) ? '抽離' : normSchedAttr(schedule && schedule.attr);
+      return isOvertimeScheduleEntry(schedule) ? attr + '＋超鐘點' : attr;
     }
 
     function overtimePeriodLabel(period) {
@@ -973,13 +1054,28 @@ window.UiAdmin = (function () {
               + String(previousDate.getDate()).padStart(2, '0');
           }
         }
-        var attr = scheduleForm.value.attr || '一般';
+        var attr = normSchedAttr(scheduleForm.value.attr || '一般');
         // 本校 1～7 節無單雙週；誤選時改回一般
         if (currentPeriod !== 8 && (attr === '單週' || attr === '雙週' || attr === '課輔')) {
           attr = '一般';
-          scheduleForm.value.attr = '一般';
-          showToast('1～7 節不使用單雙週／課輔屬性，已改為一般', 'info');
-        }
+           scheduleForm.value.attr = '一般';
+           showToast('1～7 節不使用單雙週／課輔屬性，已改為一般', 'info');
+         }
+         var overtime = !!scheduleForm.value.overtime
+           && isOvertimePeriod(currentPeriod)
+           && attr !== '巡堂';
+         var specialTags = specialTagList(scheduleForm.value.specialTags || '');
+         if (attr === '抽離') addSpecialTag(specialTags, '抽離');
+         else specialTags = removeSpecialTag(specialTags, '抽離');
+         if (overtime) addSpecialTag(specialTags, '超鐘點');
+         else specialTags = removeSpecialTag(specialTags, '超鐘點');
+         if (attr === '預排') addSpecialTag(specialTags, '預排');
+         else specialTags = removeSpecialTag(specialTags, '預排');
+         if (scheduleForm.value.restriction === 'restricted') addSpecialTag(specialTags, '綁課');
+         else specialTags = removeSpecialTag(specialTags, '綁課');
+         if (attr === '巡堂') specialTags = [];
+         scheduleForm.value.overtime = overtime;
+         scheduleForm.value.specialTags = specialTags.join('、');
          var docId = isNewVersion ? '' : scheduleForm.value.id;
          if (!docId && !isNewVersion) {
           var dup = allSchedules.value.find(function (s) {
@@ -998,11 +1094,12 @@ window.UiAdmin = (function () {
            '教師姓名': scheduleForm.value.teacherName,
           '星期': parseInt(scheduleForm.value.dayOfWeek, 10),
           '節次': currentPeriod,
-          '班級': scheduleForm.value.className.trim(),
-           '科目': scheduleForm.value.subject.trim(),
-           '課堂屬性': attr,
-           '調課限制': scheduleForm.value.restriction === 'restricted' ? 'restricted' : '',
-           '啟用起日': String(scheduleForm.value.activeFrom || '').trim(),
+            '班級': scheduleForm.value.className.trim(),
+            '科目': scheduleForm.value.subject.trim(),
+            '課堂屬性': attr,
+            '調課限制': scheduleForm.value.restriction === 'restricted' ? 'restricted' : '',
+            '特殊標記': specialTags.join('、'),
+            '啟用起日': String(scheduleForm.value.activeFrom || '').trim(),
            '啟用迄日': String(scheduleForm.value.activeTo || '').trim(),
            '前課表ID': isNewVersion ? (scheduleForm.value._previousId || '') : ''
          };
@@ -1795,9 +1892,11 @@ window.UiAdmin = (function () {
       runImportPreview: runImportPreview,
       downloadScheduleTemplate: downloadScheduleTemplate,
       downloadCurrentSchedules: downloadCurrentSchedules,
-      openScheduleEditModal: openScheduleEditModal,
-      pickScheduleAttr: pickScheduleAttr,
-      getSchedule: getSchedule,
+       openScheduleEditModal: openScheduleEditModal,
+       pickScheduleAttr: pickScheduleAttr,
+       normalizeScheduleFormFlags: normalizeScheduleFormFlags,
+       getScheduleAttrLabel: getScheduleAttrLabel,
+       getSchedule: getSchedule,
       saveScheduleCell: saveScheduleCell,
       clearScheduleCell: clearScheduleCell,
       updateTeacherBaseHours: updateTeacherBaseHours,

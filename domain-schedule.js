@@ -24,13 +24,17 @@ window.DomainSchedule = (function () {
 
   /** 課堂屬性＝抽離（不進班級課表；調課僅可與另一節抽離互調，不可與一般課） */
   function isPullOutAttr(attr) {
-    return String(attr || '').trim() === '抽離';
+    return String(attr || '').trim().indexOf('抽離') >= 0;
   }
 
   function isPullOutCell(cell) {
     if (!cell) return false;
     if (cell.isPullOut) return true;
-    return isPullOutAttr(cell.attr);
+    if (isPullOutAttr(cell.attr)) return true;
+    var rawTags = cell.specialTags || cell['特殊標記'] || '';
+    return String(rawTags).split(/[、,，;；/／|｜\s]+/).some(function (tag) {
+      return String(tag || '').trim() === '抽離';
+    });
   }
 
   function isCombinedReturnRequest(request) {
@@ -607,7 +611,7 @@ window.DomainSchedule = (function () {
     var patrol = isPatrolAttr(base.attr)
       || baseCn === '巡堂'
       || baseSubj === '巡堂';
-    var pullOut = isPullOutAttr(base.attr);
+     var pullOut = isPullOutCell(base);
     return Object.assign({}, base, {
       dayOfWeek: dayOfWeek,
       period: period,

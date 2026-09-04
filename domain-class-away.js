@@ -251,7 +251,7 @@ window.DomainClassAway = (function () {
 
   /**
    * 教師基礎課表中，屬於「reduce 空堂班」的週鐘點節數
-   * （早自習0＋1–7＋午休45；基本／一般／超鐘點／抽離；不含巡堂／第8）
+    * （早自習0＋1–7＋午休45；基本／一般／抽離；超鐘點由特殊標記判定；不含巡堂／第8）
    */
   function countReduceSlotsForTeacher(teacherEmail, allSchedules, awayClassSet, weekDates) {
     var em = String(teacherEmail || '').toLowerCase();
@@ -338,7 +338,10 @@ window.DomainClassAway = (function () {
       var raw = s.className || s['班級'];
       if (String(raw || '').trim() === '巡堂') return;
       // 抽離也不應出現在班級清單（不代表真實授課班）
-      if (s.attr === '抽離' || s.isPullOut) return;
+      if (s.isPullOut
+          || (window.DomainSchedule && window.DomainSchedule.isPullOutCell
+            && window.DomainSchedule.isPullOutCell(s))
+          || s.attr === '抽離') return;
       // 併班「701、702」拆成個別班名
       var parts = null;
       if (window.DateUtils && typeof window.DateUtils.parseCombinedClasses === 'function') {
