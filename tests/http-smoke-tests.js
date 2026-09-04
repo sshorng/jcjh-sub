@@ -36,17 +36,17 @@ function request(server, method, requestPath) {
     assert.equal(root.status, 200);
     assert.match(root.body.toString('utf8'), /<title>建成國中線上課表系統<\/title>/);
     assert.match(root.body.toString('utf8'), /application-name" content="JCJH Timetable"/);
-      assert.match(root.body.toString('utf8'), /domain-match\.js\?v=20260904-overtime-tags/);
-      assert.match(root.body.toString('utf8'), /ui-request\.js\?v=20260904-overtime-tags/);
-      assert.match(root.body.toString('utf8'), /20260904-overtime-tags/);
+      assert.match(root.body.toString('utf8'), /domain-match\.js\?v=20260904-calendar-class-sort/);
+      assert.match(root.body.toString('utf8'), /ui-request\.js\?v=20260904-calendar-class-sort/);
+      assert.match(root.body.toString('utf8'), /20260904-calendar-class-sort/);
     assert.equal(root.headers['cache-control'], 'no-cache');
     assert.match(root.headers['content-security-policy'], /frame-ancestors 'none'/);
 
-      const app = await request(server, 'GET', '/app.js?v=20260904-overtime-tags');
+      const app = await request(server, 'GET', '/app.js?v=20260904-calendar-class-sort');
     assert.equal(app.status, 200);
     assert.match(app.body.toString('utf8'), /params\.set\('response_type', 'id_token token'\)/);
 
-      const head = await request(server, 'HEAD', '/style.css?v=20260904-overtime-tags');
+      const head = await request(server, 'HEAD', '/style.css?v=20260904-calendar-class-sort');
     assert.equal(head.status, 200);
     assert.equal(head.body.length, 0);
 

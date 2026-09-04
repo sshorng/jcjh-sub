@@ -2356,7 +2356,22 @@ createApp({
       }
 
       const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(cal.title)}&dates=${cal.startIso}/${cal.endIso}&details=${encodeURIComponent(cal.details)}`;
-      window.open(url, '_blank');
+      let popup = null;
+      try {
+        popup = window.open(url, '_blank');
+      } catch (error) {
+        console.warn('開啟 Google 日曆新分頁失敗', error);
+      }
+      if (popup) {
+        try { popup.opener = null; } catch (error) {}
+        return;
+      }
+      // 瀏覽器封鎖新分頁時，改用目前分頁開啟，避免按鈕看似無反應。
+      try {
+        window.location.href = url;
+      } catch (error) {
+        showToast('無法開啟 Google 日曆，請允許此網站開啟新分頁後再試。', 'warning');
+      }
     };
 
     const downloadIcsCalendar = (req) => {
@@ -3560,7 +3575,6 @@ createApp({
     // 週日曆
     const classList = computed(() => {
       const set = new Set();
-      const pullOutClasses = new Set();
       const pullOutClassLabels = new Set();
       (classDirectory.value || []).forEach(c => {
         const value = String(c || '').trim();
@@ -3583,18 +3597,22 @@ createApp({
           if (c && names.length > 1) pullOutClassLabels.add(c);
           names.forEach(name => {
             const value = String(name || '').trim();
-            pullOutClasses.add(value);
             if (/英資|特教|資優|抽離/.test(value)) pullOutClassLabels.add(value);
           });
         } else if (c && !/^0+$/.test(c)) {
           set.add(c);
         }
       });
-      const isPullOutClass = value => pullOutClasses.has(value) || /英資|特教|資優|抽離/.test(value);
       return [...set].filter(value => !pullOutClassLabels.has(value)).sort((a, b) => {
-        const aIsPullOut = isPullOutClass(a);
-        const bIsPullOut = isPullOutClass(b);
-        if (aIsPullOut !== bIsPullOut) return aIsPullOut ? 1 : -1;
+        const aIsEnglishGifted = /英資|英語資優/.test(a);
+        const bIsEnglishGifted = /英資|英語資優/.test(b);
+        if (aIsEnglishGifted !== bIsEnglishGifted) return aIsEnglishGifted ? 1 : -1;
+        const aNumber = String(a).match(/^\d+/);
+        const bNumber = String(b).match(/^\d+/);
+        if (!!aNumber !== !!bNumber) return aNumber ? -1 : 1;
+        if (aNumber && bNumber && Number(aNumber[0]) !== Number(bNumber[0])) {
+          return Number(aNumber[0]) - Number(bNumber[0]);
+        }
         return a.localeCompare(b, 'zh-Hant', { numeric: true });
       });
     });

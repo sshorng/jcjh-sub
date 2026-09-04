@@ -727,6 +727,64 @@ function runRequestListSortTest() {
   assert.equal(sorter.formatRequestApplicationDate({ requestDate: '2026-09-04' }), '2026-09-04');
 }
 
+function runCalendarFallbackContractTest() {
+  const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+  const clickMarker = '@click="addEventToCalendar(detailRequest)"';
+  const clickIndex = html.indexOf(clickMarker);
+  assert.ok(clickIndex >= 0, 'detail calendar button must remain wired');
+  const buttonStart = html.lastIndexOf('<button', clickIndex);
+  const buttonEnd = html.indexOf('</button>', clickIndex);
+  assert.ok(buttonStart >= 0 && buttonEnd > buttonStart, 'detail calendar button markup must remain valid');
+  assert.match(html.slice(buttonStart, buttonEnd), /type="button"/, 'detail calendar button must not submit a form');
+
+  const source = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
+  const start = source.indexOf('const addToGoogleCalendar =');
+  const end = source.indexOf('const downloadIcsCalendar =', start);
+  assert.ok(start >= 0 && end > start, 'Google calendar helper must remain discoverable');
+
+  const toasts = [];
+  const context = {
+    getCalendarDetails: () => ({
+      title: '【代課】801 國文',
+      startIso: '20260904T080000',
+      endIso: '20260904T085000',
+      details: '測試事件'
+    }),
+    showToast: (...args) => toasts.push(args),
+    window: {
+      open: () => null,
+      location: { href: 'https://school.example/index.html' }
+    },
+    console: { warn: () => {} },
+    encodeURIComponent
+  };
+  vm.createContext(context);
+  const addToGoogleCalendar = vm.runInContext(`(() => {
+    ${source.slice(start, end)}
+    return addToGoogleCalendar;
+  })()`, context);
+
+  addToGoogleCalendar({ id: 'calendar-fallback' });
+  assert.match(context.window.location.href, /^https:\/\/calendar\.google\.com\/calendar\/render\?/);
+  assert.equal(toasts.length, 0, 'a successful current-tab fallback should not show an error');
+
+  const openedWindow = {};
+  const popupContext = Object.assign({}, context, {
+    window: {
+      open: () => openedWindow,
+      location: { href: 'https://school.example/index.html' }
+    }
+  });
+  vm.createContext(popupContext);
+  const popupOpener = vm.runInContext(`(() => {
+    ${source.slice(start, end)}
+    return addToGoogleCalendar;
+  })()`, popupContext);
+  popupOpener({ id: 'calendar-popup' });
+  assert.equal(openedWindow.opener, null, 'opened calendar window must not retain the app as opener');
+  assert.equal(popupContext.window.location.href, 'https://school.example/index.html');
+}
+
 function runApplicationFormContractTest() {
   const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
   assert.doesNotMatch(html, /data-tour="compare-fee"/);
@@ -815,8 +873,8 @@ function runApplicationFormContractTest() {
    assert.match(appSource, /mode: notificationsSuppressed\.value \? 'paper' : 'online'/, 'onboarding should follow the global paper mode');
    assert.match(appSource, /openExchangeModeDemo: \(\) => openExchangeModeDemoForTour\(\)/, 'tour should demonstrate exchange mode');
     assert.match(appSource, /ONBOARDING_SCRIPT = 'onboarding-tour\.js\?v=20260831-combined3'/, 'onboarding cache must refresh with the exchange tour');
-     assert.match(html, /ui-activity\.js\?v=20260904-overtime-tags/);
-      assert.match(html, /app\.js\?v=20260904-overtime-tags/);
+     assert.match(html, /ui-activity\.js\?v=20260904-calendar-class-sort/);
+      assert.match(html, /app\.js\?v=20260904-calendar-class-sort/);
       assert.match(appSource, /paperFlow: notificationsSuppressed\.value/);
      assert.match(appSource, /openPaperPrintDemo: \(\) => openPaperPrintDemoForTour\(\)/, 'paper tour should open a print preview demo');
      assert.match(appSource, /openExchangeModeDemo: \(\) => openExchangeModeDemoForTour\(\)/, 'tour should demonstrate exchange mode');
@@ -1507,6 +1565,7 @@ Promise.resolve()
   .then(() => runProgressTest())
   .then(() => runFieldMapTest())
   .then(() => runRequestListSortTest())
+  .then(() => runCalendarFallbackContractTest())
   .then(() => runExchangePaperRecordMappingTest())
   .then(() => runApplicationFormContractTest())
   .then(() => runHistoryEditTeacherValueTest())
