@@ -743,6 +743,11 @@ function runCalendarFallbackContractTest() {
   assert.ok(start >= 0 && end > start, 'Google calendar helper must remain discoverable');
 
   const toasts = [];
+  let clickedFallbackLink = 0;
+  const fallbackLink = {
+    style: {},
+    click: () => { clickedFallbackLink += 1; }
+  };
   const context = {
     getCalendarDetails: () => ({
       title: '【代課】801 國文',
@@ -755,6 +760,16 @@ function runCalendarFallbackContractTest() {
       open: () => null,
       location: { href: 'https://school.example/index.html' }
     },
+    document: {
+      createElement: tagName => {
+        assert.equal(tagName, 'a', 'calendar fallback must use a link');
+        return fallbackLink;
+      },
+      body: {
+        appendChild: () => {},
+        removeChild: () => {}
+      }
+    },
     console: { warn: () => {} },
     encodeURIComponent
   };
@@ -765,15 +780,20 @@ function runCalendarFallbackContractTest() {
   })()`, context);
 
   addToGoogleCalendar({ id: 'calendar-fallback' });
-  assert.match(context.window.location.href, /^https:\/\/calendar\.google\.com\/calendar\/render\?/);
-  assert.equal(toasts.length, 0, 'a successful current-tab fallback should not show an error');
+  assert.equal(clickedFallbackLink, 1, 'blocked popup must trigger the new-tab link fallback');
+  assert.equal(fallbackLink.target, '_blank');
+  assert.equal(fallbackLink.rel, 'noopener noreferrer');
+  assert.match(fallbackLink.href, /^https:\/\/calendar\.google\.com\/calendar\/render\?/);
+  assert.equal(context.window.location.href, 'https://school.example/index.html', 'calendar fallback must not navigate the current tab');
+  assert.match(toasts[0][0], /新分頁/);
 
   const openedWindow = {};
   const popupContext = Object.assign({}, context, {
     window: {
       open: () => openedWindow,
       location: { href: 'https://school.example/index.html' }
-    }
+    },
+    document: context.document
   });
   vm.createContext(popupContext);
   const popupOpener = vm.runInContext(`(() => {
@@ -873,8 +893,8 @@ function runApplicationFormContractTest() {
    assert.match(appSource, /mode: notificationsSuppressed\.value \? 'paper' : 'online'/, 'onboarding should follow the global paper mode');
    assert.match(appSource, /openExchangeModeDemo: \(\) => openExchangeModeDemoForTour\(\)/, 'tour should demonstrate exchange mode');
     assert.match(appSource, /ONBOARDING_SCRIPT = 'onboarding-tour\.js\?v=20260831-combined3'/, 'onboarding cache must refresh with the exchange tour');
-     assert.match(html, /ui-activity\.js\?v=20260904-calendar-class-sort/);
-      assert.match(html, /app\.js\?v=20260904-calendar-class-sort/);
+     assert.match(html, /ui-activity\.js\?v=20260904-calendar-new-tab/);
+      assert.match(html, /app\.js\?v=20260904-calendar-new-tab/);
       assert.match(appSource, /paperFlow: notificationsSuppressed\.value/);
      assert.match(appSource, /openPaperPrintDemo: \(\) => openPaperPrintDemoForTour\(\)/, 'paper tour should open a print preview demo');
      assert.match(appSource, /openExchangeModeDemo: \(\) => openExchangeModeDemoForTour\(\)/, 'tour should demonstrate exchange mode');

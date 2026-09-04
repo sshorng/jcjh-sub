@@ -2366,11 +2366,20 @@ createApp({
         try { popup.opener = null; } catch (error) {}
         return;
       }
-      // 瀏覽器封鎖新分頁時，改用目前分頁開啟，避免按鈕看似無反應。
+      // 瀏覽器封鎖 window.open 時，仍以 target=_blank 嘗試開新分頁，不改動目前頁面。
       try {
-        window.location.href = url;
+        const link = document.createElement('a');
+        link.href = url;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        showToast('若未出現新分頁，請允許瀏覽器開啟彈出視窗後再試。', 'info');
       } catch (error) {
-        showToast('無法開啟 Google 日曆，請允許此網站開啟新分頁後再試。', 'warning');
+        console.warn('開啟 Google 日曆新分頁失敗', error);
+        showToast('無法開啟 Google 日曆新分頁，請允許瀏覽器開啟彈出視窗後再試。', 'warning');
       }
     };
 
