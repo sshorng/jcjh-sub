@@ -6,6 +6,15 @@
    ========================================================= */
 
 @media (max-width: 768px) {
+  .tt-display-switch {
+    flex-shrink: 0;
+  }
+  .tt-display-option {
+    min-height: 28px;
+    padding: 4px 7px;
+    font-size: 0.7rem;
+  }
+
   /* 月報表格由頁面垂直捲動；兩層表頭避開可換行的導覽列。 */
   .billing-report {
     --billing-sticky-top: 96px;

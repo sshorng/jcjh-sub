@@ -600,6 +600,8 @@ createApp({
     const searchQuery = ref('');
     // 管理員課表範圍：mine＝只看自己（預設）；all＝全校；其餘＝依科目篩選
     const selectedSubject = ref('mine');
+    // 課表預設只呈現班級／科目，排課時可切換完整屬性。
+    const timetableDisplayMode = ref('clean');
     // I：切到全校時輕提示（分頁＋搜尋）
     let _allSchoolTipOnce = false;
     watch(selectedSubject, (v) => {
@@ -3730,6 +3732,16 @@ createApp({
       return String(raw || '').split(/[,，、;；\/／|｜\n]+/).map(value => String(value || '').trim()).filter(Boolean);
     };
     const hasScheduleSpecialTag = (entry, tag) => getScheduleSpecialTags(entry).includes(String(tag || '').trim());
+    const isTimetablePullout = (entry) => !!(entry && (
+      entry.isPullOut
+      || entry.attr === '抽離'
+      || hasScheduleSpecialTag(entry, '抽離')
+    ));
+    const isTimetableRestricted = (entry) => !!(entry && (
+      entry.restriction === 'restricted'
+      || entry.restriction === '限制'
+      || hasScheduleSpecialTag(entry, '綁課')
+    ));
 
     const currentWeekDates = computed(() => {
       const dates = [];
@@ -10745,7 +10757,19 @@ createApp({
       if (isPatrol) return '巡堂';
       const cls = `${cell.className || ''} ${cell.subject || ''}`.trim();
       const swapName = cell.schoolSwap && cell.schoolSwap.name ? String(cell.schoolSwap.name) : '';
-      const head = (cls || '有課') + (swapName ? `\n↔ 全校對調：${swapName}` : '');
+      const attributes = [];
+      const addAttribute = (label) => {
+        if (label && !attributes.includes(label)) attributes.push(label);
+      };
+      if (isTimetablePullout(cell)) addAttribute('抽離');
+      if (isTimetableRestricted(cell)) addAttribute('綁課');
+      if (cell.isOvertime || cell.attr === '超鐘點' || hasScheduleSpecialTag(cell, '超鐘點')) addAttribute('超鐘點');
+      if (cell.isElastic || cell.attr === '實支') addAttribute('實支');
+      if (cell.attr === '單週' || cell.attr === '雙週') addAttribute(cell.attr);
+      if (hasScheduleSpecialTag(cell, '預排')) addAttribute('預排');
+      const head = (cls || '有課')
+        + (attributes.length ? `\n${attributes.join('、')}` : '')
+        + (swapName ? `\n↔ 全校對調：${swapName}` : '');
       if (cell.isPending) {
         if (cell.pendingType === 'combined_return_out') {
            return `${head}\n⏳ 併班上課申請中\n${cell.pendingText || '待教學組核准'}`;
@@ -11805,7 +11829,7 @@ createApp({
       currentSemester, availableSemesters, currentSemesterName, semestersList, showSemesterModal, semesterModalMode, semesterForm,
        currentWeekDates, compareWeekDatesA, compareWeekDatesB, compareWeekSelectionA, compareWeekSelectionB, compareDisplayDatesA, compareDisplayDatesB, setCompareWeekSelection, batchCompareWeekIndex, batchCompareWeekTotal, batchCompareWeekSlotCount, shiftBatchCompareWeek, isCrossWeekExchange, getExchangeEndpointText, selectedWeekDate, currentWeekNumber,
        classList, classSchedules, selectedClass, classReadonlyMode, classViewerReadonly, selectClassForView, getClassReadonlyLink, copyClassReadonlyLink,
-       searchQuery, selectedSubject, teachersList, allSchedules, schoolSwaps, substitutionRecords, homeroomRecords, requestsList,
+       searchQuery, selectedSubject, timetableDisplayMode, teachersList, allSchedules, schoolSwaps, substitutionRecords, homeroomRecords, requestsList,
       mySentRequests, myPendingRequests, adminPendingRequests, allPendingRequests,
        matchMode, activeCell, inputRequestDate, recommendedTeachers, recommendationLoading,
        trianglePickB, trianglePickC, triangleNote, triangleSubmitting, triangleCandidates, triangleCandidateB, triangleCandidateCList, triangleCandidateC,
@@ -11869,7 +11893,7 @@ createApp({
       reportMonthOptions, personalChanges, recommendedExchangeList, displayedExchangeList,
       loginWithGoogle, logout, gsiButtonReady, gsiButtonError, gsiLoggingIn, reloadGsiLoginButton,
       changeWeek,       getPeriodTimeSpan, getWeekDayText, formatDateMMDD,
-       timetablePeriods, getPeriodLabel, formatPeriodText, isLunchPeriod, getPeriodClass, formatClassName, isCombinedClass, getScheduleSpecialTags, hasScheduleSpecialTag,
+        timetablePeriods, getPeriodLabel, formatPeriodText, isLunchPeriod, getPeriodClass, formatClassName, isCombinedClass, getScheduleSpecialTags, hasScheduleSpecialTag, isTimetablePullout, isTimetableRestricted,
       getClassCellClassForDate, getClassCellClassForClass, getScheduleForDate, weekScheduleGrid, cellFromGrid, handleCellClick, handleClassCellClick,
       isMatchSourceCell, isMatchSourceEntry, isMatchHoverCell, isMatchHoverEntry,
       selectMatchPreviewSub, selectMatchPreviewExchange, clearMatchPreview, closeMatchModal, isMatchPreviewSelected,

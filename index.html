@@ -296,10 +296,28 @@
               <div class="card" style="grid-column: span 1;">
                <div class="card-title">
                  <span>📅 課表主畫面</span>
-                <div class="action-buttons action-buttons-wrap">
-                  <button
-                    type="button"
-                    class="btn btn-sm"
+                 <div class="action-buttons action-buttons-wrap">
+                   <div class="tt-display-switch" role="group" aria-label="課表資訊顯示">
+                     <button
+                       type="button"
+                       class="tt-display-option"
+                       :class="{ active: timetableDisplayMode === 'clean' }"
+                       :aria-pressed="timetableDisplayMode === 'clean' ? 'true' : 'false'"
+                       title="只顯示班級與科目；抽離、綁課以標記表示"
+                       @click="timetableDisplayMode = 'clean'"
+                     >簡潔</button>
+                     <button
+                       type="button"
+                       class="tt-display-option"
+                       :class="{ active: timetableDisplayMode === 'detail' }"
+                       :aria-pressed="timetableDisplayMode === 'detail' ? 'true' : 'false'"
+                       title="顯示課程的完整屬性標籤"
+                       @click="timetableDisplayMode = 'detail'"
+                     >詳細</button>
+                   </div>
+                   <button
+                     type="button"
+                     class="btn btn-sm"
                     data-tour="batch-btn"
                     :class="batchSelectMode ? 'btn-primary' : 'btn-secondary'"
                     @click="toggleBatchSelectMode"
@@ -606,7 +624,7 @@
                     :key="teacher.email"
                     :id="'tt-teacher-' + String(teacher.email).replace(/[^a-zA-Z0-9_-]/g, '_')"
                     class="tt-teacher-block"
-                    v-memo="[(weekScheduleGrid[teacher.email] || null), getTeacherTimetableHours(teacher), isScheduleEditMode, isMobile, isMutualCover, batchSelectMode]"
+                     v-memo="[(weekScheduleGrid[teacher.email] || null), getTeacherTimetableHours(teacher), isScheduleEditMode, isMobile, isMutualCover, batchSelectMode, timetableDisplayMode]"
                   >
                     <h4 class="tt-teacher-head">
                       <span aria-hidden="true">👤</span>
@@ -615,7 +633,7 @@
                       <span class="tt-teacher-hours">（基本鐘點 {{ getTeacherTimetableHours(teacher).basicHours }} 節／超鐘點 {{ getTeacherTimetableHours(teacher).overtimeHours }} 節）</span>
                     </h4>
                     
-                    <div class="timetable-grid" :class="{ 'edit-mode': isScheduleEditMode }">
+                     <div class="timetable-grid" :class="{ 'edit-mode': isScheduleEditMode, 'tt-clean-mode': timetableDisplayMode === 'clean' }">
                       <div class="grid-header">節</div>
                       <div class="grid-header">一<span class="date-sub" v-if="!isMobile"><br>{{ formatDateMMDD(currentWeekDates[0]) }}</span></div>
                       <div class="grid-header">二<span class="date-sub" v-if="!isMobile"><br>{{ formatDateMMDD(currentWeekDates[1]) }}</span></div>
@@ -642,9 +660,11 @@
                           :title="getCellPlainStatus(((weekScheduleGrid[teacher.email] || {})[day + '-' + period] || {}).cell)"
                           @click="handleCellClick(teacher.email, day, period, currentWeekDates[day-1])"
                         >
-                          <template v-for="slot in [((weekScheduleGrid[teacher.email] || {})[day + '-' + period] || null)]" :key="'s'+day+period">
-                            <template v-if="slot && slot.cell">
-                              <template v-if="slot.cell.isPatrol || slot.cell.attr === '巡堂'">
+                           <template v-for="slot in [((weekScheduleGrid[teacher.email] || {})[day + '-' + period] || null)]" :key="'s'+day+period">
+                             <template v-if="slot && slot.cell">
+                               <span v-if="timetableDisplayMode === 'clean' && isTimetablePullout(slot.cell)" class="tt-cell-marker tt-cell-marker-pullout" aria-hidden="true"></span>
+                               <span v-if="timetableDisplayMode === 'clean' && isTimetableRestricted(slot.cell)" class="tt-cell-marker tt-cell-marker-restricted" aria-hidden="true"></span>
+                               <template v-if="slot.cell.isPatrol || slot.cell.attr === '巡堂'">
                                 <span class="cell-empty-label">巡堂</span>
                               </template>
                               <template v-else>
@@ -653,7 +673,6 @@
                                     <span class="class-color-badge" :style="getClassBadgeStyle(slot.cell.className)">
                                       {{ formatClassName(slot.cell.className) || slot.cell.className }}
                                     </span>
-                                   <span v-if="isCombinedClass(slot.cell.className) || hasScheduleSpecialTag(slot.cell, '併班')" class="cell-badge tag-combined" title="併班">併班</span>
                                   </div>
                                    <div class="cell-subject" :class="{ 'cell-subject-away': slot.isAwayLabel }">
                                       {{ slot.cell.subject }}<span v-if="slot.cell.isOvertime || slot.cell.attr === '超鐘點'" title="超鐘點">（超）</span>
@@ -675,18 +694,17 @@
                                   <span v-if="slot.cell.isSubstitutionDuty" class="cell-badge" :class="slot.cell.isEmptySlotAssign ? 'tag-purple' : (slot.cell.isMutualCover ? 'tag-purple' : 'tag-green')">
                                     {{ slot.cell.subType === 'exchange' ? '調入' : (slot.cell.isEmptySlotAssign ? '空堂任務' : (slot.cell.isMutualCover ? '互代' : '代課')) }}
                                   </span>
-                                   <span v-if="slot.cell.isElastic" class="cell-badge tag-green badge-elastic">實支</span>
-                                    <span v-if="slot.cell.isOvertime || slot.cell.attr === '超鐘點'" class="cell-badge tag-overtime">超鐘點</span>
-                                  <span v-if="slot.cell.attr === '單週'" class="cell-badge tag-week">單週</span>
-                                  <span v-if="slot.cell.attr === '雙週'" class="cell-badge tag-week">雙週</span>
-                                  <span
-                                    v-if="period === 8 && slot.cell.attr !== '單週' && slot.cell.attr !== '雙週' && !slot.cell.isSubstituted && !slot.cell.isSubstitutionDuty && !slot.cell.isPending && !(slot.cell.isPatrol || slot.cell.attr === '巡堂')"
-                                    class="cell-badge tag-blue"
-                                  >課輔</span>
-                                   <span v-if="slot.cell.isPullOut || slot.cell.attr === '抽離'" class="cell-badge tag-pullout">抽離</span>
-                                   <span v-if="slot.cell.schoolSwap" class="cell-badge tag-warning" :title="slot.cell.schoolSwap.name">全校對調</span>
-                                    <span v-if="slot.cell.restriction === 'restricted' || hasScheduleSpecialTag(slot.cell, '綁課')" class="cell-badge tag-restricted">綁課</span>
-                                   <span v-if="hasScheduleSpecialTag(slot.cell, '預排')" class="cell-badge tag-preplanned">預排</span>
+                                    <span v-if="timetableDisplayMode === 'detail' && slot.cell.isElastic" class="cell-badge tag-green badge-elastic">實支</span>
+                                   <span v-if="timetableDisplayMode === 'detail' && slot.cell.attr === '單週'" class="cell-badge tag-week">單週</span>
+                                   <span v-if="timetableDisplayMode === 'detail' && slot.cell.attr === '雙週'" class="cell-badge tag-week">雙週</span>
+                                   <span
+                                     v-if="timetableDisplayMode === 'detail' && period === 8 && slot.cell.attr !== '單週' && slot.cell.attr !== '雙週' && !slot.cell.isSubstituted && !slot.cell.isSubstitutionDuty && !slot.cell.isPending && !(slot.cell.isPatrol || slot.cell.attr === '巡堂')"
+                                     class="cell-badge tag-blue"
+                                   >課輔</span>
+                                    <span v-if="timetableDisplayMode === 'detail' && (slot.cell.isPullOut || slot.cell.attr === '抽離')" class="cell-badge tag-pullout">抽離</span>
+                                    <span v-if="slot.cell.schoolSwap" class="cell-badge tag-warning" :title="slot.cell.schoolSwap.name">全校對調</span>
+                                     <span v-if="timetableDisplayMode === 'detail' && (slot.cell.restriction === 'restricted' || hasScheduleSpecialTag(slot.cell, '綁課'))" class="cell-badge tag-restricted">綁課</span>
+                                    <span v-if="timetableDisplayMode === 'detail' && hasScheduleSpecialTag(slot.cell, '預排')" class="cell-badge tag-preplanned">預排</span>
                                   <span 
                                     v-if="slot.cell.isPending"
                                     class="cell-badge"
@@ -905,7 +923,6 @@
                                       {{ entry.subject }}
                                     </span>
                                     <span v-if="entry.attr === '單週' || entry.attr === '雙週'" style="font-size:0.65rem;color:var(--text-muted);margin-left:2px;">({{ entry.attr }})</span>
-                                     <span v-if="entry._isCombined || isCombinedClass(entry.className) || hasScheduleSpecialTag(entry, '併班')" class="cell-badge tag-combined" title="併班">併班</span>
                                      <span v-if="entry.restriction === 'restricted' || hasScheduleSpecialTag(entry, '綁課')" class="cell-badge tag-restricted">綁課</span>
                                       <span v-if="hasScheduleSpecialTag(entry, '預排')" class="cell-badge tag-preplanned">預排</span>
                                       <span v-if="entry._schoolSwap" class="cell-badge tag-warning" :title="entry._schoolSwap.name">全校對調</span>

@@ -804,14 +804,6 @@ body {
   font-weight: 600;
   font-size: 0.65rem;
 }
-/* 超鐘點：與一般課程並列但維持醒目識別 */
-.cell-badge.tag-overtime {
-  background: #fff7ed;
-  color: #c2410c;
-  border: 1px solid #fdba74;
-  font-weight: 700;
-  font-size: 0.65rem;
-}
 /* 抽離：青綠色小標籤（可與綁課並存） */
 .cell-badge.tag-pullout,
 .badge-match.badge-pullout {
@@ -5719,4 +5711,65 @@ td.table-empty {
 
 .timetable-grid .grid-cell-class {
   align-items: stretch;
+}
+
+/* 課表簡潔模式：班級膠囊保留，屬性改用少量狀態標記表達。 */
+.tt-display-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--tt-line);
+  border-radius: 7px;
+  background: var(--tt-surface-soft);
+}
+
+.tt-display-option {
+  appearance: none;
+  border: 0;
+  border-radius: 5px;
+  padding: 4px 8px;
+  background: transparent;
+  color: var(--tt-ink-2);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.tt-display-option:hover {
+  background: #edf3fa;
+  color: var(--tt-ink);
+}
+
+.tt-display-option.active {
+  background: var(--tt-surface);
+  color: var(--tt-accent-dark);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.1);
+}
+
+.timetable-grid.tt-clean-mode .tt-cell-marker {
+  position: absolute;
+  z-index: 4;
+  display: block;
+  pointer-events: none;
+}
+
+.timetable-grid.tt-clean-mode .tt-cell-marker-pullout {
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 3px;
+  background: #2aa89b;
+}
+
+.timetable-grid.tt-clean-mode .tt-cell-marker-restricted {
+  right: 5px;
+  bottom: 5px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #e2a126;
+  box-shadow: 0 0 0 2px rgba(226, 161, 38, 0.16);
 }
